@@ -1,0 +1,101 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-aesmem}
+      POSTGRES_USER: ${POSTGRES_USER:-aesmem}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile.prod
+    environment:
+      BACKEND_APP_NAME: ${BACKEND_APP_NAME:-AesMem API}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost"]}
+      BACKEND_CAPTURE_ROOT: /data/captures
+      BACKEND_AUTH_MODE: ${BACKEND_AUTH_MODE:-production}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:?BACKEND_JWT_SECRET is required}
+      BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:?BACKEND_DATABASE_URL is required}
+      BACKEND_OBJECT_STORAGE_ENDPOINT: ${BACKEND_OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
+      BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT: ${BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT:-}
+      BACKEND_OBJECT_STORAGE_BUCKET: ${BACKEND_OBJECT_STORAGE_BUCKET:-aesmem-captures}
+      BACKEND_OBJECT_STORAGE_ACCESS_KEY: ${BACKEND_OBJECT_STORAGE_ACCESS_KEY:?BACKEND_OBJECT_STORAGE_ACCESS_KEY is required}
+      BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:?BACKEND_OBJECT_STORAGE_SECRET_KEY is required}
+      BACKEND_OBJECT_STORAGE_SECURE: ${BACKEND_OBJECT_STORAGE_SECURE:-false}
+      BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS: ${BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS:-300}
+    volumes:
+      - capture_data:/data/captures
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: ${PROD_VITE_API_URL:-}
+    ports:
+      - "${PROD_FRONTEND_PORT:-80}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/api/v1/health"]  # uses localhost because nginx proxies to backend
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  capture_data:
+  postgres_data:
+  minio_data:
