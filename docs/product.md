@@ -30,6 +30,14 @@ Supported capture types:
 
 The user should not be forced to select or create a patient before capturing.
 
+Each capture can show an expandable generated-text area wherever captures are listed:
+
+- Audio shows transcription.
+- Photo shows a caption.
+- Text shows decorated text.
+
+For the current prototype, these fields are placeholder backend outputs. Captures simulate about five seconds of processing before the placeholder text is marked complete.
+
 ### Active session workflow
 
 After the first capture, the system creates or uses an active session.

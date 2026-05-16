@@ -1,6 +1,6 @@
 export type Screen = "capture" | "organize" | "session" | "today" | "saved" | "inbox" | "match" | "record";
 
-export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "organized" | "needsReview" | "failed";
+export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "processed" | "needsReview" | "failed";
 
 export type SessionStatus =
   | "unassigned"

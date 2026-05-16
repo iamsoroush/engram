@@ -88,18 +88,20 @@ export function Dialog({
   children,
   footer,
   onClose,
+  className,
 }: {
   open: boolean;
   title: string;
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
+  className?: string;
 }) {
   if (!open) return null;
 
   return (
     <div className="overlay" role="presentation">
-      <div aria-modal="true" className="dialog" role="dialog">
+      <div aria-modal="true" className={cx("dialog", className)} role="dialog">
         <div className="dialog-header">
           <h2>{title}</h2>
           <Button aria-label="Close dialog" onClick={onClose} size="sm" variant="ghost">

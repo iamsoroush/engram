@@ -7,7 +7,7 @@ const statusCopy: Record<CaptureStatus, string> = {
   syncing: "Syncing",
   uploaded: "Uploaded",
   processing: "Processing",
-  organized: "Organized",
+  processed: "Processed",
   needsReview: "Needs review",
   failed: "Failed/Retry",
 };
@@ -17,7 +17,7 @@ const statusTone: Record<CaptureStatus, "neutral" | "blue" | "green" | "amber" |
   syncing: "blue",
   uploaded: "blue",
   processing: "amber",
-  organized: "green",
+  processed: "green",
   needsReview: "amber",
   failed: "red",
 };
@@ -176,7 +176,7 @@ const sessionStatusFromApi = (status?: string): CaptureSession["status"] => {
 
 const captureStatusFromApi = (status?: string): CaptureItem["status"] => {
   if (status === "received") return "uploaded";
-  if (status === "processed") return "organized";
+  if (status === "processed") return "processed";
   if (status === "processing") return "processing";
   if (status === "needs_attention") return "needsReview";
   if (status === "deleted") return "missing";
@@ -264,17 +264,24 @@ function normalizePatient(raw: Record<string, unknown>): Patient {
 function normalizeUploadResult(raw: { session: Record<string, unknown>; item: Record<string, unknown> }) {
   const item = normalizeApiCaptureItem(raw.item);
   const session = normalizeApiSession(raw.session);
-  return { session: { ...session, items: [item, ...session.items.filter((current) => current.id !== item.id)] }, item };
+  return { session: { ...session, items: [...session.items.filter((current) => current.id !== item.id), item] }, item };
 }
 
 function mergeSessionItems(existing: CaptureSession | null | undefined, incoming: CaptureSession, replaceLocalItemId?: string) {
-  const byId = new Map<string, CaptureItem>();
-  incoming.items.forEach((item) => byId.set(item.id, item));
-  existing?.items.forEach((item) => {
-    if (item.id === replaceLocalItemId) return;
-    if (!byId.has(item.id)) byId.set(item.id, item);
+  const incomingItems = incoming.items;
+  if (!existing?.items.length) return { ...incoming, items: incomingItems };
+
+  const replacements = new Map<string, CaptureItem>();
+  incomingItems.forEach((item) => replacements.set(item.id, item));
+  const replacementItem = incomingItems[0];
+  const merged = existing.items.map((item) => {
+    if (replaceLocalItemId && item.id === replaceLocalItemId && replacementItem) return replacementItem;
+    return replacements.get(item.id) || item;
   });
-  return { ...incoming, items: Array.from(byId.values()) };
+  incomingItems.forEach((item) => {
+    if (!merged.some((current) => current.id === item.id)) merged.push(item);
+  });
+  return { ...incoming, items: merged };
 }
 
 function openOutboxDb() {
@@ -451,7 +458,7 @@ function makeLocalCapture(
       ? {
           ...currentSession,
           label: `${currentSession.time} - ${currentSession.items.length + 1} captures`,
-          items: [item, ...currentSession.items],
+          items: [...currentSession.items, item],
         }
       : {
           id: localSessionId,
@@ -494,7 +501,7 @@ function sessionsFromPending(captures: PendingCapture[]) {
     grouped.set(
       capture.localSessionId,
       existing
-        ? { ...existing, items: [item, ...existing.items] }
+        ? { ...existing, items: [...existing.items, item] }
         : { ...capture.session, id: capture.localSessionId, items: [item] },
     );
   });
@@ -688,7 +695,7 @@ function StatusBadge({ status }: { status?: CaptureItem["status"] }) {
     status === "syncing" ||
     status === "uploaded" ||
     status === "processing" ||
-    status === "organized" ||
+    status === "processed" ||
     status === "needsReview" ||
     status === "failed"
       ? status
@@ -813,12 +820,43 @@ async function standardizeCaptureDraft(draft: CaptureDraft): Promise<CaptureDraf
 function generatedMetadataFor(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
   if (item.type === "audio" || item.type === "voice") return metadataRecord(metadata.transcript);
-  if (item.type === "photo") return metadataRecord(metadata.ocr);
-  return metadataRecord(metadata.normalized_note);
+  if (item.type === "photo") return metadataRecord(metadata.caption || metadata.ocr);
+  return metadataRecord(metadata.decorated_text || metadata.normalized_note);
 }
 
 function isGeneratedMetadata(metadata: Record<string, unknown>) {
   return Boolean(metadata.generated_by || metadata.generatedBy || metadata.fake_job_id || metadata.fakeJobId || metadata.artifact_id);
+}
+
+function captureGeneratedLabel(item: CaptureItem) {
+  if (item.type === "audio" || item.type === "voice") return "Transcription";
+  if (item.type === "photo") return "Caption";
+  return "Decorated text";
+}
+
+function captureGeneratedFallback(item: CaptureItem) {
+  if (item.status === "saved" || item.status === "syncing" || item.status === "failed") {
+    return "Waiting for safe transfer before processing starts.";
+  }
+  if (item.status === "processing") return "Processing. Placeholder output is expected after about 5 seconds.";
+  if (item.type === "audio" || item.type === "voice") return "Transcript placeholder will appear here.";
+  if (item.type === "photo") return "Caption placeholder will appear here.";
+  return "Decorated text placeholder will appear here.";
+}
+
+function CaptureGeneratedDetails({ item }: { item: CaptureItem }) {
+  const generated = generatedMetadataFor(item);
+  const text = metadataText(generated.text);
+  const isReady = metadataDisplay(generated.status) === "completed" || Boolean(text);
+  return (
+    <details className={`capture-generated ${isReady ? "" : "processing"}`}>
+      <summary>
+        <span>{captureGeneratedLabel(item)}</span>
+        {isReady ? null : <span className="capture-processing-indicator" aria-label="Processing" />}
+      </summary>
+      <p>{text || captureGeneratedFallback(item)}</p>
+    </details>
+  );
 }
 
 function CaptureMetadataSummary({ item }: { item: CaptureItem }) {
@@ -837,15 +875,13 @@ function CaptureMetadataSummary({ item }: { item: CaptureItem }) {
     const width = metadataDisplay(generated.width || metadata.width);
     const height = metadataDisplay(generated.height || metadata.height);
     rows.push(
-      { label: "OCR status", value: metadataDisplay(generated.status || metadata.ocr_status) },
-      { label: "Description", value: metadataText(generated.text) },
+      { label: "Caption status", value: metadataDisplay(generated.status || metadata.caption_status || metadata.ocr_status) },
       { label: "Dimensions", value: width && height ? `${width} x ${height}` : "" },
       { label: "Thumbnail", value: metadataDisplay(metadata.thumbnail || metadata.thumbnail_url || metadata.thumbnailUrl) },
     );
   } else {
     rows.push(
       { label: "Extraction status", value: metadataDisplay(generated.status || metadata.extraction_status) },
-      { label: "Normalized text", value: metadataText(generated.text) },
     );
   }
 
@@ -869,40 +905,51 @@ function Shell({
   screen,
   children,
   onNavigate,
+  onCapture,
   auth,
   onLogout,
 }: {
   screen: Screen;
   children: React.ReactNode;
   onNavigate: (screen: Screen) => void;
+  onCapture: (kind: CaptureDraft["kind"]) => void;
   auth: AuthSession;
   onLogout: () => void;
 }) {
   const displayName = auth.user.displayName || auth.user.email;
+  const role = auth.memberships[0]?.role || auth.user.persona || "user";
 
   return (
     <main className="phone-shell">
       <header className="topbar">
-        <div>
+        <div className="topbar-left">
           <strong>AesMem</strong>
-          <span>{displayName} - {auth.tenant.name}</span>
+          <nav className="top-nav" aria-label="Primary">
+            <button className={screen === "capture" ? "active" : ""} onClick={() => onNavigate("capture")} type="button">
+              Capture
+            </button>
+            <button className={screen !== "capture" ? "active" : ""} onClick={() => onNavigate("organize")} type="button">
+              Organize
+            </button>
+          </nav>
         </div>
-        <div className="topbar-actions">
-          <Badge tone="blue">MVP v2</Badge>
-          <Button onClick={onLogout} size="sm" variant="ghost">
-            Logout
-          </Button>
-        </div>
+        <details className="user-menu">
+          <summary>{displayName}</summary>
+          <div className="user-menu-panel">
+            <div>
+              <span>Profile</span>
+              <strong>{displayName}</strong>
+              <span>{role} - {auth.tenant.name}</span>
+            </div>
+            <Button onClick={onLogout} size="sm" variant="secondary">
+              Logout
+            </Button>
+          </div>
+        </details>
       </header>
       {children}
-      <nav className="bottom-nav" aria-label="Primary">
-        <button className={screen === "capture" ? "active" : ""} onClick={() => onNavigate("capture")} type="button">
-          Capture
-        </button>
-        <button className={screen !== "capture" ? "active" : ""} onClick={() => onNavigate("organize")} type="button">
-          Organize
-        </button>
-      </nav>
+      <CaptureActions compact onAction={onCapture} />
+      <footer className="app-version">MVP v2</footer>
     </main>
   );
 }
@@ -1067,32 +1114,128 @@ function CaptureActions({ compact, onAction }: { compact?: boolean; onAction: (k
   );
 }
 
-function CaptureItemCard({ item, onOpen }: { item: CaptureItem; onOpen?: () => void }) {
-  const icon = item.type === "photo" ? "Photo" : item.type === "note" ? "Note" : "Audio";
-  const content = (
-    <>
-      <div className="item-icon">{icon}</div>
-      <div>
-        <h3>{item.title}</h3>
-        <p>{item.detail}</p>
-        <small>
-          {item.time} · {item.sourceName}
-        </small>
-        <CaptureMetadataSummary item={item} />
-      </div>
-      <StatusBadge status={item.status} />
-    </>
-  );
+function CaptureRawPreview({
+  item,
+  onResolveFile,
+}: {
+  item: CaptureItem;
+  onResolveFile: (endpoint: string) => Promise<string>;
+}) {
+  const [cachedUrl, setCachedUrl] = React.useState("");
+  const [resolvedUrl, setResolvedUrl] = React.useState("");
+  const [noteText, setNoteText] = React.useState("");
+  const metadata = metadataRecord(item.metadata);
+  const thumbnail = metadataDisplay(metadata.thumbnail || metadata.thumbnail_url || metadata.thumbnailUrl);
+  const isAudio = item.type === "audio" || item.type === "voice";
 
-  if (onOpen) {
-    return (
-      <button className="v2-capture-item capture-item-button" onClick={onOpen} type="button">
-        {content}
-      </button>
+  React.useEffect(() => {
+    let revoked = false;
+    setCachedUrl("");
+    setNoteText("");
+    getCachedCapture(item.id)
+      .then((cached) => {
+        if (!cached || revoked) return;
+        const url = URL.createObjectURL(cached.blob);
+        setCachedUrl(url);
+        if (item.type === "note") void cached.blob.text().then((text) => !revoked && setNoteText(text));
+      })
+      .catch(() => undefined);
+    return () => {
+      revoked = true;
+    };
+  }, [item]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setResolvedUrl("");
+    const endpoint =
+      item.fileEndpoint || (item.sourceUrl?.startsWith("/api/v1/") && item.sourceUrl.endsWith("/file") ? item.sourceUrl : "");
+    if (!endpoint) return;
+    onResolveFile(endpoint)
+      .then((url) => {
+        if (!cancelled) setResolvedUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [item, onResolveFile]);
+
+  React.useEffect(() => {
+    return () => {
+      if (cachedUrl) URL.revokeObjectURL(cachedUrl);
+    };
+  }, [cachedUrl]);
+
+  React.useEffect(() => {
+    return () => {
+      if (resolvedUrl.startsWith("blob:")) URL.revokeObjectURL(resolvedUrl);
+    };
+  }, [resolvedUrl]);
+
+  const directSourceUrl = item.sourceUrl?.startsWith("/api/v1/") ? "" : item.sourceUrl;
+  const sourceUrl = cachedUrl || resolvedUrl || directSourceUrl || item.url || "";
+
+  if (item.type === "note") {
+    return <p className="capture-raw-text">{noteText || item.detail}</p>;
+  }
+
+  if (item.type === "photo") {
+    return sourceUrl || thumbnail ? (
+      <img alt={item.sourceName} className="capture-raw-photo" src={sourceUrl || thumbnail} />
+    ) : (
+      <div className="capture-raw-placeholder">Photo preview unavailable</div>
     );
   }
 
-  return <Card className="v2-capture-item">{content}</Card>;
+  if (isAudio) {
+    return sourceUrl ? (
+      <audio className="capture-raw-audio" controls src={sourceUrl} />
+    ) : (
+      <div className="capture-raw-placeholder">Audio preview unavailable</div>
+    );
+  }
+
+  return null;
+}
+
+function CaptureItemCard({
+  item,
+  onOpen,
+  onResolveFile,
+}: {
+  item: CaptureItem;
+  onOpen?: () => void;
+  onResolveFile: (endpoint: string) => Promise<string>;
+}) {
+  const isAudio = item.type === "audio" || item.type === "voice";
+  return (
+    <Card className="v2-capture-item">
+      <div className="capture-card-header">
+        <button className="capture-title-button" onClick={onOpen} type="button">
+          <span>
+            <h3>{item.title}</h3>
+            <small>{item.time}</small>
+          </span>
+        </button>
+        <StatusBadge status={item.status} />
+      </div>
+      <div
+        className="capture-card-body"
+        onClick={isAudio ? undefined : onOpen}
+        onKeyDown={(event) => {
+          if (!onOpen || isAudio || (event.key !== "Enter" && event.key !== " ")) return;
+          event.preventDefault();
+          onOpen();
+        }}
+        role={onOpen && !isAudio ? "button" : undefined}
+        tabIndex={onOpen && !isAudio ? 0 : undefined}
+      >
+        <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+      </div>
+      <CaptureGeneratedDetails item={item} />
+    </Card>
+  );
 }
 
 function CaptureScreen({
@@ -1111,7 +1254,6 @@ function CaptureScreen({
   if (!activeSession || activeSession.items.length === 0) {
     return (
       <section className="capture-empty" aria-label="Capture">
-        <CaptureActions onAction={onCapture} />
         <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
       </section>
     );
@@ -1125,16 +1267,15 @@ function CaptureScreen({
           <h1>{activeSession.label}</h1>
           <small>New captures save here by default.</small>
         </div>
-        <Button onClick={onNewSession} size="sm" variant="secondary">
+        <Button className="new-session-button" onClick={onNewSession} size="sm" variant="secondary">
           New session
         </Button>
       </div>
       <div className="feed-focus">
         {activeSession.items.map((item) => (
-          <CaptureItemCard item={item} key={item.id} onOpen={() => setSelectedCapture(item)} />
+          <CaptureItemCard item={item} key={item.id} onOpen={() => setSelectedCapture(item)} onResolveFile={onResolveFile} />
         ))}
       </div>
-      <CaptureActions compact onAction={onCapture} />
       <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
     </section>
   );
@@ -1546,11 +1687,13 @@ function SourcePreviewDialog({
             )}
           </div>
         ) : null}
-        <small>
-          {item.time} · {sourceName}
-        </small>
-        <StatusBadge status={item.status} />
-        <CaptureMetadataSummary item={item} />
+        <div className="source-info-panel">
+          <div className="source-info-header">
+            <small>{item.time} · File: {sourceName}</small>
+            <StatusBadge status={item.status} />
+          </div>
+          <CaptureMetadataSummary item={item} />
+        </div>
         {(item.type === "audio" || item.type === "photo") && generatedText ? (
           <Card className="source-note">
             <p>{generatedText}</p>
@@ -1706,6 +1849,7 @@ function SessionRow({ session, onOpen }: { session: CaptureSession; onOpen: () =
         </span>
       </div>
       <SessionStatusBadge status={session.status} />
+      <span className="session-row-arrow" aria-hidden="true">›</span>
     </button>
   );
 }
@@ -1795,7 +1939,6 @@ function PatientAssignmentPanel({
 
 function SessionDetail({
   session,
-  onBack,
   onOrganize,
   onUpdateTitle,
   onLoadCaptures,
@@ -1806,7 +1949,6 @@ function SessionDetail({
   onResolveFile,
 }: {
   session?: CaptureSession;
-  onBack: () => void;
   onOrganize: (sessionId: string) => void;
   onUpdateTitle: (sessionId: string, title: string) => Promise<void>;
   onLoadCaptures: (sessionId: string) => Promise<CaptureItem[]>;
@@ -1845,9 +1987,6 @@ function SessionDetail({
 
   return (
     <section className="session-detail">
-      <Button onClick={onBack} size="sm" variant="ghost">
-        Back
-      </Button>
       <Card className="review-card">
         <p className="eyebrow">Session detail / review</p>
         <div className="patient-create-row">
@@ -1912,7 +2051,7 @@ function SessionDetail({
       <div className="feed-focus">
         {session.items.map((item) => (
           <div className="capture-assignment-row" key={item.id}>
-            <CaptureItemCard item={item} onOpen={() => setSelectedCapture(item)} />
+            <CaptureItemCard item={item} onOpen={() => setSelectedCapture(item)} onResolveFile={onResolveFile} />
             <div className="assignment-actions">
               <small>
                 {item.patientName || item.patientId || "No capture patient"}
@@ -2120,6 +2259,20 @@ export function App() {
     ]);
   };
 
+  const scheduleCaptureProcessingRefresh = React.useCallback(
+    (sessionId: string) => {
+      window.setTimeout(() => {
+        void fetchSessionCaptures(apiFetch, sessionId)
+          .then((captures) => {
+            setSessions((current) => current.map((session) => (session.id === sessionId ? { ...session, items: captures } : session)));
+            setActiveSession((current) => (current?.id === sessionId ? { ...current, items: captures } : current));
+          })
+          .catch(() => undefined);
+      }, 5500);
+    },
+    [apiFetch],
+  );
+
   const processOutbox = async () => {
     const currentAuth = authRef.current;
     const activeTenantId = currentAuth?.tenant.id;
@@ -2168,6 +2321,7 @@ export function App() {
           );
           setSelectedSessionId((current) => (current === capture.localSessionId || !current ? mergedSession.id : current));
           setToast("Capture safely transferred.");
+          if (result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
         } catch {
           await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
           updateItemStatus(capture.item.id, "failed");
@@ -2362,7 +2516,7 @@ export function App() {
 
   return (
     <>
-      <Shell auth={auth} onLogout={handleLogout} screen={screen} onNavigate={setScreen}>
+      <Shell auth={auth} onCapture={beginCapture} onLogout={handleLogout} screen={screen} onNavigate={setScreen}>
         <SyncSafetyBanner pendingCount={pendingCount} syncing={syncing} onRetry={() => void processOutbox()} />
         {screen === "capture" ? (
           <CaptureScreen
@@ -2371,29 +2525,34 @@ export function App() {
             onNewSession={startNewSession}
             onResolveFile={resolveSourceFile}
           />
-        ) : screen === "session" ? (
-          <SessionDetail
-            onAssignCapturePatient={assignPatientToCapture}
-            onAssignSessionPatient={assignPatientToSession}
-            onBack={() => setScreen("organize")}
-            onCreatePatient={createPatientOption}
-            onLoadCaptures={loadCapturesForSession}
-            onOrganize={organizeSession}
-            onResolveFile={resolveSourceFile}
-            onSearchPatients={searchPatientOptions}
-            onUpdateTitle={renameSession}
-            session={selectedSession}
-          />
         ) : (
           <OrganizeHome
             onOpenSession={(sessionId) => {
               setSelectedSessionId(sessionId);
-              setScreen("session");
+              setScreen("organize");
             }}
             sessions={sessions}
           />
         )}
       </Shell>
+      <Dialog
+        className="session-dialog"
+        onClose={() => setSelectedSessionId("")}
+        open={screen !== "capture" && Boolean(selectedSession)}
+        title={selectedSession?.label || "Session review"}
+      >
+        <SessionDetail
+          onAssignCapturePatient={assignPatientToCapture}
+          onAssignSessionPatient={assignPatientToSession}
+          onCreatePatient={createPatientOption}
+          onLoadCaptures={loadCapturesForSession}
+          onOrganize={organizeSession}
+          onResolveFile={resolveSourceFile}
+          onSearchPatients={searchPatientOptions}
+          onUpdateTitle={renameSession}
+          session={selectedSession}
+        />
+      </Dialog>
       <TextCaptureSheet
         onClose={() => setTextOpen(false)}
         onSave={(draft, intoNew) => {

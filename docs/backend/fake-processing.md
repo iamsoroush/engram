@@ -11,10 +11,11 @@ This is non-production scaffolding. Keep it isolated so real jobs can replace it
 Included:
 
 - Fake job rows in Postgres.
-- Inline or FastAPI background-task execution.
-- Placeholder transcripts for audio.
-- Placeholder OCR and descriptions for photos.
-- Normalized text for notes.
+- Placeholder capture-processing job rows created at upload time.
+- A five-second simulated capture-processing delay for local testing.
+- Placeholder transcriptions for audio.
+- Placeholder captions for photos.
+- Placeholder decorated text for notes.
 - Generated session summaries.
 - Session transition to `organized`.
 
@@ -56,6 +57,15 @@ Every generated output includes:
 
 ## Capture Processing
 
+On capture upload, the backend creates a placeholder `capture_process` job row and marks the capture `processing`.
+Until real AI jobs are implemented, the API derives default generated-text metadata from the capture type. After about five seconds, subsequent capture responses expose the capture as `processed` with the relevant completed field:
+
+- `metadata.transcript` for audio.
+- `metadata.caption` for photo.
+- `metadata.decorated_text` for text captures.
+
+These upload-time placeholder jobs are intentionally minimal scaffolding. They do not create generated artifact rows yet.
+
 Endpoint:
 
 ```text
@@ -80,14 +90,15 @@ Audio output:
 
 Photo output:
 
-- OCR status becomes `completed`.
-- OCR text or description is plausible and clearly fake.
+- Caption status becomes `completed`.
+- Caption text is a placeholder until real photo captioning exists.
 - Dimensions are copied from upload metadata if available.
 - Thumbnail artifact may be a placeholder reference if no real thumbnailing exists.
 
 Note output:
 
-- Normalized text trims whitespace and preserves clinical content.
+- Decorated text status becomes `completed`.
+- Decorated text preserves the captured note until real text decoration exists.
 - Extraction status becomes `completed`.
 
 ## Session Organization

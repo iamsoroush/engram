@@ -1,7 +1,7 @@
 import hashlib
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
@@ -26,6 +26,9 @@ from app.models import (
     SessionStatus,
 )
 from app.storage import ObjectStore
+
+
+CAPTURE_PROCESSING_DELAY_SECONDS = 5
 
 
 def utc_now() -> datetime:
@@ -104,6 +107,61 @@ def session_payload(session: Session) -> dict[str, Any]:
     }
 
 
+def enrichment_key_for_capture(capture_type: CaptureType) -> str:
+    """Return the metadata key used for a capture's generated text."""
+    if capture_type == CaptureType.audio:
+        return "transcript"
+    if capture_type == CaptureType.photo:
+        return "caption"
+    return "decorated_text"
+
+
+def enrichment_text_for_capture(capture: Capture) -> str:
+    """Build deterministic placeholder generated text until real AI jobs exist."""
+    metadata = capture.capture_metadata or {}
+    detail = str(metadata.get("detail") or "").strip()
+    if capture.capture_type == CaptureType.audio:
+        return "Transcript placeholder. Audio processing will populate this field when transcription jobs are added."
+    if capture.capture_type == CaptureType.photo:
+        return "Caption placeholder. Photo processing will populate this field when captioning jobs are added."
+    return detail or "Decorated text placeholder. Text processing will populate this field when decoration jobs are added."
+
+
+def default_enrichment_for_capture(capture: Capture, *, status_text: str) -> dict[str, Any]:
+    """Return the placeholder enrichment payload exposed to clients."""
+    started_at = capture.captured_at or capture.created_at or utc_now()
+    completed_at = started_at + timedelta(seconds=CAPTURE_PROCESSING_DELAY_SECONDS)
+    return {
+        "status": status_text,
+        "text": enrichment_text_for_capture(capture) if status_text == "completed" else "",
+        "generated_by": "placeholder-processing",
+        "processing_delay_seconds": CAPTURE_PROCESSING_DELAY_SECONDS,
+        "started_at": started_at.isoformat() if started_at else None,
+        "completed_at": completed_at.isoformat() if status_text == "completed" else None,
+    }
+
+
+def apply_capture_processing_defaults(capture: Capture) -> None:
+    """Simulate processing completion after a short delay for local testing."""
+    metadata = dict(capture.capture_metadata or {})
+    key = enrichment_key_for_capture(capture.capture_type)
+    existing = metadata.get(key)
+    if isinstance(existing, dict) and existing.get("status") == "completed":
+        if capture.status == CaptureStatus.processing:
+            capture.status = CaptureStatus.processed
+        return
+
+    started_at = capture.captured_at or capture.created_at or utc_now()
+    elapsed = utc_now() - started_at
+    if elapsed < timedelta(seconds=CAPTURE_PROCESSING_DELAY_SECONDS):
+        capture.status = CaptureStatus.processing
+        metadata[key] = default_enrichment_for_capture(capture, status_text="processing")
+    else:
+        capture.status = CaptureStatus.processed
+        metadata[key] = default_enrichment_for_capture(capture, status_text="completed")
+    capture.capture_metadata = metadata
+
+
 def list_sessions_for_tenant(db: DbSession, tenant_id: uuid.UUID) -> list[dict[str, Any]]:
     sessions = db.execute(
         select(Session).where(Session.tenant_id == tenant_id).order_by(Session.updated_at.desc())
@@ -112,6 +170,7 @@ def list_sessions_for_tenant(db: DbSession, tenant_id: uuid.UUID) -> list[dict[s
 
 
 def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[str, Any]:
+    apply_capture_processing_defaults(capture)
     return {
         "id": str(capture.id),
         "tenantId": str(capture.tenant_id),
@@ -233,7 +292,7 @@ async def upload_source_capture(
             session_id=session.id,
             patient_id=patient_uuid or session.patient_id,
             capture_type=capture_type,
-            status=CaptureStatus.received,
+            status=CaptureStatus.processing,
             client_capture_id=client_capture_id,
             capture_metadata={
                 "detail": detail,
@@ -245,6 +304,26 @@ async def upload_source_capture(
             created_by_user_id=principal.user_id,
         )
         db.add(capture)
+        db.flush()
+
+        # Placeholder only: real transcription/caption/decoration jobs will replace this path later.
+        fake_job = FakeJob(
+            tenant_id=principal.tenant_id,
+            session_id=session.id,
+            capture_id=capture.id,
+            job_type=FakeJobType.capture_process,
+            status=FakeJobStatus.running,
+            generated_by="placeholder-processing",
+            input_artifact_ids=[],
+            result_metadata={
+                "placeholder": True,
+                "processing_delay_seconds": CAPTURE_PROCESSING_DELAY_SECONDS,
+                "enrichment_key": enrichment_key_for_capture(capture.capture_type),
+            },
+            created_by_user_id=principal.user_id,
+            started_at=captured_at,
+        )
+        db.add(fake_job)
         db.flush()
 
         artifact = Artifact(
@@ -279,6 +358,8 @@ async def upload_source_capture(
 
         artifact.object_key = object_key
         capture.source_artifact_id = artifact.id
+        fake_job.input_artifact_ids = [str(artifact.id)]
+        apply_capture_processing_defaults(capture)
         if patient_uuid and session.patient_id is None:
             session.patient_id = patient_uuid
         session.updated_at = utc_now()

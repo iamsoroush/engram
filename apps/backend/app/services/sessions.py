@@ -193,7 +193,10 @@ def list_session_captures(db: DbSession, principal: CurrentPrincipal, session_id
     captures = db.execute(
         select(Capture).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).order_by(Capture.created_at)
     ).scalars()
-    return [capture_payload(capture) for capture in captures]
+    payloads = [capture_payload(capture) for capture in captures]
+    if db.dirty:
+        db.commit()
+    return payloads
 
 
 def list_session_artifacts(db: DbSession, principal: CurrentPrincipal, session_id: str) -> list[dict[str, Any]]:

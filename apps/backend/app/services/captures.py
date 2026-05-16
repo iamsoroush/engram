@@ -15,7 +15,12 @@ from app.services.sessions import parse_uuid
 def get_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
     capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
-    return capture_payload(capture, artifact)
+    payload = capture_payload(capture, artifact)
+    if db.is_modified(capture, include_collections=True):
+        db.commit()
+        db.refresh(capture)
+        payload = capture_payload(capture, artifact)
+    return payload
 
 
 def update_capture(
