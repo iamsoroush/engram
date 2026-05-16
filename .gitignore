@@ -25,5 +25,8 @@ pnpm-debug.log*
 # Local prototype uploads
 captures/
 
+# Notebooks
+notebooks/
+
 # Assets
 # design/

@@ -25,6 +25,7 @@ Then start with the relevant README:
 
 Start with:
 
+- `README.md`
 - `apps/frontend/README.md`
 
 Use it to understand:
@@ -39,6 +40,7 @@ Use it to understand:
 
 Start with:
 
+- `README.md`
 - `apps/backend/README.md`
 
 Use it to understand:
@@ -52,8 +54,9 @@ Use it to understand:
 
 ### Full-stack task
 
-Start with both:
+Start with:
 
+- `README.md`
 - `apps/frontend/README.md`
 - `apps/backend/README.md`
 
@@ -67,6 +70,7 @@ Use `docker-compose.yml` to understand the local development setup and how front
 
 Start with:
 
+- `README.md`
 - `docs/production.md`
 - `docker-compose.prod.yml`
 
@@ -84,10 +88,6 @@ Use these documents as the lightweight source of truth.
 ### `docs/product.md`
 
 Defines what the product is, who it is for, what problem it solves, current MVP scope, and current product behavior.
-
-Important:
-
-If your implementation changes product behavior, update this document.
 
 ---
 

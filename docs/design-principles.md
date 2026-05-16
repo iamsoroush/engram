@@ -11,6 +11,7 @@ Patient selection or matching must not block capture.
 The app should feel like a fast clinical assistant, not a hospital information system.
 
 Avoid:
+
 - large dashboards
 - administrative-heavy flows
 - billing/insurance concepts
@@ -31,6 +32,7 @@ Uncertainty should be shown clearly, but should not block the user from capturin
 ## 5. Minimize primary actions
 
 The main capture experience should stay focused on a small number of core actions:
+
 - record audio
 - capture/upload photo
 - write text

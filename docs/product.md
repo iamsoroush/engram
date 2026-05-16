@@ -24,6 +24,7 @@ Make clinical session capture fast, low-friction, and progressively organized.
 The user can start capturing information immediately.
 
 Supported capture types:
+
 - Audio
 - Photo
 - Text
