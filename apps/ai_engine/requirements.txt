@@ -1,0 +1,6 @@
+celery[redis]==5.4.0
+redis==5.2.1
+httpx==0.28.1
+pydantic-settings==2.7.1
+openai==2.37.0
+requests==2.34.2

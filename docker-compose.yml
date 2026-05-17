@@ -32,6 +32,19 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./apps/backend
@@ -50,6 +63,11 @@ services:
       BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:-aesmem-dev-secret}
       BACKEND_OBJECT_STORAGE_SECURE: ${BACKEND_OBJECT_STORAGE_SECURE:-false}
       BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS: ${BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS:-300}
+      BACKEND_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
+      BACKEND_CELERY_RESULT_BACKEND: ${BACKEND_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      BACKEND_AI_JOB_MAX_RETRIES: ${BACKEND_AI_JOB_MAX_RETRIES:-3}
+      BACKEND_AI_JOB_RETRY_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_DELAY_SECONDS:-30}
+      BACKEND_AI_ENGINE_INTERNAL_TOKEN: ${AI_ENGINE_INTERNAL_TOKEN:-dev-ai-engine-token}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
@@ -60,7 +78,33 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  ai-engine:
+    build:
+      context: ./apps
+      dockerfile: ai_engine/Dockerfile
+    environment:
+      AI_ENGINE_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
+      AI_ENGINE_CELERY_RESULT_BACKEND: ${BACKEND_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      AI_ENGINE_BACKEND_INTERNAL_URL: ${AI_ENGINE_BACKEND_INTERNAL_URL:-http://backend:8000}
+      AI_ENGINE_INTERNAL_TOKEN: ${AI_ENGINE_INTERNAL_TOKEN:-dev-ai-engine-token}
+      AI_ENGINE_JOB_MAX_RETRIES: ${BACKEND_AI_JOB_MAX_RETRIES:-3}
+      AI_ENGINE_JOB_RETRY_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_DELAY_SECONDS:-30}
+    volumes:
+      - ./apps/ai_engine:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs
 
   frontend:
     build:
@@ -82,3 +126,4 @@ volumes:
   frontend_node_modules:
   postgres_data:
   minio_data:
+  redis_data:

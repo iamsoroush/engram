@@ -8,15 +8,33 @@ from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff
 from app.auth.service import dev_login, login, logout, me_response, refresh
 from app.config import settings
 from app.db.session import get_db
-from app.schemas.api import AssignPatientRequest, CaptureUpdate, PatientPatch, PatientWrite, SessionCreate, SessionUpdate
+from app.schemas.api import (
+    AiJobCompleteRequest,
+    AiJobErrorRequest,
+    AiJobStartRequest,
+    AssignPatientRequest,
+    CaptureUpdate,
+    PatientPatch,
+    PatientWrite,
+    SessionCreate,
+    SessionUpdate,
+)
 from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest
+from app.services.ai_jobs import (
+    complete_worker_job,
+    enqueue_capture_processing_job,
+    fail_worker_job,
+    require_ai_engine_token,
+    retry_worker_job,
+    start_worker_job,
+)
 from app.services.captures import assign_capture_patient, capture_metadata, get_capture, update_capture
 from app.services.capture_storage import (
     source_file_content,
     source_file_url,
     upload_source_capture,
 )
-from app.services.fake_processing import fake_organize_session, fake_process_capture, get_fake_job
+from app.services.fake_processing import fake_organize_session, get_fake_job
 from app.services.patients import create_patient, get_patient, patient_payload, search_patients, update_patient
 from app.services.sessions import (
     assign_session_patient,
@@ -52,6 +70,11 @@ app.add_middleware(
 )
 
 api_v1 = APIRouter(prefix=API_V1_PREFIX)
+internal_api = APIRouter(
+    prefix="/internal",
+    dependencies=[Depends(require_ai_engine_token)],
+    include_in_schema=False,
+)
 
 
 def parse_metadata_form(metadata: str | None) -> dict[str, Any] | None:
@@ -69,6 +92,59 @@ def parse_metadata_form(metadata: str | None) -> dict[str, Any] | None:
 @api_v1.get("/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@internal_api.post("/ai/jobs/{job_id}/start")
+def internal_ai_job_start(
+    job_id: str,
+    request: AiJobStartRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return start_worker_job(
+        db,
+        job_id=job_id,
+        celery_task_id=request.celery_task_id,
+        retry_count=request.retry_count,
+    )
+
+
+@internal_api.post("/ai/jobs/{job_id}/complete")
+def internal_ai_job_complete(
+    job_id: str,
+    request: AiJobCompleteRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
+
+
+@internal_api.post("/ai/jobs/{job_id}/retry")
+def internal_ai_job_retry(
+    job_id: str,
+    request: AiJobErrorRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return retry_worker_job(
+        db,
+        job_id=job_id,
+        error_message=request.error_message,
+        celery_task_id=request.celery_task_id,
+        retry_count=request.retry_count,
+    )
+
+
+@internal_api.post("/ai/jobs/{job_id}/fail")
+def internal_ai_job_fail(
+    job_id: str,
+    request: AiJobErrorRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return fail_worker_job(
+        db,
+        job_id=job_id,
+        error_message=request.error_message,
+        celery_task_id=request.celery_task_id,
+        retry_count=request.retry_count,
+    )
 
 
 @api_v1.post("/auth/dev-login")
@@ -386,9 +462,8 @@ def fake_process_capture_route(
     capture_id: str,
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
-    object_store: ObjectStore = Depends(get_object_store),
 ) -> dict[str, Any]:
-    return fake_process_capture(db, object_store=object_store, principal=principal, capture_id=capture_id)
+    return enqueue_capture_processing_job(db, principal=principal, capture_id=capture_id)
 
 
 @api_v1.get("/captures/{capture_id}/metadata")
@@ -401,3 +476,4 @@ def get_capture_metadata_route(
 
 
 app.include_router(api_v1)
+app.include_router(internal_api)

@@ -7,3 +7,5 @@ alembic==1.14.0
 psycopg[binary]==3.2.3
 PyJWT==2.10.1
 minio==7.2.12
+celery[redis]==5.4.0
+redis==5.2.1

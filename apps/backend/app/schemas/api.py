@@ -58,3 +58,19 @@ class AssignPatientRequest(BaseModel):
     source: str | None = "staff"
 
     model_config = {"populate_by_name": True}
+
+
+class AiJobStartRequest(BaseModel):
+    celery_task_id: str | None = None
+    retry_count: int = 0
+
+
+class AiJobCompleteRequest(BaseModel):
+    output_key: str
+    output: dict[str, Any]
+
+
+class AiJobErrorRequest(BaseModel):
+    error_message: str
+    celery_task_id: str | None = None
+    retry_count: int = 0

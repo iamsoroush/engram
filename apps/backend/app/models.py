@@ -112,6 +112,9 @@ class FakeJobStatus(str, enum.Enum):
 
 class FakeJobType(str, enum.Enum):
     capture_process = "capture_process"
+    audio_capture_process = "audio_capture_process"
+    text_capture_process = "text_capture_process"
+    image_capture_process = "image_capture_process"
     session_organize = "session_organize"
 
 

@@ -10,6 +10,7 @@ FastAPI API server for AesMem, a memory layer for aesthetics clinics.
 - SQLAlchemy
 - Alembic
 - Postgres
+- Redis
 
 ## URLs
 
@@ -80,6 +81,11 @@ BACKEND_JWT_SECRET=dev-only-change-me
 BACKEND_DATABASE_URL=postgresql+psycopg://aesmem:aesmem@postgres:5432/aesmem
 BACKEND_OBJECT_STORAGE_ENDPOINT=http://minio:9000
 BACKEND_OBJECT_STORAGE_BUCKET=aesmem-captures
+BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
+BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
+BACKEND_AI_JOB_MAX_RETRIES=3
+BACKEND_AI_JOB_RETRY_DELAY_SECONDS=30
+BACKEND_AI_ENGINE_INTERNAL_TOKEN=dev-ai-engine-token
 ```
 
 Development auth supports:
@@ -106,3 +112,17 @@ docker compose -f docker-compose.prod.yml build backend
 ```
 
 The production service is private to the Docker network. Public traffic reaches it through the frontend nginx container at `/api/v1`.
+
+## AI Job Producer
+
+Capture upload creates a queued AI processing job for the capture type:
+
+- `audio_capture_process`
+- `text_capture_process`
+- `image_capture_process`
+
+The backend only creates durable job rows and sends named Celery tasks through Redis. Worker execution lives in `apps/ai_engine`, which calls protected backend `/internal/ai/jobs/...` endpoints to start, complete, retry, or fail jobs.
+
+```sh
+docker compose up --build backend ai-engine redis
+```

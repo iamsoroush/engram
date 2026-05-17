@@ -2,19 +2,19 @@
 
 ## Summary
 
-Backend v2 is the handoff target for replacing the prototype storage model. It uses FastAPI, Postgres for metadata, MinIO for source files and generated artifacts, backend-managed JWT authentication, tenant-scoped authorization, patient-aware sessions and captures, and fake processing jobs with realistic placeholder outputs.
+Backend v2 is the handoff target for replacing the prototype storage model. It uses FastAPI, Postgres for metadata, MinIO for source files and generated artifacts, backend-managed JWT authentication, tenant-scoped authorization, patient-aware sessions and captures, and Celery-backed processing jobs with realistic placeholder outputs from `apps/ai_engine`.
 
 The backend must continue to support local-first frontend capture. A capture is only considered safely transferred after the source object is stored in MinIO and its metadata is committed in Postgres.
 
-Celery, Redis, and real AI jobs are not part of this version.
+Celery and Redis provide the background processing boundary. The backend produces tasks and `apps/ai_engine` consumes them. The AI engine reports lifecycle state and results through protected backend `/internal/ai/jobs/...` endpoints instead of importing backend modules or writing to Postgres directly. Real AI job bodies are not part of this version.
 
 ## Core Principles
 
 - Capture is never blocked by patient selection.
-- Patient assignment can happen later and can be changed by staff or fake processing.
+- Patient assignment can happen later and can be changed by staff or processing.
 - `organized` means generated/backend organization exists; it does not mean human verified.
 - `verified` means a doctor or assistant reviewed and accepted the organized session.
-- Generated fake outputs must be clearly marked so they can be replaced by real processing later.
+- Generated placeholder outputs must be clearly marked so they can be replaced by real processing later.
 - Tenant scoping is mandatory in the data model even while development uses one default tenant.
 
 ## Identity And Patient Model
@@ -67,8 +67,8 @@ Session states:
 
 - `unassigned`: default after upload when no patient is known.
 - `needs_review`: session needs staff attention.
-- `processing`: fake backend processing is in progress.
-- `organized`: backend/fake processing has organized the session enough to display in organized views.
+- `processing`: backend processing is in progress.
+- `organized`: backend processing has organized the session enough to display in organized views.
 - `reviewing`: doctor/assistant opened it for human verification.
 - `verified`: doctor/assistant reviewed and accepted it.
 - `reopened`: verified session was sent back for changes.
@@ -78,7 +78,7 @@ State rules:
 
 - New uploaded sessions without a patient start as `unassigned`.
 - New uploaded sessions with a patient start as `needs_review`.
-- Fake organization may move a session to `organized`.
+- Organization may move a session to `organized`.
 - Opening a session for review moves it to `reviewing`.
 - Staff verification moves `reviewing` or `organized` to `verified`.
 - Reopen moves `verified` to `reopened`.
@@ -124,9 +124,9 @@ Type metadata:
 
 Generated metadata must include:
 
-- `generated_by`: `fake-processing`
+- `generated_by`: `ai-engine` for capture processors or `fake-processing` for legacy fake organization.
 - `generated_at`
-- `fake_job_id`
+- `job_id`
 - `confidence`, optional
 - `source_artifact_ids`, optional
 
@@ -206,7 +206,7 @@ GET   /api/v1/captures/{capture_id}/metadata
 POST  /api/v1/captures/{capture_id}/fake-process
 ```
 
-Fake processing:
+Processing:
 
 ```text
 POST /api/v1/sessions/{session_id}/fake-organize
@@ -220,9 +220,10 @@ GET  /api/v1/fake-jobs/{job_id}
 3. Frontend uploads through `POST /sessions/{session_id}/captures`.
 4. Backend validates auth, tenant membership, request size, MIME type, and session ownership.
 5. Backend writes the source object to MinIO.
-6. Backend creates the artifact and capture records in Postgres.
-7. Backend returns stable backend IDs, current session state, and authorized file URL information.
-8. Frontend removes the pending outbox entry and may keep an evictable synced cache copy.
+6. Backend creates the artifact, capture, and queued processing job records in Postgres.
+7. Backend dispatches the capture processing task to Celery.
+8. Backend returns stable backend IDs, current session state, processing job state, and authorized file URL information.
+9. Frontend removes the pending outbox entry and may keep an evictable synced cache copy.
 
 If object storage succeeds but the DB commit fails, the backend must clean up the object or mark it for orphan cleanup. It must not return success.
 
@@ -235,7 +236,7 @@ Audit these events:
 - capture upload
 - artifact preview/download
 - patient assignment/reassignment on sessions and captures
-- fake processing start/complete/fail
+- AI processing enqueue/complete/fail
 - session review start
 - session verify
 - session reopen
@@ -245,8 +246,7 @@ Audit rows include `tenant_id`, `actor_user_id`, target type/id, action, timesta
 ## Implementation Notes
 
 - Use Alembic for migrations.
-- Add Postgres and MinIO to local and production Compose.
+- Add Postgres, MinIO, Redis, and the `ai-engine` Celery worker to local and production Compose.
 - Add an object storage abstraction so MinIO-specific code stays out of route handlers.
 - Keep route handlers thin: auth dependency, service call, response mapping.
-- Do not add Celery, Redis, or worker services in this version.
-- Keep fake processing isolated behind service functions that can be replaced by real jobs later.
+- Keep placeholder processing isolated behind service functions and Celery tasks that can be replaced by real AI logic later.

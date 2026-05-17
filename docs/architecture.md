@@ -21,8 +21,14 @@ Browser
 
 Backend
   FastAPI API
+  Celery producer for background AI job processing
+  Redis broker/result backend
   Local filesystem capture storage
   JSON metadata per session
+
+AI Engine
+  Celery worker
+  Placeholder audio/text/image capture processors
 
 Storage
   Development: ./captures mounted to /data/captures
@@ -44,16 +50,22 @@ Backend
   FastAPI API
   Backend-managed JWT auth
   Tenant-scoped services
-  Fake processing endpoints
+  Celery-backed AI job producer
+
+AI Engine
+  Celery worker process
+  AI processing implementation boundary
 
 Storage
   Postgres metadata
   MinIO object storage
 ```
 
-Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and fake job rows. MinIO stores source files and generated artifacts in both development and production.
+Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows. MinIO stores source files and generated artifacts in both development and production.
 
-Celery, Redis, and real AI jobs are intentionally out of scope for v2. Fake processing gives the frontend realistic transcripts, OCR, summaries, and organization states until real processing is designed.
+Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks. `apps/ai_engine` consumes those tasks and owns the current placeholder implementations for audio capture processing, text capture processing, and image capture processing.
+
+The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state through protected backend internal endpoints at `/internal/ai/jobs/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service. Real AI logic will replace the placeholder job bodies later.
 
 ## Data Flow
 
@@ -65,8 +77,10 @@ Celery, Redis, and real AI jobs are intentionally out of scope for v2. Fake proc
 4. The outbox attempts upload to the backend.
 5. UI marks the item as `Syncing`.
 6. Backend stores the source file and session metadata.
-7. Browser removes the pending outbox entry and keeps a synced local cache copy.
-8. UI updates to backend-safe states such as `Unassigned`, `Needs review`, `Processing`, `Organized`, or `Verified`.
+7. Backend creates a queued capture processing job and dispatches it to Celery.
+8. Browser removes the pending outbox entry and keeps a synced local cache copy.
+9. Celery marks the job `running`, writes placeholder generated metadata, and marks it `succeeded`; failures are retried and then marked `failed`.
+10. UI updates to backend-safe states such as `Unassigned`, `Needs review`, `Processing`, `Organized`, or `Verified`.
 
 ### Review
 
@@ -135,7 +149,6 @@ The frontend must not imply that `organized` content is clinically verified.
 
 - Metadata is file-backed JSON, not a database.
 - API is workflow-driven rather than full CRUD.
-- There is no authentication or user/clinic isolation yet.
 - There is no encryption-at-rest implementation yet.
 - Browser storage quotas are not fully surfaced to the user yet.
 - Audio recording on phone browsers may require HTTPS; a file input fallback exists for local HTTP testing.

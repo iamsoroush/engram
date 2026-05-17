@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     object_storage_secret_key: str = "aesmem-password"
     object_storage_secure: bool = False
     object_storage_presigned_url_ttl_seconds: int = 300
+    celery_broker_url: str = "redis://redis:6379/0"
+    celery_result_backend: str = "redis://redis:6379/1"
+    ai_job_max_retries: int = 3
+    ai_job_retry_delay_seconds: int = 30
+    ai_engine_internal_token: str = "dev-ai-engine-token"
 
     model_config = SettingsConfigDict(env_prefix="BACKEND_")
 

@@ -12,6 +12,8 @@ Services:
 
 - `frontend`: nginx serving the built Vite app and proxying `/api/v1` to backend.
 - `backend`: FastAPI/uvicorn service private to the Docker network.
+- `ai-engine`: background capture processing worker private to the Docker network.
+- `redis`: broker/result backend for Celery.
 - `postgres`: metadata store for backend v2.
 - `minio`: S3-compatible object storage for backend v2.
 
@@ -43,10 +45,10 @@ This is acceptable for prototype deployments but not enough for real clinical pr
 
 Backend v2 target:
 
-- Postgres stores tenants, users, patients, sessions, captures, artifacts, audit events, and fake job rows.
+- Postgres stores tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows.
 - MinIO stores source files and generated artifacts.
 - MinIO remains the production object storage target; do not switch production back to backend-local files.
-- Celery, Redis, and real AI jobs are out of scope for v2.
+- Celery and Redis own background job execution. Current capture processors are placeholders until real AI logic is implemented.
 
 ## Data Safety
 
@@ -96,6 +98,11 @@ BACKEND_OBJECT_STORAGE_BUCKET=aesmem-captures
 BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
 BACKEND_OBJECT_STORAGE_SECRET_KEY=...
 BACKEND_OBJECT_STORAGE_SECURE=true
+BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
+BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
+BACKEND_AI_JOB_MAX_RETRIES=3
+BACKEND_AI_JOB_RETRY_DELAY_SECONDS=30
+AI_ENGINE_INTERNAL_TOKEN=...
 ```
 
 Frontend production build:
@@ -119,7 +126,7 @@ Before handling real clinical data, production needs:
 - audit logging;
 - file retention policy;
 - upload size limits;
-- monitoring for failed uploads, Postgres capacity, and MinIO capacity;
+- monitoring for failed uploads, failed/retried Celery jobs, Redis health, Postgres capacity, and MinIO capacity;
 - structured logs and request IDs;
 - migration path from file-backed prototype data to database/object storage.
 

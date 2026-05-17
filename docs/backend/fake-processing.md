@@ -2,7 +2,7 @@
 
 ## Summary
 
-Fake processing gives the frontend realistic backend behavior for processing, transcripts, OCR, summaries, organization, and review states without introducing Celery, Redis, workers, or real AI.
+Fake processing originally gave the frontend realistic backend behavior for processing, transcripts, OCR, summaries, organization, and review states without workers. Capture processing now uses the real Celery and Redis job boundary, but the job bodies still write deterministic placeholder output until real AI processors are implemented.
 
 This is non-production scaffolding. Keep it isolated so real jobs can replace it later.
 
@@ -10,9 +10,10 @@ This is non-production scaffolding. Keep it isolated so real jobs can replace it
 
 Included:
 
-- Fake job rows in Postgres.
-- Placeholder capture-processing job rows created at upload time.
-- A five-second simulated capture-processing delay for local testing.
+- Processing job rows in Postgres.
+- Queued capture-processing job rows created at upload time.
+- Celery/Redis dispatch for capture jobs.
+- Retry-aware job status updates and worker logging.
 - Placeholder transcriptions for audio.
 - Placeholder captions for photos.
 - Placeholder decorated text for notes.
@@ -21,8 +22,6 @@ Included:
 
 Excluded:
 
-- Celery.
-- Redis.
 - Real AI/LLM calls.
 - Real patient matching design.
 - Long-running distributed job orchestration.
@@ -33,7 +32,7 @@ Excluded:
 
 - `id`
 - `tenant_id`
-- `job_type`: `capture_process`, `session_organize`
+- `job_type`: `audio_capture_process`, `text_capture_process`, `image_capture_process`, `capture_process`, `session_organize`
 - `status`: `queued`, `running`, `succeeded`, `failed`
 - `capture_id`, nullable
 - `session_id`, nullable
@@ -49,7 +48,7 @@ Every generated output includes:
 
 ```json
 {
-  "generated_by": "fake-processing",
+  "generated_by": "ai-engine",
   "fake_job_id": "job_...",
   "generated_at": "2026-05-14T00:00:00Z"
 }
@@ -57,8 +56,7 @@ Every generated output includes:
 
 ## Capture Processing
 
-On capture upload, the backend creates a placeholder `capture_process` job row and marks the capture `processing`.
-Until real AI jobs are implemented, the API derives default generated-text metadata from the capture type. After about five seconds, subsequent capture responses expose the capture as `processed` with the relevant completed field:
+On capture upload, the backend creates a queued capture processing job row and marks the capture `processing`. The backend dispatches the job to Celery after the source object and metadata transaction is durable. The worker marks the job `running`, writes placeholder generated-text metadata from the capture type, and then marks the capture `processed` with the relevant completed field:
 
 - `metadata.transcript` for audio.
 - `metadata.caption` for photo.
@@ -66,7 +64,7 @@ Until real AI jobs are implemented, the API derives default generated-text metad
 
 These upload-time placeholder jobs are intentionally minimal scaffolding. They do not create generated artifact rows yet.
 
-Endpoint:
+Manual enqueue endpoint:
 
 ```text
 POST /api/v1/captures/{capture_id}/fake-process
@@ -77,9 +75,11 @@ Behavior:
 1. Validate auth, tenant access, and capture access.
 2. Create a fake job row.
 3. Mark capture `processing`.
-4. Generate type-specific placeholder output.
-5. Mark capture `processed`.
-6. Store output in `captures.metadata` and artifact rows when useful.
+4. Dispatch a Celery task.
+5. Worker writes type-specific placeholder output.
+6. Worker marks capture `processed` and job `succeeded`.
+
+If a worker attempt raises, the task logs the exception, stores the last error in the job row, returns the job to `queued`, and lets Celery retry. After retries are exhausted, the job is marked `failed` and the capture moves to `needs_attention`.
 
 Audio output:
 
