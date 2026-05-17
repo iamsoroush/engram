@@ -91,6 +91,16 @@ VITE_API_URL=http://localhost:8000/api/v1
 
 In production, leave `PROD_VITE_API_URL` empty unless the API is hosted on another origin. With the default production setup, the browser calls `/api/v1/...` on the same origin and nginx proxies those requests to the backend container.
 
+### HTTPS tunnel for phone testing
+
+When using ngrok or another HTTPS tunnel against the Vite dev server, add the tunnel host to Vite's allowed host list:
+
+```sh
+VITE_ALLOWED_HOSTS=persuader-elective-capsize.ngrok-free.dev docker compose up frontend
+```
+
+For multiple hosts, separate them with commas.
+
 ## Production Image
 
 Build the frontend production image from the repository root:

@@ -51,6 +51,18 @@ For full-stack development with both services in Docker:
 docker compose up --build
 ```
 
+Docker Compose automatically reads variables from the repo-root `.env` file. Start from `.env.example`, then keep local-only values there:
+
+```sh
+cp .env.example .env
+```
+
+For example, when testing the Vite dev server through an HTTPS tunnel such as ngrok, set the tunnel host in `.env`:
+
+```sh
+VITE_ALLOWED_HOSTS=example.ngrok-free.dev
+```
+
 Services:
 
 - Frontend: `http://localhost:5173`

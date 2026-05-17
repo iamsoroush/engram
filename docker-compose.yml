@@ -113,6 +113,7 @@ services:
     environment:
       VITE_API_URL: ${VITE_API_URL:-/api/v1}
       VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://backend:8000}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:

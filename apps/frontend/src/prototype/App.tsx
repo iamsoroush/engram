@@ -1,4 +1,5 @@
 import React from "react";
+import { flushSync } from "react-dom";
 import { Badge, Button, Card, Dialog, Input, Sheet, Skeleton, Textarea, Toast } from "./ui";
 import type { CaptureItem, CaptureItemType, CaptureSession, CaptureStatus, Patient, Screen, SessionStatus } from "./types";
 
@@ -117,8 +118,30 @@ const CACHE_LIMIT_BYTES = 50 * 1024 * 1024;
 const DEV_AUTH_STORAGE_KEY = "aesmem-dev-auth";
 const IS_DEV = import.meta.env.DEV;
 
+function screenFromLocation(): Screen {
+  if (typeof window !== "undefined" && window.location.hash === "#organize") return "organize";
+  return "capture";
+}
+
+function replaceScreenLocation(screen: Screen) {
+  if (typeof window === "undefined" || (screen !== "capture" && screen !== "organize")) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${screen}`);
+}
+
 const nowLabel = () =>
   new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+
+function createClientId() {
+  const browserCrypto = globalThis.crypto;
+  if (browserCrypto?.randomUUID) return browserCrypto.randomUUID();
+  if (!browserCrypto?.getRandomValues) return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const bytes = new Uint8Array(16);
+  browserCrypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
+}
 
 const titleByType: Record<CaptureDraft["kind"], string> = {
   audio: "Audio note",
@@ -275,13 +298,31 @@ function mergeSessionItems(existing: CaptureSession | null | undefined, incoming
   incomingItems.forEach((item) => replacements.set(item.id, item));
   const replacementItem = incomingItems[0];
   const merged = existing.items.map((item) => {
-    if (replaceLocalItemId && item.id === replaceLocalItemId && replacementItem) return replacementItem;
+    if (replaceLocalItemId && item.id === replaceLocalItemId && replacementItem) {
+      return {
+        ...replacementItem,
+        sourceUrl: item.sourceUrl || replacementItem.sourceUrl,
+        contentType: item.contentType || replacementItem.contentType,
+      };
+    }
     return replacements.get(item.id) || item;
   });
   incomingItems.forEach((item) => {
     if (!merged.some((current) => current.id === item.id)) merged.push(item);
   });
   return { ...incoming, items: merged };
+}
+
+function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[], incomingItems: CaptureItem[]) {
+  return incomingItems.map((incomingItem) => {
+    const existingItem = existingItems.find((item) => item.id === incomingItem.id);
+    if (!existingItem?.sourceUrl) return incomingItem;
+    return {
+      ...incomingItem,
+      sourceUrl: existingItem.sourceUrl,
+      contentType: existingItem.contentType || incomingItem.contentType,
+    };
+  });
 }
 
 function openOutboxDb() {
@@ -432,6 +473,11 @@ function backendSessionIdFromCurrent(currentSession: CaptureSession | null, into
   return currentSession.id;
 }
 
+function withoutLocalPreview(item: CaptureItem) {
+  const { sourceUrl, ...rest } = item;
+  return sourceUrl?.startsWith("blob:") ? rest : item;
+}
+
 function makeLocalCapture(
   draft: CaptureDraft,
   currentSession: CaptureSession | null,
@@ -439,10 +485,10 @@ function makeLocalCapture(
   tenantId?: string,
 ): PendingCapture {
   const time = nowLabel();
-  const localCaptureId = `local-capture-${crypto.randomUUID()}`;
-  const clientCaptureId = `client-capture-${crypto.randomUUID()}`;
+  const localCaptureId = `local-capture-${createClientId()}`;
+  const clientCaptureId = `client-capture-${createClientId()}`;
   const backendSessionId = backendSessionIdFromCurrent(currentSession, intoNew);
-  const localSessionId = intoNew || !currentSession ? `local-session-${crypto.randomUUID()}` : currentSession.id;
+  const localSessionId = intoNew || !currentSession ? `local-session-${createClientId()}` : currentSession.id;
   const item: CaptureItem = {
     id: localCaptureId,
     type: draft.kind,
@@ -457,8 +503,7 @@ function makeLocalCapture(
     !intoNew && currentSession
       ? {
           ...currentSession,
-          label: `${currentSession.time} - ${currentSession.items.length + 1} captures`,
-          items: [...currentSession.items, item],
+          items: [...currentSession.items.map(withoutLocalPreview), item],
         }
       : {
           id: localSessionId,
@@ -486,6 +531,14 @@ function makeLocalCapture(
     draft,
     item,
     session,
+  };
+}
+
+function sessionWithLocalPreview(session: CaptureSession, itemId: string, file: Blob) {
+  const sourceUrl = URL.createObjectURL(file);
+  return {
+    ...session,
+    items: session.items.map((item) => (item.id === itemId ? { ...item, sourceUrl } : item)),
   };
 }
 
@@ -1243,17 +1296,72 @@ function CaptureScreen({
   onCapture,
   onNewSession,
   onResolveFile,
+  onUpdateTitle,
 }: {
   activeSession: CaptureSession | null;
   onCapture: (kind: CaptureDraft["kind"]) => void;
   onNewSession: () => void;
   onResolveFile: (endpoint: string) => Promise<string>;
+  onUpdateTitle: (sessionId: string, title: string) => Promise<void>;
 }) {
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
+  const [titleDraft, setTitleDraft] = React.useState(activeSession?.label || "");
+  const [editingTitle, setEditingTitle] = React.useState(false);
+  const [savingTitle, setSavingTitle] = React.useState(false);
+  const latestCaptureRef = React.useRef<HTMLDivElement | null>(null);
+  const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
+  const titleFormRef = React.useRef<HTMLFormElement | null>(null);
+  const titleChanged = Boolean(activeSession && titleDraft.trim() && titleDraft.trim() !== activeSession.label);
+
+  React.useEffect(() => {
+    setTitleDraft(activeSession?.label || "");
+    setEditingTitle(false);
+  }, [activeSession?.id, activeSession?.label]);
+
+  React.useEffect(() => {
+    if (!activeSession) previousCaptureCountRef.current = 0;
+  }, [activeSession]);
+
+  React.useEffect(() => {
+    if (!activeSession?.items.length) return;
+    const previousCaptureCount = previousCaptureCountRef.current;
+    previousCaptureCountRef.current = activeSession.items.length;
+    window.requestAnimationFrame(() => {
+      if (previousCaptureCount === 0) {
+        window.scrollTo({ top: 0, behavior: "instant" });
+        return;
+      }
+      latestCaptureRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    });
+  }, [activeSession?.items.length]);
 
   if (!activeSession || activeSession.items.length === 0) {
     return (
       <section className="capture-empty" aria-label="Capture">
+        <div className="capture-empty-panel">
+          <div className="capture-empty-copy">
+            <p className="eyebrow">Capture</p>
+            <h1>Nothing captured yet</h1>
+            <p>Start with audio, a photo, or a note. Your captures will appear here in order as the current session builds.</p>
+          </div>
+          <div className="capture-empty-preview" aria-hidden="true">
+            <div className="empty-capture-row">
+              <span />
+              <div>
+                <strong>First capture</strong>
+                <small>Saved here</small>
+              </div>
+            </div>
+            <div className="empty-capture-row muted">
+              <span />
+              <div>
+                <strong>Next capture</strong>
+                <small>Added below</small>
+              </div>
+            </div>
+            <div className="empty-capture-line" />
+          </div>
+        </div>
         <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
       </section>
     );
@@ -1262,18 +1370,53 @@ function CaptureScreen({
   return (
     <section className="capture-current" aria-label="Current session">
       <div className="current-header">
-        <div>
+        <form
+          className="current-title-form"
+          ref={titleFormRef}
+          onBlur={(event) => {
+            const nextFocus = event.relatedTarget;
+            if (nextFocus instanceof Node && titleFormRef.current?.contains(nextFocus)) return;
+            if (!savingTitle) setTitleDraft(activeSession.label);
+            setEditingTitle(false);
+          }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!titleChanged || savingTitle) return;
+            setSavingTitle(true);
+            void onUpdateTitle(activeSession.id, titleDraft.trim()).finally(() => {
+              setSavingTitle(false);
+              setEditingTitle(false);
+            });
+          }}
+        >
           <p className="eyebrow">Current session</p>
-          <h1>{activeSession.label}</h1>
+          <Input
+            aria-label="Session title"
+            onChange={(event) => {
+              setEditingTitle(true);
+              setTitleDraft(event.target.value);
+            }}
+            onFocus={() => setEditingTitle(true)}
+            value={titleDraft}
+          />
           <small>New captures save here by default.</small>
-        </div>
+          {editingTitle ? (
+            <div className="current-title-actions">
+              <Button disabled={savingTitle || !titleChanged} size="sm" type="submit" variant="secondary">
+                {savingTitle ? "Saving" : "Save title"}
+              </Button>
+            </div>
+          ) : null}
+        </form>
         <Button className="new-session-button" onClick={onNewSession} size="sm" variant="secondary">
           New session
         </Button>
       </div>
       <div className="feed-focus">
-        {activeSession.items.map((item) => (
-          <CaptureItemCard item={item} key={item.id} onOpen={() => setSelectedCapture(item)} onResolveFile={onResolveFile} />
+        {activeSession.items.map((item, index) => (
+          <div className="capture-feed-item" key={item.id} ref={index === activeSession.items.length - 1 ? latestCaptureRef : undefined}>
+            <CaptureItemCard item={item} onOpen={() => setSelectedCapture(item)} onResolveFile={onResolveFile} />
+          </div>
         ))}
       </div>
       <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
@@ -1288,7 +1431,7 @@ function TextCaptureSheet({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (draft: CaptureDraft, intoNew?: boolean) => void;
+  onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
 }) {
   const [value, setValue] = React.useState("");
 
@@ -1309,7 +1452,7 @@ function TextCaptureSheet({
         <Button
           disabled={!value.trim()}
           onClick={() =>
-            onSave({
+            void onSave({
               kind: "note",
               detail: value.trim(),
               file: new Blob([value.trim()], { type: "text/plain" }),
@@ -1322,7 +1465,7 @@ function TextCaptureSheet({
         <Button
           disabled={!value.trim()}
           onClick={() =>
-            onSave(
+            void onSave(
               {
                 kind: "note",
                 detail: value.trim(),
@@ -1348,7 +1491,7 @@ function PhotoPreviewDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (draft: CaptureDraft, intoNew?: boolean) => void;
+  onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
 }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState("");
@@ -1397,13 +1540,13 @@ function PhotoPreviewDialog({
         <div className="dialog-actions">
           <Button disabled={!file} onClick={() => {
             const draft = makeDraft();
-            if (draft) onSave(draft);
+            if (draft) void onSave(draft);
           }}>
             Use photo
           </Button>
           <Button disabled={!file} onClick={() => {
             const draft = makeDraft();
-            if (draft) onSave(draft, true);
+            if (draft) void onSave(draft, true);
           }} variant="secondary">
             Save into new session
           </Button>
@@ -1420,7 +1563,7 @@ function AudioDialog({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (draft: CaptureDraft, intoNew?: boolean) => void;
+  onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
 }) {
   const [seconds, setSeconds] = React.useState(0);
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
@@ -1475,7 +1618,7 @@ function AudioDialog({
           streamRef.current?.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
           if (saveOnStopRef.current && blob.size) {
-            onSave({
+            void onSave({
               kind: "audio",
               detail: "Clinical audio captured and saved to the backend.",
               file: blob,
@@ -1540,7 +1683,7 @@ function AudioDialog({
             if (!file) return;
             setAudioUrl(URL.createObjectURL(file));
             const fallbackName = `audio-${Date.now()}.${audioExtensionForMimeType(file.type)}`;
-            onSave({
+            void onSave({
               kind: "audio",
               detail: "Clinical audio captured and saved to the backend.",
               file,
@@ -2090,7 +2233,7 @@ export function App() {
   const authRef = React.useRef<AuthSession | null>(null);
   const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
-  const [screen, setScreen] = React.useState<Screen>("capture");
+  const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
   const [activeSession, setActiveSession] = React.useState<CaptureSession | null>(null);
   const [selectedSessionId, setSelectedSessionId] = React.useState("");
@@ -2101,6 +2244,12 @@ export function App() {
   const [audioOpen, setAudioOpen] = React.useState(false);
   const [toast, setToast] = React.useState("");
   const processingRef = React.useRef(false);
+
+  const navigateScreen = React.useCallback((nextScreen: Screen) => {
+    setScreen(nextScreen);
+    replaceScreenLocation(nextScreen);
+    if (nextScreen === "capture") setSelectedSessionId("");
+  }, []);
 
   const clearAuth = React.useCallback(() => {
     authRef.current = null;
@@ -2190,6 +2339,15 @@ export function App() {
   }, [toast]);
 
   React.useEffect(() => {
+    const syncScreenFromLocation = () => {
+      setScreen(screenFromLocation());
+      if (screenFromLocation() === "capture") setSelectedSessionId("");
+    };
+    window.addEventListener("hashchange", syncScreenFromLocation);
+    return () => window.removeEventListener("hashchange", syncScreenFromLocation);
+  }, []);
+
+  React.useEffect(() => {
     const warnIfPending = (event: BeforeUnloadEvent) => {
       if (!pendingCount) return;
       event.preventDefault();
@@ -2217,10 +2375,8 @@ export function App() {
     try {
       const loadedSessions = await fetchSessions(apiFetch);
       setSessions([...localSessions, ...loadedSessions.filter((session) => !localSessions.some((local) => local.id === session.id))]);
-      setSelectedSessionId((current) => current || localSessions[0]?.id || loadedSessions[0]?.id || "");
     } catch {
       setSessions(localSessions);
-      setSelectedSessionId((current) => current || localSessions[0]?.id || "");
       setToast("Backend is not reachable. Captures stay on this device.");
     }
     if (pending.length) window.setTimeout(() => void processOutbox(), 600);
@@ -2264,8 +2420,14 @@ export function App() {
       window.setTimeout(() => {
         void fetchSessionCaptures(apiFetch, sessionId)
           .then((captures) => {
-            setSessions((current) => current.map((session) => (session.id === sessionId ? { ...session, items: captures } : session)));
-            setActiveSession((current) => (current?.id === sessionId ? { ...current, items: captures } : current));
+            setSessions((current) =>
+              current.map((session) =>
+                session.id === sessionId ? { ...session, items: mergeCaptureItemsPreservingPreview(session.items, captures) } : session,
+              ),
+            );
+            setActiveSession((current) =>
+              current?.id === sessionId ? { ...current, items: mergeCaptureItemsPreservingPreview(current.items, captures) } : current,
+            );
           })
           .catch(() => undefined);
       }, 5500);
@@ -2294,9 +2456,11 @@ export function App() {
         }));
         updateItemStatus(capture.item.id, "syncing");
         try {
-          const result = await uploadCapture(apiFetch, capture.clientCaptureId, capture.draft, backendSessionId, capture.intoNew);
+          const uploadDraft = await standardizeCaptureDraft(capture.draft);
+          const result = await uploadCapture(apiFetch, capture.clientCaptureId, uploadDraft, backendSessionId, capture.intoNew);
           await updatePendingCapture(capture.id, (current) => ({
             ...normalizePendingCapture(current),
+            draft: uploadDraft,
             tenantId: activeTenantId,
             backendSessionId: result.session.id,
             backendCaptureId: result.item.id,
@@ -2304,7 +2468,7 @@ export function App() {
             intoNew: false,
           }));
           await storeBackendMappings(capture, result, activeTenantId);
-          await saveSyncedCaptureCache(result.item, capture.draft.file);
+          await saveSyncedCaptureCache(result.item, uploadDraft.file);
           await bindPendingSession(capture.localSessionId, result.session.id);
           await removePendingCapture(capture.id);
           const stillPendingForLocalSession = (await loadPendingCaptures()).some(
@@ -2319,7 +2483,7 @@ export function App() {
               ? mergeSessionItems(current, result.session, capture.item.id)
               : current,
           );
-          setSelectedSessionId((current) => (current === capture.localSessionId || !current ? mergedSession.id : current));
+          setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
           setToast("Capture safely transferred.");
           if (result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
         } catch {
@@ -2338,19 +2502,29 @@ export function App() {
   };
 
   const saveDraft = async (draft: CaptureDraft, intoNew = false) => {
+    let pending: PendingCapture;
     try {
       const safeDraft = await standardizeCaptureDraft(draft);
-      const pending = makeLocalCapture(safeDraft, activeSession, intoNew, authRef.current?.tenant.id);
-      await savePendingCapture(pending);
-      setActiveSession(pending.session);
-      upsertSession(pending.session);
-      setSelectedSessionId(pending.session.id);
-      setScreen("capture");
-      setToast("Saved on device.");
-      await refreshPendingCount();
-      if (authRef.current?.tenant.id) void processOutbox();
+      pending = makeLocalCapture(safeDraft, activeSession, intoNew, authRef.current?.tenant.id);
+      const visibleSession = sessionWithLocalPreview(pending.session, pending.item.id, safeDraft.file);
+      flushSync(() => {
+        setActiveSession(visibleSession);
+        upsertSession(visibleSession);
+        navigateScreen("capture");
+      });
     } catch {
       setToast(draft.kind === "audio" ? "Audio conversion failed." : "Failed/Retry");
+      return;
+    }
+
+    try {
+      await savePendingCapture(pending);
+      void saveSyncedCaptureCache(pending.item, pending.draft.file);
+      setToast("Saved on device.");
+      void refreshPendingCount();
+      if (authRef.current?.tenant.id) void processOutbox();
+    } catch {
+      setToast("Visible for this visit. Device storage failed.");
     }
   };
 
@@ -2377,6 +2551,24 @@ export function App() {
 
   const renameSession = React.useCallback(
     async (sessionId: string, title: string) => {
+      if (isLocalSessionId(sessionId)) {
+        const updateSession = (session: CaptureSession) => ({ ...session, label: title });
+        setSessions((current) => current.map((session) => (session.id === sessionId ? updateSession(session) : session)));
+        setActiveSession((current) => (current?.id === sessionId ? updateSession(current) : current));
+        const pending = await loadPendingCaptures();
+        await Promise.all(
+          pending
+            .filter((capture) => capture.localSessionId === sessionId)
+            .map((capture) =>
+              updatePendingCapture(capture.id, (current) => ({
+                ...current,
+                session: updateSession(current.session),
+              })),
+            ),
+        );
+        setToast("Session title updated.");
+        return;
+      }
       const updated = await updateSessionTitle(apiFetch, sessionId, title);
       setSessions((current) =>
         current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
@@ -2452,7 +2644,7 @@ export function App() {
     setAuthError("");
     try {
       commitAuth(await loginWithPersona(persona));
-      setScreen("capture");
+      navigateScreen("capture");
     } catch {
       setAuthError("Could not sign in with that persona.");
     }
@@ -2462,7 +2654,7 @@ export function App() {
     setAuthError("");
     try {
       commitAuth(await loginWithPassword(email, password));
-      setScreen("capture");
+      navigateScreen("capture");
     } catch {
       setAuthError("Invalid email or password.");
     }
@@ -2475,7 +2667,7 @@ export function App() {
     setActiveSession(null);
     setSelectedSessionId("");
     setSyncing(false);
-    setScreen("capture");
+    navigateScreen("capture");
     void refreshPendingCount();
     if (currentAuth) {
       try {
@@ -2516,7 +2708,7 @@ export function App() {
 
   return (
     <>
-      <Shell auth={auth} onCapture={beginCapture} onLogout={handleLogout} screen={screen} onNavigate={setScreen}>
+      <Shell auth={auth} onCapture={beginCapture} onLogout={handleLogout} screen={screen} onNavigate={navigateScreen}>
         <SyncSafetyBanner pendingCount={pendingCount} syncing={syncing} onRetry={() => void processOutbox()} />
         {screen === "capture" ? (
           <CaptureScreen
@@ -2524,12 +2716,13 @@ export function App() {
             onCapture={beginCapture}
             onNewSession={startNewSession}
             onResolveFile={resolveSourceFile}
+            onUpdateTitle={renameSession}
           />
         ) : (
           <OrganizeHome
             onOpenSession={(sessionId) => {
               setSelectedSessionId(sessionId);
-              setScreen("organize");
+              navigateScreen("organize");
             }}
             sessions={sessions}
           />
@@ -2555,25 +2748,25 @@ export function App() {
       </Dialog>
       <TextCaptureSheet
         onClose={() => setTextOpen(false)}
-        onSave={(draft, intoNew) => {
+        onSave={async (draft, intoNew) => {
+          await saveDraft(draft, intoNew);
           setTextOpen(false);
-          void saveDraft(draft, intoNew);
         }}
         open={textOpen}
       />
       <PhotoPreviewDialog
         onClose={() => setPhotoOpen(false)}
-        onSave={(draft, intoNew) => {
+        onSave={async (draft, intoNew) => {
+          await saveDraft(draft, intoNew);
           setPhotoOpen(false);
-          void saveDraft(draft, intoNew);
         }}
         open={photoOpen}
       />
       <AudioDialog
         onClose={() => setAudioOpen(false)}
-        onSave={(draft, intoNew) => {
+        onSave={async (draft, intoNew) => {
+          await saveDraft(draft, intoNew);
           setAudioOpen(false);
-          void saveDraft(draft, intoNew);
         }}
         open={audioOpen}
       />

@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required
@@ -87,6 +87,41 @@ def parse_metadata_form(metadata: str | None) -> dict[str, Any] | None:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="metadata must be a JSON object")
     return parsed
+
+
+def ranged_file_response(content: bytes, media_type: str, filename: str, range_header: str | None = None) -> Response:
+    """Return file content with byte-range support for mobile media playback."""
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": f'inline; filename="{filename}"',
+    }
+    content_length = len(content)
+    if not range_header:
+        headers["Content-Length"] = str(content_length)
+        return Response(content=content, media_type=media_type, headers=headers)
+
+    unit, _, range_value = range_header.partition("=")
+    start_text, _, end_text = range_value.partition("-")
+    if unit != "bytes" or not start_text:
+        headers["Content-Range"] = f"bytes */{content_length}"
+        return Response(status_code=416, media_type=media_type, headers=headers)
+
+    try:
+        start = int(start_text)
+        end = int(end_text) if end_text else content_length - 1
+    except ValueError:
+        headers["Content-Range"] = f"bytes */{content_length}"
+        return Response(status_code=416, media_type=media_type, headers=headers)
+
+    if start >= content_length or end < start:
+        headers["Content-Range"] = f"bytes */{content_length}"
+        return Response(status_code=416, media_type=media_type, headers=headers)
+
+    end = min(end, content_length - 1)
+    partial = content[start : end + 1]
+    headers["Content-Length"] = str(len(partial))
+    headers["Content-Range"] = f"bytes {start}-{end}/{content_length}"
+    return Response(content=partial, status_code=206, media_type=media_type, headers=headers)
 
 
 @api_v1.get("/health")
@@ -445,15 +480,17 @@ def get_capture_file_url(
 @api_v1.get("/captures/{capture_id}/file-content")
 def get_capture_file_content(
     capture_id: str,
+    range_header: str | None = Header(default=None, alias="Range"),
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> Response:
     file_content = source_file_content(db, object_store=object_store, principal=principal, capture_id=capture_id)
-    return Response(
+    return ranged_file_response(
         content=file_content["content"],
         media_type=file_content["media_type"],
-        headers={"Content-Disposition": f'inline; filename="{file_content["filename"]}"'},
+        filename=file_content["filename"],
+        range_header=range_header,
     )
 
 
