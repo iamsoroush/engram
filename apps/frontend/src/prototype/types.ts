@@ -3,6 +3,7 @@ export type Screen = "capture" | "organize" | "session" | "today" | "saved" | "i
 export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "processed" | "needsReview" | "failed";
 
 export type SessionStatus =
+  | "draft"
   | "unassigned"
   | "needs_review"
   | "processing"
@@ -32,7 +33,7 @@ export type CaptureItem = {
   contentType?: string;
   patientId?: string | null;
   patientName?: string;
-  assignmentSource?: "staff" | "fake_processing" | "fake-processing" | string | null;
+  assignmentSource?: "staff" | "ai_engine" | "ai-engine" | string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -48,13 +49,17 @@ export type CaptureSession = {
   patientName?: string;
   reviewReason?: string;
   patientId?: string;
-  assignmentSource?: "staff" | "fake_processing" | "fake-processing" | string | null;
+  assignmentSource?: "staff" | "ai_engine" | "ai-engine" | string | null;
   organizationSource?: string | null;
+  generatedReport?: string | null;
+  extractedMetadata?: Record<string, unknown>;
+  reportTemplateKey?: string | null;
 };
 
 export type Patient = {
   id: string;
   displayName: string;
+  nationalId?: string | null;
   dateOfBirth?: string | null;
   phone?: string | null;
   email?: string | null;

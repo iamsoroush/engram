@@ -133,7 +133,7 @@ Before real clinical use, add:
 - background processing jobs separate from request handling;
 - backup and restore strategy.
 
-Backend v2 intentionally uses fake processing instead of real background workers. See [backend v2 design](v2-design.md) and [fake processing](fake-processing.md).
+Backend v2 intentionally uses AI processing instead of real background workers. See [backend v2 design](v2-design.md) and [AI processing](ai-processing.md).
 
 ## Development Commands
 

@@ -46,3 +46,22 @@ After the first capture, the system creates or uses an active session.
 New captures are attached to the active session by default.
 
 The user should be able to understand which session is currently active.
+
+Active sessions are drafts until the user explicitly saves the session. Saving a
+session starts session-level processing. This processing generates a session
+summary, extracted metadata, and a markdown report from a report template. The
+default report template is simple and includes clinic information, patient
+information, and a clinical body section. Future versions may allow clinics to
+customize these templates.
+
+Patient information is treated as special extracted metadata. The session job
+should return patient full name and national ID when they are present, or mark
+them as expected/missing when they are not. These fields must be structured so
+the backend can match them against existing patient records and the frontend can
+warn the user when required patient information is missing.
+
+Organize shows session cards with full generated summaries. Opening a processed
+card shows the full generated report, editable flexible metadata, patient search
+and creation, patient-information warnings, and an expandable capture list.
+Draft cards open directly in Capture. Generated output is not clinically
+verified until a human verifies it.

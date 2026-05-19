@@ -80,7 +80,27 @@ The AI engine does not import backend modules or connect directly to Postgres. I
 7. Backend creates a queued capture processing job and dispatches it to Celery.
 8. Browser removes the pending outbox entry and keeps a synced local cache copy.
 9. Celery marks the job `running`, writes placeholder generated metadata, and marks it `succeeded`; failures are retried and then marked `failed`.
-10. UI updates to backend-safe states such as `Unassigned`, `Needs review`, `Processing`, `Organized`, or `Verified`.
+10. UI updates to backend-safe states such as `Draft`, `Unassigned`, `Needs review`, `Processing`, or `Verified`.
+
+### Session Save And Report Generation
+
+The first uploaded capture creates a backend session in `draft` status. Draft
+sessions are durable but are not considered saved for reporting. When the user
+explicitly saves a session, the backend marks it `processing`, creates a queued
+session job, and dispatches it to the AI engine.
+
+The session job receives the session, captures, and a report template. The
+current default template is markdown and has clinic information, patient
+information, and body sections. The placeholder worker returns a generated
+summary, structured extracted metadata, and a markdown report. Patient full name
+and national ID are special extracted metadata fields because the backend can use
+them for patient matching and the frontend can warn when they are missing.
+
+When the session job succeeds, the backend stores the generated outputs on the
+session and moves it to `needs_review` if a patient is assigned, otherwise
+`unassigned`. Previous generated output snapshots are retained in session
+metadata so future UI can fall back to earlier processed versions. Generated
+output is still not clinically verified until staff verifies the session.
 
 ### Review
 
@@ -120,20 +140,21 @@ Backend v2 uses Postgres for metadata and MinIO for object storage. The backend 
 
 ## Session And Review Semantics
 
-Patient selection is still not required before capture. Uploaded sessions and captures may remain unassigned until staff or fake processing assigns them.
+Patient selection is still not required before capture. Uploaded sessions and captures may remain unassigned until staff or AI processing assigns them.
 
 Backend v2 separates organization from human verification:
 
+- `draft`: captures exist, but the user has not explicitly saved the session.
 - `unassigned`: no patient is known yet.
 - `needs_review`: staff attention is needed.
-- `processing`: fake processing is running.
-- `organized`: backend/fake processing has organized the session.
+- `processing`: AI processing is running.
+- `organized`: legacy backend/AI organized state; new processing should route to `unassigned` or `needs_review`.
 - `reviewing`: staff opened it for verification.
 - `verified`: doctor or assistant reviewed and accepted it.
 - `reopened`: verified session was sent back for changes.
 - `failed`: processing failed; sources remain durable.
 
-The frontend must not imply that `organized` content is clinically verified.
+The frontend must not imply that generated content is clinically verified before `verified`.
 
 ## Design Decisions
 
@@ -142,7 +163,7 @@ The frontend must not imply that `organized` content is clinically verified.
 - Browser IndexedDB is used as a local outbox because user data loss is unacceptable on slow or unreliable connections.
 - Backend confirmation is the point where a capture is considered safely transferred.
 - Synced browser cache is optional and evictable; unsynced browser data is not.
-- User-facing capture states are compact and non-technical: `Saved on device`, `Syncing`, `Processing`, `Unassigned`, `Organized`, `Verified`, `Needs review`, `Failed/Retry`.
+- User-facing capture states are compact and non-technical: `Saved on device`, `Syncing`, `Processing`, `Draft`, `Unassigned`, `Needs review`, `Verified`, `Failed/Retry`.
 - Technical pipeline labels such as OCR, embedding, inference, or model names should not appear in doctor-facing UI.
 
 ## Known Prototype Limits

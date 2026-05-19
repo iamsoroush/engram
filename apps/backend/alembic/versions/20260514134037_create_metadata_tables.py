@@ -34,7 +34,7 @@ session_status = postgresql.ENUM(
     "failed",
     name="session_status",
 )
-organization_source = postgresql.ENUM("none", "staff", "fake-processing", name="organization_source")
+organization_source = postgresql.ENUM("none", "staff", "ai-engine", name="organization_source")
 capture_type = postgresql.ENUM("audio", "photo", "note", name="capture_type")
 capture_status = postgresql.ENUM(
     "received", "processing", "processed", "needs_attention", "deleted", name="capture_status"
@@ -42,8 +42,8 @@ capture_status = postgresql.ENUM(
 artifact_kind = postgresql.ENUM(
     "source", "transcript", "ocr_text", "thumbnail", "summary", "normalized_note", "other", name="artifact_kind"
 )
-fake_job_type = postgresql.ENUM("capture_process", "session_organize", name="fake_job_type")
-fake_job_status = postgresql.ENUM("queued", "running", "completed", "failed", name="fake_job_status")
+ai_job_type = postgresql.ENUM("capture_process", "session_organize", name="ai_job_type")
+ai_job_status = postgresql.ENUM("queued", "running", "completed", "failed", name="ai_job_status")
 
 
 def upgrade() -> None:
@@ -208,13 +208,13 @@ def upgrade() -> None:
     op.create_index("ix_captures_tenant_id_session_id", "captures", ["tenant_id", "session_id"])
 
     op.create_table(
-        "fake_jobs",
+        "ai_jobs",
         sa.Column("id", postgresql.UUID(as_uuid=True), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("capture_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("job_type", fake_job_type, nullable=False),
-        sa.Column("status", fake_job_status, server_default="queued", nullable=False),
+        sa.Column("job_type", ai_job_type, nullable=False),
+        sa.Column("status", ai_job_status, server_default="queued", nullable=False),
         sa.Column("generated_by", sa.String(length=80), nullable=False),
         sa.Column("input_artifact_ids", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("result_metadata", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
@@ -223,14 +223,14 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
-        sa.ForeignKeyConstraint(["capture_id"], ["captures.id"], name=op.f("fk_fake_jobs_capture_id_captures"), ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], name=op.f("fk_fake_jobs_created_by_user_id_users"), ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], name=op.f("fk_fake_jobs_session_id_sessions"), ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name=op.f("fk_fake_jobs_tenant_id_tenants"), ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_fake_jobs")),
+        sa.ForeignKeyConstraint(["capture_id"], ["captures.id"], name=op.f("fk_ai_jobs_capture_id_captures"), ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], name=op.f("fk_ai_jobs_created_by_user_id_users"), ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], name=op.f("fk_ai_jobs_session_id_sessions"), ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name=op.f("fk_ai_jobs_tenant_id_tenants"), ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_ai_jobs")),
     )
-    op.create_index("ix_fake_jobs_tenant_id_session_id", "fake_jobs", ["tenant_id", "session_id"])
-    op.create_index("ix_fake_jobs_tenant_id_status_created_at", "fake_jobs", ["tenant_id", "status", "created_at"])
+    op.create_index("ix_ai_jobs_tenant_id_session_id", "ai_jobs", ["tenant_id", "session_id"])
+    op.create_index("ix_ai_jobs_tenant_id_status_created_at", "ai_jobs", ["tenant_id", "status", "created_at"])
 
     op.create_table(
         "artifacts",
@@ -238,7 +238,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("capture_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("session_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("fake_job_id", postgresql.UUID(as_uuid=True), nullable=True),
+        sa.Column("ai_job_id", postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column("artifact_kind", artifact_kind, nullable=False),
         sa.Column("bucket", sa.String(length=120), nullable=False),
         sa.Column("object_key", sa.String(length=1024), nullable=False),
@@ -250,7 +250,7 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(["capture_id"], ["captures.id"], name=op.f("fk_artifacts_capture_id_captures"), ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["created_by_user_id"], ["users.id"], name=op.f("fk_artifacts_created_by_user_id_users"), ondelete="SET NULL"),
-        sa.ForeignKeyConstraint(["fake_job_id"], ["fake_jobs.id"], name=op.f("fk_artifacts_fake_job_id_fake_jobs"), ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["ai_job_id"], ["ai_jobs.id"], name=op.f("fk_artifacts_ai_job_id_ai_jobs"), ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["session_id"], ["sessions.id"], name=op.f("fk_artifacts_session_id_sessions"), ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["tenant_id"], ["tenants.id"], name=op.f("fk_artifacts_tenant_id_tenants"), ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_artifacts")),
@@ -296,9 +296,9 @@ def downgrade() -> None:
     op.drop_index("ix_artifacts_tenant_id_session_id", table_name="artifacts")
     op.drop_index("ix_artifacts_tenant_id_capture_id", table_name="artifacts")
     op.drop_table("artifacts")
-    op.drop_index("ix_fake_jobs_tenant_id_status_created_at", table_name="fake_jobs")
-    op.drop_index("ix_fake_jobs_tenant_id_session_id", table_name="fake_jobs")
-    op.drop_table("fake_jobs")
+    op.drop_index("ix_ai_jobs_tenant_id_status_created_at", table_name="ai_jobs")
+    op.drop_index("ix_ai_jobs_tenant_id_session_id", table_name="ai_jobs")
+    op.drop_table("ai_jobs")
     op.drop_index("ix_captures_tenant_id_session_id", table_name="captures")
     op.drop_index("ix_captures_tenant_id_patient_id", table_name="captures")
     op.drop_table("captures")
@@ -317,8 +317,8 @@ def downgrade() -> None:
     op.drop_table("users")
     op.drop_table("tenants")
 
-    fake_job_status.drop(op.get_bind(), checkfirst=True)
-    fake_job_type.drop(op.get_bind(), checkfirst=True)
+    ai_job_status.drop(op.get_bind(), checkfirst=True)
+    ai_job_type.drop(op.get_bind(), checkfirst=True)
     artifact_kind.drop(op.get_bind(), checkfirst=True)
     capture_status.drop(op.get_bind(), checkfirst=True)
     capture_type.drop(op.get_bind(), checkfirst=True)

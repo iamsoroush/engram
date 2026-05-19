@@ -17,6 +17,7 @@ from app.schemas.api import (
     PatientPatch,
     PatientWrite,
     SessionCreate,
+    SessionSaveRequest,
     SessionUpdate,
 )
 from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest
@@ -24,6 +25,7 @@ from app.services.ai_jobs import (
     complete_worker_job,
     enqueue_capture_processing_job,
     fail_worker_job,
+    get_ai_job,
     require_ai_engine_token,
     retry_worker_job,
     start_worker_job,
@@ -34,7 +36,6 @@ from app.services.capture_storage import (
     source_file_url,
     upload_source_capture,
 )
-from app.services.fake_processing import fake_organize_session, get_fake_job
 from app.services.patients import create_patient, get_patient, patient_payload, search_patients, update_patient
 from app.services.sessions import (
     assign_session_patient,
@@ -42,9 +43,10 @@ from app.services.sessions import (
     get_session,
     list_session_artifacts,
     list_session_captures,
-    list_session_fake_jobs,
+    list_session_ai_jobs,
     list_sessions,
     reopen_session,
+    save_session,
     start_review,
     update_session,
     verify_session,
@@ -126,6 +128,7 @@ def ranged_file_response(content: bytes, media_type: str, filename: str, range_h
 
 @api_v1.get("/health")
 def health_check() -> dict[str, str]:
+    """Check whether the API process is running and able to serve requests."""
     return {"status": "ok"}
 
 
@@ -135,6 +138,7 @@ def internal_ai_job_start(
     request: AiJobStartRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Mark an AI processing job as running and return worker input."""
     return start_worker_job(
         db,
         job_id=job_id,
@@ -149,6 +153,7 @@ def internal_ai_job_complete(
     request: AiJobCompleteRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Persist successful AI processing output from the worker."""
     return complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
 
 
@@ -158,6 +163,7 @@ def internal_ai_job_retry(
     request: AiJobErrorRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Record a failed AI worker attempt before Celery retries the job."""
     return retry_worker_job(
         db,
         job_id=job_id,
@@ -173,6 +179,7 @@ def internal_ai_job_fail(
     request: AiJobErrorRequest,
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Record terminal AI processing failure after retries are exhausted."""
     return fail_worker_job(
         db,
         job_id=job_id,
@@ -184,16 +191,19 @@ def internal_ai_job_fail(
 
 @api_v1.post("/auth/dev-login")
 def auth_dev_login(request: DevLoginRequest, db: Session = Depends(get_db)) -> Any:
+    """Create a development authentication session for a demo persona."""
     return dev_login(db, request.persona)
 
 
 @api_v1.post("/auth/login")
 def auth_login(request: LoginRequest, db: Session = Depends(get_db)) -> Any:
+    """Authenticate with email and password and return access credentials."""
     return login(db, request.email, request.password, request.tenant_id)
 
 
 @api_v1.post("/auth/refresh")
 def auth_refresh(request: RefreshRequest, db: Session = Depends(get_db)) -> Any:
+    """Exchange a valid refresh token for a new access token."""
     return refresh(db, request.refresh_token)
 
 
@@ -203,12 +213,14 @@ def auth_logout(
     principal: CurrentPrincipal = Depends(get_current_principal),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    """Revoke a refresh token for the authenticated user."""
     logout(db, request.refresh_token, principal.user_id, principal.tenant_id)
     return {"status": "ok"}
 
 
 @api_v1.get("/me")
 def get_me(principal: CurrentPrincipal = Depends(get_current_principal), db: Session = Depends(get_db)) -> Any:
+    """Return the authenticated user, tenant, and membership context."""
     return me_response(db, principal.user, principal.tenant)
 
 
@@ -219,6 +231,7 @@ def patients_search(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """Search tenant patients by name, contact detail, or identifier."""
     return search_patients(db, principal, query, limit)
 
 
@@ -228,6 +241,7 @@ def patients_create(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Create a patient record and its searchable identifiers."""
     return create_patient(db, principal, request)
 
 
@@ -237,6 +251,7 @@ def patients_get(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Return one patient record in the current tenant."""
     return patient_payload(get_patient(db, principal.tenant_id, patient_id))
 
 
@@ -247,6 +262,7 @@ def patients_update(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Update editable patient demographics and identifiers."""
     return update_patient(db, principal, patient_id, request)
 
 
@@ -257,6 +273,7 @@ def get_sessions(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """List sessions in the current tenant, optionally filtered by status."""
     return list_sessions(db, principal, status, limit)
 
 
@@ -266,6 +283,7 @@ def create_session_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Create an empty draft session for later captures."""
     return create_session(db, principal, request)
 
 
@@ -275,6 +293,7 @@ def get_session_route(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Return one session, including generated report fields when available."""
     return get_session(db, principal, session_id)
 
 
@@ -285,7 +304,30 @@ def update_session_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Update editable session fields such as title, summary, or status."""
     return update_session(db, principal, session_id, request)
+
+
+@api_v1.post("/sessions/{session_id}/save")
+def save_session_route(
+    session_id: str,
+    request: SessionSaveRequest | None = None,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Save a draft session and queue session-level AI report processing."""
+    return save_session(db, principal, session_id, request or SessionSaveRequest())
+
+
+@api_v1.post("/sessions/{session_id}/retry-processing")
+def retry_session_processing_route(
+    session_id: str,
+    request: SessionSaveRequest | None = None,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retry failed or reopened session-level AI report processing."""
+    return save_session(db, principal, session_id, request or SessionSaveRequest())
 
 
 @api_v1.post("/sessions/{session_id}/assign-patient")
@@ -295,6 +337,7 @@ def assign_session_patient_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Assign or clear the patient associated with a session."""
     return assign_session_patient(db, principal, session_id, request)
 
 
@@ -304,6 +347,7 @@ def start_review_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Move an organized session into human review."""
     return start_review(db, principal, session_id)
 
 
@@ -313,6 +357,7 @@ def verify_session_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Mark a reviewed or organized session as clinically verified."""
     return verify_session(db, principal, session_id)
 
 
@@ -322,6 +367,7 @@ def reopen_session_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Reopen a verified session so it can be corrected or processed again."""
     return reopen_session(db, principal, session_id)
 
 
@@ -331,6 +377,7 @@ def list_session_captures_route(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """List all captures attached to a session."""
     return list_session_captures(db, principal, session_id)
 
 
@@ -340,45 +387,28 @@ def list_session_artifacts_route(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
+    """List stored source and generated artifacts attached to a session."""
     return list_session_artifacts(db, principal, session_id)
 
 
-@api_v1.get("/sessions/{session_id}/fake-jobs")
-def list_session_fake_jobs_route(
+@api_v1.get("/sessions/{session_id}/ai-jobs")
+def list_session_ai_jobs_route(
     session_id: str,
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    return list_session_fake_jobs(db, principal, session_id)
+    """List AI processing jobs associated with a session."""
+    return list_session_ai_jobs(db, principal, session_id)
 
 
-@api_v1.patch("/sessions/{session_id}/organize")
-def organize_session(
-    session_id: str,
-    principal: CurrentPrincipal = Depends(staff_required),
-    db: Session = Depends(get_db),
-    object_store: ObjectStore = Depends(get_object_store),
-) -> dict[str, Any]:
-    return fake_organize_session(db, object_store=object_store, principal=principal, session_id=session_id)
-
-
-@api_v1.post("/sessions/{session_id}/fake-organize")
-def fake_organize(
-    session_id: str,
-    principal: CurrentPrincipal = Depends(staff_required),
-    db: Session = Depends(get_db),
-    object_store: ObjectStore = Depends(get_object_store),
-) -> dict[str, Any]:
-    return fake_organize_session(db, object_store=object_store, principal=principal, session_id=session_id)
-
-
-@api_v1.get("/fake-jobs/{job_id}")
-def get_fake_job_route(
+@api_v1.get("/ai-jobs/{job_id}")
+def get_ai_job_route(
     job_id: str,
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    return get_fake_job(db, principal, job_id)
+    """Return one AI processing job and its current lifecycle state."""
+    return get_ai_job(db, principal, job_id)
 
 
 @api_v1.post("/captures")
@@ -395,6 +425,7 @@ async def upload_capture(
     db: Session = Depends(get_db),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> dict[str, Any]:
+    """Upload a capture source file and attach it to a new or existing session."""
     metadata_payload = parse_metadata_form(metadata)
     return await upload_source_capture(
         db,
@@ -423,6 +454,7 @@ async def upload_session_capture(
     db: Session = Depends(get_db),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> dict[str, Any]:
+    """Upload a capture source file directly into a specific session."""
     metadata_payload = parse_metadata_form(metadata)
     return await upload_source_capture(
         db,
@@ -444,6 +476,7 @@ def get_capture_route(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Return one capture and its processing metadata."""
     return get_capture(db, principal, capture_id)
 
 
@@ -454,6 +487,7 @@ def update_capture_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Update editable capture state or metadata."""
     return update_capture(db, principal, capture_id, request)
 
 
@@ -464,6 +498,7 @@ def assign_capture_patient_route(
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Assign or clear the patient associated with a single capture."""
     return assign_capture_patient(db, principal, capture_id, request)
 
 
@@ -474,6 +509,7 @@ def get_capture_file_url(
     db: Session = Depends(get_db),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> dict[str, Any]:
+    """Return a temporary object-storage URL for a capture source file."""
     return source_file_url(db, object_store=object_store, principal=principal, capture_id=capture_id)
 
 
@@ -485,6 +521,7 @@ def get_capture_file_content(
     db: Session = Depends(get_db),
     object_store: ObjectStore = Depends(get_object_store),
 ) -> Response:
+    """Stream capture source file bytes through the backend with range support."""
     file_content = source_file_content(db, object_store=object_store, principal=principal, capture_id=capture_id)
     return ranged_file_response(
         content=file_content["content"],
@@ -494,12 +531,13 @@ def get_capture_file_content(
     )
 
 
-@api_v1.post("/captures/{capture_id}/fake-process")
-def fake_process_capture_route(
+@api_v1.post("/captures/{capture_id}/retry-processing")
+def retry_capture_processing_route(
     capture_id: str,
     principal: CurrentPrincipal = Depends(staff_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Queue a new AI processing job for a capture."""
     return enqueue_capture_processing_job(db, principal=principal, capture_id=capture_id)
 
 
@@ -509,6 +547,7 @@ def get_capture_metadata_route(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
+    """Return capture metadata, including generated transcript or caption data."""
     return capture_metadata(db, principal, capture_id)
 
 

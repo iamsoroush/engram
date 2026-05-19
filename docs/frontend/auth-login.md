@@ -58,4 +58,4 @@ Pending captures are clinical material. Do not delete them automatically on logo
 
 Staff users should land on `Capture` after login. The product should not open on patient search, dashboards, worklists, or admin screens.
 
-Generated organization should be labeled carefully. `Organized` can mean backend/fake organized, while `Verified` or `Reviewed` means doctor/assistant accepted it.
+Generated organization should be labeled carefully. `Organized` can mean backend/AI organized, while `Verified` or `Reviewed` means doctor/assistant accepted it.

@@ -63,7 +63,7 @@ Frontend-facing states:
 
 Important distinction:
 
-- `Organized` means backend/fake processing has created organized output.
+- `Organized` means backend/AI processing has created organized output.
 - `Verified` means a doctor or assistant reviewed and accepted it.
 
 ## Patient Assignment
@@ -76,7 +76,7 @@ The frontend should support:
 - assigning a session to a patient later;
 - assigning or overriding a capture patient later;
 - creating a patient during review;
-- displaying assignment source when useful, such as staff or fake processing.
+- displaying assignment source when useful, such as staff or AI processing.
 
 ## Cache Policy
 

@@ -3,7 +3,7 @@ from datetime import date
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
@@ -22,12 +22,21 @@ def parse_date(value: str | None) -> date | None:
 
 
 def patient_payload(patient: Patient) -> dict[str, Any]:
+    national_id = next(
+        (
+            identifier.identifier_value
+            for identifier in patient.identifiers
+            if identifier.identifier_type == "national_id"
+        ),
+        None,
+    )
     return {
         "id": str(patient.id),
         "tenantId": str(patient.tenant_id),
         "displayName": patient.display_name,
         "legalFirstName": patient.legal_first_name,
         "legalLastName": patient.legal_last_name,
+        "nationalId": national_id,
         "dateOfBirth": patient.date_of_birth.isoformat() if patient.date_of_birth else None,
         "sex": patient.sex,
         "phone": patient.phone,
@@ -52,10 +61,21 @@ def get_patient(db: DbSession, tenant_id: uuid.UUID, patient_id: str) -> Patient
     return patient
 
 
+def normalize_identifier(value: str) -> str:
+    """Normalize identifiers for matching."""
+    digits = "".join(character for character in value if character.isdigit())
+    return digits or value.strip().lower()
+
+
 def search_patients(db: DbSession, principal: CurrentPrincipal, query: str | None, limit: int = 50) -> list[dict[str, Any]]:
     statement = select(Patient).where(Patient.tenant_id == principal.tenant_id)
     if query:
         pattern = f"%{query.strip()}%"
+        normalized_identifier = normalize_identifier(query)
+        identifier_patient_ids = select(PatientIdentifier.patient_id).where(
+            PatientIdentifier.tenant_id == principal.tenant_id,
+            PatientIdentifier.normalized_value.ilike(f"%{normalized_identifier}%"),
+        )
         statement = statement.where(
             or_(
                 Patient.display_name.ilike(pattern),
@@ -63,6 +83,7 @@ def search_patients(db: DbSession, principal: CurrentPrincipal, query: str | Non
                 Patient.legal_last_name.ilike(pattern),
                 Patient.phone.ilike(pattern),
                 Patient.email.ilike(pattern),
+                Patient.id.in_(identifier_patient_ids),
             )
         )
     patients = db.execute(statement.order_by(Patient.updated_at.desc()).limit(min(limit, 100))).scalars()
@@ -86,6 +107,7 @@ def create_patient(db: DbSession, principal: CurrentPrincipal, request: PatientW
     db.add(patient)
     db.flush()
     for identifier_type, value in (
+        ("national_id", request.national_id),
         ("phone", request.phone),
         ("email", request.email),
         ("normalized_name", request.display_name),
@@ -98,7 +120,7 @@ def create_patient(db: DbSession, principal: CurrentPrincipal, request: PatientW
                     patient_id=patient.id,
                     identifier_type=identifier_type,
                     identifier_value=value,
-                    normalized_value=value.strip().lower(),
+                    normalized_value=normalize_identifier(value),
                     source="staff",
                     identifier_metadata={},
                 )
@@ -127,6 +149,26 @@ def update_patient(db: DbSession, principal: CurrentPrincipal, patient_id: str, 
         patient.legal_first_name = request.legal_first_name
     if "legal_last_name" in updates:
         patient.legal_last_name = request.legal_last_name
+    if "national_id" in updates:
+        db.execute(
+            delete(PatientIdentifier).where(
+                PatientIdentifier.tenant_id == principal.tenant_id,
+                PatientIdentifier.patient_id == patient.id,
+                PatientIdentifier.identifier_type == "national_id",
+            )
+        )
+        if request.national_id:
+            db.add(
+                PatientIdentifier(
+                    tenant_id=principal.tenant_id,
+                    patient_id=patient.id,
+                    identifier_type="national_id",
+                    identifier_value=request.national_id,
+                    normalized_value=normalize_identifier(request.national_id),
+                    source="staff",
+                    identifier_metadata={},
+                )
+            )
     if "date_of_birth" in updates:
         patient.date_of_birth = parse_date(request.date_of_birth)
     if "sex" in updates:

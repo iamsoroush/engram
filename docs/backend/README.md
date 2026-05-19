@@ -8,7 +8,7 @@ Backend docs are split between the current prototype and the next backend design
 - [Backend v2 design](v2-design.md): Postgres metadata, MinIO artifacts, tenant scoping, patient-aware sessions and captures, and AI engine processing.
 - [Authentication](auth.md): backend-managed JWT auth, low-friction development login, roles, tenants, and frontend contract.
 - [Storage](storage.md): MinIO development and production object storage requirements.
-- [Fake processing](fake-processing.md): legacy fake organization behavior and the current AI engine placeholder capture processors.
+- [AI processing](ai-processing.md): current AI engine placeholder capture and session processors.
 
 ## Direction
 

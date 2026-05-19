@@ -12,8 +12,8 @@ Celery and Redis provide the background processing boundary. The backend produce
 
 - Capture is never blocked by patient selection.
 - Patient assignment can happen later and can be changed by staff or processing.
-- `organized` means generated/backend organization exists; it does not mean human verified.
-- `verified` means a doctor or assistant reviewed and accepted the organized session.
+- Generated/backend organization routes sessions to unassigned or needs-review queues; it does not mean human verified.
+- `verified` means a doctor or assistant reviewed and accepted the generated session output.
 - Generated placeholder outputs must be clearly marked so they can be replaced by real processing later.
 - Tenant scoping is mandatory in the data model even while development uses one default tenant.
 
@@ -57,7 +57,7 @@ Core fields:
 - `title`
 - `summary`
 - `generated_summary`
-- `organization_source`: `none`, `staff`, `fake-processing`
+- `organization_source`: `none`, `staff`, `ai-engine`
 - `created_by_user_id`
 - `review_started_by_user_id`
 - `verified_by_user_id`
@@ -68,7 +68,7 @@ Session states:
 - `unassigned`: default after upload when no patient is known.
 - `needs_review`: session needs staff attention.
 - `processing`: backend processing is in progress.
-- `organized`: backend processing has organized the session enough to display in organized views.
+- `organized`: legacy backend processing state; new processing routes to `unassigned` or `needs_review`.
 - `reviewing`: doctor/assistant opened it for human verification.
 - `verified`: doctor/assistant reviewed and accepted it.
 - `reopened`: verified session was sent back for changes.
@@ -76,19 +76,18 @@ Session states:
 
 State rules:
 
-- New uploaded sessions without a patient start as `unassigned`.
-- New uploaded sessions with a patient start as `needs_review`.
-- Organization may move a session to `organized`.
+- New uploaded sessions start as `draft` until explicitly saved.
+- Successful processing moves sessions without patients to `unassigned`.
+- Successful processing moves sessions with patients to `needs_review`.
 - Opening a session for review moves it to `reviewing`.
-- Staff verification moves `reviewing` or `organized` to `verified`.
+- Staff verification moves `unassigned`, `needs_review`, `reviewing`, or legacy `organized` to `verified`.
 - Reopen moves `verified` to `reopened`.
 - `organized` must never be treated as clinically verified.
 
 Frontend grouping:
 
 - Unassigned: `unassigned` sessions and sessions with unresolved routing.
-- Needs review: `needs_review`, `reviewing`, `reopened`, and failed sessions requiring staff attention.
-- Organized: `organized` sessions that are generated/backend organized but not verified.
+- Needs review: `needs_review`, `reviewing`, `reopened`, and legacy `organized` sessions requiring staff attention.
 - Reviewed/Verified: `verified` sessions.
 
 ## Captures
@@ -124,7 +123,7 @@ Type metadata:
 
 Generated metadata must include:
 
-- `generated_by`: `ai-engine` for capture processors or `fake-processing` for legacy fake organization.
+- `generated_by`: `ai-engine` for placeholder capture and session processors.
 - `generated_at`
 - `job_id`
 - `confidence`, optional
@@ -140,7 +139,7 @@ Core fields:
 - `tenant_id`
 - `capture_id`, nullable
 - `session_id`, nullable
-- `fake_job_id`, nullable
+- `ai_job_id`, nullable
 - `artifact_kind`: `source`, `transcript`, `ocr_text`, `thumbnail`, `summary`, `normalized_note`, `other`
 - `bucket`
 - `object_key`
@@ -191,7 +190,7 @@ POST  /api/v1/sessions/{session_id}/verify
 POST  /api/v1/sessions/{session_id}/reopen
 GET   /api/v1/sessions/{session_id}/captures
 GET   /api/v1/sessions/{session_id}/artifacts
-GET   /api/v1/sessions/{session_id}/fake-jobs
+GET   /api/v1/sessions/{session_id}/ai-jobs
 ```
 
 Captures:
@@ -203,14 +202,15 @@ PATCH /api/v1/captures/{capture_id}
 POST  /api/v1/captures/{capture_id}/assign-patient
 GET   /api/v1/captures/{capture_id}/file
 GET   /api/v1/captures/{capture_id}/metadata
-POST  /api/v1/captures/{capture_id}/fake-process
+POST  /api/v1/captures/{capture_id}/retry-processing
 ```
 
 Processing:
 
 ```text
-POST /api/v1/sessions/{session_id}/fake-organize
-GET  /api/v1/fake-jobs/{job_id}
+POST /api/v1/sessions/{session_id}/save
+POST /api/v1/sessions/{session_id}/retry-processing
+GET  /api/v1/ai-jobs/{job_id}
 ```
 
 ## Upload Flow

@@ -35,6 +35,7 @@ export function CapturePrimaryButton({
 
 export function StatusBadge({ status }: { status: SessionStatus | "recording" | "paused" | "saved" }) {
   const copy = {
+    draft: "Draft",
     current: "Current session",
     needs_review: "Needs review",
     processing: "Processing",

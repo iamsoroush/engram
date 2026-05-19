@@ -1,4 +1,4 @@
-"""add fake job succeeded status
+"""add AI job succeeded status
 
 Revision ID: 20260514165000
 Revises: 20260514152000
@@ -16,7 +16,7 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE fake_job_status ADD VALUE IF NOT EXISTS 'succeeded'")
+    op.execute("ALTER TYPE ai_job_status ADD VALUE IF NOT EXISTS 'succeeded'")
 
 
 def downgrade() -> None:

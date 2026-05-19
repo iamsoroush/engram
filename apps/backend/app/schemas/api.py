@@ -7,6 +7,7 @@ class PatientWrite(BaseModel):
     display_name: str = Field(alias="displayName")
     legal_first_name: str | None = Field(default=None, alias="legalFirstName")
     legal_last_name: str | None = Field(default=None, alias="legalLastName")
+    national_id: str | None = Field(default=None, alias="nationalId")
     date_of_birth: str | None = Field(default=None, alias="dateOfBirth")
     sex: str | None = None
     phone: str | None = None
@@ -20,6 +21,7 @@ class PatientPatch(BaseModel):
     display_name: str | None = Field(default=None, alias="displayName")
     legal_first_name: str | None = Field(default=None, alias="legalFirstName")
     legal_last_name: str | None = Field(default=None, alias="legalLastName")
+    national_id: str | None = Field(default=None, alias="nationalId")
     date_of_birth: str | None = Field(default=None, alias="dateOfBirth")
     sex: str | None = None
     phone: str | None = None
@@ -42,7 +44,14 @@ class SessionUpdate(BaseModel):
     title: str | None = None
     summary: str | None = None
     generated_summary: str | None = Field(default=None, alias="generatedSummary")
+    extracted_metadata: dict[str, Any] | None = Field(default=None, alias="extractedMetadata")
     status: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class SessionSaveRequest(BaseModel):
+    report_template_key: str | None = Field(default=None, alias="reportTemplateKey")
 
     model_config = {"populate_by_name": True}
 

@@ -62,6 +62,7 @@ class PatientUserLinkStatus(str, enum.Enum):
 
 
 class SessionStatus(str, enum.Enum):
+    draft = "draft"
     unassigned = "unassigned"
     needs_review = "needs_review"
     processing = "processing"
@@ -75,7 +76,7 @@ class SessionStatus(str, enum.Enum):
 class OrganizationSource(str, enum.Enum):
     none = "none"
     staff = "staff"
-    fake_processing = "fake-processing"
+    ai_engine = "ai-engine"
 
 
 class CaptureType(str, enum.Enum):
@@ -102,7 +103,7 @@ class ArtifactKind(str, enum.Enum):
     other = "other"
 
 
-class FakeJobStatus(str, enum.Enum):
+class AiJobStatus(str, enum.Enum):
     queued = "queued"
     running = "running"
     succeeded = "succeeded"
@@ -110,7 +111,7 @@ class FakeJobStatus(str, enum.Enum):
     failed = "failed"
 
 
-class FakeJobType(str, enum.Enum):
+class AiJobType(str, enum.Enum):
     capture_process = "capture_process"
     audio_capture_process = "audio_capture_process"
     text_capture_process = "text_capture_process"
@@ -267,6 +268,9 @@ class Session(Base):
     title: Mapped[str | None] = mapped_column(String(240))
     summary: Mapped[str | None] = mapped_column(Text)
     generated_summary: Mapped[str | None] = mapped_column(Text)
+    generated_report: Mapped[str | None] = mapped_column(Text)
+    extracted_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    report_template_key: Mapped[str | None] = mapped_column(String(120))
     organization_source: Mapped[OrganizationSource] = mapped_column(
         pg_enum(OrganizationSource, "organization_source"), nullable=False, default=OrganizationSource.none
     )
@@ -314,22 +318,22 @@ class Capture(Base):
     )
 
 
-class FakeJob(Base):
-    __tablename__ = "fake_jobs"
+class AiJob(Base):
+    __tablename__ = "ai_jobs"
     __table_args__ = (
-        Index("ix_fake_jobs_tenant_id_status_created_at", "tenant_id", "status", "created_at"),
-        Index("ix_fake_jobs_tenant_id_session_id", "tenant_id", "session_id"),
+        Index("ix_ai_jobs_tenant_id_status_created_at", "tenant_id", "status", "created_at"),
+        Index("ix_ai_jobs_tenant_id_session_id", "tenant_id", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"))
     capture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"))
-    job_type: Mapped[FakeJobType] = mapped_column(pg_enum(FakeJobType, "fake_job_type"), nullable=False)
-    status: Mapped[FakeJobStatus] = mapped_column(
-        pg_enum(FakeJobStatus, "fake_job_status"), nullable=False, default=FakeJobStatus.queued
+    job_type: Mapped[AiJobType] = mapped_column(pg_enum(AiJobType, "ai_job_type"), nullable=False)
+    status: Mapped[AiJobStatus] = mapped_column(
+        pg_enum(AiJobStatus, "ai_job_status"), nullable=False, default=AiJobStatus.queued
     )
-    generated_by: Mapped[str] = mapped_column(String(80), nullable=False, default="fake-processing")
+    generated_by: Mapped[str] = mapped_column(String(80), nullable=False, default="ai-engine")
     input_artifact_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     result_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text)
@@ -351,7 +355,7 @@ class Artifact(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     capture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"))
     session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"))
-    fake_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fake_jobs.id", ondelete="SET NULL"))
+    ai_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("ai_jobs.id", ondelete="SET NULL"))
     artifact_kind: Mapped[ArtifactKind] = mapped_column(pg_enum(ArtifactKind, "artifact_kind"), nullable=False)
     bucket: Mapped[str] = mapped_column(String(120), nullable=False)
     object_key: Mapped[str] = mapped_column(String(1024), nullable=False)

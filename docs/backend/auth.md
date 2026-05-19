@@ -100,7 +100,7 @@ Every tenant-owned query must be scoped by the authenticated `tenant_id`.
 
 Staff permissions:
 
-- `doctor`: capture, create patients, assign patients, review, fake-process, verify, reopen.
+- `doctor`: capture, create patients, assign patients, review, retry processing, verify, reopen.
 - `assistant`: same as doctor for v2 unless later restricted.
 - `admin`: tenant/user administration plus read access to operational data.
 - `patient`: future patient portal persona only; no staff capture/review permissions.

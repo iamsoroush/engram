@@ -17,9 +17,6 @@ from app.models import (
     Capture,
     CaptureStatus,
     CaptureType,
-    FakeJob,
-    FakeJobStatus,
-    FakeJobType,
     OrganizationSource,
     Patient,
     Session,
@@ -34,17 +31,6 @@ def utc_now() -> datetime:
 
 def object_key_for_source(tenant_id: uuid.UUID, session_id: uuid.UUID, capture_id: uuid.UUID, artifact_id: uuid.UUID) -> str:
     return f"tenants/{tenant_id}/sessions/{session_id}/captures/{capture_id}/source/{artifact_id}"
-
-
-def object_key_for_generated(
-    tenant_id: uuid.UUID,
-    session_id: uuid.UUID,
-    artifact_id: uuid.UUID,
-    capture_id: uuid.UUID | None = None,
-) -> str:
-    if capture_id:
-        return f"tenants/{tenant_id}/sessions/{session_id}/captures/{capture_id}/generated/{artifact_id}"
-    return f"tenants/{tenant_id}/sessions/{session_id}/generated/{artifact_id}"
 
 
 def validate_wav_pcm_16k_mono(content: bytes) -> None:
@@ -97,6 +83,9 @@ def session_payload(session: Session) -> dict[str, Any]:
         "title": session.title,
         "summary": session.summary,
         "generatedSummary": session.generated_summary,
+        "generatedReport": session.generated_report,
+        "extractedMetadata": session.extracted_metadata or {},
+        "reportTemplateKey": session.report_template_key,
         "organizationSource": session.organization_source.value,
         "createdAt": session.created_at.isoformat() if session.created_at else None,
         "updatedAt": session.updated_at.isoformat() if session.updated_at else None,
@@ -151,16 +140,26 @@ def ensure_session(
 ) -> Session:
     if session_id:
         try:
-            return get_session_for_tenant(db, principal.tenant_id, uuid.UUID(session_id))
+            session = get_session_for_tenant(db, principal.tenant_id, uuid.UUID(session_id))
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session_id") from exc
+        if session.status not in {SessionStatus.draft, SessionStatus.processing}:
+            session.status = SessionStatus.draft
+            session.organization_source = OrganizationSource.none
+            session.extracted_metadata = {
+                **(session.extracted_metadata or {}),
+                "generated_output_stale": True,
+                "stale_reason": "A capture was added after the last processed output.",
+                "stale_at": utc_now().isoformat(),
+            }
+        return session
 
     session = Session(
         tenant_id=principal.tenant_id,
         patient_id=None,
-        status=SessionStatus.unassigned,
+        status=SessionStatus.draft,
         title=f"Session {captured_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        summary="Captured successfully. Ready to organize when there is time.",
+        summary="Draft session. Save when ready to generate report output.",
         organization_source=OrganizationSource.none,
         created_by_user_id=principal.user_id,
         captured_at=captured_at,
@@ -188,6 +187,7 @@ async def upload_source_capture(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported capture type") from exc
 
+    content = await file.read()
     existing = db.execute(
         select(Capture).where(
             Capture.tenant_id == principal.tenant_id,
@@ -197,10 +197,13 @@ async def upload_source_capture(
     ).scalar_one_or_none()
     if existing is not None:
         artifact = db.get(Artifact, existing.source_artifact_id) if existing.source_artifact_id else None
+        if artifact is None or artifact.byte_size == 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Existing capture file is empty. Retake photo")
         session = get_session_for_tenant(db, principal.tenant_id, existing.session_id)
         return {"session": session_payload(session), "item": capture_payload(existing, artifact)}
 
-    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Capture file is empty")
     if capture_type == CaptureType.audio:
         validate_wav_pcm_16k_mono(content)
     byte_size = len(content)
@@ -285,8 +288,6 @@ async def upload_source_capture(
         if patient_uuid and session.patient_id is None:
             session.patient_id = patient_uuid
         session.updated_at = utc_now()
-        if session.patient_id:
-            session.status = SessionStatus.needs_review
 
         audit(
             db,
@@ -312,138 +313,6 @@ async def upload_source_capture(
         if object_key is not None:
             try:
                 object_store.delete_object(object_key)
-            except Exception:
-                pass
-        raise
-
-
-def create_generated_artifact(
-    db: DbSession,
-    *,
-    object_store: ObjectStore,
-    principal: CurrentPrincipal,
-    session_id: str,
-    content: bytes,
-    artifact_kind: ArtifactKind,
-    mime_type: str,
-    generated_by: str,
-    fake_job: FakeJob | None = None,
-    capture_id: uuid.UUID | None = None,
-) -> Artifact:
-    try:
-        session = get_session_for_tenant(db, principal.tenant_id, uuid.UUID(session_id))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session_id") from exc
-
-    checksum = hashlib.sha256(content).hexdigest()
-    object_key: str | None = None
-    try:
-        artifact = Artifact(
-            tenant_id=principal.tenant_id,
-            capture_id=capture_id,
-            session_id=session.id,
-            fake_job_id=fake_job.id if fake_job else None,
-            artifact_kind=artifact_kind,
-            bucket=object_store.bucket,
-            object_key="pending",
-            mime_type=mime_type,
-            byte_size=len(content),
-            checksum_sha256=checksum,
-            generated_by=generated_by,
-            created_by_user_id=principal.user_id,
-        )
-        db.add(artifact)
-        db.flush()
-        object_key = object_key_for_generated(principal.tenant_id, session.id, artifact.id, capture_id)
-        object_store.put_object(
-            object_key=object_key,
-            data=io.BytesIO(content),
-            length=len(content),
-            content_type=mime_type,
-            metadata={
-                "tenant-id": str(principal.tenant_id),
-                "session-id": str(session.id),
-                "artifact-id": str(artifact.id),
-                "checksum-sha256": checksum,
-                "generated-by": generated_by,
-            },
-        )
-        artifact.object_key = object_key
-        return artifact
-    except Exception:
-        if object_key is not None:
-            try:
-                object_store.delete_object(object_key)
-            except Exception:
-                pass
-        raise
-
-
-def fake_organize_session(
-    db: DbSession,
-    *,
-    object_store: ObjectStore,
-    principal: CurrentPrincipal,
-    session_id: str,
-) -> dict[str, Any]:
-    try:
-        session = get_session_for_tenant(db, principal.tenant_id, uuid.UUID(session_id))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session_id") from exc
-
-    artifact: Artifact | None = None
-    try:
-        job = FakeJob(
-            tenant_id=principal.tenant_id,
-            session_id=session.id,
-            job_type=FakeJobType.session_organize,
-            status=FakeJobStatus.running,
-            generated_by="fake-processing",
-            input_artifact_ids=[],
-            result_metadata={},
-            created_by_user_id=principal.user_id,
-            started_at=utc_now(),
-        )
-        db.add(job)
-        db.flush()
-
-        summary = "Reviewed and organized into the clinical record."
-        artifact = create_generated_artifact(
-            db,
-            object_store=object_store,
-            principal=principal,
-            session_id=str(session.id),
-            content=summary.encode("utf-8"),
-            artifact_kind=ArtifactKind.summary,
-            mime_type="text/plain; charset=utf-8",
-            generated_by="fake-processing",
-            fake_job=job,
-        )
-        job.status = FakeJobStatus.completed
-        job.completed_at = utc_now()
-        job.result_metadata = {"summary_artifact_id": str(artifact.id)}
-        session.status = SessionStatus.organized
-        session.generated_summary = summary
-        session.organization_source = OrganizationSource.fake_processing
-        session.updated_at = utc_now()
-        audit(
-            db,
-            tenant_id=principal.tenant_id,
-            actor_user_id=principal.user_id,
-            action="fake_processing.complete",
-            target_type="session",
-            target_id=session.id,
-            details={"fake_job_id": str(job.id), "artifact_id": str(artifact.id)},
-        )
-        db.commit()
-        db.refresh(session)
-        db.refresh(artifact)
-        return {"session": session_payload(session), "artifact": artifact_payload(artifact), "fakeJobId": str(job.id)}
-    except Exception:
-        db.rollback()
-        if artifact is not None and artifact.object_key != "pending":
-            try:
-                object_store.delete_object(artifact.object_key)
             except Exception:
                 pass
         raise

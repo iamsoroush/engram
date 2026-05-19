@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import Artifact, Capture, FakeJob, OrganizationSource, Patient, Session, SessionStatus
-from app.schemas.api import AssignPatientRequest, SessionCreate, SessionUpdate
+from app.models import Artifact, Capture, AiJob, OrganizationSource, Patient, Session, SessionStatus
+from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 
 
@@ -45,7 +45,7 @@ def create_session(db: DbSession, principal: CurrentPrincipal, request: SessionC
     session = Session(
         tenant_id=principal.tenant_id,
         patient_id=patient_id,
-        status=SessionStatus.needs_review if patient_id else SessionStatus.unassigned,
+        status=SessionStatus.draft,
         title=request.title,
         summary=request.summary,
         organization_source=OrganizationSource.none,
@@ -66,6 +66,40 @@ def create_session(db: DbSession, principal: CurrentPrincipal, request: SessionC
     db.commit()
     db.refresh(session)
     return session_payload(session)
+
+
+def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionSaveRequest) -> dict[str, Any]:
+    """Promote a draft session and queue session-level report processing."""
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if session.status not in {SessionStatus.draft, SessionStatus.failed, SessionStatus.reopened}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not ready to save")
+
+    capture_exists = db.execute(
+        select(Capture.id).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).limit(1)
+    ).scalar_one_or_none()
+    if capture_exists is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session has no captures")
+
+    from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload
+
+    session.status = SessionStatus.processing
+    session.report_template_key = request.report_template_key or "default"
+    job = create_session_processing_job(db, principal=principal, session=session)
+    audit(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        action="session.save",
+        target_type="session",
+        target_id=session.id,
+        details={"job_id": str(job.id), "report_template_key": session.report_template_key},
+    )
+    db.commit()
+    db.refresh(session)
+    db.refresh(job)
+    dispatch_session_processing_job(db, job)
+    db.refresh(job)
+    return {"session": session_payload(session), "processingJob": ai_job_payload(job)}
 
 
 def list_sessions(
@@ -97,6 +131,8 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
         session.summary = request.summary
     if request.generated_summary is not None:
         session.generated_summary = request.generated_summary
+    if request.extracted_metadata is not None:
+        session.extracted_metadata = request.extracted_metadata
     if request.status is not None:
         try:
             session.status = SessionStatus(request.status)
@@ -166,7 +202,7 @@ def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) ->
 
 def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    if session.status not in {SessionStatus.reviewing, SessionStatus.organized}:
+    if session.status not in {SessionStatus.unassigned, SessionStatus.needs_review, SessionStatus.reviewing, SessionStatus.organized}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not ready to verify")
     session.status = SessionStatus.verified
     session.verified_by_user_id = principal.user_id
@@ -207,10 +243,10 @@ def list_session_artifacts(db: DbSession, principal: CurrentPrincipal, session_i
     return [artifact_payload(artifact) for artifact in artifacts]
 
 
-def list_session_fake_jobs(db: DbSession, principal: CurrentPrincipal, session_id: str) -> list[dict[str, Any]]:
+def list_session_ai_jobs(db: DbSession, principal: CurrentPrincipal, session_id: str) -> list[dict[str, Any]]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
     jobs = db.execute(
-        select(FakeJob).where(FakeJob.tenant_id == principal.tenant_id, FakeJob.session_id == session.id).order_by(FakeJob.created_at)
+        select(AiJob).where(AiJob.tenant_id == principal.tenant_id, AiJob.session_id == session.id).order_by(AiJob.created_at)
     ).scalars()
     return [
         {

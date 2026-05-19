@@ -77,7 +77,7 @@ Postgres artifact rows store:
 - SHA-256 checksum
 - artifact kind
 - tenant ID
-- owning capture/session/fake job
+- owning capture/session/AI job
 - generated marker, when applicable
 - timestamps
 

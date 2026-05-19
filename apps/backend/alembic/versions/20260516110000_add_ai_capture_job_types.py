@@ -16,9 +16,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("ALTER TYPE fake_job_type ADD VALUE IF NOT EXISTS 'audio_capture_process'")
-    op.execute("ALTER TYPE fake_job_type ADD VALUE IF NOT EXISTS 'text_capture_process'")
-    op.execute("ALTER TYPE fake_job_type ADD VALUE IF NOT EXISTS 'image_capture_process'")
+    op.execute("ALTER TYPE ai_job_type ADD VALUE IF NOT EXISTS 'audio_capture_process'")
+    op.execute("ALTER TYPE ai_job_type ADD VALUE IF NOT EXISTS 'text_capture_process'")
+    op.execute("ALTER TYPE ai_job_type ADD VALUE IF NOT EXISTS 'image_capture_process'")
 
 
 def downgrade() -> None:

@@ -6,7 +6,7 @@ This folder is the starting point for future product and engineering work. The a
 
 - [Architecture](architecture.md): product architecture, data flow, storage model, and key principles.
 - [Frontend docs](frontend/README.md): capture-first UX, login, local-first outbox, browser storage, and mobile testing notes.
-- [Backend docs](backend/README.md): current backend, v2 design, auth, storage, and fake processing.
+- [Backend docs](backend/README.md): current backend, v2 design, auth, storage, and AI processing.
 - [Production](production.md): deployment model, volumes, networking, data safety, and operational concerns.
 
 ## Core Principle

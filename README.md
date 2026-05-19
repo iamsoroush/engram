@@ -168,7 +168,7 @@ docker compose -f docker-compose.prod.yml down
 ├── docs
 │   ├── backend
 │   │   ├── auth.md
-│   │   ├── fake-processing.md
+│   │   ├── ai-processing.md
 │   │   ├── storage.md
 │   │   ├── v1-current.md
 │   │   └── v2-design.md
