@@ -69,21 +69,30 @@ def create_session(db: DbSession, principal: CurrentPrincipal, request: SessionC
 
 
 def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionSaveRequest) -> dict[str, Any]:
-    """Promote a draft session and queue session-level report processing."""
+    """Request session-level report processing without enforcing workflow state."""
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    if session.status not in {SessionStatus.draft, SessionStatus.failed, SessionStatus.reopened}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not ready to save")
-
     capture_exists = db.execute(
         select(Capture.id).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).limit(1)
     ).scalar_one_or_none()
     if capture_exists is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session has no captures")
+        session.report_template_key = request.report_template_key or session.report_template_key or "default"
+        audit(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            action="session.process.request_empty",
+            target_type="session",
+            target_id=session.id,
+            details={"report_template_key": session.report_template_key},
+        )
+        db.commit()
+        db.refresh(session)
+        return {"session": session_payload(session), "processingJob": None}
 
     from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload
 
-    session.status = SessionStatus.processing
     session.report_template_key = request.report_template_key or "default"
+    # TODO(ai-integration): Keep this placeholder queue boundary; replace worker output with real progressive AI jobs later.
     job = create_session_processing_job(db, principal=principal, session=session)
     audit(
         db,
@@ -125,14 +134,34 @@ def get_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> 
 
 def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionUpdate) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     if request.title is not None:
         session.title = request.title
     if request.summary is not None:
         session.summary = request.summary
     if request.generated_summary is not None:
         session.generated_summary = request.generated_summary
+    if request.generated_report is not None:
+        session.generated_report = request.generated_report
+    if request.report is not None:
+        body = request.report.get("body")
+        if isinstance(body, str):
+            session.generated_report = body
+        metadata = {**metadata, "progressive_report": request.report}
+    if request.summaries is not None:
+        short = request.summaries.get("short")
+        if isinstance(short, str):
+            session.summary = short
+            session.generated_summary = short
+        metadata = {**metadata, "summaries": request.summaries}
+    if request.findings is not None:
+        metadata = {**metadata, "findings": request.findings}
+    if request.processing_status is not None:
+        metadata = {**metadata, "processing_status": request.processing_status}
     if request.extracted_metadata is not None:
-        session.extracted_metadata = request.extracted_metadata
+        metadata = {**metadata, **request.extracted_metadata}
+    if metadata != (session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}):
+        session.extracted_metadata = metadata
     if request.status is not None:
         try:
             session.status = SessionStatus(request.status)
@@ -202,8 +231,6 @@ def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) ->
 
 def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    if session.status not in {SessionStatus.unassigned, SessionStatus.needs_review, SessionStatus.reviewing, SessionStatus.organized}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not ready to verify")
     session.status = SessionStatus.verified
     session.verified_by_user_id = principal.user_id
     session.verified_at = datetime.now(timezone.utc)
@@ -215,8 +242,6 @@ def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) 
 
 def reopen_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    if session.status != SessionStatus.verified:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only verified sessions can be reopened")
     session.status = SessionStatus.reopened
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.reopen", target_type="session", target_id=session.id)
     db.commit()

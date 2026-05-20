@@ -1,9 +1,9 @@
 import type { CaptureItem } from "./types";
-import { Badge, Card } from "./ui";
+import { Badge } from "./ui";
 
 export function assignmentSourceLabel(source?: string | null) {
   if (source === "staff") return "Assigned by staff";
-  if (source === "ai_engine" || source === "ai-engine") return "Suggested by AI processing";
+  if (source === "ai_engine" || source === "ai-engine") return "Suggested by AI";
   return source ? `Assigned by ${source}` : "";
 }
 
@@ -29,37 +29,6 @@ export function generatedMetadataFor(item: CaptureItem) {
 
 export function isGeneratedMetadata(metadata: Record<string, unknown>) {
   return Boolean(metadata.generated_by || metadata.generatedBy || metadata.ai_job_id || metadata.aiJobId || metadata.artifact_id);
-}
-
-export function captureGeneratedLabel(item: CaptureItem) {
-  if (item.type === "audio" || item.type === "voice") return "Transcription";
-  if (item.type === "photo") return "Caption";
-  return "Decorated text";
-}
-
-export function captureGeneratedFallback(item: CaptureItem) {
-  if (item.status === "saved" || item.status === "syncing" || item.status === "failed") {
-    return "Waiting for safe transfer before processing starts.";
-  }
-  if (item.status === "processing") return "Processing. Placeholder output is expected after about 5 seconds.";
-  if (item.type === "audio" || item.type === "voice") return "Transcript placeholder will appear here.";
-  if (item.type === "photo") return "Caption placeholder will appear here.";
-  return "Decorated text placeholder will appear here.";
-}
-
-export function CaptureGeneratedDetails({ item }: { item: CaptureItem }) {
-  const generated = generatedMetadataFor(item);
-  const text = metadataText(generated.text);
-  const isReady = metadataDisplay(generated.status) === "completed" || Boolean(text);
-  return (
-    <details className={`capture-generated ${isReady ? "" : "processing"}`}>
-      <summary>
-        <span>{captureGeneratedLabel(item)}</span>
-        {isReady ? null : <span className="capture-processing-indicator" aria-label="Processing" />}
-      </summary>
-      <p>{text || captureGeneratedFallback(item)}</p>
-    </details>
-  );
 }
 
 export function CaptureMetadataSummary({ item }: { item: CaptureItem }) {

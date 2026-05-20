@@ -425,6 +425,88 @@ def complete_worker_job(
     return {"job": ai_job_payload(job)}
 
 
+def progress_worker_job(
+    db: DbSession,
+    *,
+    job_id: str,
+    output_key: str,
+    output: dict[str, Any],
+    stage: str | None,
+) -> dict[str, Any]:
+    """Persist partial AI engine output without completing the job."""
+    job = get_job_for_worker(db, job_id)
+    if job.status == AiJobStatus.succeeded:
+        return {"job": ai_job_payload(job)}
+
+    now = utc_now()
+    job.status = AiJobStatus.running
+    job.result_metadata = {
+        **(job.result_metadata or {}),
+        "progress_stage": stage or output_key,
+        "progress_output_key": output_key,
+        "progress_updated_at": now.isoformat(),
+    }
+
+    if job.capture_id is not None:
+        capture = db.execute(
+            select(Capture).where(Capture.id == job.capture_id, Capture.tenant_id == job.tenant_id)
+        ).scalar_one_or_none()
+        if capture is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
+        capture.status = CaptureStatus.processing
+        capture.capture_metadata = {
+            **(capture.capture_metadata or {}),
+            output_key: output,
+            "ai_processing": output,
+        }
+        db.commit()
+        db.refresh(job)
+        return {"job": ai_job_payload(job)}
+
+    if job.session_id is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
+    session = db.execute(
+        select(Session).where(Session.id == job.session_id, Session.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
+
+    extracted_metadata = output.get("extracted_metadata")
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    if isinstance(output.get("summary"), str):
+        session.summary = str(output["summary"])
+        session.generated_summary = str(output["summary"])
+    if isinstance(output.get("report"), str):
+        session.generated_report = str(output["report"])
+    if isinstance(output.get("report_template_key"), str):
+        session.report_template_key = str(output["report_template_key"])
+    if isinstance(extracted_metadata, dict):
+        metadata = {**metadata, **extracted_metadata}
+    incoming_processing_status = (
+        extracted_metadata.get("processing_status")
+        if isinstance(extracted_metadata, dict) and isinstance(extracted_metadata.get("processing_status"), dict)
+        else {}
+    )
+    metadata = {
+        **metadata,
+        "processing_status": {
+            **(metadata.get("processing_status") if isinstance(metadata.get("processing_status"), dict) else {}),
+            **incoming_processing_status,
+            "state": "processing",
+            "stage": stage or output_key,
+            "updated_at": now.isoformat(),
+            "source": "mock-ai-engine",
+        },
+        "generated_output_stale": True,
+    }
+    session.extracted_metadata = metadata
+    session.status = SessionStatus.processing
+    session.updated_at = now
+    db.commit()
+    db.refresh(job)
+    return {"job": ai_job_payload(job)}
+
+
 def normalize_patient_national_id(value: Any) -> str | None:
     """Normalize patient national IDs for deterministic matching."""
     if value is None:

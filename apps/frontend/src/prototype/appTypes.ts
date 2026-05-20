@@ -56,10 +56,15 @@ export type StoredAuthProfile = Pick<AuthSession, "refreshToken" | "user" | "ten
 
 export type ApiFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-export type PatientAssignmentTarget = {
-  patientId: string | null;
-  patientName?: string;
-  source?: "staff" | "ai_engine" | "ai-engine" | string;
+export type PatientSummary = {
+  id: string;
+  displayName: string;
+  nationalId?: string | null;
+};
+
+export type PatientAssignmentDraft = {
+  displayName: string;
+  nationalId?: string;
 };
 
 export type CachedCapture = {
@@ -79,4 +84,15 @@ export type IdMapping = {
   backendId: string;
   tenantId: string;
   createdAt: number;
+};
+
+export type StoredWorkspaceState = {
+  schemaVersion: 1;
+  tenantId?: string;
+  screen: string;
+  activeSession: CaptureSession | null;
+  selectedSessionId: string;
+  assignmentSessionId: string;
+  pendingCaptureKind: CaptureDraft["kind"] | null;
+  updatedAt: number;
 };

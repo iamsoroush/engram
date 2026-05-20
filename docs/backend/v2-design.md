@@ -57,6 +57,9 @@ Core fields:
 - `title`
 - `summary`
 - `generated_summary`
+- `generated_report`
+- `extracted_metadata`
+- derived response contracts: `report`, `summaries`, `findings`, `processingStatus`
 - `organization_source`: `none`, `staff`, `ai-engine`
 - `created_by_user_id`
 - `review_started_by_user_id`
@@ -68,7 +71,7 @@ Session states:
 - `unassigned`: default after upload when no patient is known.
 - `needs_review`: session needs staff attention.
 - `processing`: backend processing is in progress.
-- `organized`: legacy backend processing state; new processing routes to `unassigned` or `needs_review`.
+- `organized`: deprecated backend processing state; new processing routes to `unassigned` or `needs_review`.
 - `reviewing`: doctor/assistant opened it for human verification.
 - `verified`: doctor/assistant reviewed and accepted it.
 - `reopened`: verified session was sent back for changes.
@@ -76,18 +79,28 @@ Session states:
 
 State rules:
 
-- New uploaded sessions start as `draft` until explicitly saved.
+- New uploaded sessions start as `draft` and are immediately reviewable.
+- Captures can be appended in any state; appending a capture updates deterministic mocked progressive session contracts.
+- The explicit save/processing endpoint is a report refresh hook, not a workflow gate.
 - Successful processing moves sessions without patients to `unassigned`.
 - Successful processing moves sessions with patients to `needs_review`.
 - Opening a session for review moves it to `reviewing`.
-- Staff verification moves `unassigned`, `needs_review`, `reviewing`, or legacy `organized` to `verified`.
-- Reopen moves `verified` to `reopened`.
+- Staff verification can move any staff-visible session to `verified`.
+- Reopen can move any staff-visible session to `reopened`.
 - `organized` must never be treated as clinically verified.
+
+Frontend contract rules:
+
+- `report` is the stable report contract, with markdown body, status, source, timestamps, and stale flag.
+- `summaries` is the stable summary contract, with short, clinical, and future patient-history fields.
+- `findings` is a stable list of structured extracted finding rows.
+- `processingStatus` is the stable user-facing processing contract and always includes `canEdit` and `canReview`.
+- MVP migrations may reset local database and object-store data instead of preserving old session payload shapes.
 
 Frontend grouping:
 
 - Unassigned: `unassigned` sessions and sessions with unresolved routing.
-- Needs review: `needs_review`, `reviewing`, `reopened`, and legacy `organized` sessions requiring staff attention.
+- Needs review: `needs_review`, `reviewing`, `reopened`, and deprecated `organized` sessions requiring staff attention.
 - Reviewed/Verified: `verified` sessions.
 
 ## Captures

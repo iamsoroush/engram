@@ -2,66 +2,165 @@
 
 ## Product summary
 
-AesMem is a lightweight clinical capture tool for aesthetics clinics. It helps doctors capture session information quickly using audio, photo, and text without forcing them into a full HIS-like workflow.
+AesMem is an AI-native clinical memory system for aesthetics clinics. It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
+
+The product is designed around real clinical behavior:
+
+- capture first
+- organize later
+- review naturally during downtime
+- never block the user with rigid workflows
+
+---
 
 ## Target users
 
 - Aesthetics doctors
-- Clinic staff involved in clinical documentation
+- Small and medium clinics
+- Clinical assistants involved in documentation
+
+---
 
 ## Core problem
 
-Doctors often capture clinical information using scattered tools such as notes, photos, and voice recordings. This creates friction during the visit and makes later organization difficult.
+Doctors often document visits using scattered tools such as:
+
+- phone photos
+- Apple Notes
+- voice recordings
+- messaging apps
+
+This creates friction during the visit and weak longitudinal memory across sessions.
+
+---
 
 ## Product promise
 
-Make clinical session capture fast, low-friction, and progressively organized.
+Fast capture with progressively organized clinical memory.
 
-## Current product behavior
+---
 
-### Capture-first workflow
+## Core concepts
 
-The user can start capturing information immediately.
+### Patient
+
+The long-term memory container.
+
+A patient includes:
+
+- AI-generated summarized history
+- session timeline
+- quick actions
+- unresolved session indicators
+
+### Session
+
+The primary working object.
+
+A session continuously evolves:
+
+- captures are added
+- AI processing updates the report
+- metadata is extracted
+- summaries improve progressively
+
+Sessions remain accessible in all states.
+
+### Capture
 
 Supported capture types:
 
-- Audio
-- Photo
-- Text
+- audio
+- photo
+- text
 
-The user should not be forced to select or create a patient before capturing.
+Capture must always feel immediate and lightweight.
 
-Each capture can show an expandable generated-text area wherever captures are listed:
+---
 
-- Audio shows transcription.
-- Photo shows a caption.
-- Text shows decorated text.
+## Navigation model
 
-For the current prototype, these fields are placeholder backend outputs. Captures simulate about five seconds of processing before the placeholder text is marked complete.
+Top-left navigation:
 
-### Active session workflow
+- Active Session
+- Patients
+- Search
 
-After the first capture, the system creates or uses an active session.
+Persistent bottom actions:
 
-New captures are attached to the active session by default.
+- Record audio
+- Take photo
+- Write note
 
-The user should be able to understand which session is currently active.
+---
 
-Active sessions are drafts until the user explicitly saves the session. Saving a
-session starts session-level processing. This processing generates a session
-summary, extracted metadata, and a markdown report from a report template. The
-default report template is simple and includes clinic information, patient
-information, and a clinical body section. Future versions may allow clinics to
-customize these templates.
+## Active session workspace
 
-Patient information is treated as special extracted metadata. The session job
-should return patient full name and national ID when they are present, or mark
-them as expected/missing when they are not. These fields must be structured so
-the backend can match them against existing patient records and the frontend can
-warn the user when required patient information is missing.
+The capture screen is also the active session workspace.
 
-Organize shows session cards with full generated summaries. Opening a processed
-card shows the full generated report, editable flexible metadata, patient search
-and creation, patient-information warnings, and an expandable capture list.
-Draft cards open directly in Capture. Generated output is not clinically
-verified until a human verifies it.
+The user captures and reviews in the same surface.
+
+The workspace includes:
+
+- session header
+- clinical report
+- collapsible summary
+- collapsible extracted findings
+- expandable captures
+- contextual quick actions
+
+The report area always exists, even while processing is incomplete.
+
+---
+
+## Session states
+
+States are informative, not blocking.
+
+Example states:
+
+- Capturing
+- Processing
+- Needs review
+- Unassigned
+- Verified
+
+Sessions remain reviewable and editable in all states.
+
+Verification should reduce uncertainty, not gate usability.
+
+---
+
+## Patients screen
+
+The patients screen is the main long-term memory view.
+
+Main sections:
+
+- Patients
+- Unassigned sessions
+
+Patient cards include:
+
+- patient identity
+- summarized history
+- session cards
+- status badges
+- quick actions
+
+Needs-review behavior should appear as lightweight status indicators, not separate workflow queues.
+
+---
+
+## AI behavior
+
+AI progressively generates:
+
+- report drafts
+- summaries
+- extracted findings
+- patient matching suggestions
+
+Raw captures remain available as expandable source material to support trust and review.
+
+Internal AI details should remain mostly hidden unless needed for confidence or recovery.

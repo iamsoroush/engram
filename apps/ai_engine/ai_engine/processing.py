@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from time import sleep
 from typing import Any
 
 import httpx
@@ -37,6 +38,21 @@ def completed_metadata(job: dict[str, Any], capture: dict[str, Any]) -> dict[str
     return {
         "status": "completed",
         "text": placeholder_text_for_capture(capture),
+        "generated_by": "ai-engine",
+        "job_id": job["id"],
+        "job_type": job["jobType"],
+        "generated_at": utc_now().isoformat(),
+        "source_artifact_ids": job.get("inputArtifactIds") or [],
+    }
+
+
+def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any]:
+    """Return deterministic in-progress capture output."""
+    capture_type = capture.get("type")
+    label = "Transcribing" if capture_type == "audio" else "Reading image" if capture_type == "photo" else "Structuring note"
+    return {
+        "status": "processing",
+        "text": f"{label} placeholder output...",
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "job_type": job["jobType"],
@@ -122,12 +138,134 @@ def completed_session_output(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "status": "completed",
         "summary": summary,
-        "extracted_metadata": extracted_metadata,
+        "extracted_metadata": {
+            **extracted_metadata,
+            "progressive_report": {
+                "status": "processed",
+                "format": "markdown",
+                "body": report,
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+            "summaries": {
+                "status": "processed",
+                "short": summary,
+                "clinical": summary,
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+            "findings": mock_findings(captures),
+            "processing_status": {
+                "state": "complete",
+                "label": "Complete",
+                "stage": "complete",
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+        },
         "report": report,
         "report_template_key": report_template.get("key") or session.get("reportTemplateKey") or "default",
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "generated_at": utc_now().isoformat(),
+    }
+
+
+def mock_findings(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return deterministic extracted finding rows for progressive session UX."""
+    source_capture_ids = [str(capture.get("id")) for capture in captures if capture.get("id")]
+    capture_types = [str(capture.get("type")) for capture in captures if capture.get("type")]
+    findings = [
+        {
+            "id": "visit_type",
+            "label": "Visit type",
+            "value": "Mock aesthetics consultation",
+            "category": "clinical",
+            "confidence": 0.82,
+            "sourceCaptureIds": source_capture_ids,
+            "status": "extracted",
+        },
+        {
+            "id": "source_mix",
+            "label": "Source mix",
+            "value": ", ".join(sorted(set(capture_types))) or "capture",
+            "category": "session",
+            "confidence": None,
+            "sourceCaptureIds": source_capture_ids,
+            "status": "observed",
+        },
+    ]
+    if any("botox" in capture_text(capture).lower() for capture in captures):
+        findings.append(
+            {
+                "id": "product",
+                "label": "Product",
+                "value": "Botox",
+                "category": "clinical",
+                "confidence": 0.76,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            }
+        )
+    return findings
+
+
+def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, Any]:
+    """Return deterministic partial session output for one mock processing stage."""
+    session = payload["session"]
+    captures = payload.get("captures") or []
+    captured_text = [capture_text(capture) for capture in captures]
+    source_capture_ids = [str(capture.get("id")) for capture in captures if capture.get("id")]
+    body_source = "\n\n".join(captured_text[:2]) if captured_text else "Mock clinical body is waiting for source capture text."
+    stage_copy = {
+        "transcripts": "Reading source captures and preparing the report surface.",
+        "report": "Drafting the clinical report from available source material.",
+        "findings": "Extracting structured findings from the draft.",
+        "summary": "Condensing the session into a short clinical summary.",
+    }
+    summary = stage_copy.get(stage, "Processing session.")
+    report = (
+        "# Progressive clinical report\n\n"
+        f"## Current stage\n{summary}\n\n"
+        f"## Source material\n{body_source}"
+    )
+    findings = mock_findings(captures) if stage in {"findings", "summary"} else []
+    return {
+        "status": "processing",
+        "summary": summary,
+        "report": report,
+        "report_template_key": session.get("reportTemplateKey") or "default",
+        "extracted_metadata": {
+            "status": "processing",
+            "generated_by": "ai-engine",
+            "job_id": payload["job"]["id"],
+            "job_type": payload["job"]["jobType"],
+            "generated_at": utc_now().isoformat(),
+            "source_capture_ids": source_capture_ids,
+            "progressive_report": {
+                "status": "generating" if stage in {"transcripts", "report"} else "partial",
+                "format": "markdown",
+                "body": report,
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+            "summaries": {
+                "status": "partial",
+                "short": summary,
+                "clinical": summary,
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+            "findings": findings,
+            "processing_status": {
+                "state": "processing",
+                "label": summary,
+                "stage": stage,
+                "detail": f"Mock AI stage: {stage}",
+                "source": "mock-ai-engine",
+                "updated_at": utc_now().isoformat(),
+            },
+        },
     }
 
 
@@ -163,6 +301,13 @@ class BackendClient:
             {"output_key": output_key, "output": output},
         )
 
+    def progress_job(self, job_id: str, *, output_key: str, output: dict[str, Any], stage: str) -> dict[str, Any]:
+        """Submit partial job output to the backend."""
+        return self.post(
+            f"/internal/ai/jobs/{job_id}/progress",
+            {"output_key": output_key, "output": output, "stage": stage},
+        )
+
     def retry_job(self, job_id: str, *, error_message: str, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
         """Record a failed attempt before Celery retries."""
         return self.post(
@@ -188,6 +333,9 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         return
 
     output_key = output_key_for_capture(capture["type"])
+    # TODO(ai-integration): Replace this staged placeholder with real media/text processors.
+    client.progress_job(job_id, output_key=output_key, output=partial_metadata(job, capture), stage="transcript")
+    sleep(settings.mock_stage_delay_seconds)
     client.complete_job(job_id, output_key=output_key, output=completed_metadata(job, capture))
 
 
@@ -198,5 +346,10 @@ def run_session_processing_job(job_id: str, *, celery_task_id: str | None, retry
     job = payload["job"]
     if job.get("status") == "succeeded":
         return
+
+    # TODO(ai-integration): Replace these deterministic stages with real progressive AI session artifacts.
+    for stage in ("transcripts", "report", "findings", "summary"):
+        client.progress_job(job_id, output_key="session_progress", output=session_progress_output(payload, stage), stage=stage)
+        sleep(settings.mock_stage_delay_seconds)
 
     client.complete_job(job_id, output_key="session_outputs", output=completed_session_output(payload))

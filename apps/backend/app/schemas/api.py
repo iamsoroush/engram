@@ -44,6 +44,11 @@ class SessionUpdate(BaseModel):
     title: str | None = None
     summary: str | None = None
     generated_summary: str | None = Field(default=None, alias="generatedSummary")
+    generated_report: str | None = Field(default=None, alias="generatedReport")
+    report: dict[str, Any] | None = None
+    summaries: dict[str, Any] | None = None
+    findings: list[dict[str, Any]] | None = None
+    processing_status: dict[str, Any] | None = Field(default=None, alias="processingStatus")
     extracted_metadata: dict[str, Any] | None = Field(default=None, alias="extractedMetadata")
     status: str | None = None
 
@@ -77,6 +82,12 @@ class AiJobStartRequest(BaseModel):
 class AiJobCompleteRequest(BaseModel):
     output_key: str
     output: dict[str, Any]
+
+
+class AiJobProgressRequest(BaseModel):
+    output_key: str
+    output: dict[str, Any]
+    stage: str | None = None
 
 
 class AiJobErrorRequest(BaseModel):

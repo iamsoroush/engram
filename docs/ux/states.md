@@ -1,9 +1,29 @@
 # UX States
 
+## Session State Badges
+
+Session states are informational badges, not workflow gates.
+
+The frontend maps backend/prototype statuses into six user-facing states:
+
+- `Capturing`
+- `Processing`
+- `Needs review`
+- `Unassigned`
+- `Verified`
+- `Failed`
+
+Sessions remain openable from Patients and Search in all states. Verification and organization states should not control visibility or review access.
+
+`Draft`, `Current session`, and `Reopened` are shown as `Capturing`. `Organized` and `In review` are shown as `Needs review`.
+
+TODO: Replace this compatibility mapping when the backend returns UX-level session states directly.
+
 ## Loading
 
 - Auth bootstrap shows a login-card skeleton while stored credentials refresh.
-- Session review shows a skeleton if opened before a session object is available.
+- Active workspace continuity is restored from a lightweight local snapshot after auth refresh when possible.
+- Historical review loads captures inline if a selected backend session has no capture items yet.
 - Source previews attempt local cache first, then backend file content; missing media falls back to unavailable placeholders.
 
 ## Processing
@@ -14,33 +34,31 @@
   - Audio: `Transcription`
   - Photo: `Caption`
   - Text: `Decorated text`
-- Saving a session changes the session to processing and queues session-level report generation.
-- The frontend schedules a refresh about 5.5 seconds after capture upload or session save.
+- Capture upload updates deterministic mocked session report, summary, findings, and processing-status contracts.
+- Generating a structured report can change the session to processing and start session-level report generation.
+- The frontend schedules a short bounded refresh series after capture upload or structured report generation so mocked asynchronous stages can appear over time.
+- The report area never becomes a full-screen loading state; it keeps the same layout while moving through empty, partial, structured, and verified states.
 
 ## Success
 
 - Local capture persistence shows `Saved on device.`
 - Successful upload shows `Capture safely transferred.`
-- Session save shows `Session processing started.`
+- Structured report generation shows `Structured report is generating.`
 - Session title changes show `Session title updated.`
-- Session verification shows `Session verified.`
-- Session retry shows `Retry started.`
-- Session metadata changes show `Metadata updated.`
-- Patient assignment shows `Session assigned.`, `Capture assigned.`, or clear-state copy.
 
 ## Errors
 
 - Login failures show inline messages.
 - Device storage or audio conversion failures show toasts.
-- Upload, sync, or save failures show `Failed/Retry`.
+- Upload, sync, or save failures show `Failed`.
 - Source preview failures show `Source preview is not available right now.`
 - Backend validation and permission errors are returned by the API; the current frontend mostly reduces these to generic failure toasts.
 
 ## Empty
 
-- Capture empty state says nothing has been captured yet and prompts audio, photo, or note capture.
-- Organize buckets show per-bucket empty copy, such as no draft sessions, no unassigned sessions, or no active processing.
-- Patient search shows `No matching patients.`
+- Active Session with no captures still shows the workspace and empty report surface.
+- Patients shows empty copy for patient-linked sessions and unassigned sessions.
+- Search shows empty copy before a query and when no loaded memory matches.
 - Session review capture list shows `No captures loaded for this session yet.`
 
 ## Offline And Network Failure
@@ -50,6 +68,8 @@
 - The app warns on browser unload while pending captures exist.
 - The outbox retries when the browser comes online and also retries after a delay while pending captures remain.
 - If backend session loading fails, the app keeps local pending sessions visible.
+- The active session, selected historical session, assignment form target, destination chooser, and current report/capture structure are restored from local workspace state when possible.
+- TODO: Replace the local workspace snapshot with tenant-scoped background synchronization when offline/background sync work begins.
 
 ## Permission Denied
 
@@ -61,6 +81,7 @@
 
 - Session title edits can be saved explicitly. If the title input loses focus before saving, the draft title resets.
 - Unsynced captures are the primary protected unsaved state and are covered by the sync banner plus unload warning.
+- Interrupted assignment and capture-destination choices are restored as lightweight UI state after refresh when possible.
 
 ## Known Gaps
 

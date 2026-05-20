@@ -11,6 +11,7 @@ from app.db.session import get_db
 from app.schemas.api import (
     AiJobCompleteRequest,
     AiJobErrorRequest,
+    AiJobProgressRequest,
     AiJobStartRequest,
     AssignPatientRequest,
     CaptureUpdate,
@@ -29,6 +30,7 @@ from app.services.ai_jobs import (
     require_ai_engine_token,
     retry_worker_job,
     start_worker_job,
+    progress_worker_job,
 )
 from app.services.captures import assign_capture_patient, capture_metadata, get_capture, update_capture
 from app.services.capture_storage import (
@@ -155,6 +157,16 @@ def internal_ai_job_complete(
 ) -> dict[str, Any]:
     """Persist successful AI processing output from the worker."""
     return complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
+
+
+@internal_api.post("/ai/jobs/{job_id}/progress")
+def internal_ai_job_progress(
+    job_id: str,
+    request: AiJobProgressRequest,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Persist partial AI processing output from the worker."""
+    return progress_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output, stage=request.stage)
 
 
 @internal_api.post("/ai/jobs/{job_id}/retry")

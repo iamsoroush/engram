@@ -6,7 +6,7 @@ No route of its own. It renders before authenticated staff screens.
 
 ## Purpose
 
-Authenticate a user and establish tenant context before showing Capture or Organize.
+Authenticate a user and establish tenant context before showing staff screens.
 
 ## Primary Actions
 
@@ -39,7 +39,7 @@ Authenticate a user and establish tenant context before showing Capture or Organ
 
 ## Success State
 
-- Successful login navigates to Capture.
+- Successful login navigates to Active Session.
 - Patient preview shows limited-access copy instead of staff tools.
 
 ## Related Workflows

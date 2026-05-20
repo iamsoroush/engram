@@ -6,8 +6,8 @@ Capture clinical material quickly without selecting a patient first.
 
 ## Entry Point
 
-- Staff login lands on Capture.
-- Staff can also use bottom capture actions from Organize.
+- Staff login lands on Active Session.
+- Staff can also use bottom capture actions from Patients or Search.
 
 ## Current Behavior
 
@@ -18,21 +18,27 @@ Capture clinical material quickly without selecting a patient first.
    - Text opens a note sheet.
 3. User saves to the current session or, for photo/text, saves into a new session.
 4. The browser standardizes the draft, creates a local capture/session, and writes it to IndexedDB.
-5. The active Capture screen shows the local session immediately.
+5. The Active Session screen shows the local session immediately.
 6. The outbox uploads captures one at a time when authenticated and online.
 7. Uploaded captures are merged with backend IDs and local preview cache is retained.
-8. Capture cards show source preview, status badge, and expandable generated text area.
+8. The draft report updates immediately with capture-specific progressive lines:
+   - audio: inline playback plus `Audio capture added, processing...`
+   - photo: inline photo preview plus `Photo added, analyzing...`
+   - text: formatted note content
+9. Draft capture cards show source preview/playback, status badge, and generated text.
+10. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
 
 ## System Behavior
 
 - Local storage happens before network upload.
+- Active workspace state is stored locally as a lightweight continuity snapshot.
 - First backend upload creates a draft session when no backend session is supplied.
-- Backend stores the source artifact and queues a capture processing job.
-- The frontend refreshes captures after a short delay to pick up generated placeholder output.
+- Backend stores the source artifact and starts capture processing.
+- The frontend keeps mocked progressive draft output visible while scheduled capture polling picks up generated placeholder output.
 
 ## Involved Screens
 
-- [Capture](../screens/capture.md)
+- [Active Session](../screens/capture.md)
 - [Session review](../screens/session-review.md), when reviewing captured material later
 
 ## Important States
@@ -42,7 +48,7 @@ Capture clinical material quickly without selecting a patient first.
 - `Processing`
 - `Processed`
 - `Needs review`
-- `Failed/Retry`
+- `Failed`
 
 ## Related APIs
 
@@ -55,3 +61,4 @@ Capture clinical material quickly without selecting a patient first.
 
 - Audio recording requires browser media support and may need HTTPS on phones.
 - Failed sync has generic recovery copy and no per-capture detailed error.
+- Workspace continuity is a local UX snapshot, not yet a production offline sync model.

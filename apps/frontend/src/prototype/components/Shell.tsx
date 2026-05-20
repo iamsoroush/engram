@@ -9,7 +9,6 @@ export function Shell({
   children,
   onNavigate,
   onCapture,
-  topAction,
   auth,
   onLogout,
 }: {
@@ -17,7 +16,6 @@ export function Shell({
   children: React.ReactNode;
   onNavigate: (screen: Screen) => void;
   onCapture: (kind: CaptureDraft["kind"]) => void;
-  topAction?: React.ReactNode;
   auth: AuthSession;
   onLogout: () => void;
 }) {
@@ -35,16 +33,18 @@ export function Shell({
       <header className="topbar">
         <div className="topbar-left">
           <nav className="top-nav" aria-label="Primary">
-            <button className={screen === "capture" ? "active" : ""} onClick={() => onNavigate("capture")} type="button">
-              Capture
+            <button className={screen === "active-session" ? "active" : ""} onClick={() => onNavigate("active-session")} type="button">
+              Active Session
             </button>
-            <button className={screen !== "capture" ? "active" : ""} onClick={() => onNavigate("organize")} type="button">
-              Organize
+            <button className={screen === "patients" ? "active" : ""} onClick={() => onNavigate("patients")} type="button">
+              Patients
+            </button>
+            <button className={screen === "search" ? "active" : ""} onClick={() => onNavigate("search")} type="button">
+              Search
             </button>
           </nav>
         </div>
         <strong className="topbar-brand">AesMem</strong>
-        {topAction ? <div className="topbar-center-action">{topAction}</div> : null}
         <details className="user-menu">
           <summary>
             <span className="user-menu-avatar" aria-hidden="true">{initials}</span>

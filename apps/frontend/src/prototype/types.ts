@@ -1,4 +1,4 @@
-export type Screen = "capture" | "organize" | "session" | "today" | "saved" | "inbox" | "match" | "record";
+export type Screen = "active-session" | "patients" | "search" | "session" | "today" | "saved" | "inbox" | "match" | "record";
 
 export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "processed" | "needsReview" | "failed";
 
@@ -37,6 +37,53 @@ export type CaptureItem = {
   metadata?: Record<string, unknown>;
 };
 
+export type SessionReport = {
+  schemaVersion?: string;
+  status: "empty" | "partial" | "generating" | "processed" | "verified" | "failed" | string;
+  format: "markdown" | "text" | string;
+  title: string;
+  body: string;
+  sections?: Array<{ id: string; title: string; body: string }>;
+  source?: string | null;
+  generatedAt?: string | null;
+  updatedAt?: string | null;
+  isStale?: boolean;
+};
+
+export type SessionFinding = {
+  id: string;
+  label: string;
+  value: string;
+  category?: string;
+  confidence?: number | null;
+  sourceCaptureIds?: string[];
+  status?: string;
+};
+
+export type SessionSummaries = {
+  schemaVersion?: string;
+  status: "empty" | "partial" | "processed" | "verified" | string;
+  short: string;
+  clinical?: string | null;
+  patientHistory?: string | null;
+  source?: string | null;
+  generatedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type SessionProcessingStatus = {
+  schemaVersion?: string;
+  state: "idle" | "queued" | "processing" | "complete" | "failed" | string;
+  label: string;
+  detail?: string | null;
+  stage?: string | null;
+  progress?: number | null;
+  canEdit: boolean;
+  canReview: boolean;
+  source?: string | null;
+  updatedAt?: string | null;
+};
+
 export type CaptureSession = {
   id: string;
   label: string;
@@ -52,26 +99,10 @@ export type CaptureSession = {
   assignmentSource?: "staff" | "ai_engine" | "ai-engine" | string | null;
   organizationSource?: string | null;
   generatedReport?: string | null;
+  report?: SessionReport;
+  findings?: SessionFinding[];
+  summaries?: SessionSummaries;
+  processingStatus?: SessionProcessingStatus;
   extractedMetadata?: Record<string, unknown>;
   reportTemplateKey?: string | null;
-};
-
-export type Patient = {
-  id: string;
-  displayName: string;
-  nationalId?: string | null;
-  dateOfBirth?: string | null;
-  phone?: string | null;
-  email?: string | null;
-};
-
-export type PatientCandidate = {
-  id: string;
-  name: string;
-  age: number;
-  gender: string;
-  lastVisit: string;
-  hint: string;
-  confidence: "High" | "Possible" | "Low";
-  duplicateWarning?: boolean;
 };

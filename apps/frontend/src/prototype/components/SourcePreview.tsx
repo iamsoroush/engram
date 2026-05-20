@@ -95,7 +95,7 @@ export function CaptureRawPreview({
 }
 
 /**
- * Full source viewer used from both the live capture feed and review dialog.
+ * Full source viewer used from both the live capture feed and inline review workspace.
  * It mirrors CaptureRawPreview's source resolution but exposes metadata too.
  */
 export function SourcePreviewDialog({

@@ -2,37 +2,35 @@
 
 ## User Goal
 
-Review processed session material, inspect generated output, edit flexible metadata, associate the session or individual captures with a patient, and verify the session.
+Review processed session material, inspect generated output, assign patients, verify sessions, and continue capture without a modal-heavy workflow.
 
 ## Entry Point
 
-- Organize processed-session row opens the session review dialog.
-- Organize draft row opens the Capture screen directly.
+- Patients or Search processed-session row opens inline historical review.
+- Patients or Search draft row opens the Active Session screen directly.
 
 ## Current Behavior
 
-1. User opens Organize.
-2. Sessions are grouped by status buckets.
+1. User opens Patients or Search.
+2. Sessions appear in patient-centered memory sections, unassigned work, or local search results.
 3. User selects a session row.
-4. Session review dialog opens with title editing, status, full summary, verify/add-capture actions, generated outputs, editable metadata, patient assignment, and expandable captures.
+4. Inline historical review opens with title editing, status, report, summary, extracted findings, add-capture action, and expandable captures.
 5. If captures are not already loaded and the session is a backend session, the frontend loads them.
-6. User searches existing patients as they type or creates a patient with name and optional national ID.
-7. User can assign the selected patient to the full session.
-8. User can assign or override the selected patient on individual captures.
-9. User verifies an eligible unassigned or needs-review session.
-10. Session and capture cards update in place and success toasts confirm assignment or verification.
+6. User can assign a patient from a compact inline form on a Patients card or from the Session Workspace search sheet.
+7. User can verify the session from the Patients card or Session Workspace.
+8. User can add capture material, which returns the same session to the Active Session workspace and refreshes progressive output.
+9. Session and capture cards remain reviewable in place.
 
 ## System Behavior
 
-- Session assignment can also fill unassigned captures in that session.
-- Assigning a patient to an unassigned session moves it to needs review on the backend.
-- Adding capture material to processed output returns the session to draft and marks generated output stale until the next save/process cycle.
-- Patient search matches names, contact details, and identifiers within the current tenant.
-- Patient creation writes searchable identifiers for national ID, phone, email, display name, and birth date when provided.
+- Adding capture material to processed output keeps the same session usable and updates deterministic progressive contracts.
+- Assignment uses live patient search/autocomplete by name or national ID in the Session Workspace, creates a lightweight patient record inline with optional national ID when needed, and assigns the session.
+- Verification updates the session state without blocking later review or capture.
 
 ## Involved Screens
 
-- [Organize](../screens/organize.md)
+- [Patients](../screens/patients.md)
+- [Search](../screens/search.md)
 - [Session review](../screens/session-review.md)
 
 ## Important States
@@ -41,8 +39,7 @@ Review processed session material, inspect generated output, edit flexible metad
 - Needs review
 - Verified
 - Stale generated output
-- Missing patient information
-- No matching patients
+- Missing patient information, when present in existing metadata
 
 ## Related APIs
 
@@ -52,10 +49,9 @@ Review processed session material, inspect generated output, edit flexible metad
 - `POST /api/v1/patients`
 - `POST /api/v1/sessions/{session_id}/assign-patient`
 - `POST /api/v1/sessions/{session_id}/verify`
-- `POST /api/v1/captures/{capture_id}/assign-patient`
 
 ## Known Gaps
 
-- Patient creation in the current UI only captures display name and national ID.
+- Duplicate patient review is still lightweight; the current UI prefers fast assignment over modal-heavy matching.
 - Processed-output versions are retained in metadata, but there is not yet a dedicated UI for restoring a previous version.
-- There is no dedicated patient record screen in the active app route, despite some unused prototype screen files.
+- Patient cards are still derived from loaded sessions rather than a dedicated patient timeline API.

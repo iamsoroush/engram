@@ -65,7 +65,7 @@ Postgres is the source of truth for tenants, users, patients, sessions, captures
 
 Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks. `apps/ai_engine` consumes those tasks and owns the current placeholder implementations for audio capture processing, text capture processing, and image capture processing.
 
-The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state through protected backend internal endpoints at `/internal/ai/jobs/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service. Real AI logic will replace the placeholder job bodies later.
+The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and partial progress through protected backend internal endpoints at `/internal/ai/jobs/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service. Real AI logic will replace the placeholder job bodies later.
 
 ## Data Flow
 
@@ -79,28 +79,28 @@ The AI engine does not import backend modules or connect directly to Postgres. I
 6. Backend stores the source file and session metadata.
 7. Backend creates a queued capture processing job and dispatches it to Celery.
 8. Browser removes the pending outbox entry and keeps a synced local cache copy.
-9. Celery marks the job `running`, writes placeholder generated metadata, and marks it `succeeded`; failures are retried and then marked `failed`.
+9. Celery marks the job `running`, writes partial placeholder generated metadata, waits briefly, and marks it `succeeded`; failures are retried and then marked `failed`.
 10. UI updates to backend-safe states such as `Draft`, `Unassigned`, `Needs review`, `Processing`, or `Verified`.
 
-### Session Save And Report Generation
+### Session Evolution And Report Generation
 
-The first uploaded capture creates a backend session in `draft` status. Draft
-sessions are durable but are not considered saved for reporting. When the user
-explicitly saves a session, the backend marks it `processing`, creates a queued
-session job, and dispatches it to the AI engine.
+The first uploaded capture creates a durable backend session in `draft` status.
+Sessions are continuously evolving objects: new captures can be added in any
+state, and every session response includes frontend-stable `report`,
+`summaries`, `findings`, and `processingStatus` contracts.
 
-The session job receives the session, captures, and a report template. The
-current default template is markdown and has clinic information, patient
-information, and body sections. The placeholder worker returns a generated
-summary, structured extracted metadata, and a markdown report. Patient full name
-and national ID are special extracted metadata fields because the backend can use
-them for patient matching and the frontend can warn when they are missing.
+Phase 2.1 uses deterministic mocked session evolution instead of real AI. Capture
+upload updates the same session with a partial report draft, summary, extracted
+finding rows, and processing status metadata. Phase 2.2 adds fake async worker
+stages that post partial transcript, report, finding, and summary updates over
+time.
 
-When the session job succeeds, the backend stores the generated outputs on the
-session and moves it to `needs_review` if a patient is assigned, otherwise
-`unassigned`. Previous generated output snapshots are retained in session
-metadata so future UI can fall back to earlier processed versions. Generated
-output is still not clinically verified until staff verifies the session.
+The explicit session processing endpoint remains available as a report refresh
+hook, but it is no longer the workflow gate that makes a session reviewable or
+editable. When placeholder session processing succeeds, the backend stores
+generated outputs and moves the session to `needs_review` if a patient is
+assigned, otherwise `unassigned`. Generated output is still not clinically
+verified until staff verifies the session.
 
 ### Review
 
@@ -144,17 +144,19 @@ Patient selection is still not required before capture. Uploaded sessions and ca
 
 Backend v2 separates organization from human verification:
 
-- `draft`: captures exist, but the user has not explicitly saved the session.
+- `draft`: captures exist and the session is still in active capture/progressive draft state.
 - `unassigned`: no patient is known yet.
 - `needs_review`: staff attention is needed.
 - `processing`: AI processing is running.
-- `organized`: legacy backend/AI organized state; new processing should route to `unassigned` or `needs_review`.
+- `organized`: deprecated backend/AI organized state; new processing should route to `unassigned` or `needs_review`.
 - `reviewing`: staff opened it for verification.
 - `verified`: doctor or assistant reviewed and accepted it.
-- `reopened`: verified session was sent back for changes.
+- `reopened`: session was sent back for changes.
 - `failed`: processing failed; sources remain durable.
 
 The frontend must not imply that generated content is clinically verified before `verified`.
+Sessions remain editable and reviewable in every state; states describe attention
+or confidence rather than access.
 
 ## Design Decisions
 

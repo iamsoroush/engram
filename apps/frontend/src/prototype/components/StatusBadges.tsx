@@ -1,6 +1,6 @@
 import type { CaptureStatus, CaptureItem, SessionStatus } from "../types";
 import { Badge } from "../ui";
-import { sessionStatusCopy, sessionStatusTone, statusCopy, statusTone } from "../status";
+import { sessionUxState, sessionUxStateCopy, sessionUxStateTone, statusCopy, statusTone } from "../status";
 
 export function StatusBadge({ status }: { status?: CaptureItem["status"] }) {
   const normalized: CaptureStatus =
@@ -16,5 +16,6 @@ export function StatusBadge({ status }: { status?: CaptureItem["status"] }) {
 }
 
 export function SessionStatusBadge({ status }: { status: SessionStatus }) {
-  return <Badge tone={sessionStatusTone[status]}>{sessionStatusCopy[status]}</Badge>;
+  const state = sessionUxState(status);
+  return <Badge tone={sessionUxStateTone[state]}>{sessionUxStateCopy[state]}</Badge>;
 }

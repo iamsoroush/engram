@@ -22,6 +22,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
+from app.services.session_contracts import build_session_contracts, evolve_session_after_capture
 from app.storage import ObjectStore
 
 
@@ -75,6 +76,7 @@ def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid
 
 
 def session_payload(session: Session) -> dict[str, Any]:
+    contracts = build_session_contracts(session)
     return {
         "id": str(session.id),
         "tenantId": str(session.tenant_id),
@@ -90,6 +92,7 @@ def session_payload(session: Session) -> dict[str, Any]:
         "createdAt": session.created_at.isoformat() if session.created_at else None,
         "updatedAt": session.updated_at.isoformat() if session.updated_at else None,
         "capturedAt": session.captured_at.isoformat() if session.captured_at else None,
+        **contracts,
     }
 
 
@@ -143,15 +146,6 @@ def ensure_session(
             session = get_session_for_tenant(db, principal.tenant_id, uuid.UUID(session_id))
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session_id") from exc
-        if session.status not in {SessionStatus.draft, SessionStatus.processing}:
-            session.status = SessionStatus.draft
-            session.organization_source = OrganizationSource.none
-            session.extracted_metadata = {
-                **(session.extracted_metadata or {}),
-                "generated_output_stale": True,
-                "stale_reason": "A capture was added after the last processed output.",
-                "stale_at": utc_now().isoformat(),
-            }
         return session
 
     session = Session(
@@ -159,7 +153,7 @@ def ensure_session(
         patient_id=None,
         status=SessionStatus.draft,
         title=f"Session {captured_at.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        summary="Draft session. Save when ready to generate report output.",
+        summary="Ready for progressive capture.",
         organization_source=OrganizationSource.none,
         created_by_user_id=principal.user_id,
         captured_at=captured_at,
@@ -287,6 +281,7 @@ async def upload_source_capture(
         ai_job = create_capture_processing_job(db, principal=principal, capture=capture)
         if patient_uuid and session.patient_id is None:
             session.patient_id = patient_uuid
+        evolve_session_after_capture(session, capture_type=capture_type, captured_at=captured_at, capture_id=capture.id)
         session.updated_at = utc_now()
 
         audit(

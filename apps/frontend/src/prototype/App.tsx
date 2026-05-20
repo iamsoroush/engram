@@ -1,10 +1,9 @@
 import React from "react";
 import { flushSync } from "react-dom";
-import type { ApiFetch, AuthSession, CaptureDraft, Persona, PatientAssignmentTarget } from "./appTypes";
+import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, Persona } from "./appTypes";
 import type { CaptureSession, CaptureStatus, Screen } from "./types";
-import { Button, Card, Dialog, Skeleton, Toast } from "./ui";
+import { Button, Card, Skeleton, Toast } from "./ui";
 import {
-  assignCapturePatient,
   assignSessionPatient,
   createPatient,
   fetchSessionCaptures,
@@ -14,11 +13,9 @@ import {
   logoutSession,
   refreshAuthToken,
   resolveCaptureFileUrl,
-  retrySessionProcessing,
   saveSessionForProcessing,
   searchPatients,
   storeBackendMappings,
-  updateSessionMetadata,
   updateSessionTitle,
   uploadCapture,
   verifySession,
@@ -35,7 +32,7 @@ import {
 } from "./captureModel";
 import { LoginGate, PatientPreviewGate } from "./components/AuthGates";
 import { AudioDialog, CaptureScreen, PhotoPreviewDialog, TextCaptureSheet } from "./components/CaptureWorkflow";
-import { OrganizeHome, SessionDetail } from "./components/OrganizeWorkflow";
+import { CaptureDestinationPanel, PatientsHome, SearchHome } from "./components/MemoryScreens";
 import { Shell, SyncSafetyBanner } from "./components/Shell";
 import {
   bindPendingSession,
@@ -48,20 +45,38 @@ import {
   saveSyncedCaptureCache,
   updatePendingCapture,
 } from "./storage";
+import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "./workspaceStorage";
+
+const MOCK_PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600];
 
 function screenFromLocation(): Screen {
-  if (typeof window !== "undefined" && window.location.hash === "#organize") return "organize";
-  return "capture";
+  if (typeof window === "undefined") return "active-session";
+  const hash = window.location.hash.replace(/^#/, "");
+  // Migration compatibility: old shared links to #organize now land on Patients.
+  if (hash === "patients" || hash === "organize") return "patients";
+  if (hash === "search") return "search";
+  return "active-session";
 }
 
 function replaceScreenLocation(screen: Screen) {
-  if (typeof window === "undefined" || (screen !== "capture" && screen !== "organize")) return;
+  if (typeof window === "undefined" || !["active-session", "patients", "search"].includes(screen)) return;
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${screen}`);
 }
 
 function shouldOpenCameraDirectly() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+}
+
+function resolveRestoredSession(storedSession: CaptureSession | null, sessions: CaptureSession[]) {
+  if (!storedSession) return null;
+  const current = sessions.find((session) => session.id === storedSession.id);
+  if (!current) return storedSession;
+  return {
+    ...storedSession,
+    ...current,
+    items: current.items.length ? current.items : storedSession.items,
+  };
 }
 
 export function App() {
@@ -81,21 +96,36 @@ export function App() {
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [initialPhotoFile, setInitialPhotoFile] = React.useState<File | null>(null);
   const [audioOpen, setAudioOpen] = React.useState(false);
+  const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
   const mobilePhotoInputRef = React.useRef<HTMLInputElement | null>(null);
   const processingRef = React.useRef(false);
+  const workspaceHydratedRef = React.useRef(false);
+  const activeSessionRef = React.useRef<CaptureSession | null>(null);
+  const sessionsRef = React.useRef<CaptureSession[]>([]);
+
+  React.useEffect(() => {
+    activeSessionRef.current = activeSession;
+  }, [activeSession]);
+
+  React.useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const navigateScreen = React.useCallback((nextScreen: Screen) => {
     setScreen(nextScreen);
     replaceScreenLocation(nextScreen);
-    if (nextScreen === "capture") setSelectedSessionId("");
+    if (nextScreen === "active-session") setSelectedSessionId("");
   }, []);
 
   const clearAuth = React.useCallback(() => {
     authRef.current = null;
     setAuth(null);
     clearStoredAuthProfile();
+    clearWorkspaceState();
     processingRef.current = false;
+    workspaceHydratedRef.current = false;
   }, []);
 
   const commitAuth = React.useCallback((nextAuth: AuthSession) => {
@@ -177,6 +207,19 @@ export function App() {
   }, [auth]);
 
   React.useEffect(() => {
+    if (!auth || !workspaceHydratedRef.current) return;
+    // TODO(offline-sync): Move workspace continuity into a tenant-scoped durable sync/cache layer when background sync lands.
+    persistWorkspaceState({
+      tenantId: auth.tenant.id,
+      screen,
+      activeSession,
+      selectedSessionId,
+      assignmentSessionId,
+      pendingCaptureKind,
+    });
+  }, [activeSession, assignmentSessionId, auth, pendingCaptureKind, screen, selectedSessionId]);
+
+  React.useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(""), 2200);
     return () => window.clearTimeout(timer);
@@ -184,8 +227,9 @@ export function App() {
 
   React.useEffect(() => {
     const syncScreenFromLocation = () => {
-      setScreen(screenFromLocation());
-      if (screenFromLocation() === "capture") setSelectedSessionId("");
+      const nextScreen = screenFromLocation();
+      setScreen(nextScreen);
+      if (nextScreen === "active-session") setSelectedSessionId("");
     };
     window.addEventListener("hashchange", syncScreenFromLocation);
     return () => window.removeEventListener("hashchange", syncScreenFromLocation);
@@ -213,6 +257,21 @@ export function App() {
     return pending;
   };
 
+  const loadBackendSessions = React.useCallback(async () => {
+    const loadedSessions = await fetchSessions(apiFetch);
+    try {
+      const patients = await searchPatients(apiFetch, "");
+      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.displayName]));
+      return loadedSessions.map((session) =>
+        session.patientId && !session.patientName
+          ? { ...session, patientName: patientNameById.get(session.patientId) || `Patient ${session.patientId.slice(0, 8)}` }
+          : session,
+      );
+    } catch {
+      return loadedSessions;
+    }
+  }, [apiFetch]);
+
   /**
    * Rebuilds the visible session list from durable local captures first, then
    * layers backend sessions on top so offline work is never hidden by a failed load.
@@ -220,12 +279,31 @@ export function App() {
   const hydrateFromStorage = async () => {
     const pending = await refreshPendingCount();
     const localSessions = sessionsFromPending(pending);
+    const workspace = loadWorkspaceState(authRef.current?.tenant.id);
     try {
-      const loadedSessions = await fetchSessions(apiFetch);
-      setSessions([...localSessions, ...loadedSessions.filter((session) => !localSessions.some((local) => local.id === session.id))]);
+      const loadedSessions = await loadBackendSessions();
+      const nextSessions = [...localSessions, ...loadedSessions.filter((session) => !localSessions.some((local) => local.id === session.id))];
+      setSessions(nextSessions);
+      if (workspace) {
+        setActiveSession(resolveRestoredSession(workspace.activeSession, nextSessions));
+        setSelectedSessionId(workspace.selectedSessionId);
+        setAssignmentSessionId(workspace.assignmentSessionId);
+        setPendingCaptureKind(workspace.pendingCaptureKind);
+        if (!window.location.hash && ["active-session", "patients", "search"].includes(workspace.screen)) {
+          navigateScreen(workspace.screen as Screen);
+        }
+      }
     } catch {
       setSessions(localSessions);
+      if (workspace) {
+        setActiveSession(resolveRestoredSession(workspace.activeSession, localSessions));
+        setSelectedSessionId(workspace.selectedSessionId);
+        setAssignmentSessionId(workspace.assignmentSessionId);
+        setPendingCaptureKind(workspace.pendingCaptureKind);
+      }
       setToast("Backend is not reachable. Captures stay on this device.");
+    } finally {
+      workspaceHydratedRef.current = true;
     }
     if (pending.length) window.setTimeout(() => void processOutbox(), 0);
   };
@@ -265,7 +343,8 @@ export function App() {
 
   const scheduleCaptureProcessingRefresh = React.useCallback(
     (sessionId: string) => {
-      window.setTimeout(() => {
+      MOCK_PROCESSING_REFRESH_DELAYS.forEach((delay) => {
+        window.setTimeout(() => {
         void fetchSessionCaptures(apiFetch, sessionId)
           .then((captures) => {
             setSessions((current) =>
@@ -278,15 +357,17 @@ export function App() {
             );
           })
           .catch(() => undefined);
-      }, 5500);
+        }, delay);
+      });
     },
     [apiFetch],
   );
 
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
-      window.setTimeout(() => {
-        void fetchSessions(apiFetch)
+      MOCK_PROCESSING_REFRESH_DELAYS.forEach((delay) => {
+        window.setTimeout(() => {
+        void loadBackendSessions()
           .then((loadedSessions) => {
             const updated = loadedSessions.find((session) => session.id === sessionId);
             if (!updated) return;
@@ -296,9 +377,10 @@ export function App() {
             setActiveSession((current) => (current?.id === sessionId ? { ...updated, items: current.items } : current));
           })
           .catch(() => undefined);
-      }, 5500);
+        }, delay);
+      });
     },
-    [apiFetch],
+    [loadBackendSessions],
   );
 
   /**
@@ -330,11 +412,12 @@ export function App() {
         try {
           const uploadDraft = await standardizeCaptureDraft(capture.draft);
           const result = await uploadCapture(apiFetch, capture.clientCaptureId, uploadDraft, backendSessionId, capture.intoNew);
-          const stillPendingForLocalSession = pending.some(
+          const remainingPending = await loadPendingCaptures();
+          const stillPendingForLocalSession = remainingPending.some(
             (pendingCapture) => pendingCapture.id !== capture.id && pendingCapture.localSessionId === capture.localSessionId,
           );
-          const currentSession = sessions.find((session) => session.id === capture.localSessionId || session.id === result.session.id);
-          const mergedSession = mergeSessionItems(currentSession || activeSession, result.session, capture.item.id);
+          const currentSession = sessionsRef.current.find((session) => session.id === capture.localSessionId || session.id === result.session.id);
+          const mergedSession = mergeSessionItems(currentSession || activeSessionRef.current, result.session, capture.item.id);
           upsertSession(mergedSession, stillPendingForLocalSession ? [] : [capture.localSessionId]);
           setActiveSession((current) =>
             current?.id === capture.localSessionId || current?.id === result.session.id
@@ -344,31 +427,29 @@ export function App() {
           setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
           setToast("Capture safely transferred.");
           if (result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
-          void (async () => {
-            try {
-              await updatePendingCapture(capture.id, (current) => ({
-                ...normalizePendingCapture(current),
-                draft: uploadDraft,
-                tenantId: activeTenantId,
-                backendSessionId: result.session.id,
-                backendCaptureId: result.item.id,
-                sessionId: result.session.id,
-                intoNew: false,
-              }));
-              await storeBackendMappings(capture, result, activeTenantId);
-              await saveSyncedCaptureCache(result.item, uploadDraft.file);
-              await bindPendingSession(capture.localSessionId, result.session.id);
-              await removePendingCapture(capture.id);
-              await refreshPendingCount();
-            } catch {
-              setToast("Capture transferred. Local cleanup will retry.");
-            }
-          })();
+          try {
+            await updatePendingCapture(capture.id, (current) => ({
+              ...normalizePendingCapture(current),
+              draft: uploadDraft,
+              tenantId: activeTenantId,
+              backendSessionId: result.session.id,
+              backendCaptureId: result.item.id,
+              sessionId: result.session.id,
+              intoNew: false,
+            }));
+            await storeBackendMappings(capture, result, activeTenantId);
+            await saveSyncedCaptureCache(result.item, uploadDraft.file);
+            await bindPendingSession(capture.localSessionId, result.session.id);
+            await removePendingCapture(capture.id);
+            await refreshPendingCount();
+          } catch {
+            setToast("Capture transferred. Local cleanup will retry.");
+          }
         } catch {
           await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
           updateItemStatus(capture.item.id, "failed");
           await rebuildLocalPendingSessions();
-          setToast("Failed/Retry");
+          setToast("Failed.");
           continue;
         }
       }
@@ -402,7 +483,7 @@ export function App() {
       flushSync(() => {
         setActiveSession(visibleSession);
         upsertSession(visibleSession);
-        navigateScreen("capture");
+        navigateScreen("active-session");
       });
     } catch {
       setToast(draft.kind === "audio" ? "Audio conversion failed." : "Device storage failed.");
@@ -415,7 +496,7 @@ export function App() {
     if (authRef.current?.tenant.id) void processOutbox();
   };
 
-  const beginCapture = (kind: CaptureDraft["kind"]) => {
+  const openCaptureDialog = (kind: CaptureDraft["kind"]) => {
     if (kind === "note") setTextOpen(true);
     if (kind === "photo") {
       setInitialPhotoFile(null);
@@ -429,8 +510,30 @@ export function App() {
     if (kind === "audio") setAudioOpen(true);
   };
 
+  const beginCapture = (kind: CaptureDraft["kind"]) => {
+    if (screen !== "active-session") {
+      setPendingCaptureKind(kind);
+      return;
+    }
+    openCaptureDialog(kind);
+  };
+
+  const chooseCaptureDestination = (kind: CaptureDraft["kind"], sessionId?: string) => {
+    setPendingCaptureKind(null);
+    if (!sessionId) {
+      setActiveSession(null);
+      navigateScreen("active-session");
+      openCaptureDialog(kind);
+      return;
+    }
+    continueMemorySession(sessionId);
+    openCaptureDialog(kind);
+  };
+
   const startNewSession = () => {
     setActiveSession(null);
+    setSelectedSessionId("");
+    navigateScreen("active-session");
     setToast("New session ready.");
   };
 
@@ -439,9 +542,12 @@ export function App() {
     processingRef.current = false;
     setSyncing(false);
     await clearLocalCaptureData();
+    clearWorkspaceState();
     setActiveSession(null);
     setSessions([]);
     setSelectedSessionId("");
+    setAssignmentSessionId("");
+    setPendingCaptureKind(null);
     setPendingCount(0);
     setToast("Local pending captures cleared.");
     void hydrateFromStorage();
@@ -454,54 +560,12 @@ export function App() {
         current.map((session) => (session.id === sessionId ? { ...processingSession, items: session.items } : session)),
       );
       setActiveSession((current) => (current?.id === sessionId ? { ...processingSession, items: current.items } : current));
-      setToast("Session processing started.");
+      setToast("Structured report is generating.");
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
-      setToast("Failed/Retry");
+      setToast("Failed.");
     }
   };
-
-  const retrySession = async (sessionId: string) => {
-    try {
-      const processing = await retrySessionProcessing(apiFetch, sessionId);
-      setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? { ...processing, items: session.items } : session)),
-      );
-      setActiveSession((current) => (current?.id === sessionId ? { ...processing, items: current.items } : current));
-      setToast("Retry started.");
-      scheduleSessionProcessingRefresh(sessionId);
-    } catch {
-      setToast("Failed/Retry");
-    }
-  };
-
-  const verifySelectedSession = React.useCallback(
-    async (sessionId: string) => {
-      try {
-        const verified = await verifySession(apiFetch, sessionId);
-        setSessions((current) =>
-          current.map((session) => (session.id === sessionId ? { ...session, ...verified, items: session.items } : session)),
-        );
-        setActiveSession((current) => (current?.id === sessionId ? { ...current, ...verified, items: current.items } : current));
-        setToast("Session verified.");
-      } catch {
-        setToast("Could not verify session.");
-      }
-    },
-    [apiFetch],
-  );
-
-  const saveSessionMetadata = React.useCallback(
-    async (sessionId: string, extractedMetadata: Record<string, unknown>) => {
-      const updated = await updateSessionMetadata(apiFetch, sessionId, extractedMetadata);
-      setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
-      );
-      setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
-      setToast("Metadata updated.");
-    },
-    [apiFetch],
-  );
 
   const renameSession = React.useCallback(
     async (sessionId: string, title: string) => {
@@ -533,64 +597,77 @@ export function App() {
     [apiFetch],
   );
 
+  const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
+    setSessions((current) =>
+      current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
+    );
+    setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
+  }, []);
+
+  const ensurePatient = React.useCallback(
+    async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
+      const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
+      const normalizedName = draft.displayName.trim().toLowerCase();
+      const normalizedNationalId = draft.nationalId?.trim();
+      const exact = matches.find(
+        (patient) =>
+          patient.displayName.trim().toLowerCase() === normalizedName ||
+          (normalizedNationalId && patient.nationalId === normalizedNationalId),
+      );
+      return exact || createPatient(apiFetch, draft);
+    },
+    [apiFetch],
+  );
+
+  const assignPatientToSession = React.useCallback(
+    async (sessionId: string, draft: PatientAssignmentDraft) => {
+      if (isLocalSessionId(sessionId)) {
+        setToast("Sync before assigning.");
+        return;
+      }
+      try {
+        const patient = await ensurePatient(draft);
+        const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id);
+        const enriched = {
+          ...assigned,
+          patientId: patient.id,
+          patientName: patient.displayName,
+          assignmentSource: "staff",
+        };
+        applySessionUpdate(sessionId, enriched);
+        setAssignmentSessionId("");
+        setToast("Patient assigned.");
+      } catch {
+        setToast("Could not assign patient.");
+      }
+    },
+    [apiFetch, applySessionUpdate, ensurePatient],
+  );
+
+  const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
+
+  const verifySelectedSession = React.useCallback(
+    async (sessionId: string) => {
+      if (isLocalSessionId(sessionId)) {
+        setToast("Sync before verifying.");
+        return;
+      }
+      try {
+        const verified = await verifySession(apiFetch, sessionId);
+        applySessionUpdate(sessionId, verified);
+        setToast("Session verified.");
+      } catch {
+        setToast("Could not verify session.");
+      }
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const loadCapturesForSession = React.useCallback(
     async (sessionId: string) => {
       const captures = await fetchSessionCaptures(apiFetch, sessionId);
       setSessions((current) => current.map((session) => (session.id === sessionId ? { ...session, items: captures } : session)));
       return captures;
-    },
-    [apiFetch],
-  );
-
-  const searchPatientOptions = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
-
-  const createPatientOption = React.useCallback(
-    (displayName: string, nationalId?: string) => createPatient(apiFetch, displayName, nationalId),
-    [apiFetch],
-  );
-
-  const assignPatientToSession = React.useCallback(
-    async (sessionId: string, target: PatientAssignmentTarget) => {
-      const assigned = await assignSessionPatient(apiFetch, sessionId, target);
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === sessionId
-            ? {
-                ...session,
-                ...assigned,
-                items: session.items.map((item) =>
-                  item.patientId
-                    ? item
-                    : {
-                        ...item,
-                        patientId: target.patientId,
-                        patientName: target.patientName,
-                        assignmentSource: target.source || "staff",
-                      },
-                ),
-              }
-            : session,
-        ),
-      );
-      setToast(target.patientId ? "Session assigned." : "Session patient cleared.");
-    },
-    [apiFetch],
-  );
-
-  const assignPatientToCapture = React.useCallback(
-    async (sessionId: string, captureId: string, target: PatientAssignmentTarget) => {
-      const assigned = await assignCapturePatient(apiFetch, captureId, target);
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === sessionId
-            ? {
-                ...session,
-                items: session.items.map((item) => (item.id === captureId ? { ...item, ...assigned } : item)),
-              }
-            : session,
-        ),
-      );
-      setToast(target.patientId ? "Capture assigned." : "Capture patient cleared.");
     },
     [apiFetch],
   );
@@ -601,7 +678,7 @@ export function App() {
     setAuthError("");
     try {
       commitAuth(await loginWithPersona(persona));
-      navigateScreen("capture");
+      navigateScreen("active-session");
     } catch {
       setAuthError("Could not sign in with that persona.");
     }
@@ -611,7 +688,7 @@ export function App() {
     setAuthError("");
     try {
       commitAuth(await loginWithPassword(email, password));
-      navigateScreen("capture");
+      navigateScreen("active-session");
     } catch {
       setAuthError("Invalid email or password.");
     }
@@ -624,7 +701,7 @@ export function App() {
     setActiveSession(null);
     setSelectedSessionId("");
     setSyncing(false);
-    navigateScreen("capture");
+    navigateScreen("active-session");
     void refreshPendingCount();
     if (currentAuth) {
       try {
@@ -637,11 +714,11 @@ export function App() {
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
 
-  const openOrganizeSession = (sessionId: string) => {
+  const openMemorySession = (sessionId: string) => {
     const session = sessions.find((candidate) => candidate.id === sessionId);
     if (session?.status === "draft") {
       setSelectedSessionId("");
-      navigateScreen("capture");
+      navigateScreen("active-session");
       if (session.items.length || isLocalSessionId(session.id)) {
         setActiveSession(session);
         return;
@@ -651,11 +728,93 @@ export function App() {
         .then((captures) => {
           setActiveSession((current) => (current?.id === session.id ? { ...session, items: captures } : current));
         })
-        .catch(() => setToast("Could not load captures for this draft."));
+        .catch(() => setToast("Could not load captures for this session."));
       return;
     }
     setSelectedSessionId(sessionId);
-    navigateScreen("organize");
+    if (session && !session.items.length && !isLocalSessionId(session.id)) {
+      void loadCapturesForSession(session.id).catch(() => setToast("Could not load captures for this session."));
+    }
+  };
+
+  const continueMemorySession = (sessionId: string) => {
+    const session = sessions.find((candidate) => candidate.id === sessionId);
+    if (!session) return;
+    const nextSession: CaptureSession = {
+      ...session,
+      reviewReason: session.reviewReason || "Current capture destination",
+    };
+    setSelectedSessionId("");
+    setActiveSession(nextSession);
+    navigateScreen("active-session");
+    if (!session.items.length && !isLocalSessionId(session.id)) {
+      void loadCapturesForSession(session.id)
+        .then((captures) => {
+          setActiveSession((current) => (current?.id === session.id ? { ...nextSession, items: captures } : current));
+        })
+        .catch(() => setToast("Could not load captures for this session."));
+    }
+    setToast("Add the next capture to this session.");
+  };
+
+  const renderCurrentScreen = () => {
+    if (screen !== "active-session" && selectedSession) {
+      return (
+        <CaptureScreen
+          activeSession={selectedSession}
+          mode="historical"
+          onBack={() => setSelectedSessionId("")}
+          onResumeCapture={() => {
+            setActiveSession({
+              ...selectedSession,
+              reviewReason: "Current capture destination",
+            });
+            setSelectedSessionId("");
+            navigateScreen("active-session");
+            setToast("Add the next capture to this session.");
+          }}
+          assignmentOpen={assignmentSessionId === selectedSession.id}
+          onAssignPatient={assignPatientToSession}
+          onSearchPatients={searchPatientsForAssignment}
+          onCloseAssignment={() => setAssignmentSessionId((current) => (current === selectedSession.id ? "" : selectedSession.id))}
+          onSaveSession={saveSession}
+          onResolveFile={resolveSourceFile}
+          onStartNewSession={activeSession?.items.length ? startNewSession : undefined}
+          onUpdateTitle={renameSession}
+          onVerifySession={verifySelectedSession}
+        />
+      );
+    }
+    if (screen === "active-session") {
+      return (
+        <CaptureScreen
+          activeSession={activeSession}
+          assignmentOpen={Boolean(activeSession && assignmentSessionId === activeSession.id)}
+          onAssignPatient={assignPatientToSession}
+          onSearchPatients={searchPatientsForAssignment}
+          onCloseAssignment={() => {
+            if (!activeSession) return;
+            setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));
+          }}
+          onSaveSession={saveSession}
+          onResolveFile={resolveSourceFile}
+          onUpdateTitle={renameSession}
+          onVerifySession={verifySelectedSession}
+        />
+      );
+    }
+    if (screen === "search") {
+      return <SearchHome onOpenSession={openMemorySession} sessions={sessions} />;
+    }
+    return (
+      <PatientsHome
+        onAssignPatient={assignPatientToSession}
+        onContinueSession={continueMemorySession}
+        onOpenSession={openMemorySession}
+        onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
+        sessions={sessions}
+      />
+    );
   };
 
   if (!authReady) {
@@ -692,13 +851,6 @@ export function App() {
         onLogout={handleLogout}
         screen={screen}
         onNavigate={navigateScreen}
-        topAction={
-          screen === "capture" && activeSession?.items.length ? (
-            <Button className="top-new-session-button" onClick={startNewSession} size="sm" type="button" variant="secondary">
-              + New session
-            </Button>
-          ) : null
-        }
       >
         <SyncSafetyBanner
           pendingCount={pendingCount}
@@ -706,57 +858,19 @@ export function App() {
           onClearLocal={() => void clearLocalPendingCaptures()}
           onRetry={() => void processOutbox()}
         />
-        {screen === "capture" ? (
-          <CaptureScreen
+        {pendingCaptureKind ? (
+          <CaptureDestinationPanel
             activeSession={activeSession}
-            onCapture={beginCapture}
-            onSaveSession={saveSession}
-            onResolveFile={resolveSourceFile}
-            onUpdateTitle={renameSession}
-          />
-        ) : (
-          <OrganizeHome
-            onOpenSession={openOrganizeSession}
+            kind={pendingCaptureKind}
+            selectedSession={selectedSession}
             sessions={sessions}
+            onCancel={() => setPendingCaptureKind(null)}
+            onNewSession={() => chooseCaptureDestination(pendingCaptureKind)}
+            onUseSession={(sessionId) => chooseCaptureDestination(pendingCaptureKind, sessionId)}
           />
-        )}
+        ) : null}
+        {renderCurrentScreen()}
       </Shell>
-      <Dialog
-        className="session-dialog"
-        onClose={() => setSelectedSessionId("")}
-        open={screen !== "capture" && Boolean(selectedSession)}
-        title={selectedSession?.label || "Session review"}
-      >
-        <SessionDetail
-          onAssignCapturePatient={assignPatientToCapture}
-          onAssignSessionPatient={assignPatientToSession}
-          onCreatePatient={createPatientOption}
-          onLoadCaptures={loadCapturesForSession}
-          onRetrySession={retrySession}
-          onSaveSession={saveSession}
-          onSaveMetadata={saveSessionMetadata}
-          onAddCapture={() => {
-            if (!selectedSession) return;
-            setActiveSession({
-              ...selectedSession,
-              status: "draft",
-              reviewReason: "Draft changed after generated output",
-              extractedMetadata: {
-                ...(selectedSession.extractedMetadata || {}),
-                generated_output_stale: true,
-              },
-            });
-            setSelectedSessionId("");
-            navigateScreen("capture");
-            setToast("Add the next capture to this draft.");
-          }}
-          onResolveFile={resolveSourceFile}
-          onSearchPatients={searchPatientOptions}
-          onUpdateTitle={renameSession}
-          onVerifySession={verifySelectedSession}
-          session={selectedSession}
-        />
-      </Dialog>
       <TextCaptureSheet
         onClose={() => setTextOpen(false)}
         onSave={async (draft, intoNew) => {

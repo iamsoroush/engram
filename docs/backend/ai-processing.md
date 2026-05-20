@@ -6,6 +6,11 @@ AI processing originally gave the frontend realistic backend behavior for proces
 
 This is non-production scaffolding. Keep it isolated so real jobs can replace it later.
 
+Phase 2.1 added deterministic mocked session evolution directly to the backend
+session model. Phase 2.2 adds fake asynchronous worker stages from
+`apps/ai_engine`: jobs post partial progress before final completion so the
+frontend can render visible evolution over time.
+
 ## Scope
 
 Included:
@@ -14,6 +19,7 @@ Included:
 - Queued capture-processing job rows created at upload time.
 - Celery/Redis dispatch for capture jobs.
 - Retry-aware job status updates and worker logging.
+- Internal progress callback for partial mock outputs.
 - Placeholder transcriptions for audio.
 - Placeholder captions for photos.
 - Placeholder decorated text for notes.
@@ -58,7 +64,7 @@ Every generated output includes:
 
 ## Capture Processing
 
-On capture upload, the backend creates a queued capture processing job row and marks the capture `processing`. The backend dispatches the job to Celery after the source object and metadata transaction is durable. The worker marks the job `running`, writes placeholder generated-text metadata from the capture type, and then marks the capture `processed` with the relevant completed field:
+On capture upload, the backend creates a queued capture processing job row and marks the capture `processing`. The backend dispatches the job to Celery after the source object and metadata transaction is durable. The worker marks the job `running`, posts one deterministic partial generated-text update, waits for the configured mock delay, and then marks the capture `processed` with the relevant completed field:
 
 - `metadata.transcript` for audio.
 - `metadata.caption` for photo.
@@ -78,8 +84,10 @@ Behavior:
 2. Create a AI job row.
 3. Mark capture `processing`.
 4. Dispatch a Celery task.
-5. Worker writes type-specific placeholder output.
-6. Worker marks capture `processed` and job `succeeded`.
+5. Worker writes type-specific partial placeholder output.
+6. Worker waits briefly to simulate asynchronous processing.
+7. Worker writes type-specific completed placeholder output.
+8. Worker marks capture `processed` and job `succeeded`.
 
 If a worker attempt raises, the task logs the exception, stores the last error in the job row, returns the job to `queued`, and lets Celery retry. After retries are exhausted, the job is marked `failed` and the capture moves to `needs_attention`.
 
@@ -103,7 +111,7 @@ Note output:
 - Decorated text preserves the captured note until real text decoration exists.
 - Extraction status becomes `completed`.
 
-## Session Save And Organization
+## Session Evolution And Organization
 
 Endpoint:
 
@@ -111,18 +119,24 @@ Endpoint:
 POST /api/v1/sessions/{session_id}/save
 ```
 
-Behavior:
+Report refresh behavior:
 
 1. Validate auth, tenant access, and session access.
-2. Require at least one capture.
-3. Mark session `processing`.
-4. Create a queued `session_organize` job row.
-5. Dispatch `ai_engine.process_session` through Celery.
-6. Worker receives the session, captures, and report template.
-7. Worker generates a session summary, structured extracted metadata, and markdown report.
+2. Accept the request in any session state.
+3. If captures exist, mark session `processing`, create a queued `session_organize` job row, and dispatch `ai_engine.process_session` through Celery.
+4. Worker receives the session, captures, and report template.
+5. Worker posts deterministic partial updates for transcript review, report drafting, finding extraction, and summary generation.
+6. Backend stores each partial update on the session while keeping the same stable report layout.
+7. Worker writes completed placeholder session summary, structured extracted metadata, and markdown report.
 8. Backend stores the generated outputs on the session.
 9. Backend sets `organization_source=ai-engine`.
 10. Backend moves the session to `needs_review` when a patient is assigned, otherwise `unassigned`.
+
+Capture upload behavior:
+
+1. Attach the capture to the requested session regardless of session state.
+2. Update deterministic mocked progressive session contracts.
+3. Preserve review/edit access; state changes are informative and do not gate use.
 
 The session is not verified. A doctor or assistant must still use the review flow to move it to `verified`.
 
@@ -138,6 +152,16 @@ Processing job rows are exposed through AI job routes:
 GET /api/v1/ai-jobs/{job_id}
 GET /api/v1/sessions/{session_id}/ai-jobs
 ```
+
+Internal worker progress endpoint:
+
+```text
+POST /internal/ai/jobs/{job_id}/progress
+```
+
+This endpoint is intentionally small: it persists partial capture metadata or
+partial session contracts and leaves the job `running`. Real AI integration can
+replace the mock stage producer without changing the frontend contract shape.
 
 ## AI Patient Assignment
 
