@@ -3,6 +3,10 @@ from datetime import datetime
 from typing import Any
 
 from app.models import CaptureType, OrganizationSource, Session, SessionStatus
+from app.services.reporting import (
+    DEFAULT_REPORT_TEMPLATE_KEY,
+    structured_report_from_markdown_body,
+)
 
 SESSION_CONTRACT_VERSION = "2026-05-19.phase2.1"
 
@@ -29,14 +33,13 @@ def _report_body(session: Session, metadata: dict[str, Any]) -> str:
     count = _capture_count(metadata)
     if count:
         return (
-            "# Progressive clinical report\n\n"
+            "# Draft report\n\n"
             f"- {count} source capture{'s' if count != 1 else ''} attached.\n"
-            "- Report text is a deterministic placeholder until the AI pipeline is connected.\n"
-            "- Review source captures below before using this clinically."
+            "- Generate a structured report when you are ready to organize the full session."
         )
     return (
-        "# Progressive clinical report\n\n"
-        "This report surface is ready before captures arrive. Content will evolve as captures are added."
+        "# Draft report\n\n"
+        "This report surface is ready before captures arrive."
     )
 
 
@@ -180,12 +183,12 @@ def evolve_session_after_capture(
         source_capture_ids = [*source_capture_ids, str(capture_id)]
 
     # TODO(ai-integration): Replace this deterministic contract update with real progressive AI report/finding writes.
-    summary = f"Progressive draft with {next_count} source capture{'s' if next_count != 1 else ''}. Latest: {capture_label}."
+    summary = f"Draft with {next_count} source capture{'s' if next_count != 1 else ''}. Latest: {capture_label}."
     report_body = (
-        "# Progressive clinical report\n\n"
+        "# Draft report\n\n"
         f"- {next_count} source capture{'s' if next_count != 1 else ''} attached.\n"
         f"- Latest source type: {capture_label}.\n"
-        "- This mocked draft updates deterministically so the UI can build against a stable evolving session contract."
+        "- Generate a structured report when you are ready to organize the full session."
     )
     findings = [
         {
@@ -210,7 +213,15 @@ def evolve_session_after_capture(
     session.summary = summary
     session.generated_summary = session.generated_summary or summary
     session.generated_report = report_body
-    session.report_template_key = session.report_template_key or "default"
+    session.report_template_key = session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
+    session.report_model = structured_report_from_markdown_body(
+        title=session.title,
+        body=report_body,
+        template_key=session.report_template_key,
+        findings=findings,
+        source_capture_ids=source_capture_ids,
+        generated_at=captured_at.isoformat(),
+    )
     session.extracted_metadata = {
         **metadata,
         "session_contract_version": SESSION_CONTRACT_VERSION,
@@ -221,6 +232,7 @@ def evolve_session_after_capture(
             "status": "partial",
             "format": "markdown",
             "body": report_body,
+            "model": session.report_model,
             "source": "mock-session-contract",
             "updated_at": captured_at.isoformat(),
         },

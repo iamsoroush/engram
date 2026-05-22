@@ -1,4 +1,14 @@
-import type { CaptureItem, CaptureSession, SessionFinding, SessionProcessingStatus, SessionReport, SessionSummaries } from "./types";
+import type {
+  CaptureItem,
+  CaptureSession,
+  SessionFinding,
+  SessionProcessingStatus,
+  SessionReport,
+  SessionSummaries,
+  StructuredPatientInformation,
+  StructuredReportBlock,
+  StructuredReportModel,
+} from "./types";
 import { titleByType, nowLabel } from "./captureModel";
 
 export const sessionStatusFromApi = (status?: string): CaptureSession["status"] => {
@@ -38,6 +48,9 @@ function stringValue(value: unknown, fallback = "") {
 
 function normalizeApiReport(raw: Record<string, unknown>, fallbackTitle: string, fallbackBody: string): SessionReport {
   const report = raw.report && typeof raw.report === "object" ? (raw.report as Record<string, unknown>) : {};
+  const structuredModel = normalizeStructuredReportModel(report.structuredModel || raw.reportModel);
+  const patientInformation = normalizeStructuredPatientInformation(report.patientInformation);
+  const template = normalizeReportTemplate(report.template);
   return {
     schemaVersion: typeof report.schemaVersion === "string" ? report.schemaVersion : undefined,
     status: stringValue(report.status, fallbackBody ? "partial" : "empty"),
@@ -53,10 +66,86 @@ function normalizeApiReport(raw: Record<string, unknown>, fallbackTitle: string,
             body: stringValue(section.body, ""),
           }))
       : [{ id: "body", title: "Clinical report", body: fallbackBody }],
+    structuredModel,
+    patientInformation,
+    patientInformationSource: typeof report.patientInformationSource === "string" ? report.patientInformationSource : null,
+    template,
     source: typeof report.source === "string" ? report.source : null,
     generatedAt: typeof report.generatedAt === "string" ? report.generatedAt : null,
     updatedAt: typeof report.updatedAt === "string" ? report.updatedAt : null,
     isStale: Boolean(report.isStale),
+  };
+}
+
+function normalizeReportTemplate(value: unknown): SessionReport["template"] {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const clinic = raw.clinic && typeof raw.clinic === "object" ? (raw.clinic as Record<string, unknown>) : {};
+  return {
+    key: typeof raw.key === "string" ? raw.key : undefined,
+    clinic: {
+      name: typeof clinic.name === "string" ? clinic.name : undefined,
+      information: Array.isArray(clinic.information)
+        ? clinic.information.filter((item): item is string => typeof item === "string")
+        : [],
+    },
+  };
+}
+
+function normalizeStructuredReportModel(value: unknown): StructuredReportModel | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const sections = Array.isArray(raw.sections)
+    ? raw.sections
+        .filter((section): section is Record<string, unknown> => Boolean(section && typeof section === "object"))
+        .map((section, index) => ({
+          id: stringValue(section.id, `section-${index + 1}`),
+          title: stringValue(section.title, "Clinical report"),
+          blocks: Array.isArray(section.blocks)
+            ? section.blocks
+                .filter((block): block is Record<string, unknown> => Boolean(block && typeof block === "object"))
+                .map(normalizeStructuredReportBlock)
+            : [],
+        }))
+    : [];
+  return {
+    schemaVersion: typeof raw.schemaVersion === "string" ? raw.schemaVersion : undefined,
+    templateKey: typeof raw.templateKey === "string" ? raw.templateKey : undefined,
+    title: typeof raw.title === "string" ? raw.title : undefined,
+    sections,
+    findings: Array.isArray(raw.findings) ? raw.findings.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")) : [],
+    sourceReferences: Array.isArray(raw.sourceReferences)
+      ? raw.sourceReferences.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      : [],
+    generatedAt: typeof raw.generatedAt === "string" ? raw.generatedAt : null,
+  };
+}
+
+function normalizeStructuredReportBlock(block: Record<string, unknown>): StructuredReportBlock {
+  return {
+    type: stringValue(block.type, "paragraph"),
+    text: typeof block.text === "string" ? block.text : undefined,
+    artifactId: typeof block.artifactId === "string" ? block.artifactId : undefined,
+    captureId: typeof block.captureId === "string" ? block.captureId : undefined,
+    caption: typeof block.caption === "string" ? block.caption : undefined,
+  };
+}
+
+function normalizeStructuredPatientInformation(value: unknown): StructuredPatientInformation | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  return {
+    source: typeof raw.source === "string" ? raw.source : undefined,
+    status: typeof raw.status === "string" ? raw.status : undefined,
+    patientId: typeof raw.patientId === "string" ? raw.patientId : null,
+    displayName: typeof raw.displayName === "string" ? raw.displayName : null,
+    legalFirstName: typeof raw.legalFirstName === "string" ? raw.legalFirstName : null,
+    legalLastName: typeof raw.legalLastName === "string" ? raw.legalLastName : null,
+    nationalId: typeof raw.nationalId === "string" ? raw.nationalId : null,
+    dateOfBirth: typeof raw.dateOfBirth === "string" ? raw.dateOfBirth : null,
+    sex: typeof raw.sex === "string" ? raw.sex : null,
+    phone: typeof raw.phone === "string" ? raw.phone : null,
+    email: typeof raw.email === "string" ? raw.email : null,
   };
 }
 
@@ -172,14 +261,10 @@ export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string
     items,
     patientId: typeof raw.patientId === "string" ? raw.patientId : raw.patientId ?? undefined,
     patientName: typeof raw.patientName === "string" ? raw.patientName : undefined,
-    assignmentSource:
-      typeof raw.assignmentSource === "string"
-        ? raw.assignmentSource
-        : typeof raw.organizationSource === "string" && raw.organizationSource === "ai-engine" && raw.patientId
-          ? "ai-engine"
-          : undefined,
+    assignmentSource: typeof raw.assignmentSource === "string" ? raw.assignmentSource : undefined,
     organizationSource: typeof raw.organizationSource === "string" ? raw.organizationSource : null,
     generatedReport,
+    reportModel: normalizeStructuredReportModel(raw.reportModel),
     report,
     summaries,
     findings: normalizeApiFindings(raw),

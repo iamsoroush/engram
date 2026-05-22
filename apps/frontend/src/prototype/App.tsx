@@ -11,6 +11,7 @@ import {
   loginWithPassword,
   loginWithPersona,
   logoutSession,
+  reopenSession,
   refreshAuthToken,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
@@ -23,10 +24,12 @@ import {
 import { standardizeCaptureDraft } from "./audio";
 import { clearStoredAuthProfile, loadStoredAuthProfile, persistAuthProfile } from "./authStorage";
 import {
+  createClientId,
   isLocalSessionId,
   makeLocalCapture,
   mergeCaptureItemsPreservingPreview,
   mergeSessionItems,
+  nowLabel,
   sessionWithLocalPreview,
   sessionsFromPending,
 } from "./captureModel";
@@ -47,7 +50,57 @@ import {
 } from "./storage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "./workspaceStorage";
 
-const MOCK_PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600];
+const MOCK_PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600, 11000, 16000];
+
+function mergeSessionUpdate(existing: CaptureSession, updated: CaptureSession, items = existing.items) {
+  const patientChanged = Boolean(updated.patientId && existing.patientId && updated.patientId !== existing.patientId);
+  const preservedPatient =
+    !patientChanged && (existing.patientId || existing.patientName || existing.assignmentSource) && (!updated.patientId || !updated.patientName)
+      ? {
+          patientId: existing.patientId,
+          patientName: existing.patientName,
+          assignmentSource: existing.assignmentSource,
+        }
+      : !patientChanged && existing.assignmentSource === "staff" && updated.patientId === existing.patientId
+        ? { assignmentSource: "staff" }
+        : {};
+  const isReplacingGeneratedReport = existing.processingStatus?.state === "processing" || existing.report?.status === "generating";
+  const preservedReport =
+    !isReplacingGeneratedReport && existing.report?.isStale && updated.report?.status === "processed" && !updated.report.isStale
+      ? { report: existing.report }
+      : {};
+  return { ...existing, ...updated, ...preservedPatient, ...preservedReport, items };
+}
+
+function markReportStaleForPatientChange(existing: CaptureSession, updated: CaptureSession) {
+  const patientChanged = existing.patientId !== updated.patientId || existing.patientName !== updated.patientName;
+  if (!patientChanged || !existing.report || existing.report.isStale) return updated;
+  if (existing.report.status !== "processed" && existing.report.status !== "verified" && existing.status !== "verified") return updated;
+  return {
+    ...updated,
+    status: updated.status === "verified" ? "reopened" : updated.status,
+    report: {
+      ...existing.report,
+      status: "partial",
+      isStale: true,
+    },
+  };
+}
+
+function makeEmptyLocalSession(): CaptureSession {
+  const time = nowLabel();
+  return {
+    id: `local-session-${createClientId()}`,
+    label: `Session ${time}`,
+    time,
+    dateLabel: "Today",
+    duration: "not started",
+    summary: "Ready for the first capture.",
+    status: "draft",
+    reviewReason: "No captures yet",
+    items: [],
+  };
+}
 
 function screenFromLocation(): Screen {
   if (typeof window === "undefined") return "active-session";
@@ -372,9 +425,9 @@ export function App() {
             const updated = loadedSessions.find((session) => session.id === sessionId);
             if (!updated) return;
             setSessions((current) =>
-              current.map((session) => (session.id === sessionId ? { ...updated, items: session.items } : session)),
+              current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)),
             );
-            setActiveSession((current) => (current?.id === sessionId ? { ...updated, items: current.items } : current));
+            setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
           })
           .catch(() => undefined);
         }, delay);
@@ -417,16 +470,24 @@ export function App() {
             (pendingCapture) => pendingCapture.id !== capture.id && pendingCapture.localSessionId === capture.localSessionId,
           );
           const currentSession = sessionsRef.current.find((session) => session.id === capture.localSessionId || session.id === result.session.id);
-          const mergedSession = mergeSessionItems(currentSession || activeSessionRef.current, result.session, capture.item.id);
+          let mergedSession = mergeSessionItems(currentSession || activeSessionRef.current, result.session, capture.item.id);
+          if (mergedSession.patientId && !result.session.patientId && !isLocalSessionId(mergedSession.id)) {
+            try {
+              const assignedSession = await assignSessionPatient(apiFetch, mergedSession.id, mergedSession.patientId);
+              mergedSession = mergeSessionUpdate(mergedSession, assignedSession, mergedSession.items);
+            } catch {
+              // Keep the local patient context visible; assignment can be retried from the patient control.
+            }
+          }
           upsertSession(mergedSession, stillPendingForLocalSession ? [] : [capture.localSessionId]);
           setActiveSession((current) =>
             current?.id === capture.localSessionId || current?.id === result.session.id
-              ? mergeSessionItems(current, result.session, capture.item.id)
+              ? mergeSessionUpdate(mergeSessionItems(current, result.session, capture.item.id), mergedSession, mergedSession.items)
               : current,
           );
           setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
           setToast("Capture safely transferred.");
-          if (result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
+          if (result.item.status === "uploaded" || result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
           try {
             await updatePendingCapture(capture.id, (current) => ({
               ...normalizePendingCapture(current),
@@ -531,8 +592,12 @@ export function App() {
   };
 
   const startNewSession = () => {
+    if (activeSession && isLocalSessionId(activeSession.id) && !activeSession.items.length) {
+      setSessions((current) => current.filter((session) => session.id !== activeSession.id));
+    }
     setActiveSession(null);
     setSelectedSessionId("");
+    setAssignmentSessionId("");
     navigateScreen("active-session");
     setToast("New session ready.");
   };
@@ -554,12 +619,46 @@ export function App() {
   };
 
   const saveSession = async (sessionId: string) => {
+    const markProcessing = (session: CaptureSession): CaptureSession => ({
+      ...session,
+      status: "processing",
+      report: {
+        schemaVersion: session.report?.schemaVersion,
+        status: "generating",
+        format: session.report?.format || "markdown",
+        title: session.report?.title || session.label,
+        body: "",
+        sections: [{ id: "body", title: "Body", body: "" }],
+        structuredModel: session.report?.structuredModel || session.reportModel || null,
+        patientInformation: session.report?.patientInformation || null,
+        patientInformationSource: session.report?.patientInformationSource || null,
+        template: session.report?.template || null,
+        source: session.report?.source || null,
+        generatedAt: session.report?.generatedAt || null,
+        updatedAt: new Date().toISOString(),
+        isStale: false,
+      },
+      processingStatus: {
+        schemaVersion: session.processingStatus?.schemaVersion,
+        state: "processing",
+        label: "Generating structured report",
+        detail: "Background AI is organizing the latest captures.",
+        stage: "report",
+        progress: session.processingStatus?.progress ?? null,
+        canEdit: false,
+        canReview: false,
+        source: session.processingStatus?.source || null,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    setSessions((current) => current.map((session) => (session.id === sessionId ? markProcessing(session) : session)));
+    setActiveSession((current) => (current?.id === sessionId ? markProcessing(current) : current));
     try {
       const processingSession = await saveSessionForProcessing(apiFetch, sessionId);
       setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? { ...processingSession, items: session.items } : session)),
+        current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, processingSession) : session)),
       );
-      setActiveSession((current) => (current?.id === sessionId ? { ...processingSession, items: current.items } : current));
+      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, processingSession) : current));
       setToast("Structured report is generating.");
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
@@ -599,9 +698,9 @@ export function App() {
 
   const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
     setSessions((current) =>
-      current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
+      current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)),
     );
-    setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
+    setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
   }, []);
 
   const ensurePatient = React.useCallback(
@@ -621,12 +720,26 @@ export function App() {
 
   const assignPatientToSession = React.useCallback(
     async (sessionId: string, draft: PatientAssignmentDraft) => {
-      if (isLocalSessionId(sessionId)) {
-        setToast("Sync before assigning.");
-        return;
-      }
       try {
         const patient = await ensurePatient(draft);
+        if (isLocalSessionId(sessionId)) {
+          const enriched = {
+            patientId: patient.id,
+            patientName: patient.displayName,
+            assignmentSource: "staff",
+          };
+          setSessions((current) =>
+            current.map((session) =>
+              session.id === sessionId ? markReportStaleForPatientChange(session, { ...session, ...enriched }) : session,
+            ),
+          );
+          setActiveSession((current) =>
+            current?.id === sessionId ? markReportStaleForPatientChange(current, { ...current, ...enriched }) : current,
+          );
+          setAssignmentSessionId("");
+          setToast("Patient assigned.");
+          return;
+        }
         const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id);
         const enriched = {
           ...assigned,
@@ -634,30 +747,37 @@ export function App() {
           patientName: patient.displayName,
           assignmentSource: "staff",
         };
-        applySessionUpdate(sessionId, enriched);
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === sessionId ? markReportStaleForPatientChange(session, mergeSessionUpdate(session, enriched)) : session,
+          ),
+        );
+        setActiveSession((current) =>
+          current?.id === sessionId ? markReportStaleForPatientChange(current, mergeSessionUpdate(current, enriched)) : current,
+        );
         setAssignmentSessionId("");
         setToast("Patient assigned.");
       } catch {
         setToast("Could not assign patient.");
       }
     },
-    [apiFetch, applySessionUpdate, ensurePatient],
+    [apiFetch, ensurePatient],
   );
 
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
 
   const verifySelectedSession = React.useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, verified = true) => {
       if (isLocalSessionId(sessionId)) {
         setToast("Sync before verifying.");
         return;
       }
       try {
-        const verified = await verifySession(apiFetch, sessionId);
-        applySessionUpdate(sessionId, verified);
-        setToast("Session verified.");
+        const updated = verified ? await verifySession(apiFetch, sessionId) : await reopenSession(apiFetch, sessionId);
+        applySessionUpdate(sessionId, updated);
+        setToast(verified ? "Session verified." : "Verification removed.");
       } catch {
-        setToast("Could not verify session.");
+        setToast(verified ? "Could not verify session." : "Could not remove verification.");
       }
     },
     [apiFetch, applySessionUpdate],
@@ -779,7 +899,6 @@ export function App() {
           onCloseAssignment={() => setAssignmentSessionId((current) => (current === selectedSession.id ? "" : selectedSession.id))}
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
-          onStartNewSession={activeSession?.items.length ? startNewSession : undefined}
           onUpdateTitle={renameSession}
           onVerifySession={verifySelectedSession}
         />
@@ -793,11 +912,18 @@ export function App() {
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
           onCloseAssignment={() => {
-            if (!activeSession) return;
-            setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));
+            if (activeSession) {
+              setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));
+              return;
+            }
+            const session = makeEmptyLocalSession();
+            setActiveSession(session);
+            upsertSession(session);
+            setAssignmentSessionId(session.id);
           }}
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
+          onStartNewSession={startNewSession}
           onUpdateTitle={renameSession}
           onVerifySession={verifySelectedSession}
         />

@@ -17,6 +17,7 @@ Capture clinical material quickly without selecting a patient first.
    - Photo opens the device camera directly on mobile-style touch devices, then shows the selected image in the photo preview dialog. The dialog also keeps a standard image picker available for gallery/photo-library selection and desktop upload. Photo inputs use the browser's standard image picker/camera format handling.
    - Text opens a note sheet.
 3. User saves to the current session or, for photo/text, saves into a new session.
+   - Users may assign patient context before the first capture; this creates a local empty workspace context and the assignment is applied to the backend session after the first capture syncs.
 4. The browser standardizes the draft, creates a local capture/session, and writes it to IndexedDB.
 5. The Active Session screen shows the local session immediately.
 6. The outbox uploads captures one at a time when authenticated and online.
@@ -26,7 +27,9 @@ Capture clinical material quickly without selecting a patient first.
    - photo: inline photo preview plus `Photo added, analyzing...`
    - text: formatted note content
 9. Draft capture cards show source preview/playback, status badge, and generated text.
-10. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
+10. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
+11. Adding a new capture or changing the patient after a structured report exists returns report progress to `Draft` until the user generates again.
+12. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
 
 ## System Behavior
 

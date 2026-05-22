@@ -17,3 +17,11 @@ Sessions are created as `draft` when the first capture reaches the backend, but 
 Every backend session payload exposes stable frontend contracts for `report`, `summaries`, `findings`, and `processingStatus`. Phase 2.1 writes deterministic mocked outputs into those contracts so the real AI pipeline can later replace the mock writer without changing frontend object shape.
 
 The backend still owns report template selection and can pass template content to the AI engine through the report refresh endpoint. Patient full name and national ID remain special extracted metadata fields because they support deterministic placeholder matching now and future patient matching later.
+
+## Structured Report Model Owns Report Content
+
+The backend stores generated report body content in `sessions.report_model`, a JSON model with report sections, paragraph/image/artifact blocks, extracted findings, and source capture references. The active-session frontend renders clinic and patient information from non-AI template/session context, then renders backend-owned body markdown from the session report contract.
+
+The singleton `default` report template is centralized in backend reporting code and currently exposes clinic context and body rendering rules. Patient information is injected from the assigned database patient and identifiers at render time; AI-generated body text must not be treated as the source of truth for patient demographics.
+
+TODO: Add tenant-aware multi-template selection when AesMem supports more than the default clinic report layout.

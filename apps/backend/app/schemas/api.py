@@ -45,6 +45,7 @@ class SessionUpdate(BaseModel):
     summary: str | None = None
     generated_summary: str | None = Field(default=None, alias="generatedSummary")
     generated_report: str | None = Field(default=None, alias="generatedReport")
+    report_model: dict[str, Any] | None = Field(default=None, alias="reportModel")
     report: dict[str, Any] | None = None
     summaries: dict[str, Any] | None = None
     findings: list[dict[str, Any]] | None = None

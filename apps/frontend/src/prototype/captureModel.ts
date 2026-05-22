@@ -30,7 +30,9 @@ export function createClientId() {
 
 export function mergeSessionItems(existing: CaptureSession | null | undefined, incoming: CaptureSession, replaceLocalItemId?: string) {
   const incomingItems = incoming.items;
-  if (!existing?.items.length) return { ...incoming, items: incomingItems };
+  const patientContext = existing && shouldPreservePatientContext(existing, incoming) ? patientContextFrom(existing) : {};
+  const reportContext = existing && shouldKeepStaleReport(existing, incoming) ? { report: existing.report } : {};
+  if (!existing?.items.length) return { ...incoming, ...patientContext, ...reportContext, items: incomingItems };
 
   const replacements = new Map<string, CaptureItem>();
   incomingItems.forEach((item) => replacements.set(item.id, item));
@@ -48,11 +50,11 @@ export function mergeSessionItems(existing: CaptureSession | null | undefined, i
   incomingItems.forEach((item) => {
     if (!merged.some((current) => current.id === item.id)) merged.push(item);
   });
-  return { ...incoming, items: merged };
+  return { ...incoming, ...patientContext, ...reportContext, items: merged };
 }
 
 export function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[], incomingItems: CaptureItem[]) {
-  return incomingItems.map((incomingItem) => {
+  const mergedItems = incomingItems.map((incomingItem) => {
     const existingItem = existingItems.find((item) => item.id === incomingItem.id);
     if (!existingItem?.sourceUrl) return incomingItem;
     return {
@@ -61,6 +63,44 @@ export function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[],
       contentType: existingItem.contentType || incomingItem.contentType,
     };
   });
+  existingItems.forEach((existingItem) => {
+    const stillLocal = isLocalCaptureItem(existingItem) || existingItem.status === "saved" || existingItem.status === "syncing";
+    if (stillLocal && !mergedItems.some((item) => item.id === existingItem.id)) mergedItems.push(existingItem);
+  });
+  return mergedItems;
+}
+
+function hasPatientContext(session: CaptureSession) {
+  return Boolean(session.patientId || session.patientName || session.assignmentSource);
+}
+
+function shouldPreservePatientContext(existing: CaptureSession, incoming: CaptureSession) {
+  if (!hasPatientContext(existing)) return false;
+  if (!hasPatientContext(incoming)) return true;
+  if (!existing.patientId || incoming.patientId !== existing.patientId) return false;
+  return !incoming.patientName || !incoming.assignmentSource || existing.assignmentSource === "staff";
+}
+
+function patientContextFrom(session: CaptureSession) {
+  return {
+    patientId: session.patientId,
+    patientName: session.patientName,
+    assignmentSource: session.assignmentSource,
+  };
+}
+
+function isLocalCaptureItem(item: CaptureItem) {
+  return item.id.startsWith("local-capture-");
+}
+
+function shouldKeepStaleReport(existing: CaptureSession, incoming: CaptureSession) {
+  return Boolean(
+    existing.processingStatus?.state !== "processing" &&
+      existing.report?.status !== "generating" &&
+      existing.report?.isStale &&
+      incoming.report?.status === "processed" &&
+      !incoming.report.isStale,
+  );
 }
 
 export function isLocalSessionId(sessionId: string) {
@@ -106,6 +146,14 @@ export function makeLocalCapture(
     !intoNew && currentSession
       ? {
           ...currentSession,
+          status: currentSession.status === "verified" ? "reopened" : currentSession.status,
+          report: currentSession.report
+            ? {
+                ...currentSession.report,
+                status: "partial",
+                isStale: true,
+              }
+            : currentSession.report,
           items: [...currentSession.items.map(withoutLocalPreview), item],
         }
       : {

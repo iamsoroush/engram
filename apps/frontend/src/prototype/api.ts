@@ -143,6 +143,12 @@ export async function verifySession(apiFetch: ApiFetch, sessionId: string) {
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+export async function reopenSession(apiFetch: ApiFetch, sessionId: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/reopen`, { method: "POST" });
+  if (!response.ok) throw new Error("Could not reopen session");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function updateSessionTitle(apiFetch: ApiFetch, sessionId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`, {
     method: "PATCH",

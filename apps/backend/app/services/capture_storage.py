@@ -22,6 +22,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
+from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
 from app.services.session_contracts import build_session_contracts, evolve_session_after_capture
 from app.storage import ObjectStore
 
@@ -75,18 +76,41 @@ def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid
     return session
 
 
-def session_payload(session: Session) -> dict[str, Any]:
+def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
     contracts = build_session_contracts(session)
+    extracted_metadata = session.extracted_metadata or {}
+    assignment_source = extracted_metadata.get("patient_assignment_source")
+    structured_report = session.report_model if isinstance(session.report_model, dict) and session.report_model else None
+    rendered_body = None
+    patient_information = patient_information_from_assignment(db, session)
+    if structured_report is not None:
+        rendered_body = render_report_body_markdown(
+            structured_report,
+            db=db,
+            session=session,
+        )
+        contracts["report"] = {
+            **contracts["report"],
+            "format": "markdown",
+            "body": rendered_body,
+            "sections": [{"id": "body", "title": "Body", "body": rendered_body}],
+            "structuredModel": structured_report,
+            "patientInformation": patient_information,
+            "template": report_template_context(session.report_template_key),
+            "patientInformationSource": patient_information["source"],
+        }
     return {
         "id": str(session.id),
         "tenantId": str(session.tenant_id),
         "patientId": str(session.patient_id) if session.patient_id else None,
+        "assignmentSource": assignment_source if isinstance(assignment_source, str) else None,
         "status": session.status.value,
         "title": session.title,
         "summary": session.summary,
         "generatedSummary": session.generated_summary,
-        "generatedReport": session.generated_report,
-        "extractedMetadata": session.extracted_metadata or {},
+        "generatedReport": rendered_body or session.generated_report,
+        "reportModel": structured_report,
+        "extractedMetadata": extracted_metadata,
         "reportTemplateKey": session.report_template_key,
         "organizationSource": session.organization_source.value,
         "createdAt": session.created_at.isoformat() if session.created_at else None,
@@ -100,7 +124,7 @@ def list_sessions_for_tenant(db: DbSession, tenant_id: uuid.UUID) -> list[dict[s
     sessions = db.execute(
         select(Session).where(Session.tenant_id == tenant_id).order_by(Session.updated_at.desc())
     ).scalars()
-    return [session_payload(session) for session in sessions]
+    return [session_payload(session, db) for session in sessions]
 
 
 def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[str, Any]:
@@ -194,7 +218,7 @@ async def upload_source_capture(
         if artifact is None or artifact.byte_size == 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Existing capture file is empty. Retake photo")
         session = get_session_for_tenant(db, principal.tenant_id, existing.session_id)
-        return {"session": session_payload(session), "item": capture_payload(existing, artifact)}
+        return {"session": session_payload(session, db), "item": capture_payload(existing, artifact)}
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Capture file is empty")
@@ -241,6 +265,13 @@ async def upload_source_capture(
             captured_at=captured_at,
             created_by_user_id=principal.user_id,
         )
+        assignment_source = (session.extracted_metadata or {}).get("patient_assignment_source")
+        if session.patient_id and assignment_source and "patient_assignment_source" not in capture.capture_metadata:
+            capture.capture_metadata = {
+                **capture.capture_metadata,
+                "patient_assignment_source": assignment_source,
+                "patient_assignment_reason": (session.extracted_metadata or {}).get("patient_assignment_reason"),
+            }
         db.add(capture)
         db.flush()
 
@@ -302,7 +333,11 @@ async def upload_source_capture(
         db.refresh(ai_job)
         from app.services.ai_jobs import ai_job_payload
 
-        return {"session": session_payload(session), "item": capture_payload(capture, artifact), "processingJob": ai_job_payload(ai_job)}
+        return {
+            "session": session_payload(session, db),
+            "item": capture_payload(capture, artifact),
+            "processingJob": ai_job_payload(ai_job),
+        }
     except Exception:
         db.rollback()
         if object_key is not None:

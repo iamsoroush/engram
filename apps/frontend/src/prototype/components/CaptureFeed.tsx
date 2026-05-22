@@ -1,12 +1,17 @@
 import React from "react";
 import type { PatientAssignmentDraft, PatientSummary } from "../appTypes";
-import type { CaptureItem, CaptureSession, SessionProcessingStatus } from "../types";
+import type {
+  CaptureItem,
+  CaptureSession,
+  SessionProcessingStatus,
+  StructuredPatientInformation,
+} from "../types";
 import { isLocalSessionId } from "../captureModel";
 import { assignmentSourceLabel, metadataDisplay, metadataRecord } from "../metadata";
 import { sessionUxState } from "../status";
 import { Badge, Button, Card, Input } from "../ui";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
-import { SessionStatusBadge, StatusBadge } from "./StatusBadges";
+import { StatusBadge } from "./StatusBadges";
 
 export function CaptureScreen({
   activeSession,
@@ -34,7 +39,7 @@ export function CaptureScreen({
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onCloseAssignment?: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
-  onVerifySession?: (sessionId: string) => Promise<void>;
+  onVerifySession?: (sessionId: string, verified?: boolean) => Promise<void>;
   onStartNewSession?: () => void;
 }) {
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
@@ -48,23 +53,53 @@ export function CaptureScreen({
   const titleChanged = Boolean(activeSession && titleDraft.trim() && titleDraft.trim() !== activeSession.label);
   const isHistorical = mode === "historical";
   const processingState = activeSession?.processingStatus?.state;
+  const hasCaptures = Boolean(activeSession?.items.length);
+  const isGenerating = processingState === "processing" || activeSession?.report?.status === "generating";
+  const hasFreshGeneratedReport = Boolean(
+    activeSession &&
+      !activeSession.report?.isStale &&
+      (activeSession.report?.status === "processed" || activeSession.report?.status === "verified" || activeSession.status === "verified"),
+  );
   const canSaveSession = activeSession
-    ? !isHistorical && !isLocalSessionId(activeSession.id) && processingState !== "processing"
+    ? !isHistorical && !isLocalSessionId(activeSession.id) && !isGenerating && !hasFreshGeneratedReport
     : false;
   const reportState = workspaceReportState(activeSession);
-  const structuredReportCopy = workspaceStructuredReportCopy(activeSession);
   const selectedReportView = reportView;
   const findings = workspaceFindings(activeSession);
   const summaryText =
     activeSession?.summaries?.clinical || activeSession?.summaries?.short || activeSession?.summary;
   const reportMilestones = workspaceReportMilestones(activeSession, reportState);
   const reportUpdatedLabel = workspaceReportUpdatedLabel(activeSession?.report?.updatedAt || activeSession?.processingStatus?.updatedAt);
+  const previousGeneratingRef = React.useRef(isGenerating);
 
   React.useEffect(() => {
     setTitleDraft(activeSession?.label || "");
     setEditingTitle(false);
     setReportView("draft");
   }, [activeSession?.id, activeSession?.label]);
+
+  React.useEffect(() => {
+    if (!hasCaptures && reportView === "structured") setReportView("draft");
+  }, [hasCaptures, reportView]);
+
+  React.useEffect(() => {
+    if (activeSession?.report?.isStale) setReportView("draft");
+  }, [activeSession?.report?.isStale]);
+
+  React.useEffect(() => {
+    if (isGenerating) setReportView("structured");
+  }, [isGenerating]);
+
+  React.useEffect(() => {
+    const wasGenerating = previousGeneratingRef.current;
+    previousGeneratingRef.current = isGenerating;
+    if (wasGenerating && !isGenerating && activeSession?.report?.status === "processed") {
+      setReportView("structured");
+      window.requestAnimationFrame(() => {
+        document.querySelector(".workspace-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [activeSession?.report?.status, isGenerating]);
 
   React.useEffect(() => {
     if (!activeSession) previousCaptureCountRef.current = 0;
@@ -107,7 +142,6 @@ export function CaptureScreen({
         >
           <div className="workspace-header-main">
             <div className="workspace-title-block">
-              <p className="eyebrow">{isHistorical ? "Historical session" : "Active session"}</p>
               <Input
                 aria-label="Session title"
                 onChange={(event) => {
@@ -137,9 +171,6 @@ export function CaptureScreen({
               ) : null}
             </div>
           </div>
-          <div className="workspace-context-row">
-            {activeSession ? <SessionStatusBadge status={activeSession.status} /> : <Badge tone="neutral">Capturing</Badge>}
-          </div>
           {editingTitle ? (
             <div className="current-title-actions">
               <Button disabled={savingTitle || !titleChanged} size="sm" type="submit" variant="secondary">
@@ -149,42 +180,29 @@ export function CaptureScreen({
           ) : null}
         </form>
       </Card>
-      <Card className="workspace-report-card">
+      <Card className={`workspace-report-card ${isGenerating ? "processing" : ""}`}>
         <div className="report-heading">
           <div>
             <p className="eyebrow">Clinical Report</p>
           </div>
           <div className="workspace-report-progress" aria-label="Report progress">
             {reportMilestones.map((milestone) => (
-              <span className={milestone.state} key={milestone.label}>
+              <span className={milestone.className} key={milestone.label}>
                 {milestone.label}
               </span>
             ))}
           </div>
           <div className="report-heading-actions">
-            {onVerifySession ? (
-              <button
-                aria-checked={activeSession?.status === "verified"}
-                className="report-verify-check"
-                disabled={!activeSession || isLocalSessionId(activeSession.id) || verifying}
-                onClick={() => {
-                  if (!activeSession || activeSession.status === "verified") return;
-                  setVerifying(true);
-                  void onVerifySession(activeSession.id).finally(() => setVerifying(false));
-                }}
-                role="checkbox"
-                type="button"
-              >
-                <span aria-hidden="true" />
-                {activeSession?.status === "verified" ? "Verified" : verifying ? "Verifying" : "Verify report"}
-              </button>
-            ) : null}
             {!isHistorical ? (
               <Button
-                className="report-generate-button"
+                className={`report-generate-button ${isGenerating ? "processing" : ""}`}
                 disabled={!canSaveSession || !activeSession}
+                title={hasFreshGeneratedReport ? "Add a capture or change the patient to generate again." : undefined}
                 onClick={() => {
-                  if (activeSession) onSaveSession(activeSession.id);
+                  if (activeSession) {
+                    setReportView("structured");
+                    onSaveSession(activeSession.id);
+                  }
                 }}
                 size="sm"
                 type="button"
@@ -193,17 +211,32 @@ export function CaptureScreen({
                   ? "Syncing first"
                   : processingState === "processing"
                     ? "Generating"
-                    : "Generate"}
+                    : hasFreshGeneratedReport
+                      ? "Generated"
+                      : "Generate"}
               </Button>
             ) : null}
           </div>
         </div>
         <div className="report-toolbar">
           <div className="report-toolbar-actions">
+            <div className="report-view-switch" aria-label="Report view">
+              <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
+                Live draft
+              </button>
+              <button
+                className={selectedReportView === "structured" ? "active" : ""}
+                disabled={!hasCaptures}
+                onClick={() => setReportView("structured")}
+                title={!hasCaptures ? "Create a capture first to open the structured report." : undefined}
+                type="button"
+              >
+                Structured report
+              </button>
+            </div>
             {onAssignPatient ? (
               <button
                 className={`report-patient-action ${activeSession?.patientName ? "assigned" : ""}`}
-                disabled={!activeSession || isLocalSessionId(activeSession.id)}
                 onClick={onCloseAssignment}
                 type="button"
               >
@@ -215,14 +248,6 @@ export function CaptureScreen({
                 )}
               </button>
             ) : null}
-            <div className="report-view-switch" aria-label="Report view">
-              <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                Live draft
-              </button>
-              <button className={selectedReportView === "structured" ? "active" : ""} onClick={() => setReportView("structured")} type="button">
-                Structured report
-              </button>
-            </div>
           </div>
         </div>
         {assignmentOpen && activeSession && onAssignPatient ? (
@@ -236,9 +261,7 @@ export function CaptureScreen({
         <div className={`workspace-report-body ${reportState.kind}`}>
           {selectedReportView === "structured" ? (
             <StructuredReportView
-              paragraphs={structuredReportCopy}
               session={activeSession}
-              onOpenCapture={setSelectedCapture}
               onResolveFile={onResolveFile}
             />
           ) : (
@@ -246,10 +269,28 @@ export function CaptureScreen({
           )}
         </div>
         <div className="workspace-report-footer">
-          <span>{reportUpdatedLabel}</span>
-          {activeSession?.processingStatus?.state === "processing" ? <span>Structured report is updating from the live draft</span> : null}
+          <div>
+            <span>{reportUpdatedLabel}</span>
+            {activeSession?.processingStatus?.state === "processing" ? <span>Structured report is updating from the live draft</span> : null}
+          </div>
+          {onVerifySession ? (
+            <button
+              aria-checked={activeSession?.status === "verified"}
+              className="report-verify-check"
+              disabled={!activeSession || isLocalSessionId(activeSession.id) || verifying || isGenerating}
+              onClick={() => {
+                if (!activeSession) return;
+                setVerifying(true);
+                void onVerifySession(activeSession.id, activeSession.status !== "verified").finally(() => setVerifying(false));
+              }}
+              role="checkbox"
+              type="button"
+            >
+              <span aria-hidden="true" />
+              {activeSession?.status === "verified" ? "Verified" : verifying ? "Verifying" : "Verify structured report"}
+            </button>
+          ) : null}
         </div>
-        {/* TODO(ai-integration): Replace mocked report states with progressive session report artifacts from the AI pipeline. */}
       </Card>
       <details className="workspace-disclosure" open>
         <summary>
@@ -430,10 +471,6 @@ function LiveDraftReport({
 
   return (
     <div className="live-draft">
-      <div className="live-draft-context">
-        <h3>Live clinical draft</h3>
-        <p>{session.patientName ? `Patient context: ${session.patientName}.` : "Patient context can be assigned later."}</p>
-      </div>
       {session.items.map((item, index) => (
         <article
           className={`live-draft-capture ${item.type}`}
@@ -451,7 +488,7 @@ function LiveDraftReport({
           tabIndex={0}
         >
           <div className="live-draft-capture-header">
-            <span>{captureDraftLabel(item, index + 1)}</span>
+            <span className="live-draft-capture-title">{captureDraftLabel(item, index + 1)}</span>
             <StatusBadge status={item.status} />
           </div>
           {item.type === "photo" || item.type === "audio" || item.type === "voice" ? (
@@ -463,53 +500,46 @@ function LiveDraftReport({
         </article>
       ))}
       {session.processingStatus?.state === "processing" ? (
-        <div className="live-draft-processing">Structured report generation is running in the background. The live draft remains reviewable.</div>
+        <div className="live-draft-processing">AesMem is preparing the structured report. The live draft remains reviewable while you wait.</div>
       ) : null}
     </div>
   );
 }
 
 function StructuredReportView({
-  paragraphs,
   session,
-  onOpenCapture,
   onResolveFile,
 }: {
-  paragraphs: string[];
   session: CaptureSession | null;
-  onOpenCapture: (item: CaptureItem) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
-  const photos = session?.items.filter((item) => item.type === "photo") || [];
-  const bodyParagraphs = removePhotoTextFromStructuredParagraphs(paragraphs, photos);
+  const clinic = session?.report?.template?.clinic;
+  const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session);
+  const bodyParagraphs = workspaceStructuredReportCopy(session);
   return (
     <div className="structured-report-view">
-      <section className="structured-report-context">
-        <h3>Session context</h3>
-        <div>
-          <span>Patient</span>
-          <strong>{session?.patientName || "Unassigned patient"}</strong>
-        </div>
-        <div>
-          <span>Source captures</span>
-          <strong>{session?.items.length || 0}</strong>
-        </div>
+      <section className="structured-report-section">
+        <h3>Clinic Information</h3>
+        <p>Clinic: {clinic?.name || "AesMem Demo Clinic"}</p>
+        {(clinic?.information?.length ? clinic.information : ["Clinical memory report"]).map((line) => (
+          <p key={line}>{line}</p>
+        ))}
       </section>
-      <section className="structured-report-body">
+      <section className="structured-report-section">
+        <h3>Patient Information</h3>
+        <PatientInformationRows patientInformation={patientInformation} />
+      </section>
+      <section className="structured-report-section structured-report-body">
         <h3>Body</h3>
-        {photos.length ? (
-          <section className="structured-report-photos" aria-label="Report photos">
-            {photos.map((item) => (
-              <button className="structured-report-photo" key={item.id} onClick={() => onOpenCapture(item)} type="button">
-                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-              </button>
-            ))}
-          </section>
-        ) : null}
-        {bodyParagraphs.length ? (
+        {session?.processingStatus?.state === "processing" || session?.report?.status === "generating" ? (
+          <>
+            <h3>Generating structured report</h3>
+            <p>Please wait while AesMem prepares the full report from the latest captures.</p>
+          </>
+        ) : bodyParagraphs.length ? (
           bodyParagraphs.map((paragraph, index) => (
             <section className="workspace-report-section" key={`${index}-${paragraph.slice(0, 24)}`}>
-              {formatReportParagraph(paragraph)}
+              {formatReportParagraph(paragraph, onResolveFile)}
             </section>
           ))
         ) : (
@@ -523,18 +553,36 @@ function StructuredReportView({
   );
 }
 
-function removePhotoTextFromStructuredParagraphs(paragraphs: string[], photos: CaptureItem[]) {
-  const photoTexts = photos.map((photo) => draftCaptureText(photo).trim()).filter(Boolean);
-  if (!photoTexts.length) return paragraphs;
-  return paragraphs
-    .map((paragraph) =>
-      paragraph
-        .split("\n")
-        .filter((line) => !photoTexts.some((photoText) => line.includes(photoText)))
-        .join("\n")
-        .trim(),
-    )
-    .filter(Boolean);
+function PatientInformationRows({ patientInformation }: { patientInformation: StructuredPatientInformation | null }) {
+  if (!patientInformation || patientInformation.status !== "assigned") return <p>Patient: Unassigned</p>;
+  const rows = [
+    ["Full name", patientInformation.displayName],
+    ["National ID", patientInformation.nationalId],
+    ["Date of birth", patientInformation.dateOfBirth],
+    ["Sex", patientInformation.sex],
+    ["Phone", patientInformation.phone],
+    ["Email", patientInformation.email],
+  ].filter((row): row is [string, string] => Boolean(row[1]));
+  if (!rows.length) return <p>Patient assigned</p>;
+  return (
+    <dl className="structured-report-patient-info">
+      {rows.map(([label, value]) => (
+        <React.Fragment key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </React.Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function patientInformationFromSession(session: CaptureSession | null): StructuredPatientInformation | null {
+  if (!session?.patientId && !session?.patientName) return { status: "unassigned" };
+  return {
+    status: "assigned",
+    patientId: session.patientId || null,
+    displayName: session.patientName || session.patientId || "Assigned patient",
+  };
 }
 
 function workspaceReportState(
@@ -550,20 +598,29 @@ function workspaceReportState(
       tone: "neutral",
     };
   }
+  if (session.report?.isStale) {
+    return {
+      badge: "Draft",
+      detail: "New material has been added. Generate the structured report again when ready.",
+      kind: "partial",
+      label: "Draft updated",
+      tone: "blue",
+    };
+  }
+  if (session.report?.status === "generating" || session.processingStatus?.state === "processing") {
+    return { badge: "Updating", detail: stageLabel, kind: "partial", label: "Report updating", tone: "blue" };
+  }
   if (session.report?.status === "verified" || session.status === "verified") {
     return { badge: "Verified", detail: "Reviewed and accepted for this session.", kind: "verified", label: "Verified report", tone: "green" };
   }
   if (session.report?.status === "processed") {
     return {
-      badge: session.report.isStale ? "Updating" : "Structured",
-      detail: session.report.isStale ? "New material has been added; the report is being updated." : "Structured draft is ready for review.",
+      badge: "Structured",
+      detail: "Structured draft is ready for review.",
       kind: "structured",
       label: "Structured report",
       tone: "green",
     };
-  }
-  if (session.report?.status === "generating" || session.processingStatus?.state === "processing") {
-    return { badge: "Updating", detail: stageLabel, kind: "partial", label: "Report updating", tone: "blue" };
   }
   if (session.report?.status === "failed" || sessionUxState(session.status) === "failed") {
     return { badge: "Needs attention", detail: "The latest report update did not complete. Existing captures remain available below.", kind: "partial", label: "Report needs attention", tone: "amber" };
@@ -632,11 +689,24 @@ function nonTechnicalStageLabel(status?: SessionProcessingStatus) {
 }
 
 function workspaceReportMilestones(session: CaptureSession | null, state: ReturnType<typeof workspaceReportState>) {
-  const order = ["partial", "structured", "verified"] as const;
-  const currentIndex = order.indexOf(state.kind);
+  if (state.kind === "verified") {
+    return ["Draft", "Structured", "Verified"].map((label) => ({
+      label,
+      state: "done",
+      className: label === "Verified" ? "done verified" : "done",
+    }));
+  }
+  if (state.kind === "structured") {
+    return [
+      { label: "Draft", state: "done", className: "done" },
+      { label: "Structured", state: "done", className: "done" },
+      { label: "Verified", state: "current", className: "current" },
+    ];
+  }
   return ["Draft", "Structured", "Verified"].map((label, index) => ({
     label,
-    state: index < currentIndex ? "done" : index === currentIndex || (label === "Verified" && session?.status === "verified") ? "current" : "next",
+    state: index === 0 ? "current" : "next",
+    className: index === 0 ? "current" : "next",
   }));
 }
 
@@ -647,7 +717,13 @@ function workspaceReportUpdatedLabel(value?: string | null) {
   return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
 }
 
-function formatReportParagraph(paragraph: string) {
+function formatReportParagraph(paragraph: string, onResolveFile?: (endpoint: string) => Promise<string>) {
+  const image = paragraph.match(/^!\[(.*)]\((.*)\)$/);
+  if (image) {
+    return <MarkdownImage alt={image[1] || "Report image"} src={image[2]} onResolveFile={onResolveFile} />;
+  }
+  const italic = paragraph.match(/^\*(.*)\*$/);
+  if (italic) return <p><em>{italic[1]}</em></p>;
   if (paragraph.startsWith("# ")) return <h3>{paragraph.replace(/^#\s+/, "")}</h3>;
   if (paragraph.startsWith("## ")) return <h4>{paragraph.replace(/^##\s+/, "")}</h4>;
   if (paragraph.startsWith("- ")) {
@@ -673,6 +749,41 @@ function formatReportParagraph(paragraph: string) {
     );
   }
   return <p>{paragraph}</p>;
+}
+
+function MarkdownImage({
+  alt,
+  src,
+  onResolveFile,
+}: {
+  alt: string;
+  src: string;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+}) {
+  const [resolvedUrl, setResolvedUrl] = React.useState("");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setResolvedUrl("");
+    if (!onResolveFile || !src.startsWith("/api/v1/")) return;
+    onResolveFile(src)
+      .then((url) => {
+        if (!cancelled) setResolvedUrl(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [onResolveFile, src]);
+
+  React.useEffect(() => {
+    return () => {
+      if (resolvedUrl.startsWith("blob:")) URL.revokeObjectURL(resolvedUrl);
+    };
+  }, [resolvedUrl]);
+
+  const imageSrc = resolvedUrl || (src.startsWith("/api/v1/") ? "" : src);
+  return imageSrc ? <img alt={alt} className="structured-report-body-image" src={imageSrc} /> : <p>Image preview unavailable</p>;
 }
 
 function workspaceFindings(session: CaptureSession | null) {

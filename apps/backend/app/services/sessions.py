@@ -11,6 +11,7 @@ from app.auth.service import audit
 from app.models import Artifact, Capture, AiJob, OrganizationSource, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
+from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
 
 
 def parse_datetime(value: str | None) -> datetime | None:
@@ -65,7 +66,7 @@ def create_session(db: DbSession, principal: CurrentPrincipal, request: SessionC
     )
     db.commit()
     db.refresh(session)
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionSaveRequest) -> dict[str, Any]:
@@ -75,7 +76,7 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
         select(Capture.id).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).limit(1)
     ).scalar_one_or_none()
     if capture_exists is None:
-        session.report_template_key = request.report_template_key or session.report_template_key or "default"
+        session.report_template_key = request.report_template_key or session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
         audit(
             db,
             tenant_id=principal.tenant_id,
@@ -87,11 +88,11 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
         )
         db.commit()
         db.refresh(session)
-        return {"session": session_payload(session), "processingJob": None}
+        return {"session": session_payload(session, db), "processingJob": None}
 
     from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload
 
-    session.report_template_key = request.report_template_key or "default"
+    session.report_template_key = request.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
     # TODO(ai-integration): Keep this placeholder queue boundary; replace worker output with real progressive AI jobs later.
     job = create_session_processing_job(db, principal=principal, session=session)
     audit(
@@ -108,7 +109,7 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
     db.refresh(job)
     dispatch_session_processing_job(db, job)
     db.refresh(job)
-    return {"session": session_payload(session), "processingJob": ai_job_payload(job)}
+    return {"session": session_payload(session, db), "processingJob": ai_job_payload(job)}
 
 
 def list_sessions(
@@ -124,12 +125,12 @@ def list_sessions(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status") from exc
     sessions = db.execute(statement.order_by(Session.updated_at.desc()).limit(min(limit, 100))).scalars()
-    return [session_payload(session) for session in sessions]
+    return [session_payload(session, db) for session in sessions]
 
 
 def get_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionUpdate) -> dict[str, Any]:
@@ -143,10 +144,23 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
         session.generated_summary = request.generated_summary
     if request.generated_report is not None:
         session.generated_report = request.generated_report
+        session.report_model = structured_report_from_markdown_body(
+            title=session.title,
+            body=request.generated_report,
+            template_key=session.report_template_key,
+        )
+    if request.report_model is not None:
+        session.report_model = request.report_model
     if request.report is not None:
         body = request.report.get("body")
         if isinstance(body, str):
             session.generated_report = body
+            session.report_model = structured_report_from_markdown_body(
+                title=session.title,
+                body=body,
+                template_key=session.report_template_key,
+                findings=request.findings,
+            )
         metadata = {**metadata, "progressive_report": request.report}
     if request.summaries is not None:
         short = request.summaries.get("short")
@@ -170,7 +184,7 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.update", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def assign_session_patient(
@@ -183,6 +197,19 @@ def assign_session_patient(
     previous = session.patient_id
     next_patient_id = require_patient(db, principal.tenant_id, request.patient_id)
     session.patient_id = next_patient_id
+    existing_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    if next_patient_id:
+        session.extracted_metadata = {
+            **existing_metadata,
+            "patient_assignment_source": request.source,
+            "patient_assignment_reason": request.reason,
+        }
+    else:
+        session.extracted_metadata = {
+            key: value
+            for key, value in existing_metadata.items()
+            if key not in {"patient_assignment_source", "patient_assignment_reason"}
+        }
     if session.status == SessionStatus.unassigned and next_patient_id:
         session.status = SessionStatus.needs_review
     if next_patient_id:
@@ -215,7 +242,7 @@ def assign_session_patient(
     )
     db.commit()
     db.refresh(session)
-    return {**session_payload(session), "assignmentSource": request.source}
+    return {**session_payload(session, db), "assignmentSource": request.source}
 
 
 def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
@@ -226,7 +253,7 @@ def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) ->
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.review_start", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
@@ -237,7 +264,7 @@ def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) 
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.verify", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def reopen_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
@@ -246,7 +273,7 @@ def reopen_session(db: DbSession, principal: CurrentPrincipal, session_id: str) 
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.reopen", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
-    return session_payload(session)
+    return session_payload(session, db)
 
 
 def list_session_captures(db: DbSession, principal: CurrentPrincipal, session_id: str) -> list[dict[str, Any]]:

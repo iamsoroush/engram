@@ -23,9 +23,10 @@ Included:
 - Placeholder transcriptions for audio.
 - Placeholder captions for photos.
 - Placeholder decorated text for notes.
+- Capture-level detected-patient schema for future patient assignment.
 - Generated session summaries.
 - Generated session extracted metadata, including patient full name and national ID.
-- Generated markdown session reports rendered from a report template.
+- Generated body-level structured session reports rendered through backend-owned report templates.
 - Session transition to `unassigned` or `needs_review` after processing.
 
 Excluded:
@@ -97,6 +98,10 @@ Audio output:
 - Transcript text is plausible and clearly placeholder.
 - Language defaults to `en` unless known.
 - Duration/codec are copied from upload metadata if available.
+- `detected_patient` is present on audio output and currently always returns
+  `status=not_detected` with null patient fields.
+- The detected-patient schema supports `full_name`, `national_id`,
+  `confidence`, `evidence`, `source_text`, and `status`.
 
 Photo output:
 
@@ -110,6 +115,12 @@ Note output:
 - Decorated text status becomes `completed`.
 - Decorated text preserves the captured note until real text decoration exists.
 - Extraction status becomes `completed`.
+
+The deterministic QA fixture under `test_data/` is recognized by capture
+filename/content. Uploading those captures produces predictable transcript,
+caption, decorated text, session structured report sections, and rendered
+markdown so ingestion, capture processing, session processing, report model
+conversion, and markdown rendering can be tested end to end.
 
 ## Session Evolution And Organization
 
@@ -125,12 +136,13 @@ Report refresh behavior:
 2. Accept the request in any session state.
 3. If captures exist, mark session `processing`, create a queued `session_organize` job row, and dispatch `ai_engine.process_session` through Celery.
 4. Worker receives the session, captures, and report template.
-5. Worker posts deterministic partial updates for transcript review, report drafting, finding extraction, and summary generation.
-6. Backend stores each partial update on the session while keeping the same stable report layout.
-7. Worker writes completed placeholder session summary, structured extracted metadata, and markdown report.
-8. Backend stores the generated outputs on the session.
-9. Backend sets `organization_source=ai-engine`.
-10. Backend moves the session to `needs_review` when a patient is assigned, otherwise `unassigned`.
+5. Worker receives a stable `sessionProcessingContext` containing the raw report template, clinic context, assigned DB patient context when available, patient history summary when available, processed audio/photo/text capture outputs, artifact URLs, and session metadata.
+6. Worker posts deterministic partial updates for transcript review, report drafting, finding extraction, and summary generation.
+7. Worker writes completed placeholder session summary, structured extracted metadata, and a body-level `structured_report` output.
+8. Backend converts `structured_report` into `sessions.report_model`, then renders markdown from that model.
+9. Backend stores the generated outputs on the session.
+10. Backend sets `organization_source=ai-engine`.
+11. Backend moves the session to `needs_review` when a patient is assigned, otherwise `unassigned`.
 
 Capture upload behavior:
 
@@ -163,11 +175,37 @@ This endpoint is intentionally small: it persists partial capture metadata or
 partial session contracts and leaves the job `running`. Real AI integration can
 replace the mock stage producer without changing the frontend contract shape.
 
+## Session Processing Contract
+
+The session processing input schema is versioned as
+`2026-05-21.session-processing-input.v1`. It includes:
+
+- `rawReportTemplate`
+- `clinic`
+- `assignedPatient`, from DB assignment only
+- `patientSummarizedHistory`
+- processed `captures.audio`, `captures.photos`, and `captures.text`
+- `session` metadata
+
+The completed output schema is versioned as
+`2026-05-21.session-processing-output.v1`. It contains body-level content only:
+
+- report `sections` with paragraph/image/artifact blocks
+- `artifactReferences`
+- `sourceReferences`
+- extracted `findings`
+- optional `summary`
+
+Clinic and patient information are intentionally excluded from generated report
+body output. The backend renders those fields from template and database state.
+
 ## AI Patient Assignment
 
 AI processing may assign a session or capture to a seeded/demo patient only when the implementation has explicit deterministic demo rules. For example, a seeded note containing a seeded patient name may map to that seeded patient.
 
-Do not build a general AI patient matching design in this version.
+Do not build a general AI patient matching design in this version. Session-level
+AI output may produce a deterministic `patient_match` metadata candidate, but it
+must not overwrite the session's DB-owned patient assignment.
 
 ## Replacement Boundary
 

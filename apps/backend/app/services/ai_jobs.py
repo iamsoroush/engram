@@ -1,7 +1,6 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from fastapi import Header, HTTPException, status
@@ -13,6 +12,17 @@ from app.auth.service import audit
 from app.config import settings
 from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, PatientIdentifier, Session, SessionStatus
 from app.services.capture_storage import get_capture_for_tenant
+from app.services.reporting import (
+    DEFAULT_REPORT_TEMPLATE_KEY,
+    render_report_body_markdown,
+    report_template_payload,
+    structured_report_from_markdown_body,
+)
+from app.services.session_processing import (
+    build_session_processing_input,
+    report_model_from_session_processing_output,
+    session_processing_output_from_legacy_report,
+)
 from app.services.sessions import parse_uuid
 
 logger = logging.getLogger(__name__)
@@ -23,10 +33,6 @@ TASK_NAME_BY_JOB_TYPE = {
     AiJobType.image_capture_process: "ai_engine.process_image_capture",
     AiJobType.session_organize: "ai_engine.process_session",
 }
-
-REPORT_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "report_templates"
-DEFAULT_REPORT_TEMPLATE_KEY = "default"
-
 
 def utc_now() -> datetime:
     """Return the current timezone-aware UTC time."""
@@ -121,12 +127,11 @@ def create_capture_processing_job(db: DbSession, *, principal: CurrentPrincipal,
 
 
 def load_report_template(template_key: str | None) -> dict[str, str]:
-    """Load a markdown report template by stable key."""
-    safe_key = template_key or DEFAULT_REPORT_TEMPLATE_KEY
-    if safe_key != DEFAULT_REPORT_TEMPLATE_KEY:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported report template")
-    path = REPORT_TEMPLATE_DIR / "default_session_report.md"
-    return {"key": safe_key, "content": path.read_text(encoding="utf-8")}
+    """Load the centralized report template by stable key."""
+    try:
+        return report_template_payload(template_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported report template") from exc
 
 
 def create_session_processing_job(db: DbSession, *, principal: CurrentPrincipal, session: Session) -> AiJob:
@@ -310,6 +315,9 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     captures = db.execute(
         select(Capture).where(Capture.tenant_id == job.tenant_id, Capture.session_id == session.id).order_by(Capture.created_at)
     ).scalars()
+    # TODO(ai-integration): Real session processors should consume this stable
+    # context and return the structured body-level output contract.
+    processing_context = build_session_processing_input(db, session)
     return {
         "job": ai_job_payload(job),
         "session": {
@@ -334,6 +342,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
             for capture in captures
         ],
         "reportTemplate": load_report_template(session.report_template_key),
+        "sessionProcessingContext": processing_context,
     }
 
 
@@ -401,6 +410,9 @@ def complete_worker_job(
         output_key: output,
         "ai_processing": output,
     }
+    # TODO(ai-integration): When real capture patient detection lands, consume
+    # output.detected_patient here or in session organization to propose or
+    # perform explicit patient assignment without trusting body text.
     capture.status = CaptureStatus.processed
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
@@ -477,7 +489,20 @@ def progress_worker_job(
         session.summary = str(output["summary"])
         session.generated_summary = str(output["summary"])
     if isinstance(output.get("report"), str):
-        session.generated_report = str(output["report"])
+        report_model = structured_report_from_markdown_body(
+            title=session.title,
+            body=str(output["report"]),
+            template_key=session.report_template_key,
+            findings=extracted_metadata.get("findings") if isinstance(extracted_metadata, dict) else None,
+            source_capture_ids=metadata.get("source_capture_ids") if isinstance(metadata.get("source_capture_ids"), list) else None,
+            generated_at=now.isoformat(),
+        )
+        session.report_model = report_model
+        session.generated_report = render_report_body_markdown(
+            report_model,
+            db=db,
+            session=session,
+        )
     if isinstance(output.get("report_template_key"), str):
         session.report_template_key = str(output["report_template_key"])
     if isinstance(extracted_metadata, dict):
@@ -575,16 +600,38 @@ def complete_session_worker_job(
 
     completed_at = utc_now()
     summary = output.get("summary")
+    structured_output = output.get("structured_report")
+    if not isinstance(structured_output, dict):
+        structured_output = output.get("report_body")
     report = output.get("report")
     extracted_metadata = output.get("extracted_metadata")
-    if not isinstance(summary, str) or not isinstance(report, str) or not isinstance(extracted_metadata, dict):
+    if not isinstance(summary, str) or not isinstance(extracted_metadata, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session job output")
+    if isinstance(structured_output, dict):
+        session_processing_output = structured_output
+    elif isinstance(report, str):
+        session_processing_output = session_processing_output_from_legacy_report(output, generated_at=completed_at.isoformat())
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session job output")
+    structured_findings = session_processing_output.get("findings")
+    if isinstance(structured_findings, list) and not isinstance(extracted_metadata.get("findings"), list):
+        extracted_metadata = {**extracted_metadata, "findings": structured_findings}
+    structured_source_references = session_processing_output.get("sourceReferences")
+    if isinstance(structured_source_references, list):
+        extracted_metadata = {
+            **extracted_metadata,
+            "source_capture_ids": [
+                reference["captureId"]
+                for reference in structured_source_references
+                if isinstance(reference, dict) and isinstance(reference.get("captureId"), str)
+            ],
+        }
 
     patient_match = match_patient_from_metadata(db, tenant_id=job.tenant_id, extracted_metadata=extracted_metadata)
     if patient_match:
         extracted_metadata = {**extracted_metadata, "patient_match": patient_match}
-        if patient_match["status"] == "matched" and session.patient_id is None:
-            session.patient_id = uuid.UUID(patient_match["patient_id"])
+        # AI output can propose a deterministic match, but DB-owned patient
+        # assignment is changed only by explicit assignment flows.
 
     previous_versions = []
     previous_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
@@ -610,13 +657,30 @@ def complete_session_worker_job(
 
     session.generated_summary = summary
     session.summary = summary
-    session.generated_report = report
+    session.report_template_key = str(output.get("report_template_key") or session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY)
+    report_model = report_model_from_session_processing_output(
+        title=session.title,
+        template_key=session.report_template_key,
+        output=session_processing_output,
+    )
+    session.report_model = report_model
+    session.generated_report = render_report_body_markdown(
+        report_model,
+        db=db,
+        session=session,
+    )
+    preserved_assignment = {
+        key: previous_metadata[key]
+        for key in ("patient_assignment_source", "patient_assignment_reason")
+        if key in previous_metadata and key not in extracted_metadata
+    }
     session.extracted_metadata = {
+        **preserved_assignment,
         **extracted_metadata,
+        "session_processing_output": session_processing_output,
         "generated_output_stale": False,
         "processed_versions": previous_versions[-5:],
     }
-    session.report_template_key = str(output.get("report_template_key") or session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY)
     session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     session.organization_source = OrganizationSource.ai_engine
     session.updated_at = completed_at
@@ -626,6 +690,7 @@ def complete_session_worker_job(
     job.result_metadata = {
         **(job.result_metadata or {}),
         "output_key": output_key,
+        "session_processing_output_version": session_processing_output.get("schemaVersion"),
         "session_status": session.status.value,
         "completed_at": completed_at.isoformat(),
         "patient_match": patient_match,

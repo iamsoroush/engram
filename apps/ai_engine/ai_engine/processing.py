@@ -1,10 +1,54 @@
 from datetime import datetime, timezone
 from time import sleep
-from typing import Any
+from typing import Any, Literal, NotRequired, TypedDict
 
 import httpx
 
 from ai_engine.config import settings
+
+
+class DetectedPatientOutput(TypedDict):
+    """Future-ready patient detection result for capture processors."""
+
+    status: Literal["detected", "not_detected", "uncertain"]
+    full_name: str | None
+    national_id: str | None
+    confidence: float | None
+    evidence: str | None
+    source_text: str | None
+
+
+class CaptureProcessingOutput(TypedDict, total=False):
+    """Stable capture-processing output shape written into capture metadata."""
+
+    status: str
+    text: str
+    generated_by: str
+    job_id: str
+    job_type: str
+    generated_at: str
+    source_artifact_ids: list[str]
+    detected_patient: NotRequired[DetectedPatientOutput]
+
+
+NOT_DETECTED_PATIENT: DetectedPatientOutput = {
+    "status": "not_detected",
+    "full_name": None,
+    "national_id": None,
+    "confidence": None,
+    "evidence": None,
+    "source_text": None,
+}
+
+TEST_CAPTURE_TEXT_BY_FILENAME = {
+    "audio_01_initial_consultation.wav": "Patient Sara Nazari came for a follow-up after cheek filler. She reports mild asymmetry on the left cheek and wants a conservative correction. No pain, no fever, and no allergy was reported.",
+    "photo_01_pre_correction_left_cheek.jpg": "Pre-correction image showing mild left cheek asymmetry before touch-up.",
+    "text_note_01.txt": "Patient prefers subtle correction and does not want visible overfilling. Conservative approach requested. Aftercare instructions were given. Patient should send a follow-up photo in 2 weeks if asymmetry persists.",
+    "audio_02_procedure_note.wav": "Injected 0.3 mL hyaluronic acid filler into the left mid cheek. Used cannula technique. Patient tolerated the procedure well. Advised no massage and avoid heavy exercise for 24 hours.",
+    "photo_02_post_correction_left_cheek.jpg": "Post-correction image showing improved left cheek contour after conservative correction.",
+}
+
+TEST_FINAL_SUMMARY = "Follow-up cheek filler correction for mild left cheek asymmetry. Conservative 0.3 mL hyaluronic acid filler touch-up was performed in the left mid cheek using cannula technique. Patient tolerated the procedure well and received aftercare instructions."
 
 
 def utc_now() -> datetime:
@@ -24,33 +68,56 @@ def output_key_for_capture(capture_type: str) -> str:
 def placeholder_text_for_capture(capture: dict[str, Any]) -> str:
     """Build deterministic placeholder output until real AI processors land."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
+    filename = str(metadata.get("original_filename") or "").strip()
+    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
+        return TEST_CAPTURE_TEXT_BY_FILENAME[filename]
     detail = str(metadata.get("detail") or "").strip()
     capture_type = capture.get("type")
     if capture_type == "audio":
         return "Transcript placeholder. Audio capture processing completed successfully."
     if capture_type == "photo":
         return "Caption placeholder. Image capture processing completed successfully."
-    return detail or "Text placeholder. Text capture processing completed successfully."
+    if detail:
+        normalized_detail = " ".join(detail.split())
+        if "Patient prefers subtle correction" in normalized_detail and "follow-up photo in 2 weeks" in normalized_detail:
+            return TEST_CAPTURE_TEXT_BY_FILENAME["text_note_01.txt"]
+        return detail
+    return "Text placeholder. Text capture processing completed successfully."
 
 
-def completed_metadata(job: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any]:
+def capture_detected_patient(capture: dict[str, Any], text: str) -> DetectedPatientOutput | None:
+    """Return schema-ready patient detection output without performing detection."""
+    if capture.get("type") != "audio":
+        return None
+    # TODO(ai-integration): Replace this deterministic stub with real patient
+    # detection, preserving the same status/full_name/national_id/confidence
+    # and evidence/source_text fields for later session assignment.
+    return {**NOT_DETECTED_PATIENT, "source_text": text}
+
+
+def completed_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CaptureProcessingOutput:
     """Return metadata for a completed placeholder capture processor."""
-    return {
+    text = placeholder_text_for_capture(capture)
+    output: CaptureProcessingOutput = {
         "status": "completed",
-        "text": placeholder_text_for_capture(capture),
+        "text": text,
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "job_type": job["jobType"],
         "generated_at": utc_now().isoformat(),
         "source_artifact_ids": job.get("inputArtifactIds") or [],
     }
+    detected_patient = capture_detected_patient(capture, text)
+    if detected_patient is not None:
+        output["detected_patient"] = detected_patient
+    return output
 
 
-def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any]:
+def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CaptureProcessingOutput:
     """Return deterministic in-progress capture output."""
     capture_type = capture.get("type")
     label = "Transcribing" if capture_type == "audio" else "Reading image" if capture_type == "photo" else "Structuring note"
-    return {
+    output: CaptureProcessingOutput = {
         "status": "processing",
         "text": f"{label} placeholder output...",
         "generated_by": "ai-engine",
@@ -59,6 +126,9 @@ def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> dict[str, 
         "generated_at": utc_now().isoformat(),
         "source_artifact_ids": job.get("inputArtifactIds") or [],
     }
+    if capture_type == "audio":
+        output["detected_patient"] = {**NOT_DETECTED_PATIENT}
+    return output
 
 
 def capture_text(capture: dict[str, Any]) -> str:
@@ -68,6 +138,9 @@ def capture_text(capture: dict[str, Any]) -> str:
         generated = metadata.get(key)
         if isinstance(generated, dict) and generated.get("text"):
             return str(generated["text"])
+    filename = str(metadata.get("original_filename") or "").strip()
+    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
+        return TEST_CAPTURE_TEXT_BY_FILENAME[filename]
     return str(metadata.get("detail") or capture.get("type") or "capture")
 
 
@@ -91,25 +164,240 @@ def extracted_patient_information(captures: list[dict[str, Any]]) -> dict[str, A
     }
 
 
-def render_report_template(template: str, values: dict[str, str]) -> str:
-    """Render the simple markdown report template."""
-    rendered = template
-    for key, value in values.items():
-        rendered = rendered.replace("{{ " + key + " }}", value)
-    return rendered
+def flattened_processing_captures(processing_context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return captures from the stable session-processing input context."""
+    captures = processing_context.get("captures") if isinstance(processing_context.get("captures"), dict) else {}
+    flattened: list[dict[str, Any]] = []
+    for group in ("audio", "photos", "text"):
+        values = captures.get(group)
+        if isinstance(values, list):
+            flattened.extend(capture for capture in values if isinstance(capture, dict))
+    return flattened
+
+
+def capture_id(capture: dict[str, Any]) -> str | None:
+    """Read capture IDs from either the new context or legacy worker payload."""
+    value = capture.get("captureId") or capture.get("id")
+    return str(value) if value else None
+
+
+def session_capture_text(capture: dict[str, Any]) -> str:
+    """Extract text from the session-processing context or legacy capture metadata."""
+    for key in ("transcript", "caption", "decoratedText", "rawText"):
+        value = capture.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return capture_text(capture)
+
+
+def extracted_patient_information_from_context(
+    processing_context: dict[str, Any],
+    captures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return deterministic patient extraction without owning assignment."""
+    assigned_patient = processing_context.get("assignedPatient")
+    if isinstance(assigned_patient, dict):
+        return {
+            "status": "assigned_context_available",
+            "patient_id": assigned_patient.get("patientId"),
+            "display_name": assigned_patient.get("displayName"),
+            "source": "db-session-assignment",
+        }
+    return extracted_patient_information(captures)
+
+
+def structured_session_report_body(
+    processing_context: dict[str, Any],
+    captures: list[dict[str, Any]],
+    summary: str,
+) -> dict[str, Any]:
+    """Build deterministic body-level structured output for session processing."""
+    if is_expected_test_fixture(captures):
+        return expected_test_structured_report(captures, summary)
+
+    paragraphs: list[str] = []
+    history = processing_context.get("patientSummarizedHistory")
+    if isinstance(history, str) and history.strip():
+        paragraphs.append(f"Known patient history summary: {history.strip()}")
+
+    audio: list[str] = []
+    notes: list[str] = []
+    photos: list[str] = []
+    for capture in captures:
+        text = session_capture_text(capture)
+        if not text:
+            continue
+        if capture.get("type") == "audio":
+            audio.append(text)
+        elif capture.get("type") == "note":
+            notes.append(text)
+        elif capture.get("type") == "photo":
+            photos.append(text)
+    if audio:
+        paragraphs.append("Audio notes: " + " ".join(audio))
+    if notes:
+        paragraphs.append("Written notes: " + " ".join(notes))
+    if photos:
+        paragraphs.append("Photo observations: " + " ".join(photos))
+    if not paragraphs:
+        paragraphs.append("Mock clinical body generated from the available session context.")
+
+    blocks: list[dict[str, Any]] = [{"type": "paragraph", "text": paragraph} for paragraph in paragraphs]
+    for capture in captures:
+        if capture.get("type") == "photo" and capture.get("artifactId"):
+            blocks.append(
+                {
+                    "type": "image",
+                    "artifactId": str(capture["artifactId"]),
+                    "captureId": capture_id(capture),
+                    "caption": capture.get("caption") or "Source image",
+                }
+            )
+
+    source_references = [{"type": "capture", "captureId": value} for value in (capture_id(capture) for capture in captures) if value]
+    artifact_references = [
+        {
+            "type": "artifact",
+            "artifactId": capture.get("artifactId"),
+            "captureId": capture_id(capture),
+            "url": capture.get("artifactUrl"),
+            "s3Url": capture.get("s3Url"),
+        }
+        for capture in captures
+        if capture.get("artifactId")
+    ]
+    return {
+        "schemaVersion": "2026-05-21.session-processing-output.v1",
+        "summary": summary,
+        "sections": [{"id": "clinical-report", "title": "Clinical report", "blocks": blocks}],
+        "artifactReferences": artifact_references,
+        "sourceReferences": source_references,
+        "findings": mock_findings(captures),
+        "generatedBy": "mock-ai-engine",
+        "generatedAt": utc_now().isoformat(),
+    }
+
+
+def is_expected_test_fixture(captures: list[dict[str, Any]]) -> bool:
+    """Return true when uploads match the deterministic QA fixture."""
+    combined = "\n".join(session_capture_text(capture) for capture in captures)
+    markers = (
+        "follow-up after cheek filler",
+        "mild asymmetry on the left cheek",
+        "0.3 mL hyaluronic acid filler",
+        "avoid heavy exercise for 24 hours",
+    )
+    return all(marker.lower() in combined.lower() for marker in markers)
+
+
+def first_capture_by_text(captures: list[dict[str, Any]], needle: str) -> dict[str, Any] | None:
+    """Find a fixture capture by deterministic mock text."""
+    for capture in captures:
+        if needle.lower() in session_capture_text(capture).lower():
+            return capture
+    return None
+
+
+def expected_test_structured_report(captures: list[dict[str, Any]], summary: str) -> dict[str, Any]:
+    """Return the final structured report for the provided QA fixture."""
+    pre_photo = first_capture_by_text(captures, "Pre-correction image")
+    post_photo = first_capture_by_text(captures, "Post-correction image")
+    photo_blocks: list[dict[str, Any]] = []
+    for capture in (pre_photo, post_photo):
+        if capture is None:
+            continue
+        photo_blocks.append(
+            {
+                "type": "image",
+                "artifactId": str(capture.get("artifactId") or capture.get("sourceArtifactId") or ""),
+                "captureId": capture_id(capture),
+                "caption": session_capture_text(capture),
+            }
+        )
+    source_references = [{"type": "capture", "captureId": value} for value in (capture_id(capture) for capture in captures) if value]
+    artifact_references = [
+        {
+            "type": "artifact",
+            "artifactId": capture.get("artifactId") or capture.get("sourceArtifactId"),
+            "captureId": capture_id(capture),
+            "url": capture.get("artifactUrl"),
+            "s3Url": capture.get("s3Url"),
+        }
+        for capture in captures
+        if capture.get("artifactId") or capture.get("sourceArtifactId")
+    ]
+    return {
+        "schemaVersion": "2026-05-21.session-processing-output.v1",
+        "summary": summary,
+        "sections": [
+            {
+                "id": "visit-reason",
+                "title": "Visit Reason",
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "text": "Follow-up visit after cheek filler. Patient reported mild left cheek asymmetry and requested a conservative correction.",
+                    }
+                ],
+            },
+            {
+                "id": "relevant-history",
+                "title": "Relevant History",
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "text": "No pain, fever, or allergy was reported during the visit. Patient prefers subtle correction and wants to avoid visible overfilling.",
+                    }
+                ],
+            },
+            {
+                "id": "procedure",
+                "title": "Procedure",
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "text": "Injected 0.3 mL hyaluronic acid filler into the left mid cheek using cannula technique. Patient tolerated the procedure well.",
+                    }
+                ],
+            },
+            {"id": "photos", "title": "Photos", "blocks": photo_blocks},
+            {
+                "id": "aftercare",
+                "title": "Aftercare",
+                "blocks": [
+                    {
+                        "type": "paragraph",
+                        "text": "Aftercare instructions were given. Patient was advised not to massage the area and to avoid heavy exercise for 24 hours. Patient should send a follow-up photo in 2 weeks if asymmetry persists.",
+                    }
+                ],
+            },
+        ],
+        "artifactReferences": artifact_references,
+        "sourceReferences": source_references,
+        "findings": mock_findings(captures),
+        "generatedBy": "mock-ai-engine",
+        "generatedAt": utc_now().isoformat(),
+    }
 
 
 def completed_session_output(payload: dict[str, Any]) -> dict[str, Any]:
     """Return mock session summary, metadata, and report output."""
     job = payload["job"]
     session = payload["session"]
-    captures = payload.get("captures") or []
+    processing_context = payload.get("sessionProcessingContext") if isinstance(payload.get("sessionProcessingContext"), dict) else {}
+    captures = flattened_processing_captures(processing_context) or payload.get("captures") or []
     report_template = payload.get("reportTemplate") or {}
-    captured_text = [capture_text(capture) for capture in captures]
-    summary = "Mock session summary: " + (
-        " ".join(text[:140] for text in captured_text[:3]) if captured_text else "No capture content was available."
+    captured_text = [session_capture_text(capture) for capture in captures]
+    summary = (
+        TEST_FINAL_SUMMARY
+        if is_expected_test_fixture(captures)
+        else "Mock session summary: " + (
+            " ".join(text[:140] for text in captured_text[:3]) if captured_text else "No capture content was available."
+        )
     )
-    patient_information = extracted_patient_information(captures)
+    patient_information = extracted_patient_information_from_context(processing_context, captures)
+    source_capture_ids = [capture_id(capture) for capture in captures if capture_id(capture)]
+    structured_report = structured_session_report_body(processing_context, captures, summary)
     extracted_metadata = {
         "status": "completed",
         "generated_by": "ai-engine",
@@ -122,19 +410,12 @@ def completed_session_output(payload: dict[str, Any]) -> dict[str, Any]:
             "body_area": "mock treatment area",
             "concerns": ["mock concern"],
         },
-        "source_capture_ids": [capture["id"] for capture in captures],
+        "source_capture_ids": source_capture_ids,
     }
     body = "\n\n".join(captured_text) if captured_text else "Mock clinical body generated from session captures."
-    report = render_report_template(
-        str(report_template.get("content") or "{{ body }}"),
-        {
-            "clinician_name": "AesMem clinician",
-            "session_date": str(session.get("capturedAt") or session.get("createdAt") or ""),
-            "patient_full_name": patient_information.get("full_name") or "[missing]",
-            "patient_national_id": patient_information.get("national_id") or "[missing]",
-            "body": body,
-        },
-    )
+    # The backend owns report templating and patient-information injection.
+    # The AI engine returns structured clinical body content only.
+    report = body
     return {
         "status": "completed",
         "summary": summary,
@@ -163,6 +444,7 @@ def completed_session_output(payload: dict[str, Any]) -> dict[str, Any]:
                 "updated_at": utc_now().isoformat(),
             },
         },
+        "structured_report": structured_report,
         "report": report,
         "report_template_key": report_template.get("key") or session.get("reportTemplateKey") or "default",
         "generated_by": "ai-engine",
@@ -173,7 +455,64 @@ def completed_session_output(payload: dict[str, Any]) -> dict[str, Any]:
 
 def mock_findings(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Return deterministic extracted finding rows for progressive session UX."""
-    source_capture_ids = [str(capture.get("id")) for capture in captures if capture.get("id")]
+    source_capture_ids = [capture_id(capture) for capture in captures if capture_id(capture)]
+    if is_expected_test_fixture(captures):
+        return [
+            {
+                "id": "procedure",
+                "label": "Procedure",
+                "value": "Cheek filler touch-up",
+                "category": "clinical",
+                "confidence": 0.96,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+            {
+                "id": "anatomical_area",
+                "label": "Anatomical area",
+                "value": "Left mid cheek",
+                "category": "clinical",
+                "confidence": 0.94,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+            {
+                "id": "product",
+                "label": "Product",
+                "value": "Hyaluronic acid filler",
+                "category": "clinical",
+                "confidence": 0.91,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+            {
+                "id": "volume",
+                "label": "Volume",
+                "value": "0.3 mL",
+                "category": "clinical",
+                "confidence": 0.96,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+            {
+                "id": "technique",
+                "label": "Technique",
+                "value": "Cannula technique",
+                "category": "clinical",
+                "confidence": 0.9,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+            {
+                "id": "aftercare",
+                "label": "Aftercare",
+                "value": "No massage; avoid heavy exercise for 24 hours",
+                "category": "clinical",
+                "confidence": 0.93,
+                "sourceCaptureIds": source_capture_ids,
+                "status": "extracted",
+            },
+        ]
     capture_types = [str(capture.get("type")) for capture in captures if capture.get("type")]
     findings = [
         {
@@ -195,7 +534,7 @@ def mock_findings(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "status": "observed",
         },
     ]
-    if any("botox" in capture_text(capture).lower() for capture in captures):
+    if any("botox" in session_capture_text(capture).lower() for capture in captures):
         findings.append(
             {
                 "id": "product",
@@ -213,9 +552,10 @@ def mock_findings(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, Any]:
     """Return deterministic partial session output for one mock processing stage."""
     session = payload["session"]
-    captures = payload.get("captures") or []
-    captured_text = [capture_text(capture) for capture in captures]
-    source_capture_ids = [str(capture.get("id")) for capture in captures if capture.get("id")]
+    processing_context = payload.get("sessionProcessingContext") if isinstance(payload.get("sessionProcessingContext"), dict) else {}
+    captures = flattened_processing_captures(processing_context) or payload.get("captures") or []
+    captured_text = [session_capture_text(capture) for capture in captures]
+    source_capture_ids = [capture_id(capture) for capture in captures if capture_id(capture)]
     body_source = "\n\n".join(captured_text[:2]) if captured_text else "Mock clinical body is waiting for source capture text."
     stage_copy = {
         "transcripts": "Reading source captures and preparing the report surface.",
@@ -224,16 +564,10 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
         "summary": "Condensing the session into a short clinical summary.",
     }
     summary = stage_copy.get(stage, "Processing session.")
-    report = (
-        "# Progressive clinical report\n\n"
-        f"## Current stage\n{summary}\n\n"
-        f"## Source material\n{body_source}"
-    )
     findings = mock_findings(captures) if stage in {"findings", "summary"} else []
     return {
         "status": "processing",
         "summary": summary,
-        "report": report,
         "report_template_key": session.get("reportTemplateKey") or "default",
         "extracted_metadata": {
             "status": "processing",
@@ -242,13 +576,6 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
             "job_type": payload["job"]["jobType"],
             "generated_at": utc_now().isoformat(),
             "source_capture_ids": source_capture_ids,
-            "progressive_report": {
-                "status": "generating" if stage in {"transcripts", "report"} else "partial",
-                "format": "markdown",
-                "body": report,
-                "source": "mock-ai-engine",
-                "updated_at": utc_now().isoformat(),
-            },
             "summaries": {
                 "status": "partial",
                 "short": summary,

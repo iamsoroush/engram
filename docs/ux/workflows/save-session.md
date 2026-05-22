@@ -26,7 +26,10 @@ Generate structured session output from the live draft while keeping the Active 
 - Backend accepts structured report generation attempts in any session state.
 - Sessions without captures return the current session contract without queuing processing.
 - Backend creates a session-level AI job and dispatches it to the AI engine.
-- Successful processing stores generated summary, generated report, extracted metadata, report template key, and backend organization metadata.
+- Successful processing stores generated summary, a structured report model, rendered markdown report, extracted metadata, report template key, and backend organization metadata.
+- The structured report model is the backend source of truth for the report body; markdown body content is rendered from it and returned to the frontend.
+- The frontend renders clinic and patient information around the backend-owned body using non-AI template/session context.
+- Patient information in rendered reports comes from the assigned patient record and identifiers, not from AI-generated report body text.
 - Previous generated summary/report/metadata snapshots are retained in extracted metadata so future UI can recover earlier output.
 - A successful exact national ID match can attach the session to an existing patient.
 

@@ -269,6 +269,7 @@ class Session(Base):
     summary: Mapped[str | None] = mapped_column(Text)
     generated_summary: Mapped[str | None] = mapped_column(Text)
     generated_report: Mapped[str | None] = mapped_column(Text)
+    report_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     extracted_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     report_template_key: Mapped[str | None] = mapped_column(String(120))
     organization_source: Mapped[OrganizationSource] = mapped_column(

@@ -102,6 +102,18 @@ generated outputs and moves the session to `needs_review` if a patient is
 assigned, otherwise `unassigned`. Generated output is still not clinically
 verified until staff verifies the session.
 
+Structured report content is stored in `sessions.report_model` as the backend
+source of truth. Markdown remains a rendered/export format in the session
+contract. Session processing receives a versioned context with the raw report
+template, clinic context, assigned DB patient context, patient history summary,
+processed capture outputs, artifact URLs, and session metadata. Its completed
+output is body-level structured content only: sections, image/artifact
+references, source capture references, extracted findings, and an optional
+summary. The default singleton report template renders clinic information,
+patient information, and body sections; patient information is injected from the
+assigned patient record and identifiers, not from AI-generated body text. The
+current template key is `default`.
+
 ### Review
 
 When previewing a capture, the frontend resolves the source in this order:
