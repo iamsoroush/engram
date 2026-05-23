@@ -128,6 +128,7 @@ def list_sessions_for_tenant(db: DbSession, tenant_id: uuid.UUID) -> list[dict[s
 
 
 def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[str, Any]:
+    metadata = capture.capture_metadata or {}
     return {
         "id": str(capture.id),
         "tenantId": str(capture.tenant_id),
@@ -135,9 +136,10 @@ def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[
         "patientId": str(capture.patient_id) if capture.patient_id else None,
         "type": capture.capture_type.value,
         "status": capture.status.value,
+        "title": metadata.get("title"),
         "clientCaptureId": capture.client_capture_id,
-        "metadata": capture.capture_metadata,
-        "assignmentSource": (capture.capture_metadata or {}).get("patient_assignment_source"),
+        "metadata": metadata,
+        "assignmentSource": metadata.get("patient_assignment_source"),
         "sourceArtifactId": str(capture.source_artifact_id) if capture.source_artifact_id else None,
         "artifact": artifact_payload(artifact) if artifact else None,
         "fileEndpoint": f"/api/v1/captures/{capture.id}/file" if capture.source_artifact_id else None,

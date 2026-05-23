@@ -32,7 +32,7 @@ from app.services.ai_jobs import (
     start_worker_job,
     progress_worker_job,
 )
-from app.services.captures import assign_capture_patient, capture_metadata, get_capture, update_capture
+from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture
 from app.services.capture_storage import (
     source_file_content,
     source_file_url,
@@ -501,6 +501,16 @@ def update_capture_route(
 ) -> dict[str, Any]:
     """Update editable capture state or metadata."""
     return update_capture(db, principal, capture_id, request)
+
+
+@api_v1.delete("/captures/{capture_id}")
+def delete_capture_route(
+    capture_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Soft-delete a capture and return the updated session contract."""
+    return delete_capture(db, principal, capture_id)
 
 
 @api_v1.post("/captures/{capture_id}/assign-patient")

@@ -4,7 +4,7 @@ from typing import Any, Literal, NotRequired, TypedDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from app.models import Artifact, Capture, CaptureType, Patient, Session
+from app.models import Artifact, Capture, CaptureStatus, CaptureType, Patient, Session
 from app.services.reporting import (
     REPORT_MODEL_VERSION,
     empty_report_model,
@@ -88,7 +88,11 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
     captures = list(
         db.execute(
             select(Capture)
-            .where(Capture.tenant_id == session.tenant_id, Capture.session_id == session.id)
+            .where(
+                Capture.tenant_id == session.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
             .order_by(Capture.created_at)
         ).scalars()
     )

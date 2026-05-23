@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import Artifact, Capture, AiJob, OrganizationSource, Patient, Session, SessionStatus
+from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSource, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
@@ -73,7 +73,13 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
     """Request session-level report processing without enforcing workflow state."""
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
     capture_exists = db.execute(
-        select(Capture.id).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).limit(1)
+        select(Capture.id)
+        .where(
+            Capture.tenant_id == principal.tenant_id,
+            Capture.session_id == session.id,
+            Capture.status != CaptureStatus.deleted,
+        )
+        .limit(1)
     ).scalar_one_or_none()
     if capture_exists is None:
         session.report_template_key = request.report_template_key or session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
@@ -214,11 +220,12 @@ def assign_session_patient(
         session.status = SessionStatus.needs_review
     if next_patient_id:
         for capture in db.execute(
-            select(Capture).where(
-                Capture.tenant_id == principal.tenant_id,
-                Capture.session_id == session.id,
-                Capture.patient_id.is_(None),
-            )
+        select(Capture).where(
+            Capture.tenant_id == principal.tenant_id,
+            Capture.session_id == session.id,
+            Capture.status != CaptureStatus.deleted,
+            Capture.patient_id.is_(None),
+        )
         ).scalars():
             capture.patient_id = next_patient_id
             capture.capture_metadata = {
@@ -279,7 +286,13 @@ def reopen_session(db: DbSession, principal: CurrentPrincipal, session_id: str) 
 def list_session_captures(db: DbSession, principal: CurrentPrincipal, session_id: str) -> list[dict[str, Any]]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
     captures = db.execute(
-        select(Capture).where(Capture.tenant_id == principal.tenant_id, Capture.session_id == session.id).order_by(Capture.created_at)
+        select(Capture)
+        .where(
+            Capture.tenant_id == principal.tenant_id,
+            Capture.session_id == session.id,
+            Capture.status != CaptureStatus.deleted,
+        )
+        .order_by(Capture.created_at)
     ).scalars()
     payloads = [capture_payload(capture) for capture in captures]
     if db.dirty:

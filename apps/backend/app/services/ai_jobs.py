@@ -313,7 +313,13 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     if session is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
     captures = db.execute(
-        select(Capture).where(Capture.tenant_id == job.tenant_id, Capture.session_id == session.id).order_by(Capture.created_at)
+        select(Capture)
+        .where(
+            Capture.tenant_id == job.tenant_id,
+            Capture.session_id == session.id,
+            Capture.status != CaptureStatus.deleted,
+        )
+        .order_by(Capture.created_at)
     ).scalars()
     # TODO(ai-integration): Real session processors should consume this stable
     # context and return the structured body-level output contract.
