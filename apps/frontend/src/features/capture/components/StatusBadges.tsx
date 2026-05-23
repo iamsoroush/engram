@@ -1,6 +1,6 @@
-import type { CaptureStatus, CaptureItem, SessionStatus } from "../types";
-import { Badge } from "../ui";
-import { sessionUxState, sessionUxStateCopy, sessionUxStateTone, statusCopy, statusTone } from "../status";
+import type { CaptureStatus, CaptureItem, SessionStatus } from "../../../domain/types";
+import { Badge } from "../../../shared/ui/primitives";
+import { sessionUxState, sessionUxStateCopy, sessionUxStateTone, statusCopy, statusTone } from "../../../domain/status";
 
 export function StatusBadge({ status }: { status?: CaptureItem["status"] }) {
   const normalized: CaptureStatus =

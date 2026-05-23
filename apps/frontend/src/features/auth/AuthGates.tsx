@@ -1,7 +1,7 @@
 import React from "react";
-import type { AuthSession, Persona } from "../appTypes";
-import { IS_DEV } from "../config";
-import { Badge, Button, Card, Input } from "../ui";
+import type { AuthSession, Persona } from "../../domain/appTypes";
+import { IS_DEV } from "../../shared/lib/config";
+import { Badge, Button, Card, Input } from "../../shared/ui/primitives";
 
 export function LoginGate({
   error,

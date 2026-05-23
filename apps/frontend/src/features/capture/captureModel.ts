@@ -1,5 +1,5 @@
-import type { CaptureDraft, PendingCapture } from "./appTypes";
-import type { CaptureItem, CaptureSession } from "./types";
+import type { CaptureDraft, PendingCapture } from "../../domain/appTypes";
+import type { CaptureItem, CaptureSession } from "../../domain/types";
 
 export const titleByType: Record<CaptureDraft["kind"], string> = {
   audio: "Audio note",

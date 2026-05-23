@@ -1,5 +1,5 @@
-import type { CachedCapture, IdMapping, PendingCapture } from "./appTypes";
-import type { CaptureItem } from "./types";
+import type { CachedCapture, IdMapping, PendingCapture } from "../../domain/appTypes";
+import type { CaptureItem } from "../../domain/types";
 
 const OUTBOX_DB = "aesmem-capture-outbox";
 const OUTBOX_STORE = "pendingCaptures";

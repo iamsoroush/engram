@@ -1,15 +1,15 @@
 import React from "react";
-import type { PatientAssignmentDraft, PatientSummary } from "../appTypes";
+import type { PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
 import type {
   CaptureItem,
   CaptureSession,
   SessionProcessingStatus,
   StructuredPatientInformation,
-} from "../types";
+} from "../../../domain/types";
 import { isLocalSessionId } from "../captureModel";
 import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } from "../metadata";
-import { sessionUxState } from "../status";
-import { Button, Card, Input } from "../ui";
+import { sessionUxState } from "../../../domain/status";
+import { Button, Card, Input } from "../../../shared/ui/primitives";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 import { StatusBadge } from "./StatusBadges";
 

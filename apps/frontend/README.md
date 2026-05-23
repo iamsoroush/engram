@@ -79,6 +79,14 @@ Preview the production build locally:
 npm run preview
 ```
 
+## Source Layout
+
+- `src/app`: root app orchestration, navigation, and session state helpers.
+- `src/domain`: shared frontend types and UX status mapping.
+- `src/features`: auth, capture, memory, and shell feature modules.
+- `src/services`: API client/normalizers and browser storage adapters.
+- `src/shared`: reusable UI primitives and small environment helpers.
+
 ## Environment
 
 The frontend reads `VITE_API_URL`.

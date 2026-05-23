@@ -1,8 +1,8 @@
 import React from "react";
-import type { AuthSession, CaptureDraft } from "../appTypes";
-import type { Screen } from "../types";
-import { Button, Card } from "../ui";
-import { CaptureActions } from "./CaptureActions";
+import type { AuthSession, CaptureDraft } from "../../domain/appTypes";
+import type { Screen } from "../../domain/types";
+import { Button, Card } from "../../shared/ui/primitives";
+import { CaptureActions } from "../capture/components/CaptureActions";
 
 export function Shell({
   screen,

@@ -8,8 +8,8 @@ import type {
   StructuredPatientInformation,
   StructuredReportBlock,
   StructuredReportModel,
-} from "./types";
-import { titleByType, nowLabel } from "./captureModel";
+} from "../../domain/types";
+import { titleByType, nowLabel } from "../../features/capture/captureModel";
 
 export const sessionStatusFromApi = (status?: string): CaptureSession["status"] => {
   if (
@@ -235,7 +235,7 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
 }
 
 /**
- * Converts API sessions into the prototype session shape and supplies defensive
+ * Converts API sessions into the frontend session shape and supplies defensive
  * fallback copy for partially populated processing responses.
  */
 export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string, unknown>): CaptureSession {

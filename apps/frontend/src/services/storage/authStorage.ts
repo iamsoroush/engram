@@ -1,5 +1,5 @@
-import type { AuthSession, StoredAuthProfile } from "./appTypes";
-import { DEV_AUTH_STORAGE_KEY, IS_DEV } from "./config";
+import type { AuthSession, StoredAuthProfile } from "../../domain/appTypes";
+import { DEV_AUTH_STORAGE_KEY, IS_DEV } from "../../shared/lib/config";
 
 export function persistAuthProfile(auth: AuthSession) {
   if (!IS_DEV) return;

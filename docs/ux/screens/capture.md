@@ -4,7 +4,6 @@
 
 - `/`
 - `/#active-session`
-- `/#capture`, legacy fallback
 
 ## Purpose
 
@@ -37,7 +36,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Patient assignment opens a lightweight centered modal with live search/autocomplete and inline patient creation.
 - Clinical report section that always exists, including before the first capture.
 - Recording audio opens as a mobile-first bottom sheet with timer, animated levels, pause/resume, stop/save, discard, background continue, and a styled `Use audio file instead` fallback.
-- Live mocked draft capture cards that update immediately when audio, photo, or text captures are added.
+- Live draft capture cards that update immediately when audio, photo, or text captures are added.
 - Audio captures render playback inline in the draft.
 - Audio transcript and photo caption text render fully inline in the draft so review does not require opening a detail card.
 - Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
@@ -48,7 +47,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - During structured report generation, the report surface switches to `Structured report` immediately and shows a waiting message until the backend returns the full body.
 - The live draft remains reviewable outside the locked generation moment; users can switch between `Live draft` and `Structured report`.
 - `Structured report` is disabled until at least one capture exists and explains that the user must create a capture first.
-- Mocked progressive report states: `Draft`, `Structured`, and `Verified`. Adding a new capture or changing the patient after generation returns the state to `Draft` until the user generates again.
+- Progressive report states: `Draft`, `Structured`, and `Verified`. Adding a new capture or changing the patient after generation returns the state to `Draft` until the user generates again.
 - Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
 - Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
 - Capture source previews.
@@ -110,6 +109,6 @@ Primary working screen for building and reviewing a session from audio, photo, a
 
 - Per-capture retry controls are available from the capture overflow menu for failed upload and failed processing states.
 - `+ New session` resets the active context but does not create an empty backend session until a capture syncs; assigning a patient before the first capture creates a local empty workspace context that is attached after sync.
-- Report, summary, extracted findings, and processing status use stable backend contracts plus mocked live draft output until final AI session artifacts are integrated.
-- Report layout keeps a stable body height during mocked processing so captures remain visible below instead of being displaced by loading states.
+- Report, summary, extracted findings, and processing status use stable backend contracts plus local live draft output until final AI session artifacts are integrated.
+- Report layout keeps a stable body height during processing so captures remain visible below instead of being displaced by loading states.
 - Historical review currently shares the report workspace but does not yet expose the full patient assignment panel.

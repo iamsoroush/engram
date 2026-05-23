@@ -1,5 +1,5 @@
-import type { CaptureItem } from "./types";
-import { Badge } from "./ui";
+import type { CaptureItem } from "../../domain/types";
+import { Badge } from "../../shared/ui/primitives";
 
 export function assignmentSourceLabel(source?: string | null) {
   if (source === "staff") return "Assigned by staff";

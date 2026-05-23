@@ -21,7 +21,6 @@ export const sessionUxStateTone: Record<SessionUxState, "neutral" | "blue" | "gr
 };
 
 export function sessionUxState(status: SessionStatus): SessionUxState {
-  // TODO(backend-state-integration): Replace this compatibility map once the backend returns UX-level session states directly.
   if (status === "failed") return "failed";
   if (status === "processing") return "processing";
   if (status === "verified" || status === "matched") return "verified";

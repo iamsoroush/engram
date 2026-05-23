@@ -19,7 +19,7 @@ All session states remain reviewable. State badges are informational and do not 
 ## Visible Data
 
 - Session title, full summary, status, and actionable patient assignment.
-- Clinical report with mocked progressive state, passive status indicators, and live draft/structured view switching when backend report output is unavailable.
+- Clinical report with local progressive state, passive status indicators, and live draft/structured view switching when backend report output is unavailable.
 - Collapsible summary.
 - Collapsible extracted findings.
 - Source previews, statuses, and generated capture details through clickable live draft cards.

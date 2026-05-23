@@ -60,5 +60,4 @@ Generate structured session output from the live draft while keeping the Active 
 ## Known Gaps
 
 - Inline historical review does not yet expose retry-processing, reopen, or start-review actions.
-- Structured report progress is time-delayed polling plus mocked inline draft evolution rather than live AI progress.
-- TODO: Remove backend `organizationSource` naming once backend state and memory APIs align with the Active Session/Patients model.
+- Structured report progress uses bounded polling plus inline draft evolution until live AI progress is available.

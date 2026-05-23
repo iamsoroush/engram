@@ -1,7 +1,7 @@
 import React from "react";
-import type { CaptureDraft } from "../appTypes";
+import type { CaptureDraft } from "../../../domain/appTypes";
 import { audioExtensionForMimeType, isSafariBrowser, preferredAudioRecorderOptions } from "../audio";
-import { Button, Dialog, Sheet, Textarea } from "../ui";
+import { Button, Dialog, Sheet, Textarea } from "../../../shared/ui/primitives";
 
 export function TextCaptureSheet({
   open,

@@ -1,8 +1,8 @@
-import type { ApiFetch, CaptureDraft, PatientAssignmentDraft, PatientSummary, PendingCapture, Persona } from "./appTypes";
-import type { CaptureItem, CaptureSession } from "./types";
-import { API_BASE } from "./config";
+import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, PendingCapture, Persona } from "../../domain/appTypes";
+import type { CaptureItem, CaptureSession } from "../../domain/types";
+import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
-import { saveIdMapping } from "./storage";
+import { saveIdMapping } from "../storage/captureStorage";
 
 export async function loginWithPersona(persona: Persona) {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
@@ -11,7 +11,7 @@ export async function loginWithPersona(persona: Persona) {
     body: JSON.stringify({ persona }),
   });
   if (!response.ok) throw new Error("Login failed");
-  return (await response.json()) as import("./appTypes").AuthSession;
+  return (await response.json()) as AuthSession;
 }
 
 export async function loginWithPassword(email: string, password: string) {
@@ -21,7 +21,7 @@ export async function loginWithPassword(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw new Error("Login failed");
-  return (await response.json()) as import("./appTypes").AuthSession;
+  return (await response.json()) as AuthSession;
 }
 
 export async function refreshAuthToken(refreshToken: string) {
@@ -31,7 +31,7 @@ export async function refreshAuthToken(refreshToken: string) {
     body: JSON.stringify({ refreshToken }),
   });
   if (!response.ok) throw new Error("Refresh failed");
-  return (await response.json()) as Pick<import("./appTypes").AuthSession, "accessToken" | "refreshToken">;
+  return (await response.json()) as Pick<AuthSession, "accessToken" | "refreshToken">;
 }
 
 export async function logoutSession(accessToken: string, refreshToken: string) {

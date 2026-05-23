@@ -1,9 +1,9 @@
 import React from "react";
-import type { CaptureDraft, PatientAssignmentDraft } from "../appTypes";
-import type { CaptureSession } from "../types";
-import { sessionUxState, sessionUxStateCopy, sessionUxStateTone, type SessionUxState } from "../status";
-import { Badge, Button, Card, Input } from "../ui";
-import { SessionStatusBadge } from "./StatusBadges";
+import type { CaptureDraft, PatientAssignmentDraft } from "../../../domain/appTypes";
+import type { CaptureSession } from "../../../domain/types";
+import { sessionUxState, sessionUxStateCopy, sessionUxStateTone, type SessionUxState } from "../../../domain/status";
+import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
+import { SessionStatusBadge } from "../../capture/components/StatusBadges";
 
 export function PatientsHome({
   sessions,
@@ -111,8 +111,6 @@ export function PatientsHome({
           {unassigned.length === 0 ? <p>No unassigned sessions.</p> : null}
         </div>
       </section>
-      {/* TODO(ux-migration): Replace this session-derived grouping with patient timeline data when the Patients API lands. */}
-      {/* TODO(ux-migration): Replace mocked patient history summaries with AI-generated longitudinal patient summaries. */}
     </section>
   );
 }
@@ -268,7 +266,6 @@ export function SearchHome({
           {!query ? <p>Enter a term to search the currently loaded clinical memory.</p> : null}
         </div>
       </div>
-      {/* TODO(ux-migration): Wire this screen to global backend search across patients, sessions, captures, and extracted findings. */}
     </section>
   );
 }

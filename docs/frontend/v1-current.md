@@ -1,4 +1,4 @@
-# Frontend v1 Current Prototype
+# Frontend v1 Current App
 
 ## Stack
 
@@ -7,12 +7,24 @@
 - TypeScript
 - Plain CSS with shadcn/Tailwind-inspired component conventions
 
-The active prototype entrypoint is:
+The active app entrypoint is:
 
 ```text
 apps/frontend/src/main.tsx
-apps/frontend/src/prototype/App.tsx
+apps/frontend/src/app/App.tsx
 ```
+
+## Source Layout
+
+- `src/app`: root orchestration, hash navigation, and session state helpers.
+- `src/domain`: frontend session/capture/auth types and UX status mapping.
+- `src/features/auth`: login and patient-preview gates.
+- `src/features/capture`: capture dialogs, active session workspace, capture metadata, audio helpers, and local capture modeling.
+- `src/features/memory`: Patients and Search screens.
+- `src/features/shell`: authenticated app shell and sync safety banner.
+- `src/services/api`: backend client and response normalizers.
+- `src/services/storage`: IndexedDB/localStorage persistence boundaries.
+- `src/shared`: small UI primitives and environment config.
 
 ## UX Principles
 
@@ -39,7 +51,7 @@ State meanings:
 - `Syncing`: the outbox is uploading to backend.
 - `Failed/Retry`: upload failed, but the source blob remains in IndexedDB.
 - `Needs review`: backend has received the capture and it is ready for organization.
-- `Organized`: in the current prototype, the session has been marked reviewed/organized.
+- `Verified`: staff has confirmed the session output.
 
 Backend v2 separates generated organization from human verification. See [sync outbox](sync-outbox.md) and [backend v2 design](../backend/v2-design.md) for the new `organized` versus `verified` semantics.
 
@@ -64,7 +76,7 @@ Eviction policy:
 - Oldest/least recently accessed cached captures are evicted first.
 - If local cache is missing, preview falls back to the backend source URL.
 
-Future work should add:
+Known gaps:
 
 - visible storage meter;
 - warning when pending unsynced data grows too large;

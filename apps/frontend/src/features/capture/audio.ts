@@ -1,4 +1,4 @@
-import type { CaptureDraft } from "./appTypes";
+import type { CaptureDraft } from "../../domain/appTypes";
 
 export function audioExtensionForMimeType(mimeType: string) {
   if (mimeType.includes("mp4") || mimeType.includes("mpeg") || mimeType.includes("aac")) return "m4a";

@@ -1,8 +1,8 @@
 import React from "react";
 import { flushSync } from "react-dom";
-import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, Persona } from "./appTypes";
-import type { CaptureSession, CaptureStatus, Screen } from "./types";
-import { Button, Card, Skeleton, Toast } from "./ui";
+import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, Persona } from "../domain/appTypes";
+import type { CaptureSession, CaptureStatus, Screen } from "../domain/types";
+import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
   createPatient,
@@ -23,23 +23,22 @@ import {
   updateSessionTitle,
   uploadCapture,
   verifySession,
-} from "./api";
-import { standardizeCaptureDraft } from "./audio";
-import { clearStoredAuthProfile, loadStoredAuthProfile, persistAuthProfile } from "./authStorage";
+} from "../services/api/client";
+import { standardizeCaptureDraft } from "../features/capture/audio";
+import { clearStoredAuthProfile, loadStoredAuthProfile, persistAuthProfile } from "../services/storage/authStorage";
 import {
-  createClientId,
   isLocalSessionId,
   makeLocalCapture,
   mergeCaptureItemsPreservingPreview,
   mergeSessionItems,
-  nowLabel,
   sessionWithLocalPreview,
   sessionsFromPending,
-} from "./captureModel";
-import { LoginGate, PatientPreviewGate } from "./components/AuthGates";
-import { AudioDialog, CaptureScreen, PhotoPreviewDialog, TextCaptureSheet } from "./components/CaptureWorkflow";
-import { CaptureDestinationPanel, PatientsHome, SearchHome } from "./components/MemoryScreens";
-import { Shell, SyncSafetyBanner } from "./components/Shell";
+} from "../features/capture/captureModel";
+import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
+import { AudioDialog, PhotoPreviewDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
+import { CaptureScreen } from "../features/capture/components/CaptureScreen";
+import { CaptureDestinationPanel, PatientsHome, SearchHome } from "../features/memory/components/MemoryScreens";
+import { Shell, SyncSafetyBanner } from "../features/shell/Shell";
 import {
   bindPendingSession,
   clearLocalCaptureData,
@@ -50,104 +49,17 @@ import {
   savePendingCapture,
   saveSyncedCaptureCache,
   updatePendingCapture,
-} from "./storage";
-import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "./workspaceStorage";
-
-const MOCK_PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600, 11000, 16000];
-
-function mergeSessionUpdate(existing: CaptureSession, updated: CaptureSession, items = existing.items) {
-  const patientChanged = Boolean(updated.patientId && existing.patientId && updated.patientId !== existing.patientId);
-  const preservedPatient =
-    !patientChanged && (existing.patientId || existing.patientName || existing.assignmentSource) && (!updated.patientId || !updated.patientName)
-      ? {
-          patientId: existing.patientId,
-          patientName: existing.patientName,
-          assignmentSource: existing.assignmentSource,
-        }
-      : !patientChanged && existing.assignmentSource === "staff" && updated.patientId === existing.patientId
-        ? { assignmentSource: "staff" }
-        : {};
-  const isReplacingGeneratedReport = existing.processingStatus?.state === "processing" || existing.report?.status === "generating";
-  const preservedReport =
-    !isReplacingGeneratedReport && existing.report?.isStale && updated.report?.status === "processed" && !updated.report.isStale
-      ? { report: existing.report }
-      : {};
-  return { ...existing, ...updated, ...preservedPatient, ...preservedReport, items };
-}
-
-function markReportStaleForPatientChange(existing: CaptureSession, updated: CaptureSession) {
-  const patientChanged = existing.patientId !== updated.patientId || existing.patientName !== updated.patientName;
-  if (!patientChanged || !existing.report || existing.report.isStale) return updated;
-  if (existing.report.status !== "processed" && existing.report.status !== "verified" && existing.status !== "verified") return updated;
-  return {
-    ...updated,
-    status: updated.status === "verified" ? "reopened" : updated.status,
-    report: {
-      ...existing.report,
-      status: "partial",
-      isStale: true,
-    },
-  };
-}
-
-function markReportStaleForCaptureChange(session: CaptureSession): CaptureSession {
-  if (!session.report || session.report.isStale) return session;
-  if (session.report.status !== "processed" && session.report.status !== "verified" && session.status !== "verified") return session;
-  return {
-    ...session,
-    status: session.status === "verified" ? "reopened" : session.status,
-    report: {
-      ...session.report,
-      status: "partial",
-      isStale: true,
-    },
-  };
-}
-
-function makeEmptyLocalSession(): CaptureSession {
-  const time = nowLabel();
-  return {
-    id: `local-session-${createClientId()}`,
-    label: `Session ${time}`,
-    time,
-    dateLabel: "Today",
-    duration: "not started",
-    summary: "Ready for the first capture.",
-    status: "draft",
-    reviewReason: "No captures yet",
-    items: [],
-  };
-}
-
-function screenFromLocation(): Screen {
-  if (typeof window === "undefined") return "active-session";
-  const hash = window.location.hash.replace(/^#/, "");
-  // Migration compatibility: old shared links to #organize now land on Patients.
-  if (hash === "patients" || hash === "organize") return "patients";
-  if (hash === "search") return "search";
-  return "active-session";
-}
-
-function replaceScreenLocation(screen: Screen) {
-  if (typeof window === "undefined" || !["active-session", "patients", "search"].includes(screen)) return;
-  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${screen}`);
-}
-
-function shouldOpenCameraDirectly() {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-}
-
-function resolveRestoredSession(storedSession: CaptureSession | null, sessions: CaptureSession[]) {
-  if (!storedSession) return null;
-  const current = sessions.find((session) => session.id === storedSession.id);
-  if (!current) return storedSession;
-  return {
-    ...storedSession,
-    ...current,
-    items: current.items.length ? current.items : storedSession.items,
-  };
-}
+} from "../services/storage/captureStorage";
+import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
+import { replaceScreenLocation, screenFromLocation, shouldOpenCameraDirectly } from "./navigation";
+import {
+  makeEmptyLocalSession,
+  markReportStaleForCaptureChange,
+  markReportStaleForPatientChange,
+  mergeSessionUpdate,
+  PROCESSING_REFRESH_DELAYS,
+  resolveRestoredSession,
+} from "./sessionState";
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
@@ -278,7 +190,6 @@ export function App() {
 
   React.useEffect(() => {
     if (!auth || !workspaceHydratedRef.current) return;
-    // TODO(offline-sync): Move workspace continuity into a tenant-scoped durable sync/cache layer when background sync lands.
     persistWorkspaceState({
       tenantId: auth.tenant.id,
       screen,
@@ -413,7 +324,7 @@ export function App() {
 
   const scheduleCaptureProcessingRefresh = React.useCallback(
     (sessionId: string) => {
-      MOCK_PROCESSING_REFRESH_DELAYS.forEach((delay) => {
+      PROCESSING_REFRESH_DELAYS.forEach((delay) => {
         window.setTimeout(() => {
         void fetchSessionCaptures(apiFetch, sessionId)
           .then((captures) => {
@@ -435,7 +346,7 @@ export function App() {
 
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
-      MOCK_PROCESSING_REFRESH_DELAYS.forEach((delay) => {
+      PROCESSING_REFRESH_DELAYS.forEach((delay) => {
         window.setTimeout(() => {
         void loadBackendSessions()
           .then((loadedSessions) => {

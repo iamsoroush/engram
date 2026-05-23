@@ -38,7 +38,7 @@ Capture clinical material quickly without selecting a patient first.
 - Active workspace state is stored locally as a lightweight continuity snapshot.
 - First backend upload creates a draft session when no backend session is supplied.
 - Backend stores the source artifact and starts capture processing.
-- The frontend keeps mocked progressive draft output visible while scheduled capture polling picks up generated placeholder output.
+- The frontend keeps local progressive draft output visible while scheduled capture polling picks up generated backend output.
 
 ## Involved Screens
 

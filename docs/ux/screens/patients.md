@@ -3,7 +3,6 @@
 ## Route
 
 - `/#patients`
-- `/#organize`, legacy fallback
 
 ## Purpose
 
@@ -23,7 +22,7 @@ Primary long-term memory surface for patient-linked session history and unassign
 
 - Patients section.
 - Unassigned Sessions section.
-- Patient cards with patient name, concise mocked AI history summary, status badges, and session cards.
+- Patient cards with patient name, concise history summary, status badges, and session cards.
 - Session cards with timestamp, status badge, short summary, and quick actions.
 - State appears as lightweight badges only: `Capturing`, `Processing`, `Needs review`, `Unassigned`, `Verified`, or `Failed`.
 - Needs-review behavior appears as badges/indicators only.
@@ -38,5 +37,5 @@ Primary long-term memory surface for patient-linked session history and unassign
 ## Known Gaps
 
 - Patient cards are currently derived from loaded sessions rather than a dedicated patient timeline API.
-- Patient history summaries are mocked from loaded session summaries until backend patient memory support lands.
+- Patient history summaries are derived from loaded session summaries until backend patient memory support lands.
 - Inline assignment currently creates a patient when no exact loaded match is found; richer duplicate review is future work.

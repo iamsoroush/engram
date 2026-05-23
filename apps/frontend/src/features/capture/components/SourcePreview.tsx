@@ -1,8 +1,8 @@
 import React from "react";
-import type { CaptureItem } from "../types";
+import type { CaptureItem } from "../../../domain/types";
 import { CaptureMetadataSummary, generatedMetadataFor, metadataDisplay, metadataRecord, metadataText } from "../metadata";
-import { getCachedCapture } from "../storage";
-import { Card, Dialog } from "../ui";
+import { getCachedCapture } from "../../../services/storage/captureStorage";
+import { Card, Dialog } from "../../../shared/ui/primitives";
 import { StatusBadge } from "./StatusBadges";
 
 /**

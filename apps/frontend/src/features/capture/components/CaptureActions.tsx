@@ -1,4 +1,4 @@
-import type { CaptureDraft } from "../appTypes";
+import type { CaptureDraft } from "../../../domain/appTypes";
 
 export function CaptureActions({ compact, onAction }: { compact?: boolean; onAction: (kind: CaptureDraft["kind"]) => void }) {
   const actions: Array<{

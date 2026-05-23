@@ -4,7 +4,7 @@
 
 Session states are informational badges, not workflow gates.
 
-The frontend maps backend/prototype statuses into six user-facing states:
+The frontend maps backend session statuses into six user-facing states:
 
 - `Capturing`
 - `Processing`
@@ -17,7 +17,6 @@ Sessions remain openable from Patients and Search in all states. Verification an
 
 `Draft`, `Current session`, and `Reopened` are shown as `Capturing`. `Organized` and `In review` are shown as `Needs review`.
 
-TODO: Replace this compatibility mapping when the backend returns UX-level session states directly.
 
 ## Loading
 
@@ -34,9 +33,9 @@ TODO: Replace this compatibility mapping when the backend returns UX-level sessi
   - Audio: `Transcription`
   - Photo: `Caption`
   - Text: `Decorated text`
-- Capture upload updates deterministic mocked session report, summary, findings, and processing-status contracts.
+- Capture upload updates deterministic local session report, summary, findings, and processing-status contracts.
 - Generating a structured report can change the session to processing and start session-level report generation.
-- The frontend schedules a short bounded refresh series after capture upload or structured report generation so mocked asynchronous stages can appear over time.
+- The frontend schedules a short bounded refresh series after capture upload or structured report generation so asynchronous backend stages can appear over time.
 - The report area never becomes a full-screen loading state; it keeps the same layout while moving through empty, partial, structured, and verified states.
 
 ## Success
@@ -69,7 +68,6 @@ TODO: Replace this compatibility mapping when the backend returns UX-level sessi
 - The outbox retries when the browser comes online and also retries after a delay while pending captures remain.
 - If backend session loading fails, the app keeps local pending sessions visible.
 - The active session, selected historical session, assignment form target, destination chooser, and current report/capture structure are restored from local workspace state when possible.
-- TODO: Replace the local workspace snapshot with tenant-scoped background synchronization when offline/background sync work begins.
 
 ## Permission Denied
 

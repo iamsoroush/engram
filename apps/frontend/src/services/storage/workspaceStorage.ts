@@ -1,5 +1,5 @@
-import type { CaptureItem, CaptureSession, Screen } from "./types";
-import type { CaptureDraft, StoredWorkspaceState } from "./appTypes";
+import type { CaptureItem, CaptureSession, Screen } from "../../domain/types";
+import type { CaptureDraft, StoredWorkspaceState } from "../../domain/appTypes";
 
 const WORKSPACE_STORAGE_KEY = "aesmem-active-workspace";
 
@@ -57,4 +57,3 @@ export function loadWorkspaceState(tenantId?: string) {
 export function clearWorkspaceState() {
   window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
 }
-

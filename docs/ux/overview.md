@@ -29,7 +29,7 @@ The UX keeps capture first while moving long-term review toward patient-centered
 
 ## Navigation Summary
 
-The prototype is a single React app with hash-based screen selection:
+The frontend is a single React app with hash-based screen selection:
 
 - Default: Active Session Workspace
 - `#active-session`: current active session workspace

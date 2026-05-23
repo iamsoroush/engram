@@ -8,8 +8,6 @@
 | `/#active-session` | Active Session | Current session feed and capture dialogs. |
 | `/#patients` | Patients | Patient-centered memory and unassigned sessions. Opening a session shows inline historical review. |
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
-| `/#capture` | Active Session | Legacy hash fallback. |
-| `/#organize` | Patients | Legacy hash fallback. |
 
 ## Entry Points
 
