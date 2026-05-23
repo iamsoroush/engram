@@ -40,6 +40,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Live draft capture cards that update immediately when audio, photo, or text captures are added.
 - Audio captures render playback inline in the draft.
 - Audio transcript and photo caption text render fully inline in the draft so review does not require opening a detail card.
+- Audio transcript and photo caption headings show whether the text is still AI-generated or was edited by staff.
 - Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
 - Note captures show full decorated text inline plus an expandable raw note section.
 - Capture item overflow controls open per-capture settings for retry upload when local sync failed, retry processing when backend processing needs review, rename, and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.
@@ -52,7 +53,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
 - Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
 - Capture source previews. Audio and photo captures open mobile-first detail sheets from live draft items, showing the source preview, captured metadata, editable transcript/caption text, edit attribution, and an inline transcript copy control.
-- Capture status badges match the compact badge treatment used in summary and state indicators.
+- In-progress capture states render as compact animated inline text such as `Syncing...` or `Processing...`; completed captures do not show a status in the card.
 - Expandable generated transcript/caption/decorated text.
 - Sync safety banner when pending captures exist.
 

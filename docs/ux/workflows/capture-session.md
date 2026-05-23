@@ -26,7 +26,7 @@ Capture clinical material quickly without selecting a patient first.
    - audio: inline playback plus `Audio capture added, processing...`
    - photo: inline photo preview plus `Photo added, analyzing...`
    - text: formatted note content
-9. Draft capture cards show source preview/playback, status badge, and full generated text. Audio transcripts and photo captions are fully visible inline; note captures show full decorated text and an expandable raw note.
+9. Draft capture cards show source preview/playback, animated in-progress sync or processing text when relevant, and full generated text. Completed captures do not show a status in the card. Audio transcripts and photo captions are fully visible inline and indicate whether the text is AI-generated or staff-edited; note captures show full decorated text and an expandable raw note.
 10. Users can rename or delete a capture from the capture item settings menu. Deleting a capture removes it from the live draft and returns any generated structured report to draft/stale state.
 11. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
 12. Adding, deleting, or changing patient context after a structured report exists returns report progress to `Draft` until the user generates again.
@@ -47,9 +47,8 @@ Capture clinical material quickly without selecting a patient first.
 
 ## Important States
 
-- `Saved on device`
-- `Syncing`
-- `Processing`
+- `Syncing...`
+- `Processing...`
 - `Processed`
 - `Needs review`
 - `Failed`

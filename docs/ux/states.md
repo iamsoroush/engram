@@ -27,7 +27,7 @@ Sessions remain openable from Patients and Search in all states. Verification an
 
 ## Processing
 
-- New local captures show `Saved on device`, then `Syncing`, then backend-derived states.
+- New local captures show animated `Syncing...`, then animated `Processing...` while backend work is active. Completed capture cards do not show a status.
 - Uploaded captures initially process through backend/AI jobs and can show generated details as pending.
 - Capture generated details are expandable:
   - Audio: `Transcription`

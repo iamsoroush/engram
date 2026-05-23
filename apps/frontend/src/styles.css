@@ -1883,24 +1883,93 @@ small {
 }
 
 .live-draft-capture-meta {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
+  flex: 1 1 auto;
+  gap: 5px;
 }
 
-.live-draft-capture-meta h3 {
+.live-draft-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.live-draft-title-row h3 {
   color: #080d2d;
   font-size: 1rem;
   line-height: 1.2;
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.live-draft-capture-meta time {
+.live-draft-title-row time {
+  flex: 0 0 auto;
   color: #53649a;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+.capture-inline-status {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 22px;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  color: #53649a;
+  font-size: 0.76rem;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.capture-inline-status.active {
+  color: #155eef;
+}
+
+.capture-inline-status.processing {
+  color: #b54708;
+}
+
+.capture-inline-status.issue {
+  color: #b42318;
+}
+
+.capture-inline-status span {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 0 rgb(21 94 239 / 28%);
+  animation: capture-status-pulse 1.45s ease-out infinite;
+}
+
+.capture-inline-status.processing span {
+  box-shadow: 0 0 0 0 rgb(181 71 8 / 26%);
+}
+
+@keyframes capture-status-pulse {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+    opacity: 0.95;
+    transform: scale(0.86);
+  }
+
+  70% {
+    box-shadow: 0 0 0 7px rgb(21 94 239 / 0%);
+    opacity: 0.5;
+    transform: scale(1);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgb(21 94 239 / 0%);
+    opacity: 0.95;
+    transform: scale(0.86);
+  }
 }
 
 .live-draft-overflow {
@@ -2051,6 +2120,30 @@ small {
   line-height: 1.2;
   margin: 0;
   text-transform: uppercase;
+}
+
+.capture-generated-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.capture-generated-heading span {
+  flex: 0 1 auto;
+  max-width: 58%;
+  border: 1px solid #dce6f2;
+  border-radius: 999px;
+  background: #f8fbff;
+  color: #53649a;
+  padding: 3px 8px;
+  font-size: 0.69rem;
+  font-weight: 850;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .capture-generated-section {
