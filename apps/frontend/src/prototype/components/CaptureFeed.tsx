@@ -7,9 +7,9 @@ import type {
   StructuredPatientInformation,
 } from "../types";
 import { isLocalSessionId } from "../captureModel";
-import { assignmentSourceLabel, metadataDisplay, metadataRecord } from "../metadata";
+import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } from "../metadata";
 import { sessionUxState } from "../status";
-import { Badge, Button, Card, Input } from "../ui";
+import { Button, Card, Input } from "../ui";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 import { StatusBadge } from "./StatusBadges";
 
@@ -18,6 +18,10 @@ export function CaptureScreen({
   onSaveSession,
   onResolveFile,
   onUpdateTitle,
+  onRenameCapture,
+  onDeleteCapture,
+  onRetryCaptureProcessing,
+  onRetryCaptureUpload,
   mode = "active",
   onBack,
   onResumeCapture,
@@ -32,6 +36,10 @@ export function CaptureScreen({
   onSaveSession: (sessionId: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateTitle: (sessionId: string, title: string) => Promise<void>;
+  onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
+  onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
+  onRetryCaptureProcessing?: (sessionId: string, captureId: string) => Promise<void>;
+  onRetryCaptureUpload?: (sessionId: string, captureId: string) => Promise<void>;
   mode?: "active" | "historical";
   onBack?: () => void;
   onResumeCapture?: () => void;
@@ -43,14 +51,9 @@ export function CaptureScreen({
   onStartNewSession?: () => void;
 }) {
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
-  const [titleDraft, setTitleDraft] = React.useState(activeSession?.label || "");
-  const [editingTitle, setEditingTitle] = React.useState(false);
-  const [savingTitle, setSavingTitle] = React.useState(false);
   const [verifying, setVerifying] = React.useState(false);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
-  const titleFormRef = React.useRef<HTMLFormElement | null>(null);
-  const titleChanged = Boolean(activeSession && titleDraft.trim() && titleDraft.trim() !== activeSession.label);
   const isHistorical = mode === "historical";
   const processingState = activeSession?.processingStatus?.state;
   const hasCaptures = Boolean(activeSession?.items.length);
@@ -65,18 +68,17 @@ export function CaptureScreen({
     : false;
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
-  const findings = workspaceFindings(activeSession);
-  const summaryText =
-    activeSession?.summaries?.clinical || activeSession?.summaries?.short || activeSession?.summary;
-  const reportMilestones = workspaceReportMilestones(activeSession, reportState);
-  const reportUpdatedLabel = workspaceReportUpdatedLabel(activeSession?.report?.updatedAt || activeSession?.processingStatus?.updatedAt);
+  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
+  const patientName = sessionPatientName(activeSession);
+  const captureCount = activeSession?.items.length || 0;
+  const captureCountLabel = `${captureCount} capture${captureCount === 1 ? "" : "s"}`;
+  const sessionStatusChip = sessionSummaryStatusChip(activeSession);
+  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
   const previousGeneratingRef = React.useRef(isGenerating);
 
   React.useEffect(() => {
-    setTitleDraft(activeSession?.label || "");
-    setEditingTitle(false);
     setReportView("draft");
-  }, [activeSession?.id, activeSession?.label]);
+  }, [activeSession?.id]);
 
   React.useEffect(() => {
     if (!hasCaptures && reportView === "structured") setReportView("draft");
@@ -120,77 +122,59 @@ export function CaptureScreen({
 
   return (
     <section className="capture-current session-workspace" aria-label={isHistorical ? "Historical session review" : "Active session workspace"}>
-      <Card className="workspace-session-header">
-        <form
-          className="current-title-form"
-          ref={titleFormRef}
-          onBlur={(event) => {
-            const nextFocus = event.relatedTarget;
-            if (nextFocus instanceof Node && titleFormRef.current?.contains(nextFocus)) return;
-            if (!savingTitle) setTitleDraft(activeSession?.label || "");
-            setEditingTitle(false);
-          }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!activeSession || !titleChanged || savingTitle) return;
-            setSavingTitle(true);
-            void onUpdateTitle(activeSession.id, titleDraft.trim()).finally(() => {
-              setSavingTitle(false);
-              setEditingTitle(false);
-            });
-          }}
-        >
-          <div className="workspace-header-main">
-            <div className="workspace-title-block">
-              <Input
-                aria-label="Session title"
-                onChange={(event) => {
-                  setEditingTitle(true);
-                  setTitleDraft(event.target.value);
-                }}
-                disabled={!activeSession}
-                onFocus={() => setEditingTitle(true)}
-                value={titleDraft || "Untitled session"}
-              />
-            </div>
-            <div className="workspace-header-actions">
-              {onBack ? (
-                <Button onClick={onBack} size="sm" type="button" variant="secondary">
-                  Back
-                </Button>
-              ) : null}
-              {isHistorical && onResumeCapture ? (
-                <Button disabled={!activeSession} onClick={onResumeCapture} size="sm" type="button" variant="secondary">
-                  Add capture
-                </Button>
-              ) : null}
-              {!isHistorical && onStartNewSession ? (
-                <Button className="current-new-session" onClick={onStartNewSession} size="sm" type="button" variant="secondary">
-                  + New session
-                </Button>
-              ) : null}
-            </div>
+      <div className="active-session-summary">
+        <div className="session-summary-copy">
+          <div className="session-summary-heading">
+            <h1>{sessionTitle}</h1>
+            <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
+              <span aria-hidden="true" />
+              {sessionStatusChip.label}
+            </span>
           </div>
-          {editingTitle ? (
-            <div className="current-title-actions">
-              <Button disabled={savingTitle || !titleChanged} size="sm" type="submit" variant="secondary">
-                {savingTitle ? "Saving" : "Save title"}
-              </Button>
-            </div>
+          <strong>{patientName}</strong>
+          <p>{captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+        </div>
+        <div className="workspace-header-actions">
+          {onBack ? (
+            <Button onClick={onBack} size="sm" type="button" variant="secondary">
+              Back
+            </Button>
           ) : null}
-        </form>
+          {isHistorical && onResumeCapture ? (
+            <Button disabled={!activeSession} onClick={onResumeCapture} size="sm" type="button" variant="secondary">
+              Add capture
+            </Button>
+          ) : null}
+          {!isHistorical && onStartNewSession ? (
+            <Button className="current-new-session" onClick={onStartNewSession} size="sm" type="button" variant="secondary">
+              <span aria-hidden="true">+</span>
+              New session
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <Card className="patient-context-card">
+        <span className="patient-context-avatar" aria-hidden="true">
+          <PatientIcon />
+        </span>
+        <div>
+          <strong>{patientName}</strong>
+          <p>{activeSession?.assignmentSource ? assignmentSourceLabel(activeSession.assignmentSource) : "Assigned manually"}</p>
+        </div>
+        {onAssignPatient ? (
+          <Button className="edit-patient-button" onClick={onCloseAssignment} size="sm" type="button" variant="secondary">
+            <EditIcon />
+            Edit patient
+          </Button>
+        ) : null}
       </Card>
       <Card className={`workspace-report-card ${isGenerating ? "processing" : ""}`}>
         <div className="report-heading">
-          <div>
-            <p className="eyebrow">Clinical Report</p>
-          </div>
-          <div className="workspace-report-progress" aria-label="Report progress">
-            {reportMilestones.map((milestone) => (
-              <span className={milestone.className} key={milestone.label}>
-                {milestone.label}
-              </span>
-            ))}
+          <div className="report-title-lockup">
+            <span className="report-title-icon" aria-hidden="true">
+              <ClipboardIcon />
+            </span>
+            <h2>Clinical report</h2>
           </div>
           <div className="report-heading-actions">
             {!isHistorical ? (
@@ -211,9 +195,7 @@ export function CaptureScreen({
                   ? "Syncing first"
                   : processingState === "processing"
                     ? "Generating"
-                    : hasFreshGeneratedReport
-                      ? "Generated"
-                      : "Generate"}
+                    : "Generate"}
               </Button>
             ) : null}
           </div>
@@ -234,20 +216,6 @@ export function CaptureScreen({
                 Structured report
               </button>
             </div>
-            {onAssignPatient ? (
-              <button
-                className={`report-patient-action ${activeSession?.patientName ? "assigned" : ""}`}
-                onClick={onCloseAssignment}
-                type="button"
-              >
-                <span>{activeSession?.patientName || "Assign patient"}</span>
-                {activeSession?.patientName && activeSession.assignmentSource ? (
-                  <small>{assignmentSourceLabel(activeSession.assignmentSource)}</small>
-                ) : (
-                  <small>{activeSession?.patientName ? "Patient context" : "Add patient context"}</small>
-                )}
-              </button>
-            ) : null}
           </div>
         </div>
         {assignmentOpen && activeSession && onAssignPatient ? (
@@ -265,12 +233,19 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
             />
           ) : (
-            <LiveDraftReport session={activeSession} onOpenCapture={setSelectedCapture} onResolveFile={onResolveFile} />
+            <LiveDraftReport
+              session={activeSession}
+              onDeleteCapture={onDeleteCapture}
+              onOpenCapture={setSelectedCapture}
+              onRenameCapture={onRenameCapture}
+              onResolveFile={onResolveFile}
+              onRetryCaptureProcessing={onRetryCaptureProcessing}
+              onRetryCaptureUpload={onRetryCaptureUpload}
+            />
           )}
         </div>
         <div className="workspace-report-footer">
-          <div>
-            <span>{reportUpdatedLabel}</span>
+          <div className="workspace-report-footer-copy">
             {activeSession?.processingStatus?.state === "processing" ? <span>Structured report is updating from the live draft</span> : null}
           </div>
           {onVerifySession ? (
@@ -292,43 +267,38 @@ export function CaptureScreen({
           ) : null}
         </div>
       </Card>
-      <details className="workspace-disclosure" open>
-        <summary>
-          <span>Summary</span>
-          <Badge tone={summaryText ? "blue" : "neutral"}>{activeSession?.summaries?.status || (summaryText ? "Partial" : "Mocked")}</Badge>
-        </summary>
-        <p>{summaryText || "Session summary will appear as captures are processed. This placeholder keeps the report layout stable."}</p>
-        {/* TODO(ai-integration): Bind this section to the AI-generated session summary when available. */}
-      </details>
-      <details className="workspace-disclosure">
-        <summary>
-          <span>Extracted Findings</span>
-          <Badge tone={findings.length ? "blue" : "neutral"}>{findings.length || "Mocked"}</Badge>
-        </summary>
-        <div className="workspace-finding-grid">
-          {findings.map((finding) => (
-            <div key={finding.label}>
-              <span>{finding.label}</span>
-              <strong>{finding.value}</strong>
-            </div>
-          ))}
-          {findings.length === 0 ? (
-            <>
-              <div>
-                <span>Procedure</span>
-                <strong>Pending extraction</strong>
-              </div>
-              <div>
-                <span>Body area</span>
-                <strong>Pending extraction</strong>
-              </div>
-            </>
-          ) : null}
-        </div>
-        {/* TODO(ai-integration): Map structured extracted findings into stable clinical rows instead of this generic metadata preview. */}
-      </details>
       <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
     </section>
+  );
+}
+
+function PatientIcon() {
+  return (
+    <svg viewBox="0 0 40 40" focusable="false" aria-hidden="true">
+      <path d="M20 18.2a6.2 6.2 0 1 0 0-12.4 6.2 6.2 0 0 0 0 12.4Z" />
+      <path d="M9.5 33.5v-3.2c0-5.3 4.7-9.6 10.5-9.6s10.5 4.3 10.5 9.6v3.2H9.5Z" />
+    </svg>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg viewBox="0 0 40 40" focusable="false" aria-hidden="true">
+      <path d="M15 7.5h10v5H15v-5Z" />
+      <path d="M11 10.5H8.5v24h23v-24H29" />
+      <path d="M14 19h12" />
+      <path d="M14 25h8" />
+      <path d="M25.5 24.5l2 2 4-5" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M4.5 17.8 4 21l3.2-.5 10.9-10.9-2.7-2.7L4.5 17.8Z" />
+      <path d="m15.4 6.9 1.4-1.4a1.9 1.9 0 0 1 2.7 2.7l-1.4 1.4" />
+    </svg>
   );
 }
 
@@ -453,13 +423,27 @@ function PatientAssignmentSheet({
 
 function LiveDraftReport({
   session,
+  onDeleteCapture,
   onOpenCapture,
+  onRenameCapture,
   onResolveFile,
+  onRetryCaptureProcessing,
+  onRetryCaptureUpload,
 }: {
   session: CaptureSession | null;
+  onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   onOpenCapture: (item: CaptureItem) => void;
+  onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
+  onRetryCaptureProcessing?: (sessionId: string, captureId: string) => Promise<void>;
+  onRetryCaptureUpload?: (sessionId: string, captureId: string) => Promise<void>;
 }) {
+  const [openMenuId, setOpenMenuId] = React.useState("");
+
+  React.useEffect(() => {
+    setOpenMenuId("");
+  }, [session?.id]);
+
   if (!session?.items.length) {
     return (
       <div className="live-draft-empty">
@@ -472,37 +456,226 @@ function LiveDraftReport({
   return (
     <div className="live-draft">
       {session.items.map((item, index) => (
-        <article
-          className={`live-draft-capture ${item.type}`}
-          key={item.id}
-          onClick={(event) => {
-            if ((event.target as HTMLElement).closest("audio, button, input, textarea")) return;
-            onOpenCapture(item);
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== " ") return;
-            event.preventDefault();
-            onOpenCapture(item);
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="live-draft-capture-header">
-            <span className="live-draft-capture-title">{captureDraftLabel(item, index + 1)}</span>
-            <StatusBadge status={item.status} />
-          </div>
-          {item.type === "photo" || item.type === "audio" || item.type === "voice" ? (
-            <div className={`live-draft-media ${item.type}`}>
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </div>
-          ) : null}
-          <p>{draftCaptureText(item)}</p>
-        </article>
+        <LiveDraftCaptureItem
+          item={item}
+          key={item.sourceUrl || item.id}
+          menuOpen={openMenuId === item.id}
+          onCloseMenu={() => setOpenMenuId("")}
+          onDeleteCapture={onDeleteCapture ? () => onDeleteCapture(session.id, item.id) : undefined}
+          onOpenCapture={() => onOpenCapture(item)}
+          onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
+          onResolveFile={onResolveFile}
+          onRetryProcessing={onRetryCaptureProcessing ? () => onRetryCaptureProcessing(session.id, item.id) : undefined}
+          onRetryUpload={onRetryCaptureUpload ? () => onRetryCaptureUpload(session.id, item.id) : undefined}
+          onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
+          sequence={index + 1}
+        />
       ))}
       {session.processingStatus?.state === "processing" ? (
         <div className="live-draft-processing">AesMem is preparing the structured report. The live draft remains reviewable while you wait.</div>
       ) : null}
     </div>
+  );
+}
+
+function LiveDraftCaptureItem({
+  item,
+  menuOpen,
+  onCloseMenu,
+  onDeleteCapture,
+  onOpenCapture,
+  onRenameCapture,
+  onResolveFile,
+  onRetryProcessing,
+  onRetryUpload,
+  onToggleMenu,
+  sequence,
+}: {
+  item: CaptureItem;
+  menuOpen: boolean;
+  onCloseMenu: () => void;
+  onDeleteCapture?: () => Promise<void>;
+  onOpenCapture: () => void;
+  onRenameCapture?: (title: string) => Promise<void>;
+  onResolveFile: (endpoint: string) => Promise<string>;
+  onRetryProcessing?: () => Promise<void>;
+  onRetryUpload?: () => Promise<void>;
+  onToggleMenu: () => void;
+  sequence: number;
+}) {
+  const isAudio = item.type === "audio" || item.type === "voice";
+  const isPhoto = item.type === "photo";
+  const title = captureDraftLabel(item, sequence);
+  const generatedText = generatedTextForReport(item);
+  const fallbackText = draftCaptureText(item);
+  const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
+  const [busy, setBusy] = React.useState(false);
+  const canRetryUpload = item.status === "failed" && item.id.startsWith("local-capture-");
+  const canRetryProcessing = item.status === "needsReview" && !item.id.startsWith("local-capture-");
+
+  const rename = () => {
+    if (!onRenameCapture || busy) return;
+    const nextTitle = window.prompt("Rename capture", title);
+    if (!nextTitle?.trim() || nextTitle.trim() === title) return;
+    setBusy(true);
+    void onRenameCapture(nextTitle.trim()).finally(() => {
+      setBusy(false);
+      onCloseMenu();
+    });
+  };
+
+  const remove = () => {
+    if (!onDeleteCapture || busy) return;
+    if (!window.confirm(`Delete ${title}? The structured report will move back to draft.`)) return;
+    setBusy(true);
+    void onDeleteCapture().finally(() => {
+      setBusy(false);
+      onCloseMenu();
+    });
+  };
+
+  const retryUpload = () => {
+    if (!onRetryUpload || busy) return;
+    setBusy(true);
+    void onRetryUpload().finally(() => {
+      setBusy(false);
+      onCloseMenu();
+    });
+  };
+
+  const retryProcessing = () => {
+    if (!onRetryProcessing || busy) return;
+    setBusy(true);
+    void onRetryProcessing().finally(() => {
+      setBusy(false);
+      onCloseMenu();
+    });
+  };
+
+  return (
+    <article
+      className={`live-draft-capture ${item.type}`}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("audio, button, input, textarea, summary, details, .capture-item-menu")) return;
+        onOpenCapture();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        if ((event.target as HTMLElement).closest("button, input, textarea, summary")) return;
+        event.preventDefault();
+        onOpenCapture();
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="live-draft-marker" aria-hidden="true">
+        <CaptureTimelineIcon type={item.type} />
+      </div>
+      <div className="live-draft-capture-content">
+        <header className="live-draft-capture-header">
+          <div className="live-draft-capture-meta">
+            <h3>{title}</h3>
+            <StatusBadge status={item.status} />
+            <time>{item.time}</time>
+          </div>
+          <button
+            aria-expanded={menuOpen}
+            aria-label={`Capture settings for ${title}`}
+            className="live-draft-overflow"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleMenu();
+            }}
+            type="button"
+          >
+            <span aria-hidden="true" />
+          </button>
+          {menuOpen ? (
+            <div className="capture-item-menu">
+              {canRetryUpload ? (
+                <button disabled={!onRetryUpload || busy} onClick={retryUpload} type="button">
+                  Retry upload
+                </button>
+              ) : null}
+              {canRetryProcessing ? (
+                <button disabled={!onRetryProcessing || busy} onClick={retryProcessing} type="button">
+                  Retry processing
+                </button>
+              ) : null}
+              <button disabled={!onRenameCapture || busy} onClick={rename} type="button">
+                Rename
+              </button>
+              <button className="danger" disabled={!onDeleteCapture || busy} onClick={remove} type="button">
+                Delete
+              </button>
+            </div>
+          ) : null}
+        </header>
+        {isAudio ? (
+          <>
+            <div className="live-draft-audio-player">
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            </div>
+            <section className="capture-generated-section">
+              <h4>Transcript</h4>
+              <p className="live-draft-preview">{generatedText || fallbackText}</p>
+            </section>
+          </>
+        ) : null}
+        {isPhoto ? (
+          <div className="live-draft-photo-row">
+            <div className="live-draft-photo-thumb">
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            </div>
+            <div className="live-draft-photo-copy">
+              <h4>Caption</h4>
+              <p>{generatedText || fallbackText}</p>
+            </div>
+          </div>
+        ) : null}
+        {!isPhoto && !isAudio ? (
+          <>
+            <section className="capture-generated-section">
+              <h4>Decorated text</h4>
+              <p className="live-draft-preview">{decoratedNoteText}</p>
+            </section>
+            <details className="capture-raw-note">
+              <summary>Raw note</summary>
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            </details>
+          </>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function CaptureTimelineIcon({ type }: { type: CaptureItem["type"] }) {
+  if (type === "photo") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M8.5 7.5 10 5h4l1.5 2.5H19a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2h3.5Z" />
+        <path d="M12 16.8a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2Z" />
+      </svg>
+    );
+  }
+  if (type === "note") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M6 3.5h9l3 3V20.5H6v-17Z" />
+        <path d="M15 3.5v4h4" />
+        <path d="M8.5 11h7" />
+        <path d="M8.5 15h5" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M12 14.5a3 3 0 0 0 3-3v-5a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+      <path d="M6.5 11.5a5.5 5.5 0 0 0 11 0" />
+      <path d="M12 17v3.5" />
+      <path d="M9 20.5h6" />
+    </svg>
   );
 }
 
@@ -644,6 +817,7 @@ function workspaceStructuredReportCopy(session: CaptureSession | null) {
 }
 
 function captureDraftLabel(item: CaptureItem, sequence: number) {
+  if (item.title?.trim()) return item.title.trim();
   if (item.type === "audio" || item.type === "voice") return `Audio ${sequence}`;
   if (item.type === "photo") return `Photo ${sequence}`;
   return `Note ${sequence}`;
@@ -658,14 +832,23 @@ function draftCaptureText(item: CaptureItem) {
 }
 
 function generatedTextForReport(item: CaptureItem) {
-  const generated = metadataRecord(
+  const metadata = metadataRecord(item.metadata);
+  const generated =
     item.type === "audio" || item.type === "voice"
-      ? metadataRecord(item.metadata).transcript
+      ? metadata.transcript
       : item.type === "photo"
-        ? metadataRecord(item.metadata).caption || metadataRecord(item.metadata).ocr
-        : metadataRecord(item.metadata).decorated_text || metadataRecord(item.metadata).normalized_note,
-  );
-  const text = typeof generated.text === "string" ? generated.text.trim() : "";
+        ? metadata.caption || metadata.ocr
+        : metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
+  const generatedRecord = metadataRecord(generated);
+  const text =
+    metadataText(generated) ||
+    metadataText(generatedRecord.text) ||
+    metadataText(generatedRecord.transcript) ||
+    metadataText(generatedRecord.caption) ||
+    metadataText(generatedRecord.decorated_text) ||
+    metadataText(generatedRecord.decoratedText) ||
+    metadataText(generatedRecord.normalized_note) ||
+    metadataText(generatedRecord.normalizedNote);
   if (text) return text;
   if (item.type === "note") return item.detail;
   if (item.status === "processed" || item.status === "ready") {
@@ -677,6 +860,20 @@ function generatedTextForReport(item: CaptureItem) {
     }
   }
   return "";
+}
+
+function noteDecoratedText(item: CaptureItem) {
+  const metadata = metadataRecord(item.metadata);
+  const decorated = metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
+  const decoratedRecord = metadataRecord(decorated);
+  return (
+    metadataText(decorated) ||
+    metadataText(decoratedRecord.text) ||
+    metadataText(decoratedRecord.decorated_text) ||
+    metadataText(decoratedRecord.decoratedText) ||
+    metadataText(decoratedRecord.normalized_note) ||
+    metadataText(decoratedRecord.normalizedNote)
+  );
 }
 
 function nonTechnicalStageLabel(status?: SessionProcessingStatus) {
@@ -715,6 +912,41 @@ function workspaceReportUpdatedLabel(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Recently updated";
   return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+}
+
+function sessionSummaryStatusChip(session: CaptureSession | null) {
+  if (session?.status === "verified" || session?.report?.status === "verified") {
+    return { checked: true, label: "Verified", tone: "success" };
+  }
+  if (session?.report?.status === "processed" && !session.report.isStale) {
+    return { checked: false, label: "Generated", tone: "success" };
+  }
+  if (session?.processingStatus?.state === "processing" || session?.report?.status === "generating") {
+    return { checked: false, label: "Generating", tone: "info" };
+  }
+  return { checked: false, label: session?.items.length ? "Draft" : "Ready", tone: "neutral" };
+}
+
+function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boolean) {
+  if (isHistorical) return session?.label || "Session review";
+  const title = session?.label?.trim();
+  if (title && session && !isLocalSessionId(session.id)) return title;
+  return "Current session";
+}
+
+function sessionPatientName(session: CaptureSession | null) {
+  return session?.patientName || "Patient 0";
+}
+
+function sessionSummaryUpdatedLabel(session: CaptureSession | null) {
+  const source = session?.report?.updatedAt || session?.processingStatus?.updatedAt || session?.time;
+  if (!source) return "Updated 13:58";
+  const date = new Date(source);
+  if (!Number.isNaN(date.getTime())) {
+    return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+  }
+  const time = source.match(/\b\d{1,2}:\d{2}\b/)?.[0];
+  return `Updated ${time || "13:58"}`;
 }
 
 function formatReportParagraph(paragraph: string, onResolveFile?: (endpoint: string) => Promise<string>) {

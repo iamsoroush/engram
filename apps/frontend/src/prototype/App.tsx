@@ -6,6 +6,7 @@ import { Button, Card, Skeleton, Toast } from "./ui";
 import {
   assignSessionPatient,
   createPatient,
+  deleteCapture,
   fetchSessionCaptures,
   fetchSessions,
   loginWithPassword,
@@ -13,10 +14,12 @@ import {
   logoutSession,
   reopenSession,
   refreshAuthToken,
+  retryCaptureProcessing,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
   storeBackendMappings,
+  updateCaptureTitle,
   updateSessionTitle,
   uploadCapture,
   verifySession,
@@ -81,6 +84,20 @@ function markReportStaleForPatientChange(existing: CaptureSession, updated: Capt
     status: updated.status === "verified" ? "reopened" : updated.status,
     report: {
       ...existing.report,
+      status: "partial",
+      isStale: true,
+    },
+  };
+}
+
+function markReportStaleForCaptureChange(session: CaptureSession): CaptureSession {
+  if (!session.report || session.report.isStale) return session;
+  if (session.report.status !== "processed" && session.report.status !== "verified" && session.status !== "verified") return session;
+  return {
+    ...session,
+    status: session.status === "verified" ? "reopened" : session.status,
+    report: {
+      ...session.report,
       status: "partial",
       isStale: true,
     },
@@ -696,6 +713,130 @@ export function App() {
     [apiFetch],
   );
 
+  const renameCapture = React.useCallback(
+    async (sessionId: string, captureId: string, title: string) => {
+      const updateLocalItem = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId
+          ? { ...session, items: session.items.map((item) => (item.id === captureId ? { ...item, title } : item)) }
+          : session;
+      if (captureId.startsWith("local-capture-")) {
+        setSessions((current) => current.map(updateLocalItem));
+        setActiveSession((current) => (current?.id === sessionId ? updateLocalItem(current) : current));
+        await updatePendingCapture(captureId, (current) => ({
+          ...current,
+          item: { ...current.item, title },
+          session: updateLocalItem(current.session),
+        }));
+        setToast("Capture renamed.");
+        return;
+      }
+      const updated = await updateCaptureTitle(apiFetch, captureId, title);
+      const mergeCaptureTitleUpdate = (item: typeof updated) => ({
+        ...item,
+        ...updated,
+        sourceUrl: item.sourceUrl || updated.sourceUrl,
+        contentType: item.contentType || updated.contentType,
+      });
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId
+            ? { ...session, items: session.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
+            : session,
+        ),
+      );
+      setActiveSession((current) =>
+        current?.id === sessionId
+          ? { ...current, items: current.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
+          : current,
+      );
+      setToast("Capture renamed.");
+    },
+    [apiFetch],
+  );
+
+  const removeCaptureFromSession = React.useCallback(
+    async (sessionId: string, captureId: string) => {
+      const removeLocalItem = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId
+          ? markReportStaleForCaptureChange({ ...session, items: session.items.filter((item) => item.id !== captureId) })
+          : session;
+      if (captureId.startsWith("local-capture-")) {
+        setSessions((current) => current.map(removeLocalItem));
+        setActiveSession((current) => (current?.id === sessionId ? removeLocalItem(current) : current));
+        await removePendingCapture(captureId);
+        setToast("Capture deleted.");
+        return;
+      }
+      const updated = await deleteCapture(apiFetch, captureId);
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId
+            ? mergeSessionUpdate(session, updated, session.items.filter((item) => item.id !== captureId))
+            : session,
+        ),
+      );
+      setActiveSession((current) =>
+        current?.id === sessionId
+          ? mergeSessionUpdate(current, updated, current.items.filter((item) => item.id !== captureId))
+          : current,
+      );
+      setToast("Capture deleted. Report moved back to draft.");
+    },
+    [apiFetch],
+  );
+
+  const retryCaptureUpload = React.useCallback(
+    async (_sessionId: string, captureId: string) => {
+      if (!captureId.startsWith("local-capture-")) {
+        setToast("Only device-saved captures can retry upload here.");
+        return;
+      }
+      try {
+        const pending = await loadPendingCaptures();
+        const target = pending.find((capture) => capture.id === captureId || capture.localCaptureId === captureId);
+        if (!target) {
+          setToast("Upload retry is not available for this capture.");
+          return;
+        }
+        const firstCreatedAt = pending.reduce((min, capture) => Math.min(min, capture.createdAt), Date.now());
+        await updatePendingCapture(target.id, (current) => ({
+          ...normalizePendingCapture(current),
+          retryCount: 0,
+          createdAt: Math.min(firstCreatedAt - 1, Date.now()),
+          item: { ...current.item, status: "saved" },
+          session: {
+            ...current.session,
+            items: current.session.items.map((item) => (item.id === captureId ? { ...item, status: "saved" } : item)),
+          },
+        }));
+        updateItemStatus(captureId, "saved");
+        setToast("Capture moved to the front of the upload queue.");
+        void processOutbox();
+      } catch {
+        setToast("Could not retry upload.");
+      }
+    },
+    [],
+  );
+
+  const retryCaptureAiProcessing = React.useCallback(
+    async (sessionId: string, captureId: string) => {
+      if (captureId.startsWith("local-capture-")) {
+        setToast("Sync before retrying processing.");
+        return;
+      }
+      try {
+        await retryCaptureProcessing(apiFetch, captureId);
+        updateItemStatus(captureId, "processing");
+        setToast("Capture processing retry started.");
+        scheduleCaptureProcessingRefresh(sessionId);
+      } catch {
+        setToast("Could not retry processing.");
+      }
+    },
+    [apiFetch, scheduleCaptureProcessingRefresh],
+  );
+
   const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
     setSessions((current) =>
       current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)),
@@ -900,6 +1041,10 @@ export function App() {
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
           onUpdateTitle={renameSession}
+          onRenameCapture={renameCapture}
+          onDeleteCapture={removeCaptureFromSession}
+          onRetryCaptureProcessing={retryCaptureAiProcessing}
+          onRetryCaptureUpload={retryCaptureUpload}
           onVerifySession={verifySelectedSession}
         />
       );
@@ -925,6 +1070,10 @@ export function App() {
           onResolveFile={resolveSourceFile}
           onStartNewSession={startNewSession}
           onUpdateTitle={renameSession}
+          onRenameCapture={renameCapture}
+          onDeleteCapture={removeCaptureFromSession}
+          onRetryCaptureProcessing={retryCaptureAiProcessing}
+          onRetryCaptureUpload={retryCaptureUpload}
           onVerifySession={verifySelectedSession}
         />
       );

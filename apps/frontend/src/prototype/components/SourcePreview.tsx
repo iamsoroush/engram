@@ -22,6 +22,7 @@ export function CaptureRawPreview({
   const metadata = metadataRecord(item.metadata);
   const thumbnail = metadataDisplay(metadata.thumbnail || metadata.thumbnail_url || metadata.thumbnailUrl);
   const isAudio = item.type === "audio" || item.type === "voice";
+  const fileEndpoint = item.fileEndpoint || (item.sourceUrl?.startsWith("/api/v1/") && item.sourceUrl.endsWith("/file") ? item.sourceUrl : "");
 
   React.useEffect(() => {
     let revoked = false;
@@ -38,15 +39,13 @@ export function CaptureRawPreview({
     return () => {
       revoked = true;
     };
-  }, [item]);
+  }, [item.id, item.type]);
 
   React.useEffect(() => {
     let cancelled = false;
     setResolvedUrl("");
-    const endpoint =
-      item.fileEndpoint || (item.sourceUrl?.startsWith("/api/v1/") && item.sourceUrl.endsWith("/file") ? item.sourceUrl : "");
-    if (!endpoint) return;
-    onResolveFile(endpoint)
+    if (!fileEndpoint) return;
+    onResolveFile(fileEndpoint)
       .then((url) => {
         if (!cancelled) setResolvedUrl(url);
       })
@@ -54,7 +53,7 @@ export function CaptureRawPreview({
     return () => {
       cancelled = true;
     };
-  }, [item, onResolveFile]);
+  }, [fileEndpoint, onResolveFile]);
 
   React.useEffect(() => {
     return () => {
@@ -112,6 +111,7 @@ export function SourcePreviewDialog({
   const [noteText, setNoteText] = React.useState("");
   const [resolvedUrl, setResolvedUrl] = React.useState("");
   const [previewError, setPreviewError] = React.useState("");
+  const fileEndpoint = item?.fileEndpoint || (item?.sourceUrl?.startsWith("/api/v1/") && item.sourceUrl.endsWith("/file") ? item.sourceUrl : "");
 
   React.useEffect(() => {
     let revoked = false;
@@ -135,18 +135,16 @@ export function SourcePreviewDialog({
     return () => {
       revoked = true;
     };
-  }, [item]);
+  }, [item?.id, item?.type]);
 
   React.useEffect(() => {
     let cancelled = false;
     setResolvedUrl("");
     setPreviewError("");
     if (!item) return;
-    const endpoint =
-      item.fileEndpoint || (item.sourceUrl?.startsWith("/api/v1/") && item.sourceUrl.endsWith("/file") ? item.sourceUrl : "");
-    if (!endpoint) return;
+    if (!fileEndpoint) return;
 
-    onResolveFile(endpoint)
+    onResolveFile(fileEndpoint)
       .then((url) => {
         if (!cancelled) setResolvedUrl(url);
       })
@@ -157,7 +155,7 @@ export function SourcePreviewDialog({
     return () => {
       cancelled = true;
     };
-  }, [item, onResolveFile]);
+  }, [fileEndpoint, item?.id, onResolveFile]);
 
   React.useEffect(() => {
     return () => {

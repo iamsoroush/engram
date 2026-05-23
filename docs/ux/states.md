@@ -88,5 +88,5 @@ TODO: Replace this compatibility mapping when the backend returns UX-level sessi
 - No dedicated not-found route.
 - No detailed permission-denied UI for staff/admin role mismatches.
 - No user-facing storage quota warning beyond pending-capture safety copy.
-- No explicit retry button for failed capture processing in the current frontend, although the backend capture retry endpoint exists.
+- Failed local uploads and failed capture processing expose per-capture retry actions from the capture overflow menu.
 - Previous processed session versions are retained in metadata, but there is no restore UI yet.

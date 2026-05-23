@@ -11,7 +11,7 @@ Capture clinical material quickly without selecting a patient first.
 
 ## Current Behavior
 
-1. User chooses `Record audio`, `Take photo`, or `Write note`.
+1. User chooses sticky bottom action `Audio`, `Take photo`, or `Write note`. Audio is a direct action labeled `Tap to record`.
 2. The relevant dialog/sheet opens:
    - Audio starts microphone recording when supported; otherwise the user can attach an audio file.
    - Photo opens the device camera directly on mobile-style touch devices, then shows the selected image in the photo preview dialog. The dialog also keeps a standard image picker available for gallery/photo-library selection and desktop upload. Photo inputs use the browser's standard image picker/camera format handling.
@@ -26,10 +26,11 @@ Capture clinical material quickly without selecting a patient first.
    - audio: inline playback plus `Audio capture added, processing...`
    - photo: inline photo preview plus `Photo added, analyzing...`
    - text: formatted note content
-9. Draft capture cards show source preview/playback, status badge, and generated text.
-10. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
-11. Adding a new capture or changing the patient after a structured report exists returns report progress to `Draft` until the user generates again.
-12. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
+9. Draft capture cards show source preview/playback, status badge, and full generated text. Audio transcripts and photo captions are fully visible inline; note captures show full decorated text and an expandable raw note.
+10. Users can rename or delete a capture from the capture item settings menu. Deleting a capture removes it from the live draft and returns any generated structured report to draft/stale state.
+11. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
+12. Adding, deleting, or changing patient context after a structured report exists returns report progress to `Draft` until the user generates again.
+13. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
 
 ## System Behavior
 

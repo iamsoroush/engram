@@ -319,7 +319,7 @@ export function CaptureDestinationPanel({
 }
 
 function captureKindLabel(kind: CaptureDraft["kind"]) {
-  if (kind === "audio") return "Record audio";
+  if (kind === "audio") return "Audio";
   if (kind === "photo") return "Take photo";
   return "Write note";
 }

@@ -36,7 +36,7 @@ The prototype is a single React app with hash-based screen selection:
 - `#patients`: patient-centered memory and unassigned sessions
 - `#search`: local memory search
 
-The shell keeps Active Session, Patients, and Search available in the top-left navigation after staff login. Capture actions are always available as bottom pills for staff users.
+The shell keeps Active Session, Patients, and Search available from the left mobile app menu after staff login. Capture actions are always available as a sticky bottom row for staff users.
 
 See [navigation](navigation.md).
 

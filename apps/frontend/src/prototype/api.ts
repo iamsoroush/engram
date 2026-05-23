@@ -159,6 +159,29 @@ export async function updateSessionTitle(apiFetch: ApiFetch, sessionId: string, 
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, title: string) {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metadata: { title } }),
+  });
+  if (!response.ok) throw new Error("Could not update capture title");
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+export async function deleteCapture(apiFetch: ApiFetch, captureId: string) {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("Could not delete capture");
+  const payload = (await response.json()) as { session?: Record<string, unknown> };
+  return normalizeApiSession(payload.session || {});
+}
+
+export async function retryCaptureProcessing(apiFetch: ApiFetch, captureId: string) {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}/retry-processing`, { method: "POST" });
+  if (!response.ok) throw new Error("Could not retry capture processing");
+  return (await response.json()) as { job?: Record<string, unknown> };
+}
+
 function normalizePatientSummary(raw: Record<string, unknown>): PatientSummary {
   return {
     id: String(raw.id),
