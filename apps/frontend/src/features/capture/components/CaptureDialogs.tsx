@@ -1,7 +1,7 @@
 import React from "react";
 import type { CaptureDraft } from "../../../domain/appTypes";
 import { audioExtensionForMimeType, isSafariBrowser, preferredAudioRecorderOptions } from "../audio";
-import { Button, Dialog, Sheet, Textarea } from "../../../shared/ui/primitives";
+import { Button, Sheet, Textarea } from "../../../shared/ui/primitives";
 
 export function TextCaptureSheet({
   open,
@@ -63,13 +63,13 @@ export function TextCaptureSheet({
   );
 }
 
-export function PhotoPreviewDialog({
-  initialFile,
+type PhotoSource = "camera" | "library";
+
+export function AddPhotoSheet({
   open,
   onClose,
   onSave,
 }: {
-  initialFile?: File | null;
   open: boolean;
   onClose: () => void;
   onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
@@ -77,6 +77,11 @@ export function PhotoPreviewDialog({
   const [file, setFile] = React.useState<File | null>(null);
   const [error, setError] = React.useState("");
   const [previewUrl, setPreviewUrl] = React.useState("");
+  const [source, setSource] = React.useState<PhotoSource | null>(null);
+  const cameraInputId = React.useId();
+  const libraryInputId = React.useId();
+  const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     if (!file) {
@@ -91,15 +96,19 @@ export function PhotoPreviewDialog({
   React.useEffect(() => {
     if (!open) return;
     setError("");
-    if (initialFile && initialFile.size === 0) {
-      setFile(null);
-      setError("The selected photo was empty. Open the camera or gallery again.");
-      return;
-    }
-    setFile(initialFile ?? null);
-  }, [initialFile, open]);
+    setFile(null);
+    setSource(null);
+  }, [open]);
 
-  const selectFile = (selectedFile: File | null) => {
+  const makePhotoDraft = (selectedFile: File): CaptureDraft => ({
+    kind: "photo",
+    detail: "Clinical photo saved for later review.",
+    file: selectedFile,
+    filename: selectedFile.name || `photo-${Date.now()}.jpg`,
+  });
+
+  const selectFile = (selectedFile: File | null, nextSource: PhotoSource) => {
+    setSource(selectedFile ? nextSource : null);
     if (selectedFile && selectedFile.size === 0) {
       setFile(null);
       setError("The selected photo was empty. Open the camera or gallery again.");
@@ -110,44 +119,93 @@ export function PhotoPreviewDialog({
   };
 
   const makeDraft = (): CaptureDraft | null =>
-    file
-      ? {
-          kind: "photo",
-          detail: "Clinical photo saved for later review.",
-          file,
-          filename: file.name || `photo-${Date.now()}.jpg`,
-        }
-      : null;
+    file ? makePhotoDraft(file) : null;
+
+  if (!open) return null;
 
   return (
-    <Dialog onClose={onClose} open={open} title="Photo preview">
-      <div className="photo-preview">
+    <div className="overlay add-photo-overlay" role="presentation">
+      <aside aria-labelledby="add-photo-title" aria-modal="true" className="add-photo-sheet" role="dialog">
+        <div className="add-photo-handle" aria-hidden="true" />
+        <button aria-label="Close add photo" className="add-photo-close" onClick={onClose} type="button">
+          <PhotoCloseIcon />
+        </button>
+        <h2 id="add-photo-title">Add photo</h2>
+        <div className="add-photo-segments" aria-label="Photo source">
+          <button
+            className={source === "camera" ? "active" : ""}
+            onClick={() => {
+              setSource(null);
+              cameraInputRef.current?.click();
+            }}
+            type="button"
+          >
+            <PhotoCameraIcon />
+            <span>Take photo</span>
+          </button>
+          <button
+            className={source === "library" ? "active" : ""}
+            onClick={() => {
+              setSource(null);
+              libraryInputRef.current?.click();
+            }}
+            type="button"
+          >
+            <PhotoLibraryIcon />
+            <span>Choose a photo</span>
+          </button>
+        </div>
         <input
-          aria-label="Select photo from gallery"
+          aria-label="Take photo with camera"
           accept="image/*"
-          className="input"
-          onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+          capture="environment"
+          className="visually-hidden-file"
+          id={cameraInputId}
+          onChange={(event) => {
+            selectFile(event.target.files?.[0] ?? null, "camera");
+            event.target.value = "";
+          }}
+          ref={cameraInputRef}
           type="file"
         />
-        {previewUrl ? (
-          <img alt="Selected capture" className="photo-image-preview" src={previewUrl} />
-        ) : (
-          <div className="photo-frame">
-            <span>Select or take a clinical photo</span>
-          </div>
-        )}
+        <input
+          aria-label="Choose photo from library"
+          accept="image/*"
+          className="visually-hidden-file"
+          id={libraryInputId}
+          onChange={(event) => {
+            selectFile(event.target.files?.[0] ?? null, "library");
+            event.target.value = "";
+          }}
+          ref={libraryInputRef}
+          type="file"
+        />
+        <div className="add-photo-preview">
+          {previewUrl ? (
+            <img alt="Selected capture" className="photo-image-preview" src={previewUrl} />
+          ) : (
+            <div className="add-photo-empty">
+              <PhotoEmptyIcon />
+              <strong>No photo selected</strong>
+              <p>Take a new photo or choose from your device to add it to this session.</p>
+            </div>
+          )}
+        </div>
         {error ? <p className="error-copy">{error}</p> : null}
-        <div className="dialog-actions">
+        <div className="add-photo-actions">
           <Button
+            className="add-photo-primary"
             disabled={!file}
             onClick={() => {
               const draft = makeDraft();
               if (draft) void onSave(draft);
             }}
           >
+            <PhotoCameraIcon />
             Use photo
           </Button>
           <Button
+            className="add-photo-secondary"
             disabled={!file}
             onClick={() => {
               const draft = makeDraft();
@@ -155,11 +213,75 @@ export function PhotoPreviewDialog({
             }}
             variant="secondary"
           >
-            Save into new session
+            <PhotoNewSessionIcon />
+            Save to new session
           </Button>
         </div>
-      </div>
-    </Dialog>
+        <p className="add-photo-security">
+          <PhotoSecurityIcon />
+          <span>Photos are stored securely and encrypted.</span>
+        </p>
+      </aside>
+    </div>
+  );
+}
+
+function PhotoCameraIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M6.8 7.2h2.1l1.4-2h3.4l1.4 2h2.1a3 3 0 0 1 3 3v6.4a3 3 0 0 1-3 3H6.8a3 3 0 0 1-3-3v-6.4a3 3 0 0 1 3-3Z" />
+      <path d="M12 16.7a3.9 3.9 0 1 0 0-7.8 3.9 3.9 0 0 0 0 7.8Z" />
+    </svg>
+  );
+}
+
+function PhotoCloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="m7 7 10 10" />
+      <path d="m17 7-10 10" />
+    </svg>
+  );
+}
+
+function PhotoLibraryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5 4.8h14a2.2 2.2 0 0 1 2.2 2.2v10a2.2 2.2 0 0 1-2.2 2.2H5A2.2 2.2 0 0 1 2.8 17V7A2.2 2.2 0 0 1 5 4.8Z" />
+      <path d="m4 16 4.3-4.2 3.2 3.1 2.4-2.3 5.9 5.7" />
+      <path d="M16.2 9.2h.1" />
+    </svg>
+  );
+}
+
+function PhotoNewSessionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M7 3.8h7.4L19 8.4V20a2.2 2.2 0 0 1-2.2 2.2H7A2.2 2.2 0 0 1 4.8 20V6A2.2 2.2 0 0 1 7 3.8Z" />
+      <path d="M14.2 4.2V9h4.6" />
+      <path d="M12 12.2v5.2" />
+      <path d="M9.4 14.8h5.2" />
+    </svg>
+  );
+}
+
+function PhotoSecurityIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M12 3.5 19 6v5.4c0 4.2-2.8 7.4-7 9.1-4.2-1.7-7-4.9-7-9.1V6l7-2.5Z" />
+      <path d="m9 12.1 2 2 4.2-4.5" />
+    </svg>
+  );
+}
+
+function PhotoEmptyIcon() {
+  return (
+    <svg viewBox="0 0 96 72" focusable="false" aria-hidden="true">
+      <path d="M25 25h11l5-8h14l5 8h11a8 8 0 0 1 8 8v23a8 8 0 0 1-8 8H25a8 8 0 0 1-8-8V33a8 8 0 0 1 8-8Z" />
+      <path d="M48 55a14 14 0 1 0 0-28 14 14 0 0 0 0 28Z" />
+      <path d="M48 47a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" />
+      <path d="M14 18v8M10 22h8M79 16v8M75 20h8M84 39v8M80 43h8" />
+    </svg>
   );
 }
 

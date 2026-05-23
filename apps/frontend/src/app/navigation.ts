@@ -12,8 +12,3 @@ export function replaceScreenLocation(screen: Screen) {
   if (typeof window === "undefined" || !["active-session", "patients", "search"].includes(screen)) return;
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}#${screen}`);
 }
-
-export function shouldOpenCameraDirectly() {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-}

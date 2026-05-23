@@ -35,7 +35,7 @@ import {
   sessionsFromPending,
 } from "../features/capture/captureModel";
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
-import { AudioDialog, PhotoPreviewDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
+import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { CaptureDestinationPanel, PatientsHome, SearchHome } from "../features/memory/components/MemoryScreens";
 import { Shell, SyncSafetyBanner } from "../features/shell/Shell";
@@ -51,7 +51,7 @@ import {
   updatePendingCapture,
 } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
-import { replaceScreenLocation, screenFromLocation, shouldOpenCameraDirectly } from "./navigation";
+import { replaceScreenLocation, screenFromLocation } from "./navigation";
 import {
   makeEmptyLocalSession,
   markReportStaleForCaptureChange,
@@ -76,12 +76,10 @@ export function App() {
   const [syncing, setSyncing] = React.useState(false);
   const [textOpen, setTextOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
-  const [initialPhotoFile, setInitialPhotoFile] = React.useState<File | null>(null);
   const [audioOpen, setAudioOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
-  const mobilePhotoInputRef = React.useRef<HTMLInputElement | null>(null);
   const processingRef = React.useRef(false);
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
@@ -487,15 +485,7 @@ export function App() {
 
   const openCaptureDialog = (kind: CaptureDraft["kind"]) => {
     if (kind === "note") setTextOpen(true);
-    if (kind === "photo") {
-      setInitialPhotoFile(null);
-      if (shouldOpenCameraDirectly() && mobilePhotoInputRef.current) {
-        setPhotoOpen(true);
-        mobilePhotoInputRef.current.click();
-        return;
-      }
-      setPhotoOpen(true);
-    }
+    if (kind === "photo") setPhotoOpen(true);
     if (kind === "audio") setAudioOpen(true);
   };
 
@@ -1065,38 +1055,12 @@ export function App() {
         }}
         open={textOpen}
       />
-      <input
-        accept="image/*"
-        capture="environment"
-        onChange={(event) => {
-          const selectedFile = event.target.files?.[0] ?? null;
-          event.target.value = "";
-          if (!selectedFile) {
-            setInitialPhotoFile(null);
-            setPhotoOpen(true);
-            return;
-          }
-          if (selectedFile.size === 0) {
-            setInitialPhotoFile(selectedFile);
-            setPhotoOpen(true);
-            return;
-          }
-          setInitialPhotoFile(selectedFile);
-          setPhotoOpen(true);
-        }}
-        ref={mobilePhotoInputRef}
-        style={{ display: "none" }}
-        type="file"
-      />
-      <PhotoPreviewDialog
-        initialFile={initialPhotoFile}
+      <AddPhotoSheet
         onClose={() => {
-          setInitialPhotoFile(null);
           setPhotoOpen(false);
         }}
         onSave={async (draft, intoNew) => {
           await saveDraft(draft, intoNew);
-          setInitialPhotoFile(null);
           setPhotoOpen(false);
         }}
         open={photoOpen}

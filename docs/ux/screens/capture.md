@@ -12,7 +12,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 ## Primary Actions
 
 - Start audio capture.
-- Take photo. On mobile-style touch devices, this action opens the device camera directly before the photo preview dialog; the preview dialog still supports gallery/photo-library selection.
+- Take photo opens the Add photo bottom sheet, where staff can take a new camera photo or choose from the device library before saving.
 - Write note.
 - Rename current session.
 - Assign or reassign patient, including before the first capture and after verification.
@@ -36,6 +36,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Patient assignment opens a lightweight centered modal with live search/autocomplete and inline patient creation.
 - Clinical report section that always exists, including before the first capture.
 - Recording audio opens as a mobile-first bottom sheet with timer, animated levels, pause/resume, stop/save, discard, background continue, and a styled `Use audio file instead` fallback.
+- Add photo opens as a mobile-first bottom sheet with camera and device-photo options, a large preview area, disabled save actions until a photo is selected, and security copy.
 - Live draft capture cards that update immediately when audio, photo, or text captures are added.
 - Audio captures render playback inline in the draft.
 - Audio transcript and photo caption text render fully inline in the draft so review does not require opening a detail card.
@@ -61,7 +62,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - `CaptureActions`
 - `CaptureScreen`
 - `TextCaptureSheet`
-- `PhotoPreviewDialog`
+- `AddPhotoSheet`
 - `AudioDialog`
 - `SourcePreviewDialog`
 
