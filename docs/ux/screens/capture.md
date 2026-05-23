@@ -33,7 +33,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Report toolbar with view selection inside the Clinical report card.
 - Report footer with a toggleable animated checkbox for verifying the structured report.
 - Assigned patient controls are visually actionable and show smaller assignment source text under the patient name only when a patient exists.
-- Patient assignment opens a lightweight centered modal with live search/autocomplete and inline patient creation.
+- Patient assignment opens a mobile-first bottom sheet from Edit patient with current-session context, suggested matches, local/API-backed search, and inline patient creation.
 - Clinical report section that always exists, including before the first capture.
 - Recording audio opens as a mobile-first bottom sheet with timer, animated levels, pause/resume, stop/save, discard, background continue, and a styled `Use audio file instead` fallback.
 - Add photo opens as a mobile-first bottom sheet with camera and device-photo options, a large preview area, disabled save actions until a photo is selected, and security copy.

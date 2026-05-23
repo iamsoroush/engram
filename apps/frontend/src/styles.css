@@ -1012,110 +1012,308 @@ small {
   position: fixed;
   inset: 0;
   z-index: 80;
-  display: grid;
-  place-items: center;
-  background: rgb(15 23 42 / 28%);
-  padding: 20px;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  background: rgb(8 13 45 / 48%);
+  padding: 0;
 }
 
 .assignment-sheet {
   display: grid;
-  width: min(100%, 560px);
-  max-height: min(78vh, 620px);
+  width: min(100%, 700px);
+  max-height: calc(100dvh - 48px);
   overflow: auto;
-  gap: 12px;
-  border: 1px solid #d8e3f0;
-  border-radius: 8px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  gap: 18px;
+  border: 1px solid #dde6f4;
+  border-radius: 18px 18px 0 0;
   background: #ffffff;
-  padding: 14px;
-  box-shadow: 0 24px 70px rgb(15 23 42 / 20%);
+  padding: 22px 18px max(22px, calc(22px + env(safe-area-inset-bottom)));
+  box-shadow: 0 -20px 60px rgb(8 13 45 / 22%);
+}
+
+.assignment-sheet-handle {
+  justify-self: center;
+  width: 58px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d9deec;
 }
 
 .assignment-sheet-header {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
 
 .assignment-sheet-header h2 {
+  color: #080d2d;
+  font-size: clamp(1.45rem, 5vw, 2rem);
+  line-height: 1.1;
+}
+
+.assignment-sheet-header .btn {
+  width: 52px;
+  min-height: 52px;
+  border-radius: 999px;
+  background: #eef3ff;
+  color: #16265d;
+  font-size: 1.35rem;
+}
+
+.assignment-session-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgb(8 13 45 / 8%);
+}
+
+.assignment-summary-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 74px;
+  padding: 12px 14px;
+}
+
+.assignment-summary-item:not(:nth-child(2n)) {
+  border-right: 1px solid #e0e8f5;
+}
+
+.assignment-summary-item:nth-child(n + 3) {
+  border-top: 1px solid #e0e8f5;
+}
+
+.assignment-summary-icon,
+.assignment-search-field > span,
+.assignment-national-id-field > span {
+  display: grid;
+  place-items: center;
+  color: #16265d;
+}
+
+.assignment-summary-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.assignment-summary-item strong {
+  display: block;
+  overflow: hidden;
+  color: #080d2d;
+  font-size: 0.88rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignment-summary-item small {
+  display: block;
   margin-top: 3px;
-  color: #111827;
+  color: #4e5d93;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.assignment-search-field,
+.assignment-national-id-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-height: 76px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0 20px;
+}
+
+.assignment-search-field svg,
+.assignment-national-id-field svg {
+  width: 32px;
+  height: 32px;
+}
+
+.assignment-search-field .input,
+.assignment-national-id-field .input {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  color: #080d2d;
   font-size: 1rem;
+  font-weight: 650;
+}
+
+.assignment-search-field .input::placeholder,
+.assignment-national-id-field .input::placeholder {
+  color: #4e5d93;
+  opacity: 0.9;
+}
+
+.assignment-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: -8px;
+}
+
+.assignment-section-heading h3,
+.assignment-create-panel h3 {
+  color: #080d2d;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.assignment-section-heading span {
+  color: #4e5d93;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .assignment-results {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 
 .assignment-search-input {
-  background: #ffffff;
-  font-size: 0.92rem;
+  width: 100%;
 }
 
-.assignment-search-placeholder {
+.assignment-patient-row {
   display: grid;
-  gap: 4px;
-  border: 1px dashed #cbd8ea;
-  border-radius: 8px;
-  background: #f8fafc;
-  padding: 14px;
-}
-
-.assignment-search-placeholder strong {
-  color: #334155;
-  font-size: 0.86rem;
-}
-
-.assignment-search-placeholder span,
-.assignment-searching {
-  color: #64748b;
-  font-size: 0.8rem;
-  line-height: 1.45;
-}
-
-.assignment-results button {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
+  min-height: 96px;
   border: 1px solid #dce6f2;
   border-radius: 8px;
-  background: #fbfdff;
-  color: #111827;
-  padding: 10px 12px;
-  text-align: left;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: 0 8px 22px rgb(8 13 45 / 6%);
 }
 
-.assignment-results button:hover,
-.assignment-results button:focus-visible {
-  border-color: #93b4ff;
-  background: #f3f7ff;
-  outline: none;
+.assignment-patient-avatar {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: #075eff;
 }
 
-.assignment-results span {
-  overflow-wrap: anywhere;
-  font-size: 0.86rem;
-  font-weight: 800;
+.assignment-patient-avatar svg {
+  width: 40px;
+  height: 40px;
 }
 
-.assignment-results small {
-  justify-self: end;
+.assignment-patient-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.assignment-patient-copy strong {
+  overflow: hidden;
+  color: #080d2d;
+  font-size: 1.04rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assignment-patient-copy span,
+.assignment-patient-copy small,
+.assignment-empty {
+  color: #4e5d93;
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.assignment-patient-row .btn {
+  min-width: 86px;
+  min-height: 52px;
+  border-color: #dce6f2;
+  background: #ffffff;
+  color: #075eff;
+  font-size: 0.95rem;
+}
+
+.assignment-empty {
+  border: 1px dashed #dce6f2;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.assignment-divider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  color: #4e5d93;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.assignment-divider::before,
+.assignment-divider::after {
+  height: 1px;
+  background: #dce6f2;
+  content: "";
 }
 
 .assignment-create-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  border-top: 1px solid #e5edf6;
-  padding-top: 10px;
+  gap: 14px;
 }
 
-.assignment-create-panel .btn {
-  width: auto;
-  white-space: nowrap;
+.assignment-create-button {
+  min-height: 64px;
+  gap: 12px;
+  border-radius: 8px;
+  background: #075eff;
+  font-size: 1rem;
+  box-shadow: 0 12px 28px rgb(7 94 255 / 22%);
+}
+
+.assignment-create-button svg {
+  width: 28px;
+  height: 28px;
+}
+
+.assignment-summary-icon path,
+.assignment-summary-icon rect,
+.assignment-summary-icon circle,
+.assignment-search-field path,
+.assignment-search-field circle,
+.assignment-national-id-field path,
+.assignment-national-id-field rect,
+.assignment-national-id-field circle,
+.assignment-create-button path,
+.assignment-create-button circle,
+.assignment-patient-avatar path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.assignment-patient-avatar path {
+  fill: none;
+  stroke-width: 2.3;
 }
 
 .capture-destination-panel {

@@ -328,6 +328,69 @@ function EditIcon() {
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="10.8" cy="10.8" r="6.7" />
+      <path d="m16 16 4.2 4.2" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M7 3.8v3.4M17 3.8v3.4M4.5 9.2h15" />
+      <rect x="4.5" y="5.6" width="15" height="14.2" rx="2.2" />
+    </svg>
+  );
+}
+
+function CameraSummaryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M8.3 7.4 9.8 5.5h4.4l1.5 1.9h2.1a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2V9.4a2 2 0 0 1 2-2h2.1Z" />
+      <circle cx="12" cy="13" r="3" />
+    </svg>
+  );
+}
+
+function ClinicianIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="12" cy="7.8" r="3.2" />
+      <path d="M6.4 20.2v-2.4c0-3 2.5-5.4 5.6-5.4s5.6 2.4 5.6 5.4v2.4" />
+    </svg>
+  );
+}
+
+function ClinicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5.4 20V7.3h6.1V20M11.5 20V4.6h7.1V20M3.8 20h16.4M8.5 10.3h.1M8.5 13.5h.1M8.5 16.7h.1M14.7 8h.1M14.7 11.2h.1M14.7 14.4h.1M14.7 17.6h.1" />
+    </svg>
+  );
+}
+
+function IdCardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+      <circle cx="9" cy="10.4" r="1.8" />
+      <path d="M6.3 16c.5-1.8 1.5-2.7 2.7-2.7s2.2.9 2.7 2.7M14 10h3.5M14 14h3.5" />
+    </svg>
+  );
+}
+
+function AddPatientIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="10" cy="7.8" r="3" />
+      <path d="M4.4 19.8v-2.1c0-2.8 2.5-5.1 5.6-5.1 1.2 0 2.4.4 3.3 1M17.8 12.5v6M14.8 15.5h6" />
+    </svg>
+  );
+}
+
 function PatientAssignmentSheet({
   session,
   onAssign,
@@ -339,112 +402,239 @@ function PatientAssignmentSheet({
   onCancel?: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
 }) {
-  const [query, setQuery] = React.useState(session.patientName || "");
+  const [query, setQuery] = React.useState("");
   const [newPatientNationalId, setNewPatientNationalId] = React.useState("");
-  const [matches, setMatches] = React.useState<PatientSummary[]>([]);
+  const [apiMatches, setApiMatches] = React.useState<PatientSummary[]>([]);
   const [searching, setSearching] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const trimmedQuery = query.trim();
+  const localMatches = React.useMemo(() => filterPatientMatches(mockAssignmentPatients(session), trimmedQuery), [session, trimmedQuery]);
+  const matches = mergePatientMatches(apiMatches, localMatches).slice(0, 3);
   const canCreate = Boolean(trimmedQuery) && !saving;
+  const summaryItems = assignmentSessionSummary(session);
 
   React.useEffect(() => {
-    if (!onSearchPatients || !trimmedQuery) {
-      setMatches([]);
+    if (!onSearchPatients) {
+      setApiMatches([]);
       setSearching(false);
       return;
     }
     let cancelled = false;
     setSearching(true);
-    const timer = window.setTimeout(() => {
-      void onSearchPatients(trimmedQuery)
-        .then((patients) => {
-          if (!cancelled) setMatches(patients.slice(0, 5));
-        })
-        .catch(() => {
-          if (!cancelled) setMatches([]);
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
-    }, 180);
+    void onSearchPatients(trimmedQuery)
+      .then((patients) => {
+        if (!cancelled) setApiMatches(patients);
+      })
+      .catch(() => {
+        if (!cancelled) setApiMatches([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
     };
   }, [onSearchPatients, trimmedQuery]);
 
   const assignDraft = (draft: PatientAssignmentDraft) => {
+    if (saving) return;
     setSaving(true);
     void onAssign(draft).finally(() => setSaving(false));
   };
 
   return (
     <div className="assignment-scrim" role="presentation">
-      <section aria-label="Assign patient" className="assignment-sheet">
+      <section aria-labelledby="assignment-sheet-title" aria-modal="true" className="assignment-sheet" role="dialog">
+        <div className="assignment-sheet-handle" aria-hidden="true" />
         <div className="assignment-sheet-header">
-          <div>
-            <p className="eyebrow">Patient context</p>
-            <h2>{session.patientName || "Find or create patient"}</h2>
-          </div>
+          <h2 id="assignment-sheet-title">Assign patient</h2>
           {onCancel ? (
             <Button aria-label="Close patient assignment" onClick={onCancel} size="sm" type="button" variant="ghost">
-              x
+              <span aria-hidden="true">x</span>
             </Button>
           ) : null}
         </div>
-        <Input
-          className="assignment-search-input"
-          aria-label="Search patients"
-          autoFocus
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by patient name or national ID"
-          value={query}
-        />
-        <div className="assignment-results" aria-live="polite">
-          {!trimmedQuery ? (
-            <div className="assignment-search-placeholder">
-              <strong>Type to search</strong>
-              <span>Use a name or national ID. Existing patients appear here as you type.</span>
+        <div className="assignment-session-summary" aria-label="Current session summary">
+          {summaryItems.map((item) => (
+            <div className="assignment-summary-item" key={item.label}>
+              <span className="assignment-summary-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <span>
+                <strong>{item.value}</strong>
+                <small>{item.label}</small>
+              </span>
             </div>
-          ) : null}
-          {searching ? <p className="assignment-searching">Looking for matches...</p> : null}
-          {!searching && matches.length
-            ? matches.map((patient) => (
-                <button
-                  disabled={saving}
-                  key={patient.id}
-                  onClick={() => assignDraft({ displayName: patient.displayName, nationalId: patient.nationalId || undefined })}
-                  type="button"
-                >
-                  <span>{patient.displayName}</span>
-                  <small>{patient.nationalId || "Existing patient"}</small>
-                </button>
-              ))
-            : null}
-          {!searching && trimmedQuery && !matches.length ? <p>No existing patient found yet.</p> : null}
+          ))}
         </div>
-        {trimmedQuery ? (
-          <div className="assignment-create-panel">
+        <label className="assignment-search-field">
+          <span aria-hidden="true">
+            <SearchIcon />
+          </span>
+          <Input
+            className="assignment-search-input"
+            aria-label="Search patients"
+            autoFocus
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by patient name, phone, or national ID"
+            value={query}
+          />
+        </label>
+        <div className="assignment-section-heading">
+          <h3>Suggested matches</h3>
+          {searching ? <span>Searching...</span> : null}
+        </div>
+        <div className="assignment-results" aria-live="polite">
+          {matches.length ? (
+            matches.map((patient) => (
+              <article className="assignment-patient-row" key={patient.id}>
+                <span className="assignment-patient-avatar" aria-hidden="true">
+                  <PatientIcon />
+                </span>
+                <div className="assignment-patient-copy">
+                  <strong>{patient.displayName}</strong>
+                  <span>{patientIdentifierLabel(patient)}</span>
+                  <small>Last visit: {formatLastVisit(patient.lastVisit)}</small>
+                </div>
+                <Button
+                  disabled={saving}
+                  onClick={() =>
+                    assignDraft({
+                      patientId: patient.id,
+                      displayName: patient.displayName,
+                      nationalId: patient.nationalId || undefined,
+                    })
+                  }
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {saving ? "Saving" : "Select"}
+                </Button>
+              </article>
+            ))
+          ) : (
+            <p className="assignment-empty">No suggested matches yet.</p>
+          )}
+        </div>
+        <div className="assignment-divider"><span>or</span></div>
+        <section className="assignment-create-panel" aria-label="Create a new patient">
+          <h3>Create a new patient</h3>
+          <label className="assignment-national-id-field">
+            <span aria-hidden="true">
+              <IdCardIcon />
+            </span>
             <Input
               aria-label="New patient national ID"
               onChange={(event) => setNewPatientNationalId(event.target.value)}
-              placeholder="National ID, optional"
+              placeholder="National ID (optional)"
               value={newPatientNationalId}
             />
-            <Button
-              disabled={!canCreate}
-              onClick={() => assignDraft({ displayName: trimmedQuery, nationalId: newPatientNationalId.trim() || undefined })}
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {saving ? "Updating..." : `Create "${trimmedQuery}"`}
-            </Button>
-          </div>
-        ) : null}
+          </label>
+          <Button
+            className="assignment-create-button"
+            disabled={!canCreate}
+            onClick={() => assignDraft({ displayName: trimmedQuery, nationalId: newPatientNationalId.trim() || undefined })}
+            type="button"
+          >
+            <AddPatientIcon />
+            {saving ? "Creating patient" : "Create new patient"}
+          </Button>
+        </section>
       </section>
     </div>
   );
+}
+
+const defaultAssignmentPatients: PatientSummary[] = [
+  { id: "mock-patient-0", displayName: "Patient 0", nationalId: "12345678", lastVisit: "2025-04-20" },
+  { id: "mock-sara-n", displayName: "Sara N.", phone: "+1 (555) 234-0000", lastVisit: "2025-03-10" },
+  { id: "mock-michael-j", displayName: "Michael J.", nationalId: "987654321", lastVisit: "2025-02-28" },
+];
+
+function assignmentSessionSummary(session: CaptureSession) {
+  const metadata = metadataRecord(session.extractedMetadata);
+  const clinical = metadataRecord(metadata.clinical_metadata);
+  const sessionDate = formatAssignmentDate(session);
+  return [
+    { icon: <CalendarIcon />, value: sessionDate.date, label: sessionDate.time },
+    { icon: <CameraSummaryIcon />, value: `${session.items.length}`, label: `capture${session.items.length === 1 ? "" : "s"}` },
+    {
+      icon: <ClinicianIcon />,
+      value: metadataDisplay(clinical.clinician || metadata.clinician || metadata.doctor) || "AesMem clinician",
+      label: "Clinician",
+    },
+    { icon: <ClinicIcon />, value: session.report?.template?.clinic?.name || "AesMem Demo Clinic", label: "Clinic" },
+  ];
+}
+
+function formatAssignmentDate(session: CaptureSession) {
+  const source = session.report?.updatedAt || session.processingStatus?.updatedAt || session.time;
+  const parsed = source ? new Date(source) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) {
+    return {
+      date: new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(parsed),
+      time: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(parsed),
+    };
+  }
+  return { date: session.dateLabel || "Current session", time: session.time || "Now" };
+}
+
+function mockAssignmentPatients(session: CaptureSession) {
+  const currentPatient =
+    session.patientName || session.patientId
+      ? [
+          {
+            id: session.patientId || "current-session-patient",
+            displayName: session.patientName || "Assigned patient",
+            nationalId: session.patientId || null,
+            lastVisit: session.report?.updatedAt || null,
+          },
+        ]
+      : [];
+  return mergePatientMatches(currentPatient, defaultAssignmentPatients);
+}
+
+function filterPatientMatches(patients: PatientSummary[], query: string) {
+  if (!query) return patients;
+  const normalizedQuery = query.toLowerCase();
+  return patients.filter((patient) =>
+    [patient.displayName, patient.nationalId || "", patient.phone || ""].some((value) => value.toLowerCase().includes(normalizedQuery)),
+  );
+}
+
+function mergePatientMatches(primary: PatientSummary[], secondary: PatientSummary[]) {
+  const seen = new Set<string>();
+  return [...primary, ...secondary].filter((patient) => {
+    const key = patient.id || `${patient.displayName}:${patient.nationalId || patient.phone || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function patientIdentifierLabel(patient: PatientSummary) {
+  if (patient.phone) return maskPhone(patient.phone);
+  if (patient.nationalId) return `ID: ${maskIdentifier(patient.nationalId)}`;
+  return "Existing patient";
+}
+
+function maskIdentifier(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 8) return value;
+  return `${digits.slice(0, 4)}....${digits.slice(-4)}`;
+}
+
+function maskPhone(value: string) {
+  const visible = value.slice(0, Math.max(0, value.length - 4));
+  return `${visible}....`;
+}
+
+function formatLastVisit(value?: string | null) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 function LiveDraftReport({

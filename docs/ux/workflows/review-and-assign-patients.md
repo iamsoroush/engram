@@ -24,7 +24,7 @@ Review processed session material, inspect generated output, assign patients, ve
 ## System Behavior
 
 - Adding capture material to processed output keeps the same session usable and updates deterministic progressive contracts.
-- Assignment uses live patient search/autocomplete by name or national ID in the Session Workspace, creates a lightweight patient record inline with optional national ID when needed, and assigns the session.
+- Assignment uses the Session Workspace bottom sheet with suggested matches, search by name, phone, or national ID, creates a lightweight patient record inline with optional national ID when needed, and assigns the session.
 - Verification updates the session state without blocking later review or capture.
 
 ## Involved Screens

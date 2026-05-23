@@ -817,6 +817,13 @@ export function App() {
 
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
+      if (draft.patientId) {
+        return {
+          id: draft.patientId,
+          displayName: draft.displayName,
+          nationalId: draft.nationalId || null,
+        };
+      }
       const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
       const normalizedName = draft.displayName.trim().toLowerCase();
       const normalizedNationalId = draft.nationalId?.trim();
@@ -834,7 +841,7 @@ export function App() {
     async (sessionId: string, draft: PatientAssignmentDraft) => {
       try {
         const patient = await ensurePatient(draft);
-        if (isLocalSessionId(sessionId)) {
+        if (isLocalSessionId(sessionId) || isLocalAssignmentPatient(patient.id)) {
           const enriched = {
             patientId: patient.id,
             patientName: patient.displayName,
@@ -1150,4 +1157,8 @@ export function App() {
       <Toast message={toast} />
     </>
   );
+}
+
+function isLocalAssignmentPatient(patientId: string) {
+  return patientId.startsWith("mock-") || patientId === "current-session-patient";
 }

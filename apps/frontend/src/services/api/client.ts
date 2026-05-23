@@ -223,6 +223,8 @@ function normalizePatientSummary(raw: Record<string, unknown>): PatientSummary {
     id: String(raw.id),
     displayName: String(raw.displayName || "Unnamed patient"),
     nationalId: typeof raw.nationalId === "string" ? raw.nationalId : null,
+    phone: typeof raw.phone === "string" ? raw.phone : null,
+    lastVisit: typeof raw.lastVisit === "string" ? raw.lastVisit : null,
   };
 }
 

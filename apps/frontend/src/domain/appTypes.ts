@@ -60,9 +60,12 @@ export type PatientSummary = {
   id: string;
   displayName: string;
   nationalId?: string | null;
+  phone?: string | null;
+  lastVisit?: string | null;
 };
 
 export type PatientAssignmentDraft = {
+  patientId?: string;
   displayName: string;
   nationalId?: string;
 };
