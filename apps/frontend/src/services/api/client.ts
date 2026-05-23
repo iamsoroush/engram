@@ -169,6 +169,42 @@ export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, 
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
 }
 
+export async function updateCaptureCaption(apiFetch: ApiFetch, captureId: string, caption: string) {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      metadata: {
+        caption: {
+          text: caption,
+          source: "staff_edit",
+          updated_at: new Date().toISOString(),
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new Error("Could not update capture caption");
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: string, transcript: string) {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      metadata: {
+        transcript: {
+          text: transcript,
+          source: "staff_edit",
+          updated_at: new Date().toISOString(),
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new Error("Could not update capture transcript");
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
 export async function deleteCapture(apiFetch: ApiFetch, captureId: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, { method: "DELETE" });
   if (!response.ok) throw new Error("Could not delete capture");

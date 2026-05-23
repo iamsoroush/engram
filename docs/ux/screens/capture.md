@@ -51,7 +51,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Progressive report states: `Draft`, `Structured`, and `Verified`. Adding a new capture or changing the patient after generation returns the state to `Draft` until the user generates again.
 - Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
 - Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
-- Capture source previews.
+- Capture source previews. Audio and photo captures open mobile-first detail sheets from live draft items, showing the source preview, captured metadata, editable transcript/caption text, edit attribution, and an inline transcript copy control.
 - Capture status badges match the compact badge treatment used in summary and state indicators.
 - Expandable generated transcript/caption/decorated text.
 - Sync safety banner when pending captures exist.

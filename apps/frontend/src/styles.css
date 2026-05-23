@@ -2999,6 +2999,344 @@ small {
   gap: 8px;
 }
 
+.capture-detail-overlay {
+  z-index: 38;
+  place-items: end center;
+  align-items: end;
+  background: rgb(8 13 45 / 58%);
+  padding: 0;
+}
+
+.capture-detail-sheet {
+  position: relative;
+  display: grid;
+  width: min(100%, 520px);
+  max-height: min(86dvh, 760px);
+  gap: 16px;
+  overflow: auto;
+  border: 1px solid #e3ebf8;
+  border-radius: 22px 22px 0 0;
+  background: #ffffff;
+  padding: 18px 20px max(20px, calc(16px + env(safe-area-inset-bottom)));
+  box-shadow: 0 -24px 70px rgb(8 13 45 / 24%);
+}
+
+.capture-detail-sheet.audio {
+  max-height: min(78dvh, 720px);
+}
+
+.capture-detail-handle {
+  width: 46px;
+  height: 6px;
+  justify-self: center;
+  border-radius: 999px;
+  background: #d1d7e2;
+}
+
+.capture-detail-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid #dce6f5;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #080d2d;
+  box-shadow: 0 10px 24px rgb(8 13 45 / 8%);
+}
+
+.capture-detail-close:hover,
+.capture-detail-close:focus-visible {
+  background: #eef4ff;
+  outline: 3px solid rgb(7 94 255 / 18%);
+}
+
+.capture-detail-close svg,
+.capture-detail-title-icon svg,
+.capture-detail-metadata svg,
+.capture-text-editor-card svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+}
+
+.capture-detail-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  padding-right: 52px;
+}
+
+.capture-detail-title-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  place-items: center;
+  border-radius: 999px;
+  background: #eaf2ff;
+  color: #075eff;
+}
+
+.capture-detail-header h2 {
+  margin: 0;
+  color: #080d2d;
+  font-size: 1.72rem;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.capture-detail-player {
+  display: grid;
+  min-height: 86px;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #d7e2f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.capture-detail-player audio {
+  width: 100%;
+  min-width: 0;
+}
+
+.capture-detail-photo-frame {
+  display: grid;
+  min-height: clamp(220px, 32dvh, 340px);
+  overflow: hidden;
+  border: 1px solid #d7e2f0;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.capture-detail-photo-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #ffffff;
+}
+
+.capture-detail-placeholder {
+  display: grid;
+  min-height: 86px;
+  place-items: center;
+  color: #52649d;
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.capture-detail-metadata {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #d7e2f0;
+  border-radius: 8px;
+  margin: 0;
+}
+
+.capture-detail-metadata div {
+  display: grid;
+  grid-template-columns: minmax(112px, max-content) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid #e4ebf5;
+  padding: 10px 16px;
+}
+
+.capture-detail-metadata div:last-child {
+  border-bottom: 0;
+}
+
+.capture-detail-metadata dt,
+.capture-detail-metadata dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.capture-detail-metadata dt {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #1a2758;
+  font-size: 1rem;
+  font-weight: 750;
+}
+
+.capture-detail-metadata dt span {
+  display: grid;
+  width: 26px;
+  flex: 0 0 26px;
+  place-items: center;
+  color: #071246;
+}
+
+.capture-detail-metadata dd {
+  justify-self: end;
+  color: #1a2758;
+  font-size: 0.98rem;
+  font-weight: 700;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.detail-status-pill {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #dcf7e6;
+  color: #087a31;
+  padding: 5px 12px;
+  font-weight: 850;
+}
+
+.capture-text-editor-card {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  border: 1px solid #d7e2f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.capture-text-editor-card p {
+  margin: 0;
+  color: #1a2758;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.capture-text-editor-card > button,
+.capture-editor-heading button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: #075eff;
+  padding: 0;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.capture-text-editor-card .capture-transcript-copy {
+  min-height: 34px;
+  gap: 7px;
+  border: 1px solid #d7e2f0;
+  border-radius: 999px;
+  background: #f8fbff;
+  padding: 5px 10px;
+  color: #075eff;
+  font-size: 0.78rem;
+  box-shadow: 0 8px 18px rgb(8 13 45 / 7%);
+}
+
+.capture-text-editor-card .capture-transcript-copy.copied {
+  border-color: #bbf7d0;
+  background: #ecfdf3;
+  color: #087a31;
+}
+
+.capture-text-editor-card .capture-transcript-copy.failed {
+  border-color: #fecaca;
+  background: #fff5f5;
+  color: #b42318;
+}
+
+.capture-text-editor-card > button:hover,
+.capture-text-editor-card > button:focus-visible,
+.capture-editor-heading button:hover,
+.capture-editor-heading button:focus-visible {
+  outline: none;
+  text-decoration: underline;
+}
+
+.capture-text-editor-card {
+  gap: 10px;
+}
+
+.capture-text-editor-card.audio-transcript {
+  padding-bottom: 16px;
+}
+
+.capture-editor-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.capture-text-editor-card label {
+  color: #080d2d;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.capture-text-editor-card textarea {
+  width: 100%;
+  min-height: 124px;
+  resize: vertical;
+  border: 1px solid #d7e2f0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1a2758;
+  padding: 14px;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.capture-text-editor-card textarea:focus-visible {
+  border-color: #075eff;
+  outline: 3px solid rgb(7 94 255 / 16%);
+}
+
+.capture-editor-save-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.capture-editor-save-row span {
+  color: #52649d;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.capture-editor-save-row button {
+  min-height: 38px;
+  border: 1px solid #075eff;
+  border-radius: 8px;
+  background: #075eff;
+  color: #ffffff;
+  padding: 7px 14px;
+  font-weight: 900;
+}
+
+.capture-editor-save-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .audio-wave {
   display: flex;
   align-items: center;

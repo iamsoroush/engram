@@ -1,7 +1,7 @@
 import React from "react";
 import { flushSync } from "react-dom";
 import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, Persona } from "../domain/appTypes";
-import type { CaptureSession, CaptureStatus, Screen } from "../domain/types";
+import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
@@ -19,7 +19,9 @@ import {
   saveSessionForProcessing,
   searchPatients,
   storeBackendMappings,
+  updateCaptureCaption,
   updateCaptureTitle,
+  updateCaptureTranscript,
   updateSessionTitle,
   uploadCapture,
   verifySession,
@@ -655,6 +657,74 @@ export function App() {
     [apiFetch],
   );
 
+  const editCaptureSourceText = React.useCallback(
+    async (sessionId: string, captureId: string, text: string, field: "caption" | "transcript") => {
+      const editedAt = new Date().toISOString();
+      const editorName = auth?.user.displayName || auth?.user.email || "You";
+      const updateItem = (item: CaptureItem): CaptureItem => {
+        if (item.id !== captureId) return item;
+        const currentText = item.metadata?.[field] && typeof item.metadata[field] === "object"
+          ? (item.metadata[field] as Record<string, unknown>)
+          : {};
+        const aiField = field === "caption" ? "ai_caption" : "ai_transcript";
+        const shouldPreserveAiText = item.metadata?.[field] && currentText.source !== "staff_edit" && !item.metadata?.[aiField];
+        const nextMetadata = {
+          ...(item.metadata || {}),
+          ...(shouldPreserveAiText ? { [aiField]: item.metadata?.[field] } : {}),
+          [field]: {
+            ...currentText,
+            text,
+            source: "staff_edit",
+            edited_at: editedAt,
+            edited_by_name: editorName,
+            edited_by_email: auth?.user.email,
+          },
+        };
+        return {
+          ...item,
+          caption: field === "caption" ? text : item.caption,
+          transcript: field === "transcript" ? text : item.transcript,
+          metadata: nextMetadata,
+        };
+      };
+      const updateSession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(updateItem) }) : session;
+
+      if (captureId.startsWith("local-capture-")) {
+        setSessions((current) => current.map(updateSession));
+        setActiveSession((current) => (current?.id === sessionId ? updateSession(current) : current));
+        await updatePendingCapture(captureId, (current) => ({
+          ...current,
+          item: updateItem(current.item),
+          session: updateSession(current.session),
+        }));
+        setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+        const currentItem = activeSession?.id === sessionId ? activeSession.items.find((item) => item.id === captureId) : null;
+        return currentItem ? updateItem(currentItem) : null;
+      }
+
+      const updated = field === "caption"
+        ? await updateCaptureCaption(apiFetch, captureId, text)
+        : await updateCaptureTranscript(apiFetch, captureId, text);
+      const mergeCaptionUpdate = (item: CaptureItem): CaptureItem =>
+        item.id === captureId
+          ? {
+              ...item,
+              ...updated,
+              sourceUrl: item.sourceUrl || updated.sourceUrl,
+              contentType: item.contentType || updated.contentType,
+            }
+          : item;
+      const updateBackendSession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(mergeCaptionUpdate) }) : session;
+      setSessions((current) => current.map(updateBackendSession));
+      setActiveSession((current) => (current?.id === sessionId ? updateBackendSession(current) : current));
+      setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+      return updated;
+    },
+    [activeSession?.id, activeSession?.items, apiFetch, auth?.user.displayName, auth?.user.email],
+  );
+
   const removeCaptureFromSession = React.useCallback(
     async (sessionId: string, captureId: string) => {
       const removeLocalItem = (session: CaptureSession): CaptureSession =>
@@ -943,6 +1013,8 @@ export function App() {
           onResolveFile={resolveSourceFile}
           onUpdateTitle={renameSession}
           onRenameCapture={renameCapture}
+          onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
+          onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
           onRetryCaptureProcessing={retryCaptureAiProcessing}
           onRetryCaptureUpload={retryCaptureUpload}
@@ -972,6 +1044,8 @@ export function App() {
           onStartNewSession={startNewSession}
           onUpdateTitle={renameSession}
           onRenameCapture={renameCapture}
+          onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
+          onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
           onRetryCaptureProcessing={retryCaptureAiProcessing}
           onRetryCaptureUpload={retryCaptureUpload}

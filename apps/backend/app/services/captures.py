@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import Artifact, CaptureStatus, Patient, Session, SessionStatus
+from app.models import Artifact, CaptureStatus, CaptureType, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, CaptureUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
 from app.services.sessions import parse_uuid
@@ -37,12 +37,80 @@ def update_capture(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid capture status") from exc
     if request.metadata is not None:
-        capture.capture_metadata = {**(capture.capture_metadata or {}), **request.metadata}
+        capture.capture_metadata = merged_capture_metadata_for_staff_edit(capture.capture_metadata or {}, request.metadata, principal)
+        if capture.capture_type == CaptureType.photo and "caption" in request.metadata:
+            session = db.get(Session, capture.session_id)
+            if session is not None and session.tenant_id == principal.tenant_id:
+                mark_session_stale_after_source_text_update(session, str(capture.id), "caption-edit", "A photo caption was edited after the last processed session output.", datetime.now(timezone.utc))
+        if capture.capture_type == CaptureType.audio and "transcript" in request.metadata:
+            session = db.get(Session, capture.session_id)
+            if session is not None and session.tenant_id == principal.tenant_id:
+                mark_session_stale_after_source_text_update(session, str(capture.id), "transcript-edit", "An audio transcript was edited after the last processed session output.", datetime.now(timezone.utc))
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="capture.update", target_type="capture", target_id=capture.id)
     db.commit()
     db.refresh(capture)
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
     return capture_payload(capture, artifact)
+
+
+def merged_capture_metadata_for_staff_edit(
+    existing_metadata: dict[str, Any],
+    incoming_metadata: dict[str, Any],
+    principal: CurrentPrincipal,
+) -> dict[str, Any]:
+    """Merge editable text while retaining the first AI-generated text object."""
+    merged = {**existing_metadata, **incoming_metadata}
+    edited_at = datetime.now(timezone.utc).isoformat()
+    for field in ("caption", "transcript"):
+        incoming_value = incoming_metadata.get(field)
+        if not isinstance(incoming_value, dict) or incoming_value.get("source") != "staff_edit":
+            continue
+        ai_field = f"ai_{field}"
+        existing_value = existing_metadata.get(field)
+        existing_record = existing_value if isinstance(existing_value, dict) else {}
+        if ai_field not in merged and existing_value is not None and existing_record.get("source") != "staff_edit":
+            merged[ai_field] = existing_value
+        merged[field] = {
+            **incoming_value,
+            "source": "staff_edit",
+            "edited_at": edited_at,
+            "edited_by_user_id": str(principal.user_id),
+            "edited_by_name": principal.user.full_name or principal.user.email,
+            "edited_by_email": principal.user.email,
+        }
+    return merged
+
+
+def mark_session_stale_after_source_text_update(
+    session: Session,
+    capture_id: str,
+    source: str,
+    stale_reason: str,
+    changed_at: datetime,
+) -> None:
+    """Flag generated session output when staff edits source-generated text."""
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    session.extracted_metadata = {
+        **metadata,
+        "generated_output_stale": True,
+        "stale_reason": stale_reason,
+        "stale_at": changed_at.isoformat(),
+        "processing_status": {
+            **(metadata.get("processing_status") if isinstance(metadata.get("processing_status"), dict) else {}),
+            "state": "queued",
+            "source": source,
+            "updated_at": changed_at.isoformat(),
+        },
+        "last_source_text_edit": {
+            "capture_id": capture_id,
+            "source": source,
+            "updated_at": changed_at.isoformat(),
+        },
+    }
+    if session.status == SessionStatus.verified:
+        session.status = SessionStatus.needs_review
+    elif session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
+        session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
 
 
 def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:

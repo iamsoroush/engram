@@ -138,8 +138,13 @@ export function makeLocalCapture(
     title: titleByType[draft.kind],
     detail: draft.detail || detailByType[draft.kind],
     time,
+    capturedAt: new Date().toISOString(),
+    fileName: draft.filename,
     sourceName: draft.filename,
     status: "saved",
+    duration: draft.kind === "audio" ? metadataString(draft.metadata?.duration) : undefined,
+    transcript: draft.kind === "audio" ? metadataString(draft.metadata?.transcript) : undefined,
+    caption: draft.kind === "photo" ? metadataString(draft.metadata?.caption) : undefined,
     contentType: draft.file.type || "application/octet-stream",
   };
   const session: CaptureSession =
@@ -183,6 +188,10 @@ export function makeLocalCapture(
     item,
     session,
   };
+}
+
+function metadataString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 export function sessionWithLocalPreview(session: CaptureSession, itemId: string, file: Blob) {

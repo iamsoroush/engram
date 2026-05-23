@@ -25,6 +25,11 @@ export type CaptureItem = {
   time: string;
   sourceName: string;
   status?: CaptureStatus | "ready" | "uploading" | "missing";
+  capturedAt?: string;
+  fileName?: string;
+  duration?: string;
+  transcript?: string;
+  caption?: string;
   mimeType?: string;
   sourceUrl?: string;
   fileEndpoint?: string;

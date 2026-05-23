@@ -210,6 +210,8 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
   const metadata = raw.metadata && typeof raw.metadata === "object" ? (raw.metadata as Record<string, unknown>) : {};
   const sourceName = typeof metadata.original_filename === "string" ? metadata.original_filename : raw.sourceName;
   const contentType = typeof metadata.content_type === "string" ? metadata.content_type : raw.contentType;
+  const transcript = metadataTextFrom(metadata.transcript) || metadataTextFrom(metadata.ai_transcript);
+  const caption = metadataTextFrom(metadata.caption || metadata.ocr) || metadataTextFrom(metadata.ai_caption);
   const assignmentSource =
     typeof raw.assignmentSource === "string"
       ? raw.assignmentSource
@@ -222,8 +224,13 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
     title: raw.title || titleByType[raw.type === "audio" || raw.type === "photo" ? raw.type : "note"],
     detail: raw.detail || (typeof metadata.detail === "string" ? metadata.detail : "Captured source saved to the backend."),
     time: raw.time || formatApiTime(typeof raw.capturedAt === "string" ? raw.capturedAt : null),
+    capturedAt: typeof raw.capturedAt === "string" ? raw.capturedAt : undefined,
+    fileName: typeof raw.fileName === "string" ? raw.fileName : typeof sourceName === "string" ? sourceName : undefined,
     sourceName: sourceName || "capture",
     status: raw.status ? captureStatusFromApi(String(raw.status)) : "uploaded",
+    duration: typeof metadata.duration === "string" ? metadata.duration : undefined,
+    transcript: transcript || undefined,
+    caption: caption || undefined,
     contentType: contentType || raw.mimeType,
     sourceUrl: typeof raw.sourceUrl === "string" ? raw.sourceUrl : undefined,
     fileEndpoint: typeof raw.fileEndpoint === "string" ? raw.fileEndpoint : undefined,
@@ -232,6 +239,17 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
     assignmentSource,
     metadata,
   };
+}
+
+function metadataTextFrom(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.text === "string") return record.text.trim();
+    if (typeof record.transcript === "string") return record.transcript.trim();
+    if (typeof record.caption === "string") return record.caption.trim();
+  }
+  return "";
 }
 
 /**

@@ -19,6 +19,8 @@ export function CaptureScreen({
   onResolveFile,
   onUpdateTitle,
   onRenameCapture,
+  onUpdateCaptureCaption,
+  onUpdateCaptureTranscript,
   onDeleteCapture,
   onRetryCaptureProcessing,
   onRetryCaptureUpload,
@@ -37,6 +39,8 @@ export function CaptureScreen({
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateTitle: (sessionId: string, title: string) => Promise<void>;
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
+  onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
+  onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   onRetryCaptureProcessing?: (sessionId: string, captureId: string) => Promise<void>;
   onRetryCaptureUpload?: (sessionId: string, captureId: string) => Promise<void>;
@@ -267,7 +271,29 @@ export function CaptureScreen({
           ) : null}
         </div>
       </Card>
-      <SourcePreviewDialog item={selectedCapture} onClose={() => setSelectedCapture(null)} onResolveFile={onResolveFile} />
+      <SourcePreviewDialog
+        item={selectedCapture}
+        onClose={() => setSelectedCapture(null)}
+        onResolveFile={onResolveFile}
+        onUpdateCaption={
+          activeSession && onUpdateCaptureCaption
+            ? async (captureId, caption) => {
+                const updated = await onUpdateCaptureCaption(activeSession.id, captureId, caption);
+                if (updated) setSelectedCapture(updated);
+                return updated;
+              }
+            : undefined
+        }
+        onUpdateTranscript={
+          activeSession && onUpdateCaptureTranscript
+            ? async (captureId, transcript) => {
+                const updated = await onUpdateCaptureTranscript(activeSession.id, captureId, transcript);
+                if (updated) setSelectedCapture(updated);
+                return updated;
+              }
+            : undefined
+        }
+      />
     </section>
   );
 }
