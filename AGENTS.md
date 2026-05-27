@@ -166,6 +166,7 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 - Reuse existing components where reasonable.
 - Keep presentational UI separate from API/business orchestration when practical.
 - Keep screen behavior consistent with UX docs.
+- Do not over-complicate frontend code to work around an inefficient or awkward backend contract. If a frontend change would require significant client-side orchestration, duplicated business logic, excessive requests, heavy data reshaping, polling, or other work that could harm responsiveness, explicitly call out the backend/API change that would make the feature simpler and faster. If appropriate, either implement the backend change yourself within the requested scope or prepare a clear hand-off prompt for a backend engineer agent.
 - Update UX docs if user-facing behavior changes.
 
 ---
