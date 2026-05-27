@@ -4658,6 +4658,11 @@ small {
   background: #fffdf8;
 }
 
+.clinical-patient-row {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  padding: 14px;
+}
+
 .clinical-row.compact {
   padding: 12px;
 }
@@ -4729,8 +4734,37 @@ small {
   color: #995c00;
 }
 
+.clinical-overflow-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4e5d93;
+}
+
+.clinical-overflow-button:hover,
+.clinical-overflow-button:focus-visible {
+  border-color: #b9c8dc;
+  background: #f8fbff;
+  outline: 3px solid rgb(7 94 255 / 14%);
+}
+
+.clinical-overflow-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3.2;
+}
+
 .capture-chips,
-.clinical-filter-row {
+.clinical-filter-row,
+.patient-memory-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -4774,8 +4808,35 @@ small {
 }
 
 .clinical-filter-row button.active {
+  background: #eef5ff;
   border-color: #075eff;
   color: #075eff;
+}
+
+.patient-memory-badges {
+  margin-top: 3px;
+}
+
+.patient-memory-badge {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #41516f;
+  padding: 0 10px;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.patient-memory-badge.verified {
+  background: #dcf7e6;
+  color: #087a31;
+}
+
+.patient-memory-badge.needs-input {
+  background: #fff1c2;
+  color: #8a4b00;
 }
 
 .clinical-helper {
@@ -4846,6 +4907,10 @@ small {
     padding: 12px;
   }
 
+  .clinical-patient-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
   .clinical-avatar {
     width: 54px;
     height: 54px;
@@ -4855,6 +4920,15 @@ small {
   .clinical-row .btn {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .clinical-patient-row .btn {
+    grid-column: 1 / -1;
+  }
+
+  .clinical-overflow-button {
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .clinical-row-copy h3 {

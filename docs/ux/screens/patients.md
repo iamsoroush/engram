@@ -106,8 +106,8 @@ Patient cards should use the most natural available summary:
 
 1. Assistant-generated patient memory sentence.
 2. Rule-based natural summary from recent session summaries, visit dates, and capture types.
-3. Metadata sentence, for example `Last saved visit: May 27. Photos and note are saved.`
-4. Minimal saved-state sentence, for example `Patient memory is saved.`
+3. Metadata sentence, for example `Last updated today. 4 captures in the latest visit.`
+4. Minimal saved-state sentence: `No memory summary yet.`
 
 If AI output is unavailable, do not call that out as a failure. Use the next fallback.
 

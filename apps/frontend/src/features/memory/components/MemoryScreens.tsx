@@ -25,27 +25,20 @@ export function PatientsHome({
 }) {
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>("today");
   const [query, setQuery] = React.useState("");
+  const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const today = React.useMemo(() => buildTodayModel({ activeSession, sessions, syncHealth }), [activeSession, sessions, syncHealth]);
-  const patientGroups = React.useMemo(() => {
-    const groups = new Map<string, CaptureSession[]>();
-    sessions
-      .filter((session) => session.patientName || session.patientId)
-      .forEach((session) => {
-        const key = session.patientName || session.patientId || "Patient";
-        groups.set(key, [...(groups.get(key) || []), session]);
-      });
-    return [...groups.entries()].map(([patientName, patientSessions]) => ({
-      patientName,
-      sessions: patientSessions,
-      summary: patientMemorySummary(patientSessions),
-    }));
-  }, [sessions]);
+  const patientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
   const needsInputSessions = today.needsInputSessions;
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredPatients = normalizedQuery
-    ? patientGroups.filter((patient) => [patient.patientName, patient.summary].join(" ").toLowerCase().includes(normalizedQuery))
-    : patientGroups;
+  const filteredPatients = patientRows.filter((patient) => {
+    const matchesQuery = normalizedQuery
+      ? [patient.name, patient.summary, patient.badges.join(" ")].join(" ").toLowerCase().includes(normalizedQuery)
+      : true;
+    if (!matchesQuery) return false;
+    if (patientFilter === "active") return patient.isActive;
+    return true;
+  });
   const assignmentSession = assignmentSessionId
     ? sessions.find((session) => session.id === assignmentSessionId) || (activeSession?.id === assignmentSessionId ? activeSession : null)
     : null;
@@ -185,25 +178,42 @@ export function PatientsHome({
       {activeTab === "patients" ? (
         <div className="clinical-tab-panel" role="tabpanel">
           <div className="clinical-filter-row" aria-label="Patient filters">
-            <button className="active" type="button">Recent</button>
-            <button type="button">Active</button>
-            <button type="button">All</button>
+            {patientFilters.map((filter) => (
+              <button
+                aria-pressed={patientFilter === filter.value}
+                className={patientFilter === filter.value ? "active" : ""}
+                key={filter.value}
+                onClick={() => setPatientFilter(filter.value)}
+                type="button"
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
           <div className="clinical-list">
             {filteredPatients.length ? (
               filteredPatients.map((patient) => (
-                <PatientMemoryRow
-                  actionLabel="Open memory"
-                  key={patient.patientName}
-                  patientName={patient.patientName}
+                <PatientRow
+                  actionLabel={patient.actionLabel}
+                  badges={patient.badges}
+                  key={patient.id}
+                  patientName={patient.name}
                   summary={patient.summary}
-                  timestamp={`${patient.sessions.length} visit${patient.sessions.length === 1 ? "" : "s"} saved`}
-                  tone="green"
-                  onOpen={() => onOpenSession(patient.sessions[0].id)}
+                  tone={patient.needsInput ? "amber" : "green"}
+                  onOpen={() => {
+                    if (patient.action === "continue") {
+                      onContinueSession(patient.primarySession.id);
+                      return;
+                    }
+                    onOpenSession(patient.primarySession.id);
+                  }}
                 />
               ))
             ) : (
-              <EmptyClinicalState title="No patient memory found" copy="Try another search or capture a new visit." />
+              <EmptyClinicalState
+                title={patientRows.length ? "No matching patients found." : "No patients yet."}
+                copy={patientRows.length ? "Try another search or filter." : "Start by capturing audio, photo, or a note."}
+              />
             )}
           </div>
         </div>
@@ -242,6 +252,7 @@ export function PatientsHome({
 }
 
 type ClinicalMemoryTab = "today" | "patients" | "needs-input";
+type PatientFilter = "recent" | "active" | "all";
 type ClinicalTone = "blue" | "green" | "amber";
 
 type TodayCardModel = {
@@ -265,6 +276,24 @@ const clinicalTabs: Array<{ value: ClinicalMemoryTab; label: string; icon: React
   { value: "patients", label: "Patients", icon: <PatientsIcon /> },
   { value: "needs-input", label: "Needs input", icon: <NeedsInputIcon /> },
 ];
+
+const patientFilters: Array<{ value: PatientFilter; label: string }> = [
+  { value: "recent", label: "Recent" },
+  { value: "active", label: "Active" },
+  { value: "all", label: "All" },
+];
+
+type PatientRowModel = {
+  id: string;
+  name: string;
+  summary: string;
+  badges: string[];
+  action: "continue" | "open";
+  actionLabel: "Continue" | "Open";
+  isActive: boolean;
+  needsInput: boolean;
+  primarySession: CaptureSession;
+};
 
 function buildTodayModel({
   activeSession,
@@ -317,6 +346,44 @@ function buildTodayModel({
     recentMemory,
     recentMemoryBadge: isOffline ? `${recentMemory.length} saved on this device` : `${recentMemory.length} updated`,
   };
+}
+
+function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureSession | null; sessions: CaptureSession[] }): PatientRowModel[] {
+  const groups = new Map<string, CaptureSession[]>();
+  uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
+    .filter((session) => session.patientName || session.patientId)
+    .forEach((session) => {
+      const key = session.patientId || session.patientName || "Patient";
+      groups.set(key, [...(groups.get(key) || []), session]);
+    });
+
+  return [...groups.entries()]
+    .map(([id, patientSessions]) => {
+      const sortedSessions = [...patientSessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
+      const primarySession = sortedSessions[0];
+      const name = primarySession.patientName || sortedSessions.find((session) => session.patientName)?.patientName || id;
+      const activeCount = sortedSessions.filter(isActiveVisit).length;
+      const needsInput = sortedSessions.some(needsHumanInput);
+      const verified = sortedSessions.some((session) => session.status === "verified");
+      const action: PatientRowModel["action"] = activeCount ? "continue" : "open";
+      const actionLabel: PatientRowModel["actionLabel"] = action === "continue" ? "Continue" : "Open";
+      return {
+        id,
+        name,
+        summary: patientCardSummary(sortedSessions),
+        badges: [
+          activeCount ? `${activeCount} active session${activeCount === 1 ? "" : "s"}` : visitCountLabel(sortedSessions.length),
+          verified ? "Verified" : undefined,
+          needsInput ? "Needs input" : undefined,
+        ].filter((badge): badge is string => Boolean(badge)),
+        action,
+        actionLabel,
+        isActive: Boolean(activeCount),
+        needsInput,
+        primarySession,
+      };
+    })
+    .sort((a, b) => latestSessionTime(b.primarySession) - latestSessionTime(a.primarySession));
 }
 
 function uniqueSessions(sessions: CaptureSession[]) {
@@ -386,16 +453,18 @@ function ClinicalSection({
 function ClinicalMemoryCard({
   actionLabel,
   children,
+  className,
   tone = "blue",
   onAction,
 }: {
   actionLabel: string;
   children: React.ReactNode;
+  className?: string;
   tone?: ClinicalTone;
   onAction: () => void;
 }) {
   return (
-    <Card className={`clinical-row clinical-row-${tone}`}>
+    <Card className={["clinical-row", `clinical-row-${tone}`, className].filter(Boolean).join(" ")}>
       {children}
       <Button onClick={onAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : "default"}>
         {actionLabel}
@@ -456,6 +525,42 @@ function PatientMemoryRow({
         <span>{timestamp}</span>
         <p>{summary}</p>
       </div>
+    </ClinicalMemoryCard>
+  );
+}
+
+function PatientRow({
+  actionLabel,
+  badges,
+  patientName,
+  summary,
+  tone = "green",
+  onOpen,
+}: {
+  actionLabel: string;
+  badges: string[];
+  patientName: string;
+  summary: string;
+  tone?: ClinicalTone;
+  onOpen: () => void;
+}) {
+  return (
+    <ClinicalMemoryCard actionLabel={actionLabel} className="clinical-patient-row" tone={tone} onAction={onOpen}>
+      <Avatar label={patientName} tone={tone} />
+      <div className="clinical-row-copy">
+        <h3>{patientName}</h3>
+        <p>{summary}</p>
+        <div className="patient-memory-badges" aria-label="Patient memory status">
+          {badges.map((badge) => (
+            <span className={`patient-memory-badge ${badge === "Needs input" ? "needs-input" : badge === "Verified" ? "verified" : ""}`} key={badge}>
+              {badge}
+            </span>
+          ))}
+        </div>
+      </div>
+      <button aria-label={`More actions for ${patientName}`} className="clinical-overflow-button" type="button">
+        <MoreIcon />
+      </button>
     </ClinicalMemoryCard>
   );
 }
@@ -561,6 +666,14 @@ function InfoIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M12 12h.1M18 12h.1M6 12h.1" />
+    </svg>
+  );
+}
+
 function captureTypeIcon(type: CaptureItemType) {
   if (type === "photo") {
     return (
@@ -616,14 +729,76 @@ function currentVisitSummary(session: CaptureSession, isOffline: boolean) {
 }
 
 function patientMemorySummary(sessions: CaptureSession[]) {
-  const reviewed = sessions.find((session) => session.status === "verified" && session.summary);
-  const recent = sessions.find((session) => session.summary);
+  const orderedSessions = [...sessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
+  const reviewed = orderedSessions.find((session) => session.status === "verified" && session.summary);
+  const recent = orderedSessions.find((session) => session.summary);
   const source = reviewed || recent;
   if (source?.summaries?.short) return source.summaries.short;
   if (source?.summary) return source.summary;
-  const last = sessions[0];
+  const last = orderedSessions[0];
   if (last?.items.length) return `Recent visit includes ${captureTypeSummary(captureCounts(last)) || `${last.items.length} saved captures`}.`;
   return "Patient memory is saved.";
+}
+
+function patientCardSummary(sessions: CaptureSession[]) {
+  const orderedSessions = [...sessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
+  const aiSummary = orderedSessions
+    .map((session) => session.summaries)
+    .find((summary) => {
+      if (!summary?.short) return false;
+      const source = (summary.source || "").toLowerCase();
+      return !source.includes("rule") && !source.includes("deterministic");
+    });
+  if (aiSummary?.short) return aiSummary.short;
+
+  const ruleBased = orderedSessions.map((session) => naturalSessionSummary(session)).find(Boolean);
+  if (ruleBased) return ruleBased;
+
+  const latest = orderedSessions[0];
+  if (latest && (sessionTouchTimestamps(latest).length || latest.items.length)) {
+    const updated = naturalUpdatedDate(latest);
+    const captureCount = latest.items.length;
+    if (captureCount) return `Last updated ${updated}. ${captureCount} capture${captureCount === 1 ? "" : "s"} in the latest visit.`;
+    return `Last updated ${updated}.`;
+  }
+
+  return "No memory summary yet.";
+}
+
+function naturalSessionSummary(session: CaptureSession) {
+  if (session.summaries?.short) return session.summaries.short;
+  if (session.summaries?.patientHistory) return session.summaries.patientHistory;
+  const summary = sanitizeSummary(session.summary);
+  if (summary) return summary;
+  const counts = captureCounts(session);
+  const captureSummary = captureTypeSummary(counts);
+  return captureSummary ? `Latest visit includes ${captureSummary}.` : "";
+}
+
+function sanitizeSummary(summary?: string | null) {
+  const trimmed = summary?.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^Mock session summary:\s*/i, "");
+}
+
+function isActiveVisit(session: CaptureSession) {
+  return ["current", "draft", "reopened", "processing"].includes(session.status);
+}
+
+function latestSessionTime(session: CaptureSession) {
+  const timestamp = sessionTouchTimestamps(session)
+    .map((value) => new Date(value).getTime())
+    .filter((value) => !Number.isNaN(value))
+    .sort((a, b) => b - a)[0];
+  return timestamp || 0;
+}
+
+function naturalUpdatedDate(session: CaptureSession) {
+  const timestamp = latestSessionTime(session);
+  if (!timestamp) return "recently";
+  const date = new Date(timestamp);
+  if (isToday(date.toISOString())) return "today";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
 }
 
 function captureCounts(session: CaptureSession) {
