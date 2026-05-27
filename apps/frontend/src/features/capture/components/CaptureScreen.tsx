@@ -390,7 +390,7 @@ function AddPatientIcon() {
   );
 }
 
-function PatientAssignmentSheet({
+export function PatientAssignmentSheet({
   session,
   onAssign,
   onCancel,
@@ -407,7 +407,8 @@ function PatientAssignmentSheet({
   const [searching, setSearching] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const trimmedQuery = query.trim();
-  const localMatches = React.useMemo(() => filterPatientMatches(mockAssignmentPatients(session), trimmedQuery), [session, trimmedQuery]);
+  const currentPatient = React.useMemo(() => currentSessionPatient(session), [session]);
+  const localMatches = React.useMemo(() => filterPatientMatches(currentPatient, trimmedQuery), [currentPatient, trimmedQuery]);
   const matches = mergePatientMatches(apiMatches, localMatches).slice(0, 3);
   const canCreate = Boolean(trimmedQuery) && !saving;
   const summaryItems = assignmentSessionSummary(session);
@@ -545,12 +546,6 @@ function PatientAssignmentSheet({
   );
 }
 
-const defaultAssignmentPatients: PatientSummary[] = [
-  { id: "mock-patient-0", displayName: "Patient 0", nationalId: "12345678", lastVisit: "2025-04-20" },
-  { id: "mock-sara-n", displayName: "Sara N.", phone: "+1 (555) 234-0000", lastVisit: "2025-03-10" },
-  { id: "mock-michael-j", displayName: "Michael J.", nationalId: "987654321", lastVisit: "2025-02-28" },
-];
-
 function assignmentSessionSummary(session: CaptureSession) {
   const metadata = metadataRecord(session.extractedMetadata);
   const clinical = metadataRecord(metadata.clinical_metadata);
@@ -563,7 +558,7 @@ function assignmentSessionSummary(session: CaptureSession) {
       value: metadataDisplay(clinical.clinician || metadata.clinician || metadata.doctor) || "AesMem clinician",
       label: "Clinician",
     },
-    { icon: <ClinicIcon />, value: session.report?.template?.clinic?.name || "AesMem Demo Clinic", label: "Clinic" },
+    { icon: <ClinicIcon />, value: session.report?.template?.clinic?.name || "Clinic", label: "Clinic" },
   ];
 }
 
@@ -579,19 +574,16 @@ function formatAssignmentDate(session: CaptureSession) {
   return { date: session.dateLabel || "Current session", time: session.time || "Now" };
 }
 
-function mockAssignmentPatients(session: CaptureSession) {
-  const currentPatient =
-    session.patientName || session.patientId
-      ? [
-          {
-            id: session.patientId || "current-session-patient",
-            displayName: session.patientName || "Assigned patient",
-            nationalId: session.patientId || null,
-            lastVisit: session.report?.updatedAt || null,
-          },
-        ]
-      : [];
-  return mergePatientMatches(currentPatient, defaultAssignmentPatients);
+function currentSessionPatient(session: CaptureSession) {
+  if (!session.patientName && !session.patientId) return [];
+  return [
+    {
+      id: session.patientId || "current-session-patient",
+      displayName: session.patientName || "Assigned patient",
+      nationalId: session.patientId || null,
+      lastVisit: session.report?.updatedAt || null,
+    },
+  ];
 }
 
 function filterPatientMatches(patients: PatientSummary[], query: string) {
@@ -952,7 +944,7 @@ function StructuredReportView({
     <div className="structured-report-view">
       <section className="structured-report-section">
         <h3>Clinic Information</h3>
-        <p>Clinic: {clinic?.name || "AesMem Demo Clinic"}</p>
+        <p>Clinic: {clinic?.name || "Clinic"}</p>
         {(clinic?.information?.length ? clinic.information : ["Clinical memory report"]).map((line) => (
           <p key={line}>{line}</p>
         ))}
@@ -1194,7 +1186,7 @@ function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boole
 }
 
 function sessionPatientName(session: CaptureSession | null) {
-  return session?.patientName || "Patient 0";
+  return session?.patientName || "Unassigned patient";
 }
 
 function sessionSummaryUpdatedLabel(session: CaptureSession | null) {

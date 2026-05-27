@@ -42,6 +42,21 @@ export function formatApiTime(value?: string | null) {
   return new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
+function formatApiDateLabel(value?: string | null) {
+  if (!value) return "Today";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Today";
+  const now = new Date();
+  if (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  ) {
+    return "Today";
+  }
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+}
+
 function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
@@ -258,8 +273,11 @@ function metadataTextFrom(value: unknown): string {
  */
 export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string, unknown>): CaptureSession {
   const status = sessionStatusFromApi(typeof raw.status === "string" ? raw.status : undefined);
-  const capturedAt = typeof raw.capturedAt === "string" ? raw.capturedAt : typeof raw.createdAt === "string" ? raw.createdAt : null;
-  const time = raw.time || formatApiTime(capturedAt);
+  const createdAt = typeof raw.createdAt === "string" ? raw.createdAt : null;
+  const updatedAt = typeof raw.updatedAt === "string" ? raw.updatedAt : null;
+  const capturedAt = typeof raw.capturedAt === "string" ? raw.capturedAt : createdAt;
+  const displayTimestamp = updatedAt || capturedAt || createdAt;
+  const time = raw.time || formatApiTime(displayTimestamp);
   const items = Array.isArray(raw.items) ? raw.items.map((item) => normalizeApiCaptureItem(item as Record<string, unknown>)) : [];
   const label = raw.label || (typeof raw.title === "string" && raw.title ? raw.title : `${time} - Capture session`);
   const generatedReport = typeof raw.generatedReport === "string" ? raw.generatedReport : null;
@@ -272,7 +290,10 @@ export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string
     id: String(raw.id),
     label,
     time,
-    dateLabel: raw.dateLabel || "Today",
+    dateLabel: raw.dateLabel || formatApiDateLabel(displayTimestamp),
+    createdAt,
+    updatedAt,
+    capturedAt,
     duration: raw.duration || "saved",
     summary: summaries.short || summary,
     status,

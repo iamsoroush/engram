@@ -1294,11 +1294,14 @@ export function App() {
     }
     return (
       <PatientsHome
+        activeSession={activeSession}
         onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
         onOpenSession={openMemorySession}
+        onSearchPatients={searchPatientsForAssignment}
         onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}
+        syncHealth={syncHealth}
       />
     );
   };
@@ -1338,11 +1341,13 @@ export function App() {
         screen={screen}
         onNavigate={navigateScreen}
       >
-        <SyncSafetyBanner
-          syncHealth={syncHealth}
-          onClearLocal={() => void clearLocalPendingCaptures()}
-          onRetry={() => void processOutbox()}
-        />
+        {screen !== "patients" ? (
+          <SyncSafetyBanner
+            syncHealth={syncHealth}
+            onClearLocal={() => void clearLocalPendingCaptures()}
+            onRetry={() => void processOutbox()}
+          />
+        ) : null}
         {pendingCaptureKind ? (
           <CaptureDestinationPanel
             activeSession={activeSession}

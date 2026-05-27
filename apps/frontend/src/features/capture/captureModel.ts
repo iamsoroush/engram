@@ -128,6 +128,7 @@ export function makeLocalCapture(
   tenantId?: string,
 ): PendingCapture {
   const time = nowLabel();
+  const now = new Date().toISOString();
   const localCaptureId = `local-capture-${createClientId()}`;
   const clientCaptureId = `client-capture-${createClientId()}`;
   const backendSessionId = backendSessionIdFromCurrent(currentSession, intoNew);
@@ -138,7 +139,7 @@ export function makeLocalCapture(
     title: titleByType[draft.kind],
     detail: draft.detail || detailByType[draft.kind],
     time,
-    capturedAt: new Date().toISOString(),
+    capturedAt: now,
     fileName: draft.filename,
     sourceName: draft.filename,
     status: "saved",
@@ -151,6 +152,8 @@ export function makeLocalCapture(
     !intoNew && currentSession
       ? {
           ...currentSession,
+          updatedAt: now,
+          capturedAt: currentSession.capturedAt || now,
           status: currentSession.status === "verified" ? "reopened" : currentSession.status,
           report: currentSession.report
             ? {
@@ -166,6 +169,9 @@ export function makeLocalCapture(
           label: `Session ${time}`,
           time,
           dateLabel: "Today",
+          createdAt: now,
+          updatedAt: now,
+          capturedAt: now,
           duration: "just now",
           summary: "Saved on this device. Waiting for safe transfer.",
           status: "draft",

@@ -54,11 +54,15 @@ export function markReportStaleForCaptureChange(session: CaptureSession): Captur
 
 export function makeEmptyLocalSession(): CaptureSession {
   const time = nowLabel();
+  const now = new Date().toISOString();
   return {
     id: `local-session-${createClientId()}`,
     label: `Session ${time}`,
     time,
     dateLabel: "Today",
+    createdAt: now,
+    updatedAt: now,
+    capturedAt: now,
     duration: "not started",
     summary: "Ready for the first capture.",
     status: "draft",

@@ -144,6 +144,9 @@ export type CaptureSession = {
   label: string;
   time: string;
   dateLabel: string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  capturedAt?: string | null;
   duration: string;
   summary: string;
   status: SessionStatus;

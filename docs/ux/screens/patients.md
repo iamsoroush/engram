@@ -32,19 +32,27 @@ Today is the default landing tab.
 
 It shows:
 
-- current visit or current capture destination
-- a small `Needs your input` preview when human judgment is required
-- recent memory updates
-- calm saved-state language
+- one current visit card when an active capture destination exists
+- a compact `Needs your input` preview when human judgment is required
+- 2-3 recent memory rows with assistant-style summaries
+- calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
 
 It does not show all patients or all sessions.
+
+Today includes only sessions created, captured, or updated on the user's current calendar day. Older unassigned or historical sessions belong in Patients, Search, or the full Needs input surface, not in the Today preview.
+
+The current visit card uses natural assistant copy. If the visit has a patient, show the patient name; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue`, `Assign patient`, `Review`, or `Open`.
+
+Choosing `Assign patient` from Today opens the same patient assignment form in Clinical Memory without navigating away from the tab. Suggested matches come from patient search data; do not use mock patient suggestions in production UI.
 
 Example copy:
 
 - `Memory updated for Sara M.`
 - `Saved. Organizing the visit notes.`
 - `1 visit needs your input.`
-- `No urgent input needed. Keep capturing when ready.`
+- `No active visit. Start with audio, photo, or note.`
+- `All caught up.`
+- `Recent patients will appear here.`
 
 ## Patients Tab
 
@@ -110,5 +118,7 @@ Clinical Memory follows the shared [offline and AI-unavailable behavior](../stat
 Screen-specific behavior:
 
 - Today and Patients continue to show locally saved memory.
+- Today may show `Offline - Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
 - Search may be limited to patients saved on this device.
 - Needs input still only shows human-decision or data-safety items.
+- Do not show sync queues, retry buttons, backend job language, or AI failure language on Today.
