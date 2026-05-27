@@ -2,7 +2,7 @@
 
 ## Route
 
-No separate route. Opens inline over `/#patients` or `/#search` using the Active Session Workspace structure.
+No separate route. Opens inline from Clinical Memory patient detail/timeline or `/#search` using the Active Session Workspace structure.
 
 ## Purpose
 
@@ -19,7 +19,7 @@ All session states remain reviewable. State badges are informational and do not 
 ## Visible Data
 
 - Session title, full summary, status, and actionable patient assignment.
-- Clinical report with local progressive state, passive status indicators, and live draft/structured view switching when backend report output is unavailable.
+- Clinical report with local progressive state, passive assistant-state indicators, and live draft/structured view switching when generated report output is unavailable.
 - Collapsible summary.
 - Collapsible extracted findings.
 - Source previews, statuses, and generated capture details through clickable live draft cards.
@@ -31,7 +31,7 @@ All session states remain reviewable. State badges are informational and do not 
 
 ## Loading State
 
-- Captures are loaded on open when a backend session has no items.
+- Captures are loaded on open when a selected session has no items.
 
 ## Empty State
 
@@ -47,12 +47,12 @@ All session states remain reviewable. State badges are informational and do not 
 ## Success State
 
 - Title actions update visible session state and show success toasts.
-- Generated outputs appear after session processing succeeds.
+- Generated outputs appear when organizing completes.
 
 ## Related Workflows
 
 - [Generate structured session report](../workflows/save-session.md)
-- [Review and assign patients](../workflows/review-and-assign-patients.md)
+- [Clinical Memory workflow](../workflows/review-and-assign-patients.md)
 
 ## Related APIs
 
@@ -63,5 +63,4 @@ All session states remain reviewable. State badges are informational and do not 
 
 ## Known Gaps
 
-- Retry and editable metadata controls are not yet reintegrated into the inline workspace.
 - Historical review does not have its own shareable URL.

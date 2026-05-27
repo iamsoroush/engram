@@ -29,6 +29,8 @@ The system can organize, match, or enrich information after capture.
 
 Uncertainty should be shown clearly, but should not block the user from capturing.
 
+Long-term memory should be organized around the clinician's current work first. The main memory view should not expose a raw nested list of every patient and every session.
+
 ## 5. Minimize primary actions
 
 The main capture experience should stay focused on a small number of core actions:
@@ -41,6 +43,14 @@ The main capture experience should stay focused on a small number of core action
 
 Do not expose internal AI or processing details unless they directly affect user trust, workflow, or error recovery.
 
+AI and sync retry are system responsibilities. The user should see assistant-like states, not job queues, retry controls, or backend failure labels.
+
 ## 7. Prefer warnings over blocking
 
 When the system is uncertain, prefer visible warnings, review states, or attention markers instead of preventing the user from continuing.
+
+Warnings should interrupt only when human judgment is required or data safety is at risk. Basic capture must continue when AI or internet is unavailable.
+
+## 8. Capture bar as trust anchor
+
+The persistent capture bar should always clarify where new captures will go and whether they are safely saved.

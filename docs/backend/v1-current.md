@@ -67,19 +67,21 @@ The backend writes:
 
 ## Status Model
 
-Frontend-only local states:
+Internal frontend-only local states:
 
-- `Saved on device`
-- `Syncing`
-- `Failed/Retry` when upload fails but local outbox still has the source
+- local source saved
+- upload in progress
+- upload failed while local outbox still has the source
 
-Backend states should begin only after upload is accepted:
+Backend states begin only after upload is accepted:
 
 - `needsReview`
 - `organized`
 - future: `received`, `processing`, `failed`
 
 The backend should not claim a source is safely stored until the file write and metadata write both succeed.
+
+User-facing labels are owned by [UX states](../ux/states.md).
 
 ## API Design Direction
 
@@ -133,7 +135,7 @@ Before real clinical use, add:
 - background processing jobs separate from request handling;
 - backup and restore strategy.
 
-Backend v2 intentionally uses AI processing instead of real background workers. See [backend v2 design](v2-design.md) and [AI processing](ai-processing.md).
+Backend v2 intentionally uses AI processing instead of real background workers. See [backend v2 design](v2-design.md) and [AI engine processing](../ai_engine/processing.md).
 
 ## Development Commands
 

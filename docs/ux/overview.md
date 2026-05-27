@@ -2,9 +2,9 @@
 
 ## Summary
 
-AesMem is a capture-first clinical assistant for aesthetics clinics. The current implemented UX lets authenticated clinic staff capture audio, photo, or text immediately, keep those captures safe in the browser while syncing, progressively evolve session report output, and review loaded session memory through the new Active Session, Patients, and Search shell.
+AesMem is a capture-first clinical assistant for aesthetics clinics. The UX lets authenticated clinic staff capture audio, photo, or text immediately, keep those captures safe on the device when needed, progressively evolve session report output, and review memory through the Active Session, Clinical Memory, and Search shell.
 
-The UX keeps capture first while moving long-term review toward patient-centered memory. Patient assignment remains non-blocking and is being reintegrated into the inline review workspace.
+The UX keeps capture first while moving long-term review toward Clinical Memory: a calm assistant surface that focuses on today's work, searchable patient memory, and only the items that need human judgment. Patient assignment remains non-blocking.
 
 ## Main Users
 
@@ -17,15 +17,23 @@ The UX keeps capture first while moving long-term review toward patient-centered
 
 - [Capture a session](workflows/capture-session.md)
 - [Generate structured session report](workflows/save-session.md)
-- [Review and assign patients](workflows/review-and-assign-patients.md)
+- [Clinical Memory workflow](workflows/review-and-assign-patients.md)
 
 ## Main Screens
 
 - [Login](screens/login.md)
 - [Capture / Active Session](screens/capture.md)
-- [Patients](screens/patients.md)
+- [Clinical Memory](screens/patients.md)
 - [Search](screens/search.md)
 - [Session review](screens/session-review.md)
+
+## How To Read These Docs
+
+- Start here for the current UX map and links.
+- Use [navigation](navigation.md) for routes and cross-screen paths.
+- Use [states](states.md) for shared loading, empty, offline, warning, and assistant-language rules.
+- Use screen docs for layout and visible content on one screen.
+- Use workflow docs for the user's path across screens.
 
 ## Navigation Summary
 
@@ -33,10 +41,10 @@ The frontend is a single React app with hash-based screen selection:
 
 - Default: Active Session Workspace
 - `#active-session`: current active session workspace
-- `#patients`: patient-centered memory and unassigned sessions
+- `#patients`: Clinical Memory with Today, Patients, and Needs input tabs
 - `#search`: local memory search
 
-The shell keeps Active Session, Patients, and Search available from the left mobile app menu after staff login. Capture actions are always available as a sticky bottom row for staff users.
+The shell keeps Active Session, Clinical Memory, and Search available from the left mobile app menu after staff login. Capture actions are always available as a sticky bottom row for staff users.
 
 See [navigation](navigation.md).
 
@@ -44,7 +52,6 @@ See [navigation](navigation.md).
 
 - Capture must not require selecting a patient.
 - Local persistence happens before network upload.
-- Unsynced captures remain visible and warn the user not to clear browser data.
 - Generated capture/session output is shown as review material with lightweight confidence and state indicators.
-- Technical AI pipeline labels are mostly hidden behind user-facing states such as `Processing`, `Unassigned`, `Needs review`, and `Failed`.
+- Technical AI and sync pipeline labels are hidden behind assistant-state language. See [states](states.md).
 - Backend OpenAPI remains the source of truth for exact API contracts.

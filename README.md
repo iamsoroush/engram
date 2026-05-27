@@ -166,9 +166,11 @@ docker compose -f docker-compose.prod.yml down
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── docs
+│   ├── ai_engine
+│   │   ├── README.md
+│   │   └── processing.md
 │   ├── backend
 │   │   ├── auth.md
-│   │   ├── ai-processing.md
 │   │   ├── storage.md
 │   │   ├── v1-current.md
 │   │   └── v2-design.md

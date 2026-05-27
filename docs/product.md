@@ -83,7 +83,7 @@ Capture must always feel immediate and lightweight.
 Top-left navigation:
 
 - Active Session
-- Patients
+- Clinical Memory
 - Search
 
 Persistent bottom actions:
@@ -115,15 +115,7 @@ The report area always exists, even while processing is incomplete.
 
 ## Session states
 
-States are informative, not blocking.
-
-Example states:
-
-- Capturing
-- Processing
-- Needs review
-- Unassigned
-- Verified
+States are assistant-like, informative, and not blocking.
 
 Sessions remain reviewable and editable in all states.
 
@@ -131,24 +123,27 @@ Verification should reduce uncertainty, not gate usability.
 
 ---
 
-## Patients screen
+## Clinical Memory
 
-The patients screen is the main long-term memory view.
+Clinical Memory replaces the old Patients screen as the main long-term memory surface.
+
+It should feel like a calm intelligent assistant, not a database browser. The default view optimizes for current work and recent memory instead of showing every patient and every session.
 
 Main sections:
 
+- Today
 - Patients
-- Unassigned sessions
+- Needs input
 
 Patient cards include:
 
 - patient identity
-- summarized history
-- session cards
-- status badges
-- quick actions
+- an assistant-style natural memory sentence
+- one clear primary action
 
-Needs-review behavior should appear as lightweight status indicators, not separate workflow queues.
+Long-term session history belongs in patient detail and timeline views, not nested on the main list.
+
+See [UX Overview](ux/overview.md) for screen-level behavior and state language.
 
 ---
 
@@ -163,4 +158,4 @@ AI progressively generates:
 
 Raw captures remain available as expandable source material to support trust and review.
 
-Internal AI details should remain mostly hidden unless needed for confidence or recovery.
+Internal AI details should remain hidden in normal use. When AI is unavailable, the app keeps capture working and quietly organizes later.

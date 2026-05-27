@@ -2,6 +2,8 @@
 
 Celery worker app for AesMem AI processing jobs.
 
+Detailed processing contracts and replacement boundaries live in [docs/ai_engine](../../docs/ai_engine/README.md).
+
 The backend is the producer: it creates durable job rows and sends named Celery tasks. The AI engine is the consumer: it runs those task names, calls backend internal APIs to update job state, and submits placeholder generated metadata until real AI processors are implemented.
 
 The AI engine does not import backend code or connect directly to the database. Its coupling points are Redis task names and backend `/internal/ai/jobs/...` endpoints authenticated with `AI_ENGINE_INTERNAL_TOKEN`.

@@ -7,7 +7,7 @@
 
 ## Purpose
 
-Primary working screen for building and reviewing a session from audio, photo, and text captures. The same workspace structure is reused for historical session review from Patients and Search.
+Primary working screen for building and reviewing a session from audio, photo, and text captures. The same workspace structure is reused for historical session review from Clinical Memory and Search.
 
 ## Primary Actions
 
@@ -19,7 +19,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Generate Structured Report from the report header.
 - Verify structured report.
 - Start a new session.
-- Review a historical session inline from Patients or Search.
+- Review a historical session inline from Clinical Memory or Search.
 - Add capture from historical review, which returns the same session to the active workspace.
 - Open a source preview.
 
@@ -43,19 +43,19 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Audio transcript and photo caption headings show whether the text is still AI-generated or was edited by staff.
 - Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
 - Note captures show full decorated text inline plus an expandable raw note section.
-- Capture item overflow controls open per-capture settings for retry upload when local sync failed, retry processing when backend processing needs review, rename, and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.
+- Capture item overflow controls open per-capture settings for rename and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.
 - Structured reports render clinic information, patient information, and body as distinct sections. Clinic and patient information come from template/session context; the body is backend-owned markdown. Photos appear in the body with generated captions under the image and avoid repeating captions as body paragraphs.
 - Source captures are no longer duplicated in a separate expandable section outside the Clinical report card; the live draft cards are the source review surface.
-- During structured report generation, the report surface switches to `Structured report` immediately and shows a waiting message until the backend returns the full body.
+- During structured report generation, the report surface switches to `Structured report` immediately and uses assistant-style organizing feedback until the full body is available.
 - The live draft remains reviewable outside the locked generation moment; users can switch between `Live draft` and `Structured report`.
 - `Structured report` is disabled until at least one capture exists and explains that the user must create a capture first.
 - Progressive report states: `Draft`, `Structured`, and `Verified`. Adding a new capture or changing the patient after generation returns the state to `Draft` until the user generates again.
 - Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
 - Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
 - Capture source previews. Audio and photo captures open mobile-first detail sheets from live draft items, showing the source preview, captured metadata, editable transcript/caption text, edit attribution, and an inline transcript copy control.
-- In-progress capture states render as compact animated inline text such as `Syncing...` or `Processing...`; completed captures do not show a status in the card.
+- In-progress capture states render as compact assistant-style text such as `Saved`, `Organizing`, or `Saved on this device`; completed captures do not show technical status in the card.
 - Expandable generated transcript/caption/decorated text.
-- Sync safety banner when pending captures exist.
+- Capture safety banner only when the user needs reassurance or local data safety is at risk.
 
 ## Main Components
 
@@ -70,7 +70,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 ## Loading State
 
 - Source previews load cached blobs first, then protected backend file content.
-- When pending local captures exist, staff can retry sync or clear device-only pending capture data from the sync safety banner.
+- When captures are saved locally but not available everywhere, staff see reassurance such as `Offline - captures are saved on this device`.
 
 ## Empty State
 
@@ -79,16 +79,15 @@ Primary working screen for building and reviewing a session from audio, photo, a
 
 ## Error State
 
-- Toasts for storage, audio conversion, sync, save, and processing failures.
+- Toasts for storage, audio conversion, save, and user-action failures.
 - Empty photo selections are rejected before save/upload and prompt the user to open the camera or gallery again.
-- Clearing local pending capture data removes browser-only outbox/cache records and returns the device to the backend-backed state.
-- A failed pending capture does not block later pending captures; later items continue syncing, and failed items remain for a later retry.
+- Critical local-save or storage issues warn the user because data safety is at risk.
 - Source preview unavailable placeholder or inline preview error.
 
 ## Success State
 
 - Capture appears immediately after local save.
-- Toasts confirm local save, safe transfer, title update, assignment, and structured report generation start.
+- Toasts confirm local save, memory update, title update, assignment, and structured report generation start.
 
 ## Related Workflows
 
@@ -109,8 +108,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 
 ## Known Gaps
 
-- Per-capture retry controls are available from the capture overflow menu for failed upload and failed processing states.
-- `+ New session` resets the active context but does not create an empty backend session until a capture syncs; assigning a patient before the first capture creates a local empty workspace context that is attached after sync.
-- Report, summary, extracted findings, and processing status use stable backend contracts plus local live draft output until final AI session artifacts are integrated.
-- Report layout keeps a stable body height during processing so captures remain visible below instead of being displaced by loading states.
+- `+ New session` resets the active context but does not create an empty remote session until the first capture is available beyond the device; assigning a patient before the first capture creates a local empty workspace context that is attached later.
+- Report, summary, extracted findings, and assistant-state language use stable contracts plus local live draft output until final session artifacts are integrated.
+- Report layout keeps a stable body height during organizing states so captures remain visible below instead of being displaced by loading states.
 - Historical review currently shares the report workspace but does not yet expose the full patient assignment panel.

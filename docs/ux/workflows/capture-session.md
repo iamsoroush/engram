@@ -7,7 +7,7 @@ Capture clinical material quickly without selecting a patient first.
 ## Entry Point
 
 - Staff login lands on Active Session.
-- Staff can also use bottom capture actions from Patients or Search.
+- Staff can also use bottom capture actions from Clinical Memory or Search.
 
 ## Current Behavior
 
@@ -20,13 +20,13 @@ Capture clinical material quickly without selecting a patient first.
    - Users may assign patient context before the first capture; this creates a local empty workspace context and the assignment is applied to the backend session after the first capture syncs.
 4. The browser standardizes the draft, creates a local capture/session, and writes it to IndexedDB.
 5. The Active Session screen shows the local session immediately.
-6. The outbox uploads captures one at a time when authenticated and online.
-7. Uploaded captures are merged with backend IDs and local preview cache is retained.
+6. The app makes captures available beyond the device when authenticated and online.
+7. Uploaded captures are merged with remote IDs and local preview cache is retained.
 8. The draft report updates immediately with capture-specific progressive lines:
-   - audio: inline playback plus `Audio capture added, processing...`
-   - photo: inline photo preview plus `Photo added, analyzing...`
+   - audio: inline playback plus `Audio capture saved. Organizing.`
+   - photo: inline photo preview plus `Photo saved. Organizing.`
    - text: formatted note content
-9. Draft capture cards show source preview/playback, animated in-progress sync or processing text when relevant, and full generated text. Completed captures do not show a status in the card. Audio transcripts and photo captions are fully visible inline and indicate whether the text is AI-generated or staff-edited; note captures show full decorated text and an expandable raw note.
+9. Draft capture cards show source preview/playback, assistant-style saved or organizing text when relevant, and full generated text when available. Completed captures do not show technical status in the card. Audio transcripts and photo captions are fully visible inline and indicate whether the text is assistant-generated or staff-edited; note captures show full decorated text and an expandable raw note.
 10. Users can rename or delete a capture from the capture item settings menu. Deleting a capture removes it from the live draft and returns any generated structured report to draft/stale state.
 11. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
 12. Adding, deleting, or changing patient context after a structured report exists returns report progress to `Draft` until the user generates again.
@@ -34,11 +34,11 @@ Capture clinical material quickly without selecting a patient first.
 
 ## System Behavior
 
-- Local storage happens before network upload.
+- Local storage happens before network-dependent work.
 - Active workspace state is stored locally as a lightweight continuity snapshot.
-- First backend upload creates a draft session when no backend session is supplied.
-- Backend stores the source artifact and starts capture processing.
-- The frontend keeps local progressive draft output visible while scheduled capture polling picks up generated backend output.
+- First remote upload creates a draft session when no remote session is supplied.
+- The system stores the source artifact and starts organization when available.
+- The frontend keeps local progressive draft output visible while generated output becomes available.
 
 ## Involved Screens
 
@@ -47,11 +47,11 @@ Capture clinical material quickly without selecting a patient first.
 
 ## Important States
 
-- `Syncing...`
-- `Processing...`
-- `Processed`
-- `Needs review`
-- `Failed`
+- `Saved`
+- `Organizing`
+- `Saved on this device`
+- `Needs your input`
+- `Memory updated`
 
 ## Related APIs
 
@@ -63,5 +63,5 @@ Capture clinical material quickly without selecting a patient first.
 ## Known Gaps
 
 - Audio recording requires browser media support and may need HTTPS on phones.
-- Failed sync has generic recovery copy and no per-capture detailed error.
-- Workspace continuity is a local UX snapshot, not yet a production offline sync model.
+- Critical local-save or storage warnings still need a polished recovery path.
+- Workspace continuity is a local UX snapshot, not yet a complete production offline model.

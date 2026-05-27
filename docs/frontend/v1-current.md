@@ -45,25 +45,16 @@ Stores:
 - `pendingCaptures`: unsynced source blobs and metadata.
 - `cachedCaptures`: synced source blobs for fast local preview.
 
-State meanings:
+Visible state labels are owned by [UX states](../ux/states.md). Technical outbox semantics live in [sync outbox](sync-outbox.md).
 
-- `Saved on device`: the source blob has been written to IndexedDB.
-- `Syncing`: the outbox is uploading to backend.
-- `Failed/Retry`: upload failed, but the source blob remains in IndexedDB.
-- `Needs review`: backend has received the capture and it is ready for organization.
-- `Verified`: staff has confirmed the session output.
+## Outbox Recovery
 
-Backend v2 separates generated organization from human verification. See [sync outbox](sync-outbox.md) and [backend v2 design](../backend/v2-design.md) for the new `organized` versus `verified` semantics.
+The outbox should resume when:
 
-## Outbox and Retry
-
-The outbox retries when:
-
-- the user taps `Retry now`;
 - the browser fires the `online` event;
 - the app hydrates with pending captures.
 
-While unsynced captures exist, the UI shows a warning banner and registers a `beforeunload` warning. This warning matters because closing the browser, clearing site data, or browser storage eviction could endanger unsynced clinical material.
+While unsynced captures exist, the UI reassures the user that captures are saved on this device. A `beforeunload` warning is acceptable when leaving could endanger device-only clinical material.
 
 ## Cache Policy
 

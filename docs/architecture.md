@@ -73,14 +73,13 @@ The AI engine does not import backend modules or connect directly to Postgres. I
 
 1. User records audio, takes/selects a photo, or writes a note.
 2. Browser writes the source blob into IndexedDB before attempting network upload.
-3. UI marks the item as `Saved on device`.
-4. The outbox attempts upload to the backend.
-5. UI marks the item as `Syncing`.
-6. Backend stores the source file and session metadata.
-7. Backend creates a queued capture processing job and dispatches it to Celery.
-8. Browser removes the pending outbox entry and keeps a synced local cache copy.
-9. Celery marks the job `running`, writes partial placeholder generated metadata, waits briefly, and marks it `succeeded`; failures are retried and then marked `failed`.
-10. UI updates to backend-safe states such as `Draft`, `Unassigned`, `Needs review`, `Processing`, or `Verified`.
+3. UI confirms local safety using the shared UX state language.
+4. The outbox attempts upload to the backend when possible.
+5. Backend stores the source file and session metadata.
+6. Backend creates a queued capture processing job and dispatches it to Celery.
+7. Browser removes the pending outbox entry and keeps a synced local cache copy.
+8. Celery marks the job `running`, writes partial placeholder generated metadata, waits briefly, and marks it `succeeded`; failures are retried and then marked `failed`.
+9. UI updates through assistant-style states owned by [UX states](ux/states.md).
 
 ### Session Evolution And Report Generation
 
@@ -130,6 +129,7 @@ Browser storage has two roles:
 
 - `pendingCaptures`: local safety outbox for unsynced captures. These are not cache and must not be automatically deleted.
 - `cachedCaptures`: synced local preview cache. These may be deleted when the cache exceeds the configured limit.
+- `pendingOperations`: lightweight local work that must replay after backend IDs exist, such as session titles, patient assignment/create intent, and report generation requests.
 
 The current synced cache limit is `50 MB`. Eviction deletes the oldest/least recently accessed synced cached captures only. Unsynced data is preserved and should trigger warnings if it grows too large.
 
@@ -175,10 +175,12 @@ or confidence rather than access.
 - Capture is never blocked by patient selection.
 - Capture is never blocked by background sync or processing.
 - Browser IndexedDB is used as a local outbox because user data loss is unacceptable on slow or unreliable connections.
+- Offline support is capture-first with local drafts, not a full offline patient registry.
 - Backend confirmation is the point where a capture is considered safely transferred.
 - Synced browser cache is optional and evictable; unsynced browser data is not.
-- User-facing capture states are compact and non-technical: `Saved on device`, `Syncing`, `Processing`, `Draft`, `Unassigned`, `Needs review`, `Verified`, `Failed/Retry`.
-- Technical pipeline labels such as OCR, embedding, inference, or model names should not appear in doctor-facing UI.
+- AI jobs are durable backend work. Queued and retryable failed jobs can be re-dispatched when workers recover.
+- User-facing capture states are compact, non-technical, and owned by [UX states](ux/states.md).
+- Technical pipeline labels such as OCR, embedding, inference, job queues, or model names should not appear in doctor-facing UI.
 
 ## Known Prototype Limits
 

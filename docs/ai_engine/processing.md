@@ -163,17 +163,30 @@ Processing job rows are exposed through AI job routes:
 ```text
 GET /api/v1/ai-jobs/{job_id}
 GET /api/v1/sessions/{session_id}/ai-jobs
+POST /api/v1/ai-jobs/recover
 ```
 
 Internal worker progress endpoint:
 
 ```text
 POST /internal/ai/jobs/{job_id}/progress
+POST /internal/ai/jobs/recover
 ```
 
 This endpoint is intentionally small: it persists partial capture metadata or
 partial session contracts and leaves the job `running`. Real AI integration can
 replace the mock stage producer without changing the frontend contract shape.
+
+## Recovery Behavior
+
+AI jobs are durable backend rows. Queued jobs and retryable failed jobs can be
+re-dispatched after broker or worker downtime. Staff/admin users can call the
+public recovery endpoint, and AI workers call the internal recovery endpoint
+when they come online so delayed work resumes without requiring the user to
+restart capture or review workflows.
+
+Failed jobs carry retry metadata. A job with `result_metadata.retryable=false`
+is treated as terminal/manual-attention work and is skipped by recovery.
 
 ## Session Processing Contract
 

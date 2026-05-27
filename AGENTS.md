@@ -32,6 +32,20 @@ If backend behavior affects users, also read:
 - `docs/ux/overview.md`
 - relevant workflow/screen docs
 
+### AI Engine
+
+Read:
+
+- `README.md`
+- `apps/ai_engine/README.md`
+- `docs/ai_engine/README.md`
+
+If AI engine behavior affects user-visible processing, summaries, matching, or recovery, also read:
+
+- `docs/ux/overview.md`
+- `docs/ux/states.md`
+- relevant workflow/screen docs
+
 ### Full-stack
 
 Read:
@@ -39,6 +53,7 @@ Read:
 - `README.md`
 - `apps/frontend/README.md`
 - `apps/backend/README.md`
+- `apps/ai_engine/README.md`
 - `docker-compose.yml`
 - `docs/architecture.md`
 - relevant UX docs under `docs/ux/`
@@ -98,6 +113,9 @@ Read:
 
 - `docs/technical-decisions.md`  
   Important decisions future agents/developers need to know.
+
+- `docs/ai_engine/README.md`  
+  AI engine worker boundary, processing jobs, placeholder processors, and replacement path.
 
 - `docs/production.md`  
   Production setup and operational notes.

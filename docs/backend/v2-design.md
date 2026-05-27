@@ -89,6 +89,8 @@ State rules:
 - Reopen can move any staff-visible session to `reopened`.
 - `organized` must never be treated as clinically verified.
 
+These are backend statuses and grouping rules. User-facing labels are owned by [UX states](../ux/states.md).
+
 Frontend contract rules:
 
 - `report` is the stable report contract, with markdown body, status, source, timestamps, and stale flag.

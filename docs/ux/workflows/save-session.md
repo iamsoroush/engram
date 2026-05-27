@@ -6,58 +6,52 @@ Generate structured session output from the live draft while keeping the Active 
 
 ## Entry Point
 
-- Active Session `Generate Structured Report` button on a synced capturable session.
+- Active Session `Generate Structured Report` button on a safely saved capturable session.
 
 ## Current Behavior
 
 1. User captures one or more items.
-2. Local sessions must finish syncing before save is available; the button reads `Syncing first`.
+2. Capture material must be safely saved before report generation is available.
 3. User selects `Generate Structured Report`.
-4. The frontend calls the backend save endpoint with the default report template key.
-5. The session moves to `Processing`.
-6. The frontend shows a subtle generation toast and schedules progressive polling.
+4. The session moves into assistant-style `Organizing` language.
+5. The frontend shows subtle generation feedback while the live draft remains available.
 7. The live draft remains available as a switchable report view while structured output is generating.
-8. When processing succeeds, Patients shows the session in patient-linked memory when a patient is assigned, otherwise in `Unassigned sessions`.
+8. When memory is updated, Clinical Memory reflects the visit in Today, patient detail/timeline, or Needs input if a human decision is required.
 9. Inline historical review shows the generated report, summary, extracted findings, and source captures when present.
 10. If a user adds capture material after processing, the same session receives deterministic progressive report, summary, finding, and processing-status updates.
 
 ## System Behavior
 
-- Backend accepts structured report generation attempts in any session state.
-- Sessions without captures return the current session contract without queuing processing.
-- Backend creates a session-level AI job and dispatches it to the AI engine.
-- Successful processing stores generated summary, a structured report model, rendered markdown report, extracted metadata, report template key, and backend organization metadata.
-- The structured report model is the backend source of truth for the report body; markdown body content is rendered from it and returned to the frontend.
-- The frontend renders clinic and patient information around the backend-owned body using non-AI template/session context.
-- Patient information in rendered reports comes from the assigned patient record and identifiers, not from AI-generated report body text.
-- Previous generated summary/report/metadata snapshots are retained in extracted metadata so future UI can recover earlier output.
-- A successful exact national ID match can attach the session to an existing patient.
+- Structured report generation is available only when the session has saved capture material.
+- The system organizes the session into summary, structured report, extracted findings, and patient-memory updates when available.
+- The frontend renders clinic and patient information around the generated report body using session context.
+- Patient information in rendered reports comes from the assigned patient record and identifiers, not generated body text.
+- Previous generated summary/report/metadata snapshots may be retained for future recovery UI, but are not exposed as normal user tasks.
+- A confident patient match can attach the session to an existing patient; uncertain matches go to Needs input.
 
 ## Involved Screens
 
 - [Active Session](../screens/capture.md)
-- [Patients](../screens/patients.md)
+- [Clinical Memory](../screens/patients.md)
 - [Search](../screens/search.md)
 - [Session review](../screens/session-review.md)
 
 ## Important States
 
 - Capturing
-- Processing
-- Unassigned
-- Needs review
-- Verified
-- Failed
-- Missing patient information warning
+- Saved
+- Organizing
+- Needs your input
+- Memory updated
+- Saved on this device
+- Missing patient information, shown as a human-decision item
 
 ## Related APIs
 
 - `POST /api/v1/sessions/{session_id}/save`
 - `GET /api/v1/sessions`
 - `GET /api/v1/sessions/{session_id}`
-- `GET /api/v1/sessions/{session_id}/ai-jobs`
 
 ## Known Gaps
 
-- Inline historical review does not yet expose retry-processing, reopen, or start-review actions.
-- Structured report progress uses bounded polling plus inline draft evolution until live AI progress is available.
+- Structured report progress uses assistant-style organizing feedback plus inline draft evolution until final output is available.

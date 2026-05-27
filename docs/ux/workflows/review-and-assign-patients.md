@@ -1,57 +1,36 @@
-# Review And Assign Patients
+# Clinical Memory Workflow
 
 ## User Goal
 
-Review processed session material, inspect generated output, assign patients, verify sessions, and continue capture without a modal-heavy workflow.
+Keep capturing with almost no friction while AesMem quietly saves, organizes, summarizes, and asks for help only when human judgment is required.
 
-## Entry Point
+## Entry Points
 
-- Patients or Search processed-session row opens inline historical review.
-- Patients or Search draft row opens the Active Session screen directly.
+- App navigation opens `Clinical Memory`.
+- The route remains `/#patients` for compatibility.
+- The default tab is `Today`.
+- Patient search or a patient row opens patient detail and timeline.
+- A Needs input item opens the smallest decision surface needed to resolve it.
 
-## Current Behavior
+## Main Flow
 
-1. User opens Patients or Search.
-2. Sessions appear in patient-centered memory sections, unassigned work, or local search results.
-3. User selects a session row.
-4. Inline historical review opens with title editing, status, report, summary, extracted findings, add-capture action, and expandable captures.
-5. If captures are not already loaded and the session is a backend session, the frontend loads them.
-6. User can assign a patient from a compact inline form on a Patients card or from the Session Workspace search sheet.
-7. User can verify the session from the Patients card or Session Workspace.
-8. User can add capture material, which returns the same session to the Active Session workspace and refreshes progressive output.
-9. Session and capture cards remain reviewable in place.
-
-## System Behavior
-
-- Adding capture material to processed output keeps the same session usable and updates deterministic progressive contracts.
-- Assignment uses the Session Workspace bottom sheet with suggested matches, search by name, phone, or national ID, creates a lightweight patient record inline with optional national ID when needed, and assigns the session.
-- Verification updates the session state without blocking later review or capture.
+1. User opens Clinical Memory.
+2. `Today` shows the current visit, recent memory updates, and a preview of any human-decision items.
+3. User searches or opens `Patients` to find a patient memory row.
+4. Patient rows show natural memory summaries and one primary action. They do not show nested session lists.
+5. User opens a patient to view the patient assistant summary and timeline.
+6. Timeline sessions are grouped by time, such as `Today`, `Earlier this week`, and `Earlier`.
+7. Each session is summarized in human language and has one primary action.
+8. `Needs input` contains only decisions the user must make.
+9. The persistent capture bar stays visible so the user always understands where captures will go and whether they are safely saved.
 
 ## Involved Screens
 
-- [Patients](../screens/patients.md)
-- [Search](../screens/search.md)
+- [Clinical Memory](../screens/patients.md)
 - [Session review](../screens/session-review.md)
+- [Search](../screens/search.md)
 
-## Important States
+## Related Shared Rules
 
-- Unassigned
-- Needs review
-- Verified
-- Stale generated output
-- Missing patient information, when present in existing metadata
-
-## Related APIs
-
-- `GET /api/v1/sessions`
-- `GET /api/v1/sessions/{session_id}/captures`
-- `GET /api/v1/patients`
-- `POST /api/v1/patients`
-- `POST /api/v1/sessions/{session_id}/assign-patient`
-- `POST /api/v1/sessions/{session_id}/verify`
-
-## Known Gaps
-
-- Duplicate patient review is still lightweight; the current UI prefers fast assignment over modal-heavy matching.
-- Processed-output versions are retained in metadata, but there is not yet a dedicated UI for restoring a previous version.
-- Patient cards are still derived from loaded sessions rather than a dedicated patient timeline API.
+- Assistant-state, Needs input, and offline behavior: [UX states](../states.md)
+- Clinical Memory layout and patient-card summary fallback: [Clinical Memory screen](../screens/patients.md)

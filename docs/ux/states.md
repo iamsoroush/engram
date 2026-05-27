@@ -1,90 +1,150 @@
 # UX States
 
+## Assistant-State Language
+
+AesMem should translate technical system work into calm assistant language.
+
+Preferred user-facing states:
+
+- `Saved`
+- `Organizing`
+- `Needs your input`
+- `Saved on this device`
+- `Memory updated`
+- `Offline - captures are saved on this device`
+
+Avoid normal user-facing labels such as:
+
+- AI failed
+- AI engine down
+- job retrying
+- sync pending
+- upload retry
+- backend unavailable
+- queue length
+
+Sync and AI retry are system responsibilities, not user responsibilities.
+
 ## Session State Badges
 
-Session states are informational badges, not workflow gates.
+Session states are informational, not workflow gates.
 
-The frontend maps backend session statuses into six user-facing states:
+Use plain clinical-memory language:
 
-- `Capturing`
-- `Processing`
-- `Needs review`
-- `Unassigned`
-- `Verified`
-- `Failed`
+- `Capturing`, when the user is actively adding material.
+- `Saved`, when capture material is safely stored.
+- `Organizing`, when the system is preparing summaries or memory updates.
+- `Needs your input`, when human judgment is required.
+- `Memory updated`, when the session is reflected in patient memory.
+- `Saved on this device`, when the material is local and safe but not fully available everywhere yet.
 
-Sessions remain openable from Patients and Search in all states. Verification and organization states should not control visibility or review access.
-
-`Draft`, `Current session`, and `Reopened` are shown as `Capturing`. `Organized` and `In review` are shown as `Needs review`.
-
+Do not show `Failed` as a default state in normal memory surfaces. If something requires attention, translate it into either human decision copy or a data-safety warning.
 
 ## Loading
 
 - Auth bootstrap shows a login-card skeleton while stored credentials refresh.
 - Active workspace continuity is restored from a lightweight local snapshot after auth refresh when possible.
-- Historical review loads captures inline if a selected backend session has no capture items yet.
-- Source previews attempt local cache first, then backend file content; missing media falls back to unavailable placeholders.
+- Historical review loads captures inline if a selected session has no capture items yet.
+- Source previews attempt local cache first, then remote file content; missing media falls back to unavailable placeholders.
+- Loading should not replace the report or memory surface with a full-screen waiting state when saved content is already available.
 
-## Processing
+## Organizing
 
-- New local captures show animated `Syncing...`, then animated `Processing...` while backend work is active. Completed capture cards do not show a status.
-- Uploaded captures initially process through backend/AI jobs and can show generated details as pending.
+- New captures confirm local safety first, then may show `Organizing` while summaries or memory updates improve.
 - Capture generated details are expandable:
   - Audio: `Transcription`
   - Photo: `Caption`
   - Text: `Decorated text`
-- Capture upload updates deterministic local session report, summary, findings, and processing-status contracts.
-- Generating a structured report can change the session to processing and start session-level report generation.
-- The frontend schedules a short bounded refresh series after capture upload or structured report generation so asynchronous backend stages can appear over time.
-- The report area never becomes a full-screen loading state; it keeps the same layout while moving through empty, partial, structured, and verified states.
+- The report area always exists and can move through empty, partial, summarized, and reviewed states without blocking capture.
+- If AI is unavailable, use available deterministic or rule-based text and update memory later.
 
 ## Success
 
-- Local capture persistence shows `Saved on device.`
-- Successful upload shows `Capture safely transferred.`
-- Structured report generation shows `Structured report is generating.`
-- Session title changes show `Session title updated.`
+Examples:
 
-## Errors
+- `Saved.`
+- `Saved on this device.`
+- `Memory updated.`
+- `Summary is ready for your review.`
+- `Patient memory updated.`
 
-- Login failures show inline messages.
-- Device storage or audio conversion failures show toasts.
-- Upload, sync, or save failures show `Failed`.
-- Source preview failures show `Source preview is not available right now.`
-- Backend validation and permission errors are returned by the API; the current frontend mostly reduces these to generic failure toasts.
+## Errors And Warnings
+
+Only interrupt the user when human input is required or local data safety is at risk.
+
+Use human-readable warnings:
+
+- `Device storage is almost full. Free space so new captures stay safe.`
+- `This visit is saved. Choose which patient it belongs to.`
+- `I found two possible patient matches. Confirm before I update memory.`
+- `Source preview is not available right now.`
+
+Avoid exposing backend validation, AI job, upload, or sync details unless the user must act to keep data safe.
 
 ## Empty
 
 - Active Session with no captures still shows the workspace and empty report surface.
-- Patients shows empty copy for patient-linked sessions and unassigned sessions.
+- Clinical Memory Today shows calm current-work copy instead of a blank dashboard.
+- Clinical Memory Patients shows searchable empty copy when no patient memory is available.
+- Clinical Memory Needs input says there is nothing urgent when no human decisions are waiting.
 - Search shows empty copy before a query and when no loaded memory matches.
 - Session review capture list shows `No captures loaded for this session yet.`
 
-## Offline And Network Failure
+## Offline And AI-Unavailable Behavior
 
-- Captures are saved to IndexedDB before upload.
-- A sync safety banner appears when pending captures exist and includes `Retry now`.
-- The app warns on browser unload while pending captures exist.
-- The outbox retries when the browser comes online and also retries after a delay while pending captures remain.
-- If backend session loading fails, the app keeps local pending sessions visible.
-- The active session, selected historical session, assignment form target, destination chooser, and current report/capture structure are restored from local workspace state when possible.
+Offline mode should reassure the user that capture can continue.
 
-## Permission Denied
+User-facing copy examples:
 
-- Patient-preview users see a limited-access screen.
-- Backend 401 responses trigger one token refresh/retry. If refresh fails, local auth is cleared.
-- Backend 403 responses do not have a specialized frontend screen.
+- `Offline - captures are saved on this device.`
+- `Saving on this device.`
+- `Search may show only patients saved on this device.`
+
+Do not show normal UI actions for manual sync retry, upload retry, queue management, or backend recovery. The system should sync when connectivity returns.
+
+AI-unavailable mode should be mostly invisible:
+
+- capture still works
+- saved material remains reviewable
+- summaries can use fallback language
+- the system updates memory when AI becomes available
+
+Acceptable copy:
+
+- `Saved. I will update memory when ready.`
+- `Organizing when available.`
+
+Do not put AI retry, transcription retry, or processing failure tasks in Needs input.
+
+## Needs Input Rules
+
+Needs input contains only human-decision items:
+
+- unassigned visit
+- uncertain patient match
+- summary ready for confirmation
+- critical storage or local-save warning
+
+Needs input must not contain:
+
+- AI job failed
+- retry transcription
+- retry sync
+- backend unavailable
+- upload queue
+- job status debug information
+
+Each item should have one primary action.
 
 ## Unsaved Data
 
-- Session title edits can be saved explicitly. If the title input loses focus before saving, the draft title resets.
-- Unsynced captures are the primary protected unsaved state and are covered by the sync banner plus unload warning.
-- Interrupted assignment and capture-destination choices are restored as lightweight UI state after refresh when possible.
+- Captures must be saved locally before network-dependent work begins.
+- The persistent capture bar is the trust anchor: it tells the user where captures will go and whether they are safely saved.
+- Browser unload warnings are acceptable when leaving could risk device-only work.
+- Critical storage/local-save warnings may appear in Needs input because they affect data safety.
 
 ## Known Gaps
 
 - No dedicated not-found route.
 - No detailed permission-denied UI for staff/admin role mismatches.
-- No user-facing storage quota warning beyond pending-capture safety copy.
-- Failed local uploads and failed capture processing expose per-capture retry actions from the capture overflow menu.
-- Previous processed session versions are retained in metadata, but there is no restore UI yet.
+- Critical browser storage quota handling needs a polished warning and recovery path.
