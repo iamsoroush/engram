@@ -25,6 +25,35 @@ export type PendingCapture = {
   session: CaptureSession;
 };
 
+export type PendingOperationType = "sessionTitle" | "patientAssignment" | "sessionProcessing";
+
+export type PendingOperationStatus = "pending" | "syncing" | "failed";
+
+export type PendingOperation = {
+  id: string;
+  type: PendingOperationType;
+  localSessionId?: string;
+  backendSessionId?: string;
+  localPatientId?: string;
+  backendPatientId?: string;
+  tenantId?: string;
+  payload: Record<string, unknown>;
+  retryCount: number;
+  status: PendingOperationStatus;
+  createdAt: number;
+  updatedAt: number;
+  lastError?: string;
+};
+
+export type SyncHealth = {
+  online: boolean;
+  backendReachable: boolean | null;
+  pendingCaptures: number;
+  pendingOperations: number;
+  syncing: boolean;
+  lastError?: string;
+};
+
 export type Persona = "doctor" | "assistant" | "admin" | "patient-preview";
 
 export type AuthUser = {

@@ -1,5 +1,5 @@
 import React from "react";
-import type { AuthSession, CaptureDraft } from "../../domain/appTypes";
+import type { AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
 import type { Screen } from "../../domain/types";
 import { Button, Card } from "../../shared/ui/primitives";
 import { CaptureActions } from "../capture/components/CaptureActions";
@@ -92,29 +92,39 @@ export function Shell({
 }
 
 export function SyncSafetyBanner({
-  pendingCount,
-  syncing,
+  syncHealth,
   onClearLocal,
   onRetry,
 }: {
-  pendingCount: number;
-  syncing: boolean;
+  syncHealth: SyncHealth;
   onClearLocal: () => void;
   onRetry: () => void;
 }) {
-  if (!pendingCount) return null;
+  const pendingCount = syncHealth.pendingCaptures + syncHealth.pendingOperations;
+  if (!pendingCount && syncHealth.online && syncHealth.backendReachable !== false) return null;
+
+  const title = !syncHealth.online
+    ? "Offline - saved on this device"
+    : syncHealth.syncing
+      ? "Syncing"
+      : syncHealth.backendReachable === false || syncHealth.lastError
+        ? "Needs retry"
+        : "AI organizing when available";
+  const detail = pendingCount
+    ? `${syncHealth.pendingCaptures} capture${syncHealth.pendingCaptures === 1 ? "" : "s"} and ${syncHealth.pendingOperations} local change${syncHealth.pendingOperations === 1 ? "" : "s"} are waiting for safe transfer.`
+    : "Backend is not reachable right now. Recent local work remains available on this device.";
 
   return (
     <Card className="sync-warning">
       <div>
-        <strong>{pendingCount} capture{pendingCount === 1 ? "" : "s"} saved on this device</strong>
-        <p>Keep this browser data until transfer is complete. Closing or clearing site data could lose unsynced captures.</p>
+        <strong>{title}</strong>
+        <p>{detail} Keep this browser data until transfer is complete.</p>
       </div>
       <div className="sync-actions">
-        <Button disabled={syncing} onClick={onRetry} size="sm" variant="secondary">
-          {syncing ? "Syncing" : "Retry now"}
+        <Button disabled={syncHealth.syncing || !syncHealth.online} onClick={onRetry} size="sm" variant="secondary">
+          {syncHealth.syncing ? "Syncing" : "Retry now"}
         </Button>
-        <Button disabled={syncing} onClick={onClearLocal} size="sm" variant="ghost">
+        <Button disabled={syncHealth.syncing || !pendingCount} onClick={onClearLocal} size="sm" variant="ghost">
           Clear local
         </Button>
       </div>

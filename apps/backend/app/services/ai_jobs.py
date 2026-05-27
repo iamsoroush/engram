@@ -72,6 +72,107 @@ def get_ai_job(db: DbSession, principal: CurrentPrincipal, job_id: str) -> dict[
     return ai_job_payload(job)
 
 
+def ai_job_retryable(job: AiJob) -> bool:
+    """Return whether a failed AI job is eligible for automatic recovery."""
+    metadata = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    return metadata.get("retryable", True) is not False
+
+
+def recover_ai_jobs(db: DbSession, principal: CurrentPrincipal, limit: int = 50) -> dict[str, Any]:
+    """Re-dispatch queued or retryable failed AI jobs for the current tenant."""
+    jobs = list(
+        db.execute(
+            select(AiJob)
+            .where(
+                AiJob.tenant_id == principal.tenant_id,
+                AiJob.status.in_([AiJobStatus.queued, AiJobStatus.failed]),
+            )
+            .order_by(AiJob.created_at)
+            .limit(min(limit, 100))
+        ).scalars()
+    )
+    recovered: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for job in jobs:
+        if job.status == AiJobStatus.failed and not ai_job_retryable(job):
+            skipped.append({"id": str(job.id), "reason": "terminal"})
+            continue
+        job.status = AiJobStatus.queued
+        job.completed_at = None
+        job.error_message = None
+        job.result_metadata = {
+            **(job.result_metadata or {}),
+            "retryable": True,
+            "recovered_at": utc_now().isoformat(),
+            "recovery_requested_by_user_id": str(principal.user_id),
+        }
+        if job.capture_id:
+            capture = db.execute(
+                select(Capture).where(Capture.id == job.capture_id, Capture.tenant_id == job.tenant_id)
+            ).scalar_one_or_none()
+            if capture is not None and capture.status != CaptureStatus.deleted:
+                capture.status = CaptureStatus.processing
+        elif job.session_id:
+            session = db.execute(
+                select(Session).where(Session.id == job.session_id, Session.tenant_id == job.tenant_id)
+            ).scalar_one_or_none()
+            if session is not None:
+                session.status = SessionStatus.processing
+        recovered.append(ai_job_payload(job))
+    db.commit()
+
+    for recovered_job in recovered:
+        job = db.get(AiJob, parse_uuid(recovered_job["id"], "job_id"))
+        if job is None:
+            continue
+        if job.capture_id:
+            dispatch_capture_processing_job(db, job)
+        elif job.session_id:
+            dispatch_session_processing_job(db, job)
+
+    return {"recovered": recovered, "skipped": skipped}
+
+
+def recover_all_ai_jobs(db: DbSession, limit: int = 100) -> dict[str, Any]:
+    """Re-dispatch queued or retryable failed AI jobs across tenants for worker startup recovery."""
+    jobs = list(
+        db.execute(
+            select(AiJob)
+            .where(AiJob.status.in_([AiJobStatus.queued, AiJobStatus.failed]))
+            .order_by(AiJob.created_at)
+            .limit(min(limit, 200))
+        ).scalars()
+    )
+    recovered: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for job in jobs:
+        if job.status == AiJobStatus.failed and not ai_job_retryable(job):
+            skipped.append({"id": str(job.id), "reason": "terminal"})
+            continue
+        job.status = AiJobStatus.queued
+        job.completed_at = None
+        job.error_message = None
+        job.result_metadata = {
+            **(job.result_metadata or {}),
+            "retryable": True,
+            "recovered_at": utc_now().isoformat(),
+            "recovery_source": "ai-engine-startup",
+        }
+        recovered.append(ai_job_payload(job))
+    db.commit()
+
+    for recovered_job in recovered:
+        job = db.get(AiJob, parse_uuid(recovered_job["id"], "job_id"))
+        if job is None:
+            continue
+        if job.capture_id:
+            dispatch_capture_processing_job(db, job)
+        elif job.session_id:
+            dispatch_session_processing_job(db, job)
+
+    return {"recovered": recovered, "skipped": skipped}
+
+
 def job_type_for_capture(capture_type: CaptureType) -> AiJobType:
     """Map capture media type to the concrete AI processing job type."""
     if capture_type == CaptureType.audio:
@@ -186,6 +287,7 @@ def dispatch_capture_processing_job(db: DbSession, job: AiJob) -> None:
         job.result_metadata = {
             **(job.result_metadata or {}),
             "queue_error": str(exc),
+            "retryable": True,
         }
         if job.capture_id:
             capture = db.execute(
@@ -227,6 +329,7 @@ def dispatch_session_processing_job(db: DbSession, job: AiJob) -> None:
         job.result_metadata = {
             **(job.result_metadata or {}),
             "queue_error": str(exc),
+            "retryable": True,
         }
         if job.session_id:
             session = db.execute(
@@ -733,6 +836,7 @@ def retry_worker_job(
         "attempt": retry_count + 1,
         "last_error": error_message,
         "retrying": True,
+        "retryable": True,
     }
     db.commit()
     db.refresh(job)
@@ -757,6 +861,7 @@ def fail_worker_job(
         "celery_task_id": celery_task_id,
         "attempt": retry_count + 1,
         "terminal_error": error_message,
+        "retryable": True,
     }
     if job.capture_id:
         capture = db.execute(

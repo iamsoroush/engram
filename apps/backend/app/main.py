@@ -27,6 +27,8 @@ from app.services.ai_jobs import (
     enqueue_capture_processing_job,
     fail_worker_job,
     get_ai_job,
+    recover_all_ai_jobs,
+    recover_ai_jobs,
     require_ai_engine_token,
     retry_worker_job,
     start_worker_job,
@@ -132,6 +134,12 @@ def ranged_file_response(content: bytes, media_type: str, filename: str, range_h
 def health_check() -> dict[str, str]:
     """Check whether the API process is running and able to serve requests."""
     return {"status": "ok"}
+
+
+@internal_api.post("/ai/jobs/recover")
+def internal_ai_jobs_recover(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Recover queued or retryable failed AI jobs when workers come back online."""
+    return recover_all_ai_jobs(db)
 
 
 @internal_api.post("/ai/jobs/{job_id}/start")
@@ -411,6 +419,16 @@ def list_session_ai_jobs_route(
 ) -> list[dict[str, Any]]:
     """List AI processing jobs associated with a session."""
     return list_session_ai_jobs(db, principal, session_id)
+
+
+@api_v1.post("/ai-jobs/recover")
+def recover_ai_jobs_route(
+    limit: int = Query(default=50, ge=1, le=100),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Requeue queued or retryable failed AI jobs after worker recovery."""
+    return recover_ai_jobs(db, principal, limit)
 
 
 @api_v1.get("/ai-jobs/{job_id}")

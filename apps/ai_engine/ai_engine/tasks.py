@@ -1,5 +1,6 @@
 import logging
 
+from celery.signals import worker_ready
 from celery.exceptions import MaxRetriesExceededError
 
 from ai_engine.celery_app import celery_app
@@ -7,6 +8,16 @@ from ai_engine.config import settings
 from ai_engine.processing import BackendClient, run_capture_processing_job, run_session_processing_job
 
 logger = logging.getLogger(__name__)
+
+
+@worker_ready.connect
+def recover_pending_ai_jobs(**_: object) -> None:
+    """Resume durable backend AI work when a worker comes online."""
+    try:
+        result = BackendClient().recover_jobs()
+        logger.info("Requested AI job recovery", extra={"result": result})
+    except Exception:
+        logger.exception("Failed to request AI job recovery on worker startup")
 
 
 def run_task_with_retries(task, job_id: str, runner, label: str) -> None:

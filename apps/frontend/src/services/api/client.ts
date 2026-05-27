@@ -117,20 +117,24 @@ export async function searchPatients(apiFetch: ApiFetch, query: string) {
   return patients.map(normalizePatientSummary);
 }
 
-export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignmentDraft) {
+export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignmentDraft, idempotencyKey?: string) {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   const response = await apiFetch(`${API_BASE}/patients`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ displayName: draft.displayName, nationalId: draft.nationalId || null }),
   });
   if (!response.ok) throw new Error("Could not create patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
 }
 
-export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string, patientId: string) {
+export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string, patientId: string, idempotencyKey?: string) {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/assign-patient`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment" }),
   });
   if (!response.ok) throw new Error("Could not assign patient");

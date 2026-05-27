@@ -91,6 +91,32 @@ def search_patients(db: DbSession, principal: CurrentPrincipal, query: str | Non
 
 
 def create_patient(db: DbSession, principal: CurrentPrincipal, request: PatientWrite) -> dict[str, Any]:
+    """Create a patient, returning an existing exact match for safe retries."""
+    if request.national_id:
+        existing_by_identifier = db.execute(
+            select(Patient)
+            .join(PatientIdentifier, PatientIdentifier.patient_id == Patient.id)
+            .where(
+                Patient.tenant_id == principal.tenant_id,
+                PatientIdentifier.tenant_id == principal.tenant_id,
+                PatientIdentifier.identifier_type == "national_id",
+                PatientIdentifier.normalized_value == normalize_identifier(request.national_id),
+            )
+        ).scalars().first()
+        if existing_by_identifier is not None:
+            return patient_payload(existing_by_identifier)
+
+    existing_by_name = db.execute(
+        select(Patient)
+        .where(
+            Patient.tenant_id == principal.tenant_id,
+            Patient.display_name.ilike(request.display_name.strip()),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    if existing_by_name is not None:
+        return patient_payload(existing_by_name)
+
     patient = Patient(
         tenant_id=principal.tenant_id,
         display_name=request.display_name,

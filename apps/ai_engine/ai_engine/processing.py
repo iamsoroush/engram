@@ -649,6 +649,10 @@ class BackendClient:
             {"error_message": error_message, "celery_task_id": celery_task_id, "retry_count": retry_count},
         )
 
+    def recover_jobs(self) -> dict[str, Any]:
+        """Ask the backend to re-dispatch queued or retryable failed work."""
+        return self.post("/internal/ai/jobs/recover", {})
+
 
 def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:
     """Run a capture processing job through the backend API contract."""

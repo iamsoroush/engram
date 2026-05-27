@@ -1,6 +1,6 @@
 import React from "react";
 import { flushSync } from "react-dom";
-import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, Persona } from "../domain/appTypes";
+import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, PendingOperation, Persona, SyncHealth } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
@@ -44,13 +44,18 @@ import { Shell, SyncSafetyBanner } from "../features/shell/Shell";
 import {
   bindPendingSession,
   clearLocalCaptureData,
+  loadIdMapping,
   loadPendingCapture,
   loadPendingCaptures,
+  loadPendingOperations,
   normalizePendingCapture,
   removePendingCapture,
+  removePendingOperation,
   savePendingCapture,
+  savePendingOperation,
   saveSyncedCaptureCache,
   updatePendingCapture,
+  updatePendingOperation,
 } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
 import { replaceScreenLocation, screenFromLocation } from "./navigation";
@@ -75,7 +80,11 @@ export function App() {
   const [activeSession, setActiveSession] = React.useState<CaptureSession | null>(null);
   const [selectedSessionId, setSelectedSessionId] = React.useState("");
   const [pendingCount, setPendingCount] = React.useState(0);
+  const [pendingOperationCount, setPendingOperationCount] = React.useState(0);
   const [syncing, setSyncing] = React.useState(false);
+  const [online, setOnline] = React.useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
+  const [backendReachable, setBackendReachable] = React.useState<boolean | null>(null);
+  const [syncError, setSyncError] = React.useState("");
   const [textOpen, setTextOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [audioOpen, setAudioOpen] = React.useState(false);
@@ -207,6 +216,16 @@ export function App() {
   }, [toast]);
 
   React.useEffect(() => {
+    const updateOnline = () => setOnline(navigator.onLine);
+    window.addEventListener("online", updateOnline);
+    window.addEventListener("offline", updateOnline);
+    return () => {
+      window.removeEventListener("online", updateOnline);
+      window.removeEventListener("offline", updateOnline);
+    };
+  }, []);
+
+  React.useEffect(() => {
     const syncScreenFromLocation = () => {
       const nextScreen = screenFromLocation();
       setScreen(nextScreen);
@@ -218,13 +237,13 @@ export function App() {
 
   React.useEffect(() => {
     const warnIfPending = (event: BeforeUnloadEvent) => {
-      if (!pendingCount) return;
+      if (!pendingCount && !pendingOperationCount) return;
       event.preventDefault();
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", warnIfPending);
     return () => window.removeEventListener("beforeunload", warnIfPending);
-  }, [pendingCount]);
+  }, [pendingCount, pendingOperationCount]);
 
   React.useEffect(() => {
     const retryWhenOnline = () => void processOutbox();
@@ -233,9 +252,22 @@ export function App() {
   }, []);
 
   const refreshPendingCount = async () => {
-    const pending = await loadPendingCaptures();
+    const [pending, operations] = await Promise.all([loadPendingCaptures(), loadPendingOperations()]);
     setPendingCount(pending.length);
+    setPendingOperationCount(operations.length);
     return pending;
+  };
+
+  const queueOperation = async (operation: Omit<PendingOperation, "retryCount" | "status" | "createdAt" | "updatedAt">) => {
+    const now = Date.now();
+    await savePendingOperation({
+      ...operation,
+      retryCount: 0,
+      status: "pending",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await refreshPendingCount();
   };
 
   const loadBackendSessions = React.useCallback(async () => {
@@ -263,6 +295,7 @@ export function App() {
     const workspace = loadWorkspaceState(authRef.current?.tenant.id);
     try {
       const loadedSessions = await loadBackendSessions();
+      setBackendReachable(true);
       const nextSessions = [...localSessions, ...loadedSessions.filter((session) => !localSessions.some((local) => local.id === session.id))];
       setSessions(nextSessions);
       if (workspace) {
@@ -275,6 +308,7 @@ export function App() {
         }
       }
     } catch {
+      setBackendReachable(false);
       setSessions(localSessions);
       if (workspace) {
         setActiveSession(resolveRestoredSession(workspace.activeSession, localSessions));
@@ -364,6 +398,89 @@ export function App() {
     [loadBackendSessions],
   );
 
+  const resolveBackendSessionId = async (operation: PendingOperation, tenantId: string) => {
+    if (operation.backendSessionId) return operation.backendSessionId;
+    if (!operation.localSessionId) return undefined;
+    if (!isLocalSessionId(operation.localSessionId)) return operation.localSessionId;
+    return (await loadIdMapping(`${tenantId}:session:${operation.localSessionId}`))?.backendId;
+  };
+
+  const syncPendingOperation = async (operation: PendingOperation, tenantId: string) => {
+    const backendSessionId = await resolveBackendSessionId(operation, tenantId);
+    if (!backendSessionId) return false;
+
+    await updatePendingOperation(operation.id, (current) => ({
+      ...current,
+      status: "syncing",
+      updatedAt: Date.now(),
+      lastError: undefined,
+    }));
+
+    if (operation.type === "sessionTitle") {
+      const title = typeof operation.payload.title === "string" ? operation.payload.title : "";
+      if (title.trim()) {
+        const updated = await updateSessionTitle(apiFetch, backendSessionId, title.trim());
+        applySessionUpdate(backendSessionId, updated);
+      }
+    }
+
+    if (operation.type === "patientAssignment") {
+      const draft = {
+        patientId: typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined,
+        displayName: String(operation.payload.displayName || "").trim(),
+        nationalId: typeof operation.payload.nationalId === "string" ? operation.payload.nationalId : undefined,
+      };
+      let patientId = operation.backendPatientId || (draft.patientId && !isLocalAssignmentPatient(draft.patientId) ? draft.patientId : undefined);
+      if (!patientId && draft.displayName) {
+        const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
+        const normalizedName = draft.displayName.toLowerCase();
+        const exact = matches.find(
+          (patient) =>
+            patient.displayName.trim().toLowerCase() === normalizedName ||
+            (draft.nationalId && patient.nationalId === draft.nationalId),
+        );
+        patientId = (exact || (await createPatient(apiFetch, draft, operation.id))).id;
+      }
+      if (patientId) {
+        const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id);
+        applySessionUpdate(backendSessionId, assigned);
+      }
+    }
+
+    if (operation.type === "sessionProcessing") {
+      const processingSession = await saveSessionForProcessing(apiFetch, backendSessionId);
+      applySessionUpdate(backendSessionId, processingSession);
+      scheduleSessionProcessingRefresh(backendSessionId);
+    }
+
+    await removePendingOperation(operation.id);
+    return true;
+  };
+
+  const processPendingOperations = async (tenantId: string) => {
+    const operations = await loadPendingOperations();
+    let failed = false;
+    for (const operation of operations) {
+      if (operation.tenantId && operation.tenantId !== tenantId) continue;
+      try {
+        const completed = await syncPendingOperation(operation, tenantId);
+        if (!completed) continue;
+      } catch (error) {
+        await updatePendingOperation(operation.id, (current) => ({
+          ...current,
+          status: "failed",
+          retryCount: current.retryCount + 1,
+          updatedAt: Date.now(),
+          lastError: error instanceof Error ? error.message : "Sync failed",
+        }));
+        setSyncError("Some local changes need retry");
+        setBackendReachable(false);
+        failed = true;
+      }
+    }
+    return !failed;
+  };
+
   /**
    * Serially uploads locally saved captures for the active tenant.
    *
@@ -374,10 +491,17 @@ export function App() {
     const currentAuth = authRef.current;
     const activeTenantId = currentAuth?.tenant.id;
     if (processingRef.current || !currentAuth || !activeTenantId || currentAuth.user.persona === "patient-preview") return;
+    if (!navigator.onLine) {
+      setOnline(false);
+      setToast("Offline - saved on this device.");
+      return;
+    }
     processingRef.current = true;
     setSyncing(true);
+    setSyncError("");
     try {
       const pending = await loadPendingCaptures();
+      let captureFailed = false;
       for (const pendingCapture of pending) {
         if (!authRef.current || authRef.current.tenant.id !== activeTenantId) break;
         const capture = (await loadPendingCapture(pendingCapture.id)) || pendingCapture;
@@ -438,10 +562,15 @@ export function App() {
           await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
           updateItemStatus(capture.item.id, "failed");
           await rebuildLocalPendingSessions();
+          setBackendReachable(false);
+          setSyncError("Capture upload failed");
+          captureFailed = true;
           setToast("Failed.");
           continue;
         }
       }
+      const operationsHealthy = await processPendingOperations(activeTenantId);
+      if (operationsHealthy && !captureFailed) setBackendReachable(true);
     } finally {
       processingRef.current = false;
       setSyncing(false);
@@ -450,10 +579,10 @@ export function App() {
   };
 
   React.useEffect(() => {
-    if (!auth || auth.user.persona === "patient-preview" || !pendingCount || syncing) return;
+    if (!auth || auth.user.persona === "patient-preview" || (!pendingCount && !pendingOperationCount) || syncing) return;
     const retryTimer = window.setTimeout(() => void processOutbox(), 15000);
     return () => window.clearTimeout(retryTimer);
-  }, [auth, pendingCount, syncing]);
+  }, [auth, pendingCount, pendingOperationCount, syncing]);
 
   /**
    * Saves a capture to IndexedDB before attempting network transfer.
@@ -534,6 +663,7 @@ export function App() {
     setAssignmentSessionId("");
     setPendingCaptureKind(null);
     setPendingCount(0);
+    setPendingOperationCount(0);
     setToast("Local pending captures cleared.");
     void hydrateFromStorage();
   };
@@ -573,6 +703,20 @@ export function App() {
     });
     setSessions((current) => current.map((session) => (session.id === sessionId ? markProcessing(session) : session)));
     setActiveSession((current) => (current?.id === sessionId ? markProcessing(current) : current));
+    if (isLocalSessionId(sessionId)) {
+      if (authRef.current?.tenant.id) {
+        await queueOperation({
+          id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
+          type: "sessionProcessing",
+          localSessionId: sessionId,
+          tenantId: authRef.current.tenant.id,
+          payload: { reportTemplateKey: "default" },
+        });
+        setToast("AI will organize when sync is complete.");
+      }
+      void processOutbox();
+      return;
+    }
     try {
       const processingSession = await saveSessionForProcessing(apiFetch, sessionId);
       setSessions((current) =>
@@ -582,6 +726,18 @@ export function App() {
       setToast("Structured report is generating.");
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
+      if (authRef.current?.tenant.id) {
+        await queueOperation({
+          id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
+          type: "sessionProcessing",
+          backendSessionId: sessionId,
+          tenantId: authRef.current.tenant.id,
+          payload: { reportTemplateKey: "default" },
+        });
+        setToast("AI will organize when available.");
+        void processOutbox();
+        return;
+      }
       setToast("Failed.");
     }
   };
@@ -603,15 +759,40 @@ export function App() {
               })),
             ),
         );
+        if (authRef.current?.tenant.id) {
+          await queueOperation({
+            id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
+            type: "sessionTitle",
+            localSessionId: sessionId,
+            tenantId: authRef.current.tenant.id,
+            payload: { title },
+          });
+        }
         setToast("Session title updated.");
         return;
       }
-      const updated = await updateSessionTitle(apiFetch, sessionId, title);
-      setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
-      );
-      setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
-      setToast("Session title updated.");
+      try {
+        const updated = await updateSessionTitle(apiFetch, sessionId, title);
+        setSessions((current) =>
+          current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
+        );
+        setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
+        setToast("Session title updated.");
+      } catch {
+        if (authRef.current?.tenant.id) {
+          await queueOperation({
+            id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
+            type: "sessionTitle",
+            backendSessionId: sessionId,
+            tenantId: authRef.current.tenant.id,
+            payload: { title },
+          });
+          setToast("Title saved on this device.");
+          void processOutbox();
+          return;
+        }
+        setToast("Could not update title.");
+      }
     },
     [apiFetch],
   );
@@ -839,23 +1020,60 @@ export function App() {
 
   const assignPatientToSession = React.useCallback(
     async (sessionId: string, draft: PatientAssignmentDraft) => {
+      const localPatient: PatientSummary = draft.patientId && !isLocalAssignmentPatient(draft.patientId)
+        ? { id: draft.patientId, displayName: draft.displayName, nationalId: draft.nationalId || null }
+        : {
+            id: draft.patientId || `local-patient-${createClientSideId()}`,
+            displayName: draft.displayName,
+            nationalId: draft.nationalId || null,
+          };
+      const applyLocalAssignment = (patient: PatientSummary) => {
+        const enriched = {
+          patientId: patient.id,
+          patientName: patient.displayName,
+          assignmentSource: "staff",
+        };
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === sessionId ? markReportStaleForPatientChange(session, { ...session, ...enriched }) : session,
+          ),
+        );
+        setActiveSession((current) =>
+          current?.id === sessionId ? markReportStaleForPatientChange(current, { ...current, ...enriched }) : current,
+        );
+        setAssignmentSessionId("");
+      };
+      const enqueueAssignment = async (patient: PatientSummary) => {
+        if (!authRef.current?.tenant.id) return;
+        await queueOperation({
+          id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
+          type: "patientAssignment",
+          localSessionId: sessionId,
+          backendSessionId: isLocalSessionId(sessionId) ? undefined : sessionId,
+          localPatientId: patient.id.startsWith("local-patient-") ? patient.id : undefined,
+          backendPatientId: patient.id.startsWith("local-patient-") || isLocalAssignmentPatient(patient.id) ? undefined : patient.id,
+          tenantId: authRef.current.tenant.id,
+          payload: {
+            patientId: patient.id,
+            displayName: patient.displayName,
+            nationalId: patient.nationalId || undefined,
+          },
+        });
+      };
+
+      if (isLocalSessionId(sessionId) || !navigator.onLine) {
+        applyLocalAssignment(localPatient);
+        await enqueueAssignment(localPatient);
+        setToast(navigator.onLine ? "Patient assigned." : "Patient assignment saved on this device.");
+        void processOutbox();
+        return;
+      }
+
       try {
         const patient = await ensurePatient(draft);
         if (isLocalSessionId(sessionId) || isLocalAssignmentPatient(patient.id)) {
-          const enriched = {
-            patientId: patient.id,
-            patientName: patient.displayName,
-            assignmentSource: "staff",
-          };
-          setSessions((current) =>
-            current.map((session) =>
-              session.id === sessionId ? markReportStaleForPatientChange(session, { ...session, ...enriched }) : session,
-            ),
-          );
-          setActiveSession((current) =>
-            current?.id === sessionId ? markReportStaleForPatientChange(current, { ...current, ...enriched }) : current,
-          );
-          setAssignmentSessionId("");
+          applyLocalAssignment(patient);
+          await enqueueAssignment(patient);
           setToast("Patient assigned.");
           return;
         }
@@ -877,7 +1095,10 @@ export function App() {
         setAssignmentSessionId("");
         setToast("Patient assigned.");
       } catch {
-        setToast("Could not assign patient.");
+        applyLocalAssignment(localPatient);
+        await enqueueAssignment(localPatient);
+        setToast("Patient assignment saved on this device.");
+        void processOutbox();
       }
     },
     [apiFetch, ensurePatient],
@@ -952,6 +1173,14 @@ export function App() {
   };
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
+  const syncHealth: SyncHealth = {
+    online,
+    backendReachable,
+    pendingCaptures: pendingCount,
+    pendingOperations: pendingOperationCount,
+    syncing,
+    lastError: syncError || undefined,
+  };
 
   const openMemorySession = (sessionId: string) => {
     const session = sessions.find((candidate) => candidate.id === sessionId);
@@ -1110,8 +1339,7 @@ export function App() {
         onNavigate={navigateScreen}
       >
         <SyncSafetyBanner
-          pendingCount={pendingCount}
-          syncing={syncing}
+          syncHealth={syncHealth}
           onClearLocal={() => void clearLocalPendingCaptures()}
           onRetry={() => void processOutbox()}
         />
@@ -1160,5 +1388,9 @@ export function App() {
 }
 
 function isLocalAssignmentPatient(patientId: string) {
-  return patientId.startsWith("mock-") || patientId === "current-session-patient";
+  return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
+}
+
+function createClientSideId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
