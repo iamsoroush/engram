@@ -1,6 +1,12 @@
 import type { CaptureDraft } from "../../../domain/appTypes";
 
-export function CaptureActions({ compact, onAction }: { compact?: boolean; onAction: (kind: CaptureDraft["kind"]) => void }) {
+export function CaptureActions({
+  compact,
+  onAction,
+}: {
+  compact?: boolean;
+  onAction: (kind: CaptureDraft["kind"]) => void;
+}) {
   const actions: Array<{
     kind: CaptureDraft["kind"];
     label: string;
@@ -13,24 +19,34 @@ export function CaptureActions({ compact, onAction }: { compact?: boolean; onAct
     { kind: "note", label: "Write note", subtitle: "Add clinical note", tone: "secondary", icon: "note" },
   ];
 
+  const actionButtons = actions.map((action) => (
+    <button
+      className={`capture-action-button ${action.tone}`}
+      key={action.kind}
+      onClick={() => onAction(action.kind)}
+      type="button"
+    >
+      <span className="capture-action-icon" aria-hidden="true">
+        <CaptureActionIcon name={action.icon} />
+      </span>
+      <span className="capture-action-copy">
+        <strong>{action.label}</strong>
+        <small>{action.subtitle}</small>
+      </span>
+    </button>
+  ));
+
+  if (compact) {
+    return (
+      <div className="capture-pills">
+        <div className="capture-pills-actions">{actionButtons}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className={compact ? "capture-pills" : "capture-actions"}>
-      {actions.map((action) => (
-        <button
-          className={`capture-action-button ${action.tone}`}
-          key={action.kind}
-          onClick={() => onAction(action.kind)}
-          type="button"
-        >
-          <span className="capture-action-icon" aria-hidden="true">
-            <CaptureActionIcon name={action.icon} />
-          </span>
-          <span className="capture-action-copy">
-            <strong>{action.label}</strong>
-            <small>{action.subtitle}</small>
-          </span>
-        </button>
-      ))}
+    <div className="capture-actions">
+      {actionButtons}
     </div>
   );
 }

@@ -29,7 +29,7 @@ export function Shell({
     .join("") || "A";
   const navigationItems: Array<{ screen: Screen; label: string }> = [
     { screen: "active-session", label: "Active Session" },
-    { screen: "patients", label: "Patients" },
+    { screen: "patients", label: "Clinical Memory" },
     { screen: "search", label: "Search" },
   ];
 
