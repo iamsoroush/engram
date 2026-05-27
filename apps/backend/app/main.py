@@ -16,6 +16,8 @@ from app.schemas.api import (
     AssignPatientRequest,
     CaptureUpdate,
     PatientPatch,
+    PatientMemoryDetailResponse,
+    PatientMemoryListResponse,
     PatientWrite,
     SessionCreate,
     SessionSaveRequest,
@@ -41,6 +43,7 @@ from app.services.capture_storage import (
     upload_source_capture,
 )
 from app.services.patients import create_patient, get_patient, patient_payload, search_patients, update_patient
+from app.services.patient_memory import get_patient_memory_detail, list_patient_memory
 from app.services.sessions import (
     assign_session_patient,
     create_session,
@@ -255,6 +258,28 @@ def patients_search(
     return search_patients(db, principal, query, limit)
 
 
+@api_v1.get("/patient-memory", response_model=PatientMemoryListResponse)
+def patient_memory_list_route(
+    query: str | None = Query(default=None),
+    filter: str = Query(default="recent", pattern="^(recent|active|all)$"),
+    clinician_id: str | None = Query(default=None, alias="clinicianId"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """List flat patient memory rows without nested session payloads."""
+    return list_patient_memory(
+        db,
+        principal,
+        query=query,
+        memory_filter=filter,
+        clinician_id=clinician_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @api_v1.post("/patients")
 def patients_create(
     request: PatientWrite,
@@ -273,6 +298,16 @@ def patients_get(
 ) -> dict[str, Any]:
     """Return one patient record in the current tenant."""
     return patient_payload(get_patient(db, principal.tenant_id, patient_id))
+
+
+@api_v1.get("/patients/{patient_id}/memory", response_model=PatientMemoryDetailResponse)
+def patients_memory_get(
+    patient_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return patient memory summary and sortable timeline sessions."""
+    return get_patient_memory_detail(db, principal, patient_id)
 
 
 @api_v1.patch("/patients/{patient_id}")

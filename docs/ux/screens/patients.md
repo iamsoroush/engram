@@ -58,6 +58,11 @@ Example copy:
 
 Patients is a searchable, scalable list of patient memory.
 
+The backend source for this list is `GET /api/v1/patient-memory`. The endpoint
+returns flat patient-memory rows with summary fallbacks, latest-session metadata,
+session counts, active-session markers, and pagination. The frontend should not
+derive this tab by loading every session and grouping client-side.
+
 Each patient row/card includes:
 
 - patient name and compact identifying context when available
@@ -89,6 +94,10 @@ Example copy:
 ## Patient Detail / Timeline
 
 Opening a patient shows the long-term memory view for that patient.
+
+The backend source is `GET /api/v1/patients/{patientId}/memory`. The main
+patient-memory list stays flat; session timeline data belongs in this detail
+response.
 
 It includes:
 
