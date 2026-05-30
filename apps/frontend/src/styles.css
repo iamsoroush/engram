@@ -4944,6 +4944,68 @@ small {
   line-height: 1.45;
 }
 
+.resolver-heading p {
+  margin-top: 4px;
+  color: #43516a;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.patient-decision-sheet {
+  width: min(620px, 100%);
+  gap: 18px;
+}
+
+.patient-decision-list {
+  display: grid;
+  gap: 12px;
+}
+
+.patient-decision-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #ead7a8;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 14px;
+}
+
+.patient-decision-copy {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.patient-decision-copy > strong {
+  color: #080d2d;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.patient-decision-copy p {
+  color: #263451;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.patient-decision-item .btn {
+  min-width: 144px;
+  min-height: 44px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.patient-decision-secondary {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.patient-decision-secondary .btn {
+  color: #075eff;
+}
+
 .resolver-summary {
   border: 1px solid #e3ebf5;
   border-radius: 8px;
@@ -5638,6 +5700,33 @@ small {
     width: 100%;
     max-height: calc(100dvh - 20px);
     padding: 14px 12px max(14px, calc(14px + env(safe-area-inset-bottom)));
+  }
+
+  .patient-decision-backdrop {
+    place-items: end stretch;
+    padding: 0;
+  }
+
+  .patient-decision-sheet {
+    width: 100%;
+    max-height: calc(100dvh - 12px);
+    border-radius: 16px 16px 0 0;
+    padding: 16px 14px max(16px, calc(16px + env(safe-area-inset-bottom)));
+  }
+
+  .patient-decision-item {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 12px;
+  }
+
+  .patient-decision-item .btn,
+  .patient-decision-secondary .btn {
+    width: 100%;
+  }
+
+  .patient-decision-secondary {
+    display: grid;
   }
 
   .summary-review-context {

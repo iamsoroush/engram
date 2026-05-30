@@ -176,6 +176,10 @@ export function PatientsHome({
         <PatientDecisionListSheet
           patient={decisionListPatient}
           onClose={() => setDecisionListPatientId("")}
+          onOpenMemory={() => {
+            if (decisionListPatient.latestSessionId) onOpenSession(decisionListPatient.latestSessionId);
+            setDecisionListPatientId("");
+          }}
           onItemAction={(item) => {
             setDecisionListPatientId("");
             handleDecisionAction(item, decisionListPatient);
@@ -223,6 +227,7 @@ export function PatientsHome({
             session={assignmentSession}
             onAssign={async (draft) => {
               await onAssignPatient(assignmentSession.id, draft);
+              setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(assignmentSession)));
               setAssignmentSessionId("");
             }}
             onClose={() => setAssignmentSessionId("")}
@@ -487,6 +492,8 @@ type PatientNeedsInputItem = {
   action: Exclude<PatientPrimaryAction, "continue" | "open-memory" | "review-items">;
   title: string;
   detail: string;
+  sessionLabel: string;
+  reason: string;
   sortTime: number;
 };
 
@@ -800,8 +807,10 @@ function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsIn
       sessionId: item.sessionId || row.latestSessionId || row.activeSessionId || null,
       label,
       action,
-      title: label.replace("Needs input: ", ""),
-      detail: "This patient memory has a decision waiting.",
+      title: titleForDecisionAction(action),
+      detail: reasonForDecisionAction(action),
+      sessionLabel: apiNeedsInputSessionLabel(row, item.createdAt),
+      reason: reasonForDecisionAction(action),
       sortTime: item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0,
     };
   }).filter((item): item is PatientNeedsInputItem => Boolean(item));
@@ -813,8 +822,10 @@ function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsIn
       sessionId: row.latestSessionId || row.activeSessionId || null,
       label: "Needs input: review summary",
       action: "review-summary",
-      title: "Review summary",
-      detail: "Confirm the latest generated summary before it updates patient memory.",
+      title: titleForDecisionAction("review-summary"),
+      detail: "Confirm the drafted summary before it updates patient memory.",
+      sessionLabel: apiNeedsInputSessionLabel(row),
+      reason: "Review before it becomes part of patient memory.",
       sortTime: latestApiVisitTimestamp(row),
     },
   ];
@@ -829,10 +840,44 @@ function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem |
     sessionId: session.id,
     label,
     action,
-    title: label.replace("Needs input: ", ""),
+    title: titleForSessionDecision(session, action),
     detail: needsInputSummary(session),
+    sessionLabel: `Session: ${sessionTimeLabel(session)}`,
+    reason: reasonForSessionDecision(session, action),
     sortTime: latestSessionTime(session),
   };
+}
+
+function titleForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"]) {
+  if (action === "review-summary") return hasMissingClinicalField(session) ? "Clinically important field missing" : "Summary ready for confirmation";
+  return titleForDecisionAction(action);
+}
+
+function titleForDecisionAction(action: PatientNeedsInputItem["action"]) {
+  if (action === "assign-patient") return "Unassigned visit";
+  if (action === "choose-patient") return "Patient match uncertain";
+  if (action === "resolve-conflict") return "Conflicting patient information";
+  return "Summary ready for confirmation";
+}
+
+function reasonForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"]) {
+  if (action === "assign-patient") return "This visit is saved, but I do not know which patient it belongs to.";
+  if (action === "choose-patient") {
+    const possiblePatients = possiblePatientNames(session);
+    return possiblePatients.length >= 2
+      ? `This visit may belong to ${formatNameList(possiblePatients)}. Please choose the correct patient.`
+      : "I found a possible patient match before updating memory. Please choose the correct patient.";
+  }
+  if (action === "resolve-conflict") return "I found patient details that conflict with existing memory. Please review before I update it.";
+  if (hasMissingClinicalField(session)) return "This visit is missing a clinically important detail before it becomes patient memory.";
+  return "Review before it becomes part of patient memory.";
+}
+
+function reasonForDecisionAction(action: PatientNeedsInputItem["action"]) {
+  if (action === "assign-patient") return "This visit is saved, but I do not know which patient it belongs to.";
+  if (action === "choose-patient") return "I found more than one possible patient match before updating memory.";
+  if (action === "resolve-conflict") return "I found patient details that conflict with existing memory.";
+  return "Review before it becomes part of patient memory.";
 }
 
 function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] | null {
@@ -1156,40 +1201,62 @@ function PatientRow({
 }
 
 function PatientDecisionListSheet({
+  onOpenMemory,
   patient,
   onClose,
   onItemAction,
 }: {
+  onOpenMemory?: () => void;
   patient: PatientRowModel;
   onClose: () => void;
   onItemAction: (item: PatientNeedsInputItem) => void;
 }) {
   return (
-    <div className="resolver-backdrop" role="presentation">
-      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label={`${patient.name} needs input`}>
+    <div className="resolver-backdrop patient-decision-backdrop" role="presentation">
+      <Card className="resolver-sheet patient-decision-sheet" role="dialog" aria-modal="true" aria-label={`${patient.name} needs input`}>
         <div className="resolver-heading">
           <div>
             <p className="eyebrow">Patient decisions</p>
-            <h2>{patient.name}</h2>
+            <h2>{patient.name} needs your input</h2>
+            <p>Review the decisions needed to keep this memory accurate.</p>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
             Close
           </Button>
         </div>
-        <div className="resolver-list">
-          {patient.needsInputItems.map((item) => (
-            <div className="resolver-item" key={item.id}>
-              <div>
-                <strong>{item.title}</strong>
-                <p>{item.detail}</p>
+
+        {patient.needsInputItems.length ? (
+          <div className="patient-decision-list">
+            {patient.needsInputItems.map((item) => (
+              <div className="patient-decision-item" key={item.id}>
+                <div className="patient-decision-copy">
+                  <strong>{item.title}</strong>
+                  <div className="visit-metadata" aria-label="Decision context">
+                    <div>
+                      <span>Session:</span>
+                      <strong>{item.sessionLabel.replace(/^Session:\s*/, "")}</strong>
+                    </div>
+                  </div>
+                  <p>{item.reason || item.detail}</p>
+                </div>
+                <Button onClick={() => onItemAction(item)} size="sm" type="button" variant="secondary">
+                  {labelForDecisionAction(item.action)}
+                  <ChevronIcon />
+                </Button>
               </div>
-              <Button onClick={() => onItemAction(item)} size="sm" type="button" variant="secondary">
-                {labelForDecisionAction(item.action)}
-                <ChevronIcon />
-              </Button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyClinicalState title={`All caught up for ${patient.name}.`} copy="No patient decisions need review right now." />
+        )}
+
+        {onOpenMemory ? (
+          <div className="patient-decision-secondary">
+            <Button onClick={onOpenMemory} size="sm" type="button" variant="ghost">
+              Open patient memory
+            </Button>
+          </div>
+        ) : null}
       </Card>
     </div>
   );
@@ -2168,6 +2235,24 @@ function latestSessionTimeById(sessionId: string | null, sessions: CaptureSessio
 function latestVisitLabelFromApi(row: ApiPatientMemoryRow) {
   const timestamp = latestApiVisitTimestamp(row);
   return latestVisitLabelFromTimestamp(timestamp);
+}
+
+function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, fallbackTimestamp?: string | null) {
+  const timestamp = [
+    row.latestSessionMetadata?.capturedAt,
+    row.latestVisitAt,
+    row.latestSessionMetadata?.updatedAt,
+    fallbackTimestamp,
+    row.updatedAt,
+  ]
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => value && !Number.isNaN(value))
+    .sort((a, b) => b - a)[0];
+  if (!timestamp) return "Session: Recent visit";
+  const date = new Date(timestamp);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  return `Session: ${dateLabel} · ${timeLabel}`;
 }
 
 function latestApiVisitTimestamp(row: ApiPatientMemoryRow) {

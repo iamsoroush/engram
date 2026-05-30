@@ -104,6 +104,8 @@ Each patient row/card includes:
 
 Patient rows must not contain nested session cards, vague attention labels, upload states, AI job states, or sync controls.
 
+When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Review summary` or `Choose patient`. `Open patient memory` may be offered as a secondary action.
+
 Example patient memory sentences:
 
 - `Last visit focused on cheek volume and follow-up photos are saved.`
