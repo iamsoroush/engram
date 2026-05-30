@@ -20,7 +20,7 @@ apps/frontend/src/app/App.tsx
 - `src/domain`: frontend session/capture/auth types and UX status mapping.
 - `src/features/auth`: login and patient-preview gates.
 - `src/features/capture`: capture dialogs, active session workspace, capture metadata, audio helpers, and local capture modeling.
-- `src/features/memory`: Patients and Search screens.
+- `src/features/memory`: Clinical Memory and Search screens.
 - `src/features/shell`: authenticated app shell and sync safety banner.
 - `src/services/api`: backend client and response normalizers.
 - `src/services/storage`: IndexedDB/localStorage persistence boundaries.
@@ -35,6 +35,7 @@ apps/frontend/src/app/App.tsx
 - The doctor can start a `New session` quickly.
 - Each capture flow includes a secondary action to save into a new session.
 - Capture must remain available while syncing, processing, matching, or organizing happens in the background.
+- Clinical Memory follows the UX docs: Today is session-first, Patients is patient-memory-first, and Needs input is decision-first with focused resolver actions.
 
 ## Local-First Capture
 

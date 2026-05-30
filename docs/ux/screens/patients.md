@@ -32,18 +32,26 @@ Today is the default landing tab.
 
 It shows:
 
-- one current visit card when an active capture destination exists
+- session/visit cards for active or recent work
 - a compact `Needs your input` preview when human judgment is required
-- 2-3 recent memory rows with assistant-style summaries
 - calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
 
-It does not show all patients or all sessions.
+Today is session-first. A card may include patient context, but the primary object is the session or visit, not the patient. Do not show generic patient cards that hide the session identity.
 
 Today includes only sessions created, captured, or updated on the user's current calendar day. Older unassigned or historical sessions belong in Patients, Search, or the full Needs input surface, not in the Today preview.
 
-The current visit card uses natural assistant copy. If the visit has a patient, show the patient name; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue`, `Assign patient`, `Review`, or `Open`.
+The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue visit`, `Assign patient`, or `Review summary`.
 
 Choosing `Assign patient` from Today opens the same patient assignment form in Clinical Memory without navigating away from the tab. Suggested matches come from patient search data; do not use mock patient suggestions in production UI.
+
+Example session card:
+
+- Title: `Follow-up visit`
+- Patient: `Soroush`
+- Session: `Today · 4:23 PM`
+- Updated: `4:31 PM`
+- Summary: `4 captures saved. Organizing visit notes.`
+- Action: `Continue visit`
 
 Example copy:
 
@@ -56,7 +64,7 @@ Example copy:
 
 ## Patients Tab
 
-Patients is a searchable, scalable list of patient memory.
+Patients is a searchable, scalable list of patient memory. It is patient-memory-first, not a session inbox.
 
 The backend source for this list is `GET /api/v1/patient-memory`. The endpoint
 returns flat patient-memory rows with summary fallbacks, latest-session metadata,
@@ -67,10 +75,12 @@ Each patient row/card includes:
 
 - patient name and compact identifying context when available
 - one assistant-style natural memory sentence
+- latest visit reference when useful
+- active session badge when a patient has an active visit
+- exact needs-input label when relevant, such as `Needs input: review summary`
 - one primary action, usually `Open memory`
-- a quiet attention marker only when human input is needed
 
-Patient rows must not contain nested session cards, upload states, AI job states, or sync controls.
+Patient rows must not contain nested session cards, vague attention labels, upload states, AI job states, or sync controls.
 
 Example patient memory sentences:
 
@@ -78,18 +88,60 @@ Example patient memory sentences:
 - `Recent notes mention Botox follow-up; memory is updated through today.`
 - `Two recent visits are saved on this device and will be organized when online.`
 
+Example patient memory card:
+
+- Patient: `Sara M.`
+- Memory: `Last visit focused on cheek volume and follow-up photos are saved.`
+- Latest visit: `Session: Apr 18 · 11:30 AM`
+- Badge: `Active session`
+- Attention: `Needs input: review summary`
+- Action: `Open memory`
+
+Avoid vague labels such as `Needs input` or `Review` when the card needs the user to act.
+
 ## Needs Input Tab
 
-Needs input is a human-decision inbox. It follows the shared [Needs input rules](../states.md#needs-input-rules).
+Needs input is a decision-first human-decision inbox. It is not a technical error queue and not a session list. It follows the shared [Needs input rules](../states.md#needs-input-rules).
 
-Each item has calm explanatory wording and one clear primary action.
+Each card must answer:
+
+- what decision is needed
+- which session or visit is involved
+- which patient is involved, if known
+- why user input is needed
+- the smallest focused action that resolves it
+
+The primary action must open a focused resolver, not simply redirect to the active session page. The full visit/session page can be available as a secondary action such as `Open visit`.
 
 Example copy:
 
-- `This visit is saved. Choose which patient it belongs to.`
-- `I found two possible matches. Confirm the patient before I update memory.`
-- `Summary is ready. Review before it becomes part of patient memory.`
-- `Device storage is almost full. Please free space so new captures stay safe.`
+- Decision: `Unassigned visit`
+  Session: `Session: Today · 4:23 PM`
+  Patient: `Unknown`
+  Why: `This visit is saved, but I do not know which patient it belongs to.`
+  Primary action: `Assign patient`
+  Secondary action: `Open visit`
+- Decision: `Patient match uncertain`
+  Session: `Session: Apr 18 · 11:30 AM`
+  Patient: `Possible matches: Sara M., Sarah Mahmoud`
+  Why: `I found two possible matches before updating memory.`
+  Primary action: `Choose patient`
+- Decision: `Summary ready for confirmation`
+  Session: `Session: Today · 4:23 PM`
+  Patient: `Soroush`
+  Why: `Review before it becomes part of patient memory.`
+  Primary action: `Review summary`
+- Decision: `Storage warning`
+  Since: `Needs input since: 2:20 PM`
+  Why: `Device storage is almost full and new captures need room to stay safe.`
+  Primary action: `Review storage`
+
+Action routing:
+
+- `Assign patient` opens an assign-patient sheet, modal, or page.
+- `Choose patient` opens a patient-choice sheet, modal, or page.
+- `Review summary` opens the summary review flow.
+- `Review storage` opens the storage guidance or review flow.
 
 ## Patient Detail / Timeline
 

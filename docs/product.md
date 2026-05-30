@@ -131,17 +131,20 @@ It should feel like a calm intelligent assistant, not a database browser. The de
 
 Main sections:
 
-- Today
-- Patients
-- Needs input
+- Today: session-first current-day visit work.
+- Patients: patient-memory-first cards without nested session cards.
+- Needs input: decision-first inbox for human choices and data-safety actions.
 
 Patient cards include:
 
 - patient identity
 - an assistant-style natural memory sentence
+- latest visit reference, active-session badge, and exact needs-input label when relevant
 - one clear primary action
 
 Long-term session history belongs in patient detail and timeline views, not nested on the main list.
+
+Needs-input actions open focused resolvers such as patient assignment, patient choice, summary review, or storage review. They should not use the active session page as the primary action.
 
 See [UX Overview](ux/overview.md) for screen-level behavior and state language.
 

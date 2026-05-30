@@ -10,18 +10,20 @@ Preferred user-facing states:
 - `Organizing`
 - `Needs your input`
 - `Saved on this device`
-- `Memory updated`
-- `Offline - captures are saved on this device`
+- `In progress`
+- `Verified`
+- `Updated today`
+- `Storage warning`
 
 Avoid normal user-facing labels such as:
 
 - AI failed
-- AI engine down
-- job retrying
-- sync pending
-- upload retry
+- retry AI
+- retry sync
+- upload queue
 - backend unavailable
-- queue length
+- job pending
+- transcription retry
 
 Sync and AI retry are system responsibilities, not user responsibilities.
 
@@ -134,7 +136,39 @@ Needs input must not contain:
 - upload queue
 - job status debug information
 
-Each item should have one primary action.
+Each item should have one primary action that opens the smallest resolver needed to complete the decision. It must not use the active session page as the primary destination.
+
+Needs-input cards must answer:
+
+- what decision is needed
+- which session or visit is involved
+- which patient is involved, if known
+- why input is needed
+- the focused action that resolves it
+
+Use exact labels such as `Needs input: review summary`, `Needs input: assign patient`, or `Needs input: choose patient`. Do not use vague labels such as `Needs input` or `Review` without explaining what kind of input is required.
+
+Resolver routing:
+
+- `Assign patient` opens patient assignment.
+- `Choose patient` opens patient choice.
+- `Review summary` opens summary review.
+- `Review storage` opens storage guidance or review.
+- `Open visit` may be secondary.
+
+## Time Labels
+
+Timestamp labels must make the timestamp type explicit whenever session time, update time, and needs-input time can coexist.
+
+Use:
+
+- `Session: Today · 4:23 PM`
+- `Updated: 4:31 PM`
+- `Session: Apr 18 · 11:30 AM`
+- `Updated today · Patient assigned`
+- `Needs input since: 2:20 PM`
+
+Avoid ambiguous labels such as `Today · 4:23 PM` or `Updated today` when the UI does not clarify whether it is session time, update time, or needs-input time.
 
 ## Unsaved Data
 

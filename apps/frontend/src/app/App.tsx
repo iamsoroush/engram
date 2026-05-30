@@ -1,12 +1,24 @@
 import React from "react";
 import { flushSync } from "react-dom";
-import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, PendingOperation, Persona, SyncHealth } from "../domain/appTypes";
+import type {
+  ApiFetch,
+  AuthSession,
+  CaptureDraft,
+  PatientAssignmentDraft,
+  PatientMemoryFilter,
+  PatientMemoryListResponse,
+  PatientSummary,
+  PendingOperation,
+  Persona,
+  SyncHealth,
+} from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
   createPatient,
   deleteCapture,
+  fetchPatientMemory,
   fetchSessionCaptures,
   fetchSessions,
   loginWithPassword,
@@ -1105,6 +1117,11 @@ export function App() {
   );
 
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
+  const listPatientMemory = React.useCallback(
+    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }): Promise<PatientMemoryListResponse> =>
+      fetchPatientMemory(apiFetch, params),
+    [apiFetch],
+  );
 
   const verifySelectedSession = React.useCallback(
     async (sessionId: string, verified = true) => {
@@ -1298,6 +1315,7 @@ export function App() {
         onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
         onOpenSession={openMemorySession}
+        onListPatientMemory={listPatientMemory}
         onSearchPatients={searchPatientsForAssignment}
         onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}

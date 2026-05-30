@@ -1,5 +1,13 @@
 import React from "react";
-import type { CaptureDraft, PatientAssignmentDraft, PatientSummary, SyncHealth } from "../../../domain/appTypes";
+import type {
+  CaptureDraft,
+  PatientAssignmentDraft,
+  PatientMemoryFilter,
+  PatientMemoryListResponse,
+  PatientMemoryRow as ApiPatientMemoryRow,
+  PatientSummary,
+  SyncHealth,
+} from "../../../domain/appTypes";
 import type { CaptureItemType, CaptureSession } from "../../../domain/types";
 import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
 import { PatientAssignmentSheet } from "../../capture/components/CaptureScreen";
@@ -11,6 +19,7 @@ export function PatientsHome({
   syncHealth,
   onOpenSession,
   onContinueSession,
+  onListPatientMemory,
   onSearchPatients,
   onAssignPatient,
 }: {
@@ -19,6 +28,7 @@ export function PatientsHome({
   syncHealth: SyncHealth;
   onOpenSession: (sessionId: string) => void;
   onContinueSession: (sessionId: string) => void;
+  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onVerifySession?: (sessionId: string) => void;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
@@ -26,19 +36,51 @@ export function PatientsHome({
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>("today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
+  const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
+  const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
+  const [patientRowsError, setPatientRowsError] = React.useState(false);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const today = React.useMemo(() => buildTodayModel({ activeSession, sessions, syncHealth }), [activeSession, sessions, syncHealth]);
-  const patientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
+  const localPatientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
+  React.useEffect(() => {
+    if (activeTab !== "patients" || !onListPatientMemory) return;
+    let cancelled = false;
+    setPatientRowsLoading(true);
+    setPatientRowsError(false);
+    void onListPatientMemory({ query, filter: patientFilter, limit: 50 })
+      .then((result) => {
+        if (cancelled) return;
+        setBackendPatientRows(result.items);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPatientRowsError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setPatientRowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, onListPatientMemory, patientFilter, query]);
+  const patientRows = React.useMemo(
+    () =>
+      backendPatientRows.length && !patientRowsError
+        ? backendPatientRows.map(patientRowFromApi)
+        : localPatientRows.filter((patient) => {
+            if (patientFilter === "active") return patient.isActive;
+            return true;
+          }),
+    [backendPatientRows, localPatientRows, patientFilter, patientRowsError],
+  );
   const needsInputSessions = today.needsInputSessions;
   const normalizedQuery = query.trim().toLowerCase();
-  const filteredPatients = patientRows.filter((patient) => {
-    const matchesQuery = normalizedQuery
-      ? [patient.name, patient.summary, patient.badges.join(" ")].join(" ").toLowerCase().includes(normalizedQuery)
-      : true;
-    if (!matchesQuery) return false;
-    if (patientFilter === "active") return patient.isActive;
-    return true;
-  });
+  const backendRowsActive = backendPatientRows.length > 0 && !patientRowsError;
+  const filteredPatients = backendRowsActive
+    ? patientRows
+    : patientRows.filter((patient) =>
+        normalizedQuery ? [patient.name, patient.summary, patient.badges.join(" ")].join(" ").toLowerCase().includes(normalizedQuery) : true,
+      );
   const assignmentSession = assignmentSessionId
     ? sessions.find((session) => session.id === assignmentSessionId) || (activeSession?.id === assignmentSessionId ? activeSession : null)
     : null;
@@ -191,7 +233,12 @@ export function PatientsHome({
             ))}
           </div>
           <div className="clinical-list">
-            {filteredPatients.length ? (
+            {patientRowsError ? (
+              <p className="clinical-offline-note"><InfoIcon /> Patient memory is showing saved items from this device.</p>
+            ) : null}
+            {patientRowsLoading && !filteredPatients.length ? (
+              <PatientListLoading />
+            ) : filteredPatients.length ? (
               filteredPatients.map((patient) => (
                 <PatientRow
                   actionLabel={patient.actionLabel}
@@ -201,11 +248,14 @@ export function PatientsHome({
                   summary={patient.summary}
                   tone={patient.needsInput ? "amber" : "green"}
                   onOpen={() => {
-                    if (patient.action === "continue") {
-                      onContinueSession(patient.primarySession.id);
+                    if (patient.action === "continue" && patient.activeSessionId) {
+                      onContinueSession(patient.activeSessionId);
                       return;
                     }
-                    onOpenSession(patient.primarySession.id);
+                    if (patient.latestSessionId) {
+                      onOpenSession(patient.latestSessionId);
+                      return;
+                    }
                   }}
                 />
               ))
@@ -292,7 +342,8 @@ type PatientRowModel = {
   actionLabel: "Continue" | "Open";
   isActive: boolean;
   needsInput: boolean;
-  primarySession: CaptureSession;
+  latestSessionId: string | null;
+  activeSessionId: string | null;
 };
 
 function buildTodayModel({
@@ -362,7 +413,8 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
       const sortedSessions = [...patientSessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
       const primarySession = sortedSessions[0];
       const name = primarySession.patientName || sortedSessions.find((session) => session.patientName)?.patientName || id;
-      const activeCount = sortedSessions.filter(isActiveVisit).length;
+      const activeSessions = sortedSessions.filter(isActiveVisit);
+      const activeCount = activeSessions.length;
       const needsInput = sortedSessions.some(needsHumanInput);
       const verified = sortedSessions.some((session) => session.status === "verified");
       const action: PatientRowModel["action"] = activeCount ? "continue" : "open";
@@ -380,10 +432,31 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
         actionLabel,
         isActive: Boolean(activeCount),
         needsInput,
-        primarySession,
+        latestSessionId: primarySession.id,
+        activeSessionId: activeSessions[0]?.id || null,
       };
     })
-    .sort((a, b) => latestSessionTime(b.primarySession) - latestSessionTime(a.primarySession));
+    .sort((a, b) => latestSessionTimeById(b.latestSessionId, sessions, activeSession) - latestSessionTimeById(a.latestSessionId, sessions, activeSession));
+}
+
+function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
+  const isActive = row.activeSessionCount > 0;
+  return {
+    id: row.patientId,
+    name: row.displayName,
+    summary: row.summary || "No memory summary yet.",
+    badges: [
+      isActive ? `${row.activeSessionCount} active session${row.activeSessionCount === 1 ? "" : "s"}` : visitCountLabel(row.sessionCount),
+      row.verified ? "Verified" : undefined,
+      row.needsInput ? "Needs input" : undefined,
+    ].filter((badge): badge is string => Boolean(badge)),
+    action: isActive ? "continue" : "open",
+    actionLabel: isActive ? "Continue" : "Open",
+    isActive,
+    needsInput: row.needsInput,
+    latestSessionId: row.latestSessionId || null,
+    activeSessionId: row.activeSessionId || null,
+  };
 }
 
 function uniqueSessions(sessions: CaptureSession[]) {
@@ -558,10 +631,37 @@ function PatientRow({
           ))}
         </div>
       </div>
-      <button aria-label={`More actions for ${patientName}`} className="clinical-overflow-button" type="button">
-        <MoreIcon />
-      </button>
     </ClinicalMemoryCard>
+  );
+}
+
+function PatientListLoading() {
+  return (
+    <>
+      <Card className="clinical-row clinical-patient-row clinical-row-loading">
+        <span className="clinical-avatar clinical-avatar-blue" />
+        <div className="clinical-row-copy">
+          <span />
+          <p />
+          <div className="patient-memory-badges">
+            <small />
+            <small />
+          </div>
+        </div>
+        <span />
+      </Card>
+      <Card className="clinical-row clinical-patient-row clinical-row-loading">
+        <span className="clinical-avatar clinical-avatar-green" />
+        <div className="clinical-row-copy">
+          <span />
+          <p />
+          <div className="patient-memory-badges">
+            <small />
+          </div>
+        </div>
+        <span />
+      </Card>
+    </>
   );
 }
 
@@ -662,14 +762,6 @@ function InfoIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M12 8h.1M11 11h1v5h1M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-    </svg>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M12 12h.1M18 12h.1M6 12h.1" />
     </svg>
   );
 }
@@ -791,6 +883,11 @@ function latestSessionTime(session: CaptureSession) {
     .filter((value) => !Number.isNaN(value))
     .sort((a, b) => b - a)[0];
   return timestamp || 0;
+}
+
+function latestSessionTimeById(sessionId: string | null, sessions: CaptureSession[], activeSession: CaptureSession | null) {
+  const session = [activeSession, ...sessions].find((candidate) => candidate?.id === sessionId);
+  return session ? latestSessionTime(session) : 0;
 }
 
 function naturalUpdatedDate(session: CaptureSession) {

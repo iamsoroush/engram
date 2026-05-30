@@ -1,4 +1,15 @@
-import type { ApiFetch, AuthSession, CaptureDraft, PatientAssignmentDraft, PatientSummary, PendingCapture, Persona } from "../../domain/appTypes";
+import type {
+  ApiFetch,
+  AuthSession,
+  CaptureDraft,
+  PatientAssignmentDraft,
+  PatientMemoryFilter,
+  PatientMemoryListResponse,
+  PatientMemoryRow,
+  PatientSummary,
+  PendingCapture,
+  Persona,
+} from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
@@ -117,6 +128,34 @@ export async function searchPatients(apiFetch: ApiFetch, query: string) {
   return patients.map(normalizePatientSummary);
 }
 
+export async function fetchPatientMemory(
+  apiFetch: ApiFetch,
+  {
+    query,
+    filter,
+    limit = 50,
+    offset = 0,
+  }: {
+    query?: string;
+    filter: PatientMemoryFilter;
+    limit?: number;
+    offset?: number;
+  },
+): Promise<PatientMemoryListResponse> {
+  const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) });
+  if (query?.trim()) params.set("query", query.trim());
+  const response = await apiFetch(`${API_BASE}/patient-memory?${params.toString()}`);
+  if (!response.ok) throw new Error("Could not load patient memory");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  return {
+    items: items.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object")).map(normalizePatientMemoryRow),
+    limit: numberValue(payload.limit, limit),
+    offset: numberValue(payload.offset, offset),
+    total: numberValue(payload.total, items.length),
+  };
+}
+
 export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignmentDraft, idempotencyKey?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
@@ -230,6 +269,30 @@ function normalizePatientSummary(raw: Record<string, unknown>): PatientSummary {
     phone: typeof raw.phone === "string" ? raw.phone : null,
     lastVisit: typeof raw.lastVisit === "string" ? raw.lastVisit : null,
   };
+}
+
+function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryRow {
+  return {
+    patientId: String(raw.patientId || raw.id || ""),
+    displayName: String(raw.displayName || "Unnamed patient"),
+    summary: String(raw.summary || "No memory summary yet."),
+    summarySource: String(raw.summarySource || "fallback"),
+    generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
+    ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,
+    metadataSentence: typeof raw.metadataSentence === "string" ? raw.metadataSentence : null,
+    latestSessionId: typeof raw.latestSessionId === "string" ? raw.latestSessionId : null,
+    activeSessionId: typeof raw.activeSessionId === "string" ? raw.activeSessionId : null,
+    activeSessionCount: numberValue(raw.activeSessionCount, 0),
+    sessionCount: numberValue(raw.sessionCount, 0),
+    verified: Boolean(raw.verified),
+    needsInput: Boolean(raw.needsInput),
+    latestVisitAt: typeof raw.latestVisitAt === "string" ? raw.latestVisitAt : null,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
+  };
+}
+
+function numberValue(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 export async function fetchSessionCaptures(apiFetch: ApiFetch, sessionId: string) {

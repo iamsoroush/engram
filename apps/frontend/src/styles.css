@@ -4659,7 +4659,7 @@ small {
 }
 
 .clinical-patient-row {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   padding: 14px;
 }
 
@@ -4732,34 +4732,6 @@ small {
   border-color: #f5c76d;
   background: #fff5da;
   color: #995c00;
-}
-
-.clinical-overflow-button {
-  display: grid;
-  width: 38px;
-  height: 38px;
-  place-items: center;
-  border: 1px solid #dce6f2;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #4e5d93;
-}
-
-.clinical-overflow-button:hover,
-.clinical-overflow-button:focus-visible {
-  border-color: #b9c8dc;
-  background: #f8fbff;
-  outline: 3px solid rgb(7 94 255 / 14%);
-}
-
-.clinical-overflow-button svg {
-  width: 19px;
-  height: 19px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3.2;
 }
 
 .capture-chips,
@@ -4837,6 +4809,44 @@ small {
 .patient-memory-badge.needs-input {
   background: #fff1c2;
   color: #8a4b00;
+}
+
+.clinical-row-loading {
+  pointer-events: none;
+}
+
+.clinical-row-loading .clinical-avatar,
+.clinical-row-loading .clinical-row-copy span,
+.clinical-row-loading .clinical-row-copy p,
+.clinical-row-loading .patient-memory-badges small,
+.clinical-row-loading > span:last-child {
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #eef3fb 25%, #f8fbff 40%, #eef3fb 63%);
+  background-size: 400% 100%;
+  color: transparent;
+  animation: shimmer 1.3s ease-in-out infinite;
+}
+
+.clinical-row-loading .clinical-row-copy span {
+  width: min(180px, 60%);
+  height: 20px;
+}
+
+.clinical-row-loading .clinical-row-copy p {
+  width: 100%;
+  height: 18px;
+}
+
+.clinical-row-loading .patient-memory-badges small {
+  width: 108px;
+  height: 26px;
+}
+
+.clinical-row-loading > span:last-child {
+  width: 116px;
+  height: 44px;
+  border-radius: 8px;
 }
 
 .clinical-helper {
@@ -4924,11 +4934,6 @@ small {
 
   .clinical-patient-row .btn {
     grid-column: 1 / -1;
-  }
-
-  .clinical-overflow-button {
-    grid-column: 3;
-    grid-row: 1;
   }
 
   .clinical-row-copy h3 {

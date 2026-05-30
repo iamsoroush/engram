@@ -93,6 +93,33 @@ export type PatientSummary = {
   lastVisit?: string | null;
 };
 
+export type PatientMemoryFilter = "recent" | "active" | "all";
+
+export type PatientMemoryRow = {
+  patientId: string;
+  displayName: string;
+  summary: string;
+  summarySource: string;
+  generatedSummary?: string | null;
+  ruleBasedSummary?: string | null;
+  metadataSentence?: string | null;
+  latestSessionId?: string | null;
+  activeSessionId?: string | null;
+  activeSessionCount: number;
+  sessionCount: number;
+  verified: boolean;
+  needsInput: boolean;
+  latestVisitAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type PatientMemoryListResponse = {
+  items: PatientMemoryRow[];
+  limit: number;
+  offset: number;
+  total: number;
+};
+
 export type PatientAssignmentDraft = {
   patientId?: string;
   displayName: string;
