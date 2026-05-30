@@ -93,6 +93,18 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
+  await page.route("**/api/v1/sessions/session-review-summary/verify", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        ...reviewSummaryVisit(),
+        status: "verified",
+        reviewReason: "",
+        updatedAt: now.toISOString(),
+      },
+    });
+  });
+
   await page.route("**/api/v1/patient-memory?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -113,11 +125,11 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Active session" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Follow-up visit" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
   await expect(page.getByText("Patient:").first()).toBeVisible();
   await expect(page.getByText("Soroush").first()).toBeVisible();
   await expect(page.getByText("Session:").first()).toBeVisible();
-  await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
+  await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`).first()).toBeVisible();
   await expect(page.getByText(/Updated:/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /Continue visit/ })).toBeVisible();
 
@@ -135,7 +147,7 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await page.screenshot({ path: "test-results/clinical-memory-today-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Follow-up visit" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: /Continue visit/ })).toBeVisible();
   await page.screenshot({ path: "test-results/clinical-memory-today-mobile.png", fullPage: true });
 });
@@ -156,7 +168,9 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
 
   await page.getByRole("button", { name: /Review summary/ }).click();
   await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark reviewed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirm summary" })).toBeVisible();
+  await expect(page.getByText("Patient:")).toBeVisible();
+  await expect(page.getByText("Captures:")).toBeVisible();
 
   await page.screenshot({ path: "test-results/clinical-memory-patients-desktop.png", fullPage: true });
 });
@@ -173,7 +187,7 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
   await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
   await expect(page.getByText("Needs input since:")).toBeVisible();
   await expect(page.getByText("2 photos")).toBeVisible();
-  await expect(page.getByText("1 audio")).toBeVisible();
+  await expect(page.getByText("1 audio").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Assign patient" })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
@@ -194,7 +208,24 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
   await page.screenshot({ path: "test-results/clinical-memory-needs-input-mobile.png", fullPage: true });
 
   await page.getByRole("button", { name: "Review summary" }).click();
-  await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
+  const reviewDialog = page.getByRole("dialog", { name: "Review summary" });
+  await expect(reviewDialog).toBeVisible();
+  await expect(reviewDialog.getByText("Patient:")).toBeVisible();
+  await expect(reviewDialog.getByText("Soroush")).toBeVisible();
+  await expect(reviewDialog.getByText("Session:")).toBeVisible();
+  await expect(reviewDialog.getByText(`${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
+  await expect(reviewDialog.locator(".capture-chip", { hasText: "3 photos" })).toBeVisible();
+  await expect(reviewDialog.locator(".capture-chip", { hasText: "1 audio" })).toBeVisible();
+  await expect(reviewDialog.locator(".capture-chip", { hasText: "1 note" })).toBeVisible();
+  await expect(reviewDialog.getByText("Follow-up visit focused on headache patterns")).toBeVisible();
+
+  await reviewDialog.getByRole("button", { name: "Edit summary" }).click();
+  await reviewDialog.getByLabel("Edit summary").fill("Edited visit summary ready for memory.");
+  await reviewDialog.getByRole("button", { name: "Save edit" }).click();
+  await reviewDialog.getByRole("button", { name: "Confirm summary" }).click();
+  await expect(page.getByRole("dialog", { name: "Review summary" })).toHaveCount(0);
+  await expect(page.getByText("Summary added to patient memory")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Summary ready for confirmation" })).toHaveCount(0);
 });
 
 test("Assign patient opens a focused resolver and updates memory state", async ({ page }) => {
@@ -308,24 +339,27 @@ function uncertainMatchVisit() {
 }
 
 function reviewSummaryVisit() {
-  const reviewDate = new Date(now);
-  reviewDate.setDate(now.getDate() - 7);
   return {
     id: "session-review-summary",
-    label: "Summary review",
-    time: "10:10 AM",
-    dateLabel: "May 23",
-    createdAt: reviewDate.toISOString(),
-    capturedAt: reviewDate.toISOString(),
-    updatedAt: reviewDate.toISOString(),
+    label: "Follow-up visit",
+    time: todaySessionTime,
+    dateLabel: todayDateLabel,
+    createdAt: withTodayTime(16, 23),
+    capturedAt: withTodayTime(16, 23),
+    updatedAt: withTodayTime(16, 32),
     duration: "9 min",
-    summary: "Generated summary is ready to confirm before memory updates.",
+    summary: "Follow-up visit focused on headache patterns, sleep quality, and next steps. Photos and an audio note were captured. Education and follow-up plan are being prepared.",
     status: "needs_review",
+    reviewReason: "Summary ready for confirmation",
     patientId: "patient-soroush",
     patientName: "Soroush",
     assignmentSource: "staff",
     items: [
-      capture("capture-review-note-1", "note", "Written note", 10, 10),
+      capture("capture-review-photo-1", "photo", "Photo 1", 16, 24),
+      capture("capture-review-photo-2", "photo", "Photo 2", 16, 25),
+      capture("capture-review-photo-3", "photo", "Photo 3", 16, 26),
+      capture("capture-review-audio-1", "audio", "Audio note", 16, 27),
+      capture("capture-review-note-1", "note", "Written note", 16, 28),
     ],
   };
 }

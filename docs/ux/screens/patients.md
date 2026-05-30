@@ -184,6 +184,15 @@ Choose-patient resolver:
 - Confirm with `Confirm patient`.
 - On success, close the resolver, remove the needs-input item from Clinical Memory, update related session/patient cards, and show `Patient confirmed`.
 
+Summary review resolver:
+
+- Title: `Review summary`.
+- Show compact context: patient, session time, and capture counts.
+- Show the drafted visit summary in readable form, with compact source chips such as `3 photos`, `1 audio`, and `1 note`.
+- Include primary `Confirm summary`, secondary `Edit summary`, and secondary `Open visit`.
+- Editing stays inside the focused resolver when supported.
+- On success, close the resolver, remove the needs-input item, update the patient memory sentence, and show `Summary added to patient memory`.
+
 ## Patient Detail / Timeline
 
 Opening a patient shows the long-term memory view for that patient.

@@ -4963,6 +4963,101 @@ small {
   gap: 10px;
 }
 
+.summary-review-sheet {
+  gap: 14px;
+}
+
+.summary-review-context {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.summary-review-context div,
+.summary-review-section {
+  border: 1px solid #e3ebf5;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.summary-review-context div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.summary-review-context span,
+.summary-review-section-heading span {
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.summary-review-context strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #080d2d;
+  font-size: 0.9rem;
+}
+
+.summary-review-section {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.summary-review-section.compact {
+  gap: 8px;
+}
+
+.summary-review-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.summary-review-section-heading h3 {
+  color: #080d2d;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.summary-review-section p {
+  color: #26334d;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.summary-review-editor {
+  width: 100%;
+  min-height: 150px;
+  resize: vertical;
+  border: 1px solid #cbd8ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 12px;
+}
+
+.summary-review-editor:focus {
+  border-color: #79a7e3;
+  box-shadow: 0 0 0 3px rgb(121 167 227 / 22%);
+  outline: none;
+}
+
+.summary-review-actions {
+  justify-content: stretch;
+}
+
+.summary-review-actions .btn:first-child {
+  margin-left: auto;
+}
+
 .assign-resolver-backdrop {
   position: fixed;
   inset: 0;
@@ -5532,6 +5627,32 @@ small {
 
   .needs-input-card-actions .btn {
     width: 100%;
+  }
+
+  .resolver-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .resolver-sheet {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 14px 12px max(14px, calc(14px + env(safe-area-inset-bottom)));
+  }
+
+  .summary-review-context {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-review-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .summary-review-actions .btn,
+  .summary-review-actions .btn:first-child {
+    width: 100%;
+    margin-left: 0;
   }
 
   .assign-resolver-sheet {

@@ -1141,6 +1141,55 @@ export function App() {
     [apiFetch, applySessionUpdate],
   );
 
+  const confirmSessionSummary = React.useCallback(
+    async (sessionId: string, summary: string) => {
+      const applyConfirmedSummary = (session: CaptureSession): CaptureSession => {
+        const now = new Date().toISOString();
+        return {
+          ...session,
+          summary,
+          status: "verified",
+          reviewReason: "",
+          updatedAt: now,
+          summaries: {
+            schemaVersion: session.summaries?.schemaVersion,
+            status: "verified",
+            short: summary,
+            clinical: session.summaries?.clinical || null,
+            patientHistory: session.summaries?.patientHistory || summary,
+            source: session.summaries?.source || "staff",
+            generatedAt: session.summaries?.generatedAt || now,
+            updatedAt: now,
+          },
+          report: session.report
+            ? {
+                ...session.report,
+                status: "verified",
+                updatedAt: now,
+              }
+            : session.report,
+        };
+      };
+      const applyLocalConfirmation = () => {
+        setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
+        setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
+      };
+
+      if (!isLocalSessionId(sessionId)) {
+        try {
+          const updated = await verifySession(apiFetch, sessionId);
+          applySessionUpdate(sessionId, applyConfirmedSummary(updated));
+        } catch {
+          applyLocalConfirmation();
+        }
+      } else {
+        applyLocalConfirmation();
+      }
+      setToast("Summary added to patient memory");
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const loadCapturesForSession = React.useCallback(
     async (sessionId: string) => {
       const captures = await fetchSessionCaptures(apiFetch, sessionId);
@@ -1315,6 +1364,7 @@ export function App() {
         activeSession={activeSession}
         onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
+        onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
         onSearchPatients={searchPatientsForAssignment}

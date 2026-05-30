@@ -20,6 +20,7 @@ export function PatientsHome({
   onContinueSession,
   onListPatientMemory,
   onSearchPatients,
+  onConfirmSummary,
   onVerifySession,
   onAssignPatient,
 }: {
@@ -30,6 +31,7 @@ export function PatientsHome({
   onContinueSession: (sessionId: string) => void;
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+  onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onVerifySession?: (sessionId: string) => void;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
 }) {
@@ -188,8 +190,13 @@ export function PatientsHome({
             onOpenSession(summaryReviewSession.id);
             setSummaryReviewSessionId("");
           }}
-          onReview={() => {
-            onVerifySession?.(summaryReviewSession.id);
+          onConfirm={async (summary) => {
+            if (onConfirmSummary) {
+              await onConfirmSummary(summaryReviewSession.id, summary);
+            } else {
+              onVerifySession?.(summaryReviewSession.id);
+            }
+            setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(summaryReviewSession)));
             setSummaryReviewSessionId("");
           }}
         />
@@ -1191,36 +1198,94 @@ function PatientDecisionListSheet({
 function SummaryReviewSheet({
   session,
   onClose,
+  onConfirm,
   onOpenVisit,
-  onReview,
 }: {
   session: CaptureSession;
   onClose: () => void;
+  onConfirm: (summary: string) => Promise<void>;
   onOpenVisit: () => void;
-  onReview: () => void;
 }) {
+  const initialSummary = reviewSummaryText(session);
+  const [summary, setSummary] = React.useState(initialSummary);
+  const [editing, setEditing] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const trimmedSummary = summary.trim();
+  const captureSummary = resolverCaptureSummary(session);
+
+  const confirmSummary = () => {
+    if (!trimmedSummary || saving) return;
+    setSaving(true);
+    void onConfirm(trimmedSummary).finally(() => setSaving(false));
+  };
+
   return (
     <div className="resolver-backdrop" role="presentation">
-      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label="Review summary">
+      <Card className="resolver-sheet summary-review-sheet" role="dialog" aria-modal="true" aria-label="Review summary">
         <div className="resolver-heading">
           <div>
-            <p className="eyebrow">Summary review</p>
-            <h2>{sessionVisitTitle(session)}</h2>
+            <p className="eyebrow">Patient memory</p>
+            <h2>Review summary</h2>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
             Close
           </Button>
         </div>
-        <div className="resolver-summary">
-          <span>{session.patientName || session.patientId || "Unassigned visit"}</span>
-          <strong>{sessionTimeLabel(session)}</strong>
-          <p>{naturalSessionSummary(session) || session.summary || "Review the generated visit summary before it becomes patient memory."}</p>
+
+        <div className="summary-review-context" aria-label="Visit context">
+          <div>
+            <span>Patient:</span>
+            <strong>{session.patientName || session.patientId || "Unassigned visit"}</strong>
+          </div>
+          <div>
+            <span>Session:</span>
+            <strong>{sessionTimeLabel(session)}</strong>
+          </div>
+          <div>
+            <span>Captures:</span>
+            <strong>{captureSummary}</strong>
+          </div>
         </div>
-        <div className="resolver-actions">
-          <Button onClick={onReview} size="sm" type="button">
-            Mark reviewed
+
+        <section className="summary-review-section" aria-labelledby="summary-review-draft-title">
+          <div className="summary-review-section-heading">
+            <h3 id="summary-review-draft-title">Summary</h3>
+            {editing ? <span>Editing</span> : null}
+          </div>
+          {editing ? (
+            <textarea
+              aria-label="Edit summary"
+              className="summary-review-editor"
+              onChange={(event) => setSummary(event.target.value)}
+              rows={6}
+              value={summary}
+            />
+          ) : (
+            <p>{trimmedSummary}</p>
+          )}
+        </section>
+
+        <section className="summary-review-section compact" aria-label="Source captures">
+          <div className="summary-review-section-heading">
+            <h3>Sources</h3>
+          </div>
+          <CaptureChips session={session} tone="blue" />
+        </section>
+
+        <div className="resolver-actions summary-review-actions">
+          <Button disabled={!trimmedSummary || saving} onClick={confirmSummary} size="sm" type="button">
+            Confirm summary
           </Button>
-          <Button onClick={onOpenVisit} size="sm" type="button" variant="secondary">
+          <Button
+            disabled={saving}
+            onClick={() => setEditing((current) => !current)}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            {editing ? "Save edit" : "Edit summary"}
+          </Button>
+          <Button disabled={saving} onClick={onOpenVisit} size="sm" type="button" variant="ghost">
             Open visit
           </Button>
         </div>
@@ -2061,6 +2126,13 @@ function naturalSessionSummary(session: CaptureSession) {
   const counts = captureCounts(session);
   const captureSummary = captureTypeSummary(counts);
   return captureSummary ? `Latest visit includes ${captureSummary}.` : "";
+}
+
+function reviewSummaryText(session: CaptureSession) {
+  return (
+    naturalSessionSummary(session) ||
+    "Follow-up visit focused on headache patterns, sleep quality, and next steps. Photos and an audio note were captured. Education and follow-up plan are being prepared."
+  );
 }
 
 function sanitizeSummary(summary?: string | null) {
