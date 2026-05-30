@@ -20,8 +20,8 @@
 
 ## Navigation Paths
 
-- Active Session to Clinical Memory or Search: left app-menu affordance in the mobile-first header.
-- Clinical Memory or Search to Active Session: left app-menu affordance in the mobile-first header; selected historical review closes when returning to Active Session.
+- Active Session to Clinical Memory or Search: compact top-left navigator in the mobile-first header.
+- Clinical Memory or Search to Active Session: compact top-left navigator in the mobile-first header; selected historical review closes when returning to Active Session.
 - Active Session to capture dialogs: sticky bottom actions `Audio`, `Take photo`, `Write note`; Audio shows `Tap to record`.
 - Clinical Memory/Search to capture destination choice: sticky bottom actions first show a compact destination chooser with current/recent sessions or a new session.
 - Active Session screen to a fresh draft context: `+ New session`, shown only when the active session has captures.

@@ -3804,34 +3804,48 @@ small {
   opacity: 1;
 }
 
-.app-menu {
-  position: relative;
+.app-navigator {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 34px);
+  align-items: center;
+  gap: 3px;
+  border: 1px solid #dce6f4;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 88%);
+  padding: 3px;
+  box-shadow: 0 8px 18px rgb(15 23 42 / 4%);
 }
 
-.app-menu summary {
+.app-navigator button {
   display: grid;
-  width: 44px;
-  height: 44px;
-  cursor: pointer;
-  list-style: none;
+  width: 34px;
+  height: 34px;
   place-items: center;
-  border: 1px solid #dbe5f3;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 8px 18px rgb(15 23 42 / 5%);
-}
-
-.app-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.app-menu summary svg {
-  width: 27px;
-  height: 27px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
   color: #25335d;
 }
 
-.app-menu summary path,
+.app-navigator button.active {
+  background: #eaf3ff;
+  color: #075eff;
+  box-shadow: inset 0 0 0 1px #87bfff;
+}
+
+.app-navigator button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #7fb4ff;
+  outline-offset: -2px;
+}
+
+.app-navigator svg {
+  width: 21px;
+  height: 21px;
+}
+
+.app-navigator path,
 .patient-context-avatar path,
 .report-title-icon path,
 .edit-patient-button path,
@@ -3842,36 +3856,8 @@ small {
   stroke-linejoin: round;
 }
 
-.app-menu-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 40;
-  display: grid;
-  width: min(230px, calc(100vw - 36px));
-  gap: 4px;
-  border: 1px solid #dbe5f3;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 8px;
-  box-shadow: 0 18px 42px rgb(15 23 42 / 14%);
-}
-
-.app-menu-panel button {
-  min-height: 44px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: #25335d;
-  padding: 0 12px;
-  text-align: left;
-  font-size: 0.9rem;
-  font-weight: 800;
-}
-
-.app-menu-panel button.active {
-  background: #edf4ff;
-  color: #075eff;
+.app-navigator path {
+  stroke-width: 2;
 }
 
 .top-nav {

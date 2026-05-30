@@ -44,7 +44,7 @@ The frontend is a single React app with hash-based screen selection:
 - `#patients`: Clinical Memory with Today, Patients, and Needs input tabs
 - `#search`: local memory search
 
-The shell keeps Active Session, Clinical Memory, and Search available from the left mobile app menu after staff login. Capture actions are always available as a sticky bottom row for staff users.
+The shell keeps Active Session, Clinical Memory, and Search available from a compact top-left navigator after staff login. Capture actions are always available as a sticky bottom row for staff users.
 
 See [navigation](navigation.md).
 

@@ -35,10 +35,10 @@ export function Shell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "A";
-  const navigationItems: Array<{ screen: Screen; label: string }> = [
-    { screen: "active-session", label: "Active Session" },
-    { screen: "patients", label: "Clinical Memory" },
-    { screen: "search", label: "Search" },
+  const navigationItems: Array<{ screen: Screen; label: string; icon: React.ReactNode }> = [
+    { screen: "active-session", label: "Active Session", icon: <ActiveSessionNavIcon /> },
+    { screen: "patients", label: "Clinical Memory", icon: <ClinicalMemoryNavIcon /> },
+    { screen: "search", label: "Search", icon: <SearchNavIcon /> },
   ];
 
   return (
@@ -46,29 +46,21 @@ export function Shell({
       <header className="topbar">
         <div className="topbar-inner">
           <div className="topbar-left">
-            <details className="app-menu">
-              <summary aria-label="Open navigation">
-                <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-                  <path d="M4 6.5h16M4 12h16M4 17.5h16" />
-                </svg>
-              </summary>
-              <nav className="app-menu-panel" aria-label="Primary">
-                {navigationItems.map((item) => (
-                  <button
-                    className={screen === item.screen ? "active" : ""}
-                    key={item.screen}
-                    onClick={(event) => {
-                      onNavigate(item.screen);
-                      const menu = event.currentTarget.closest("details");
-                      if (menu) menu.open = false;
-                    }}
-                    type="button"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </nav>
-            </details>
+            <nav className="app-navigator" aria-label="Primary">
+              {navigationItems.map((item) => (
+                <button
+                  aria-current={screen === item.screen ? "page" : undefined}
+                  aria-label={item.label}
+                  className={screen === item.screen ? "active" : ""}
+                  key={item.screen}
+                  onClick={() => onNavigate(item.screen)}
+                  title={item.label}
+                  type="button"
+                >
+                  {item.icon}
+                </button>
+              ))}
+            </nav>
           </div>
           <strong className="topbar-brand">AesMem</strong>
           <details className="user-menu">
@@ -105,5 +97,34 @@ export function Shell({
       <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} />
       <footer className="app-version">MVP v2</footer>
     </main>
+  );
+}
+
+function ActiveSessionNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M8 4.75h8a2.25 2.25 0 0 1 2.25 2.25v10A2.25 2.25 0 0 1 16 19.25H8A2.25 2.25 0 0 1 5.75 17V7A2.25 2.25 0 0 1 8 4.75Z" />
+      <path d="M9 9.25h6M9 12h4.4" />
+      <path d="m13.75 16.25 1.35-1.35 1.1 1.1 2.05-2.3" />
+    </svg>
+  );
+}
+
+function ClinicalMemoryNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M6.75 6.25h3.9l1.55 1.7h5.05A2.25 2.25 0 0 1 19.5 10.2v6.55A2.25 2.25 0 0 1 17.25 19H6.75a2.25 2.25 0 0 1-2.25-2.25V8.5a2.25 2.25 0 0 1 2.25-2.25Z" />
+      <path d="M9.25 14.25a2.75 2.75 0 0 1 5.5 0" />
+      <path d="M12 12.15a1.45 1.45 0 1 0 0-2.9 1.45 1.45 0 0 0 0 2.9Z" />
+    </svg>
+  );
+}
+
+function SearchNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M16.8 16.8 20 20" />
+      <path d="M18 11.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+    </svg>
   );
 }
