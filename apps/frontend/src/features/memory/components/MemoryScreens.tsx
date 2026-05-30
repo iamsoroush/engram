@@ -43,8 +43,14 @@ export function PatientsHome({
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
+  const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
+  const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
   const today = React.useMemo(() => buildTodayModel({ activeSession, sessions, syncHealth }), [activeSession, sessions, syncHealth]);
   const localPatientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
+  const needsInputItems = React.useMemo(
+    () => buildNeedsInputItems({ activeSession, sessions, storageWarning }),
+    [activeSession, sessions, storageWarning],
+  );
   React.useEffect(() => {
     if (activeTab !== "patients" || !onListPatientMemory) return;
     let cancelled = false;
@@ -66,6 +72,21 @@ export function PatientsHome({
       cancelled = true;
     };
   }, [activeTab, onListPatientMemory, patientFilter, query]);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!navigator.storage?.estimate) return;
+    void navigator.storage.estimate().then((estimate) => {
+      if (cancelled) return;
+      const quota = estimate.quota || 0;
+      const usage = estimate.usage || 0;
+      const remaining = quota > usage ? quota - usage : 0;
+      const usageRatio = quota ? usage / quota : 0;
+      setStorageWarning(usageRatio >= 0.85 || (quota > 0 && remaining < 100 * 1024 * 1024) ? { remainingBytes: remaining, usageRatio } : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const patientRows = React.useMemo(
     () =>
       backendPatientRows.length && !patientRowsError
@@ -77,6 +98,7 @@ export function PatientsHome({
     [backendPatientRows, localPatientRows, patientFilter, patientRowsError],
   );
   const needsInputSessions = today.needsInputSessions;
+  const needsInputCount = needsInputItems.length;
   const normalizedQuery = query.trim().toLowerCase();
   const backendRowsActive = backendPatientRows.length > 0 && !patientRowsError;
   const filteredPatients = backendRowsActive
@@ -127,6 +149,19 @@ export function PatientsHome({
     }
   };
 
+  const handleNeedsInputAction = (item: NeedsInputCardItem) => {
+    if (item.action === "review-storage") {
+      setStorageReviewOpen(true);
+      return;
+    }
+    if (!item.session) return;
+    if (item.action === "assign-patient" || item.action === "choose-patient") {
+      setAssignmentSessionId(item.session.id);
+      return;
+    }
+    setSummaryReviewSessionId(item.session.id);
+  };
+
   return (
     <section className="clinical-memory" aria-label="Clinical Memory">
       {decisionListPatient ? (
@@ -153,6 +188,7 @@ export function PatientsHome({
           }}
         />
       ) : null}
+      {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} storageWarning={storageWarning} /> : null}
       {assignmentSession && onAssignPatient ? (
         <PatientAssignmentSheet
           session={assignmentSession}
@@ -171,7 +207,7 @@ export function PatientsHome({
         </div>
         <button className="needs-input-pill" onClick={() => setActiveTab("needs-input")} type="button">
           <SparkleIcon />
-          {needsInputSessions.length ? `${needsInputSessions.length} needs your input` : "All caught up"}
+          {needsInputCount ? `${needsInputCount} need your input` : "All caught up"}
           <ChevronIcon />
         </button>
       </div>
@@ -337,31 +373,19 @@ export function PatientsHome({
 
       {activeTab === "needs-input" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          <p className="clinical-helper">Only human decisions appear here, so the list stays focused on judgment instead of system work.</p>
-          <div className="clinical-list">
-            {needsInputSessions.length ? (
-              needsInputSessions.map((session) => (
-                <VisitCard
-                  primaryActionLabel={session.patientName ? "Review summary" : "Assign patient"}
-                  secondaryActionLabel="Open visit"
-                  key={session.id}
-                  session={session}
-                  statusLabel="Needs your input"
-                  summary={needsInputSummary(session)}
-                  tone="amber"
-                  title={needsInputTitle(session)}
-                  onPrimaryAction={() => {
-                    if (session.patientName || session.patientId) {
-                      onOpenSession(session.id);
-                      return;
-                    }
-                    setAssignmentSessionId(session.id);
-                  }}
-                  onSecondaryAction={() => onOpenSession(session.id)}
+          <p className="clinical-helper">A few things need your judgment to keep memory accurate and useful.</p>
+          <div className="needs-input-list">
+            {needsInputItems.length ? (
+              needsInputItems.map((item) => (
+                <NeedsInputDecisionCard
+                  item={item}
+                  key={item.id}
+                  onOpenVisit={item.session ? () => onOpenSession(item.session!.id) : undefined}
+                  onPrimaryAction={() => handleNeedsInputAction(item)}
                 />
               ))
             ) : (
-              <EmptyClinicalState title="All caught up." copy="Nothing needs your input right now." />
+              <EmptyClinicalState title="All caught up." copy="Nothing needs your input." />
             )}
           </div>
         </div>
@@ -429,6 +453,136 @@ type PatientNeedsInputItem = {
   detail: string;
   sortTime: number;
 };
+
+type NeedsInputAction = PatientNeedsInputItem["action"] | "review-storage";
+type NeedsInputKind = "assign-patient" | "choose-patient" | "review-summary" | "review-storage" | "resolve-conflict" | "missing-field";
+
+type NeedsInputCardItem = {
+  id: string;
+  kind: NeedsInputKind;
+  title: string;
+  contextLabel?: string;
+  session?: CaptureSession;
+  sessionLabel?: string;
+  needsInputSinceLabel?: string;
+  explanation: string;
+  action: NeedsInputAction;
+  actionLabel: string;
+  secondaryActionLabel?: string;
+  possiblePatients?: string[];
+  tone: "amber" | "blue" | "purple";
+  icon: "assign" | "match" | "summary" | "storage" | "conflict";
+  sortTime: number;
+};
+
+type StorageWarningDecision = {
+  remainingBytes: number;
+  usageRatio: number;
+};
+
+function buildNeedsInputItems({
+  activeSession,
+  sessions,
+  storageWarning,
+}: {
+  activeSession: CaptureSession | null;
+  sessions: CaptureSession[];
+  storageWarning: StorageWarningDecision | null;
+}): NeedsInputCardItem[] {
+  const sessionItems = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
+    .map(needsInputCardFromSession)
+    .filter((item): item is NeedsInputCardItem => Boolean(item));
+  const storageItem = storageWarning
+    ? [
+        {
+          id: "storage-warning",
+          kind: "review-storage" as const,
+          title: "Storage getting full",
+          contextLabel: "Offline safety warning",
+          explanation: "Storage is getting full. New offline captures may not be safely saved soon.",
+          action: "review-storage" as const,
+          actionLabel: "Review storage",
+          tone: "amber" as const,
+          icon: "storage" as const,
+          sortTime: Date.now(),
+        },
+      ]
+    : [];
+  return [...storageItem, ...sessionItems].sort((a, b) => b.sortTime - a.sortTime);
+}
+
+function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem | null {
+  const action = decisionActionForSession(session);
+  if (!action) return null;
+  const sortTime = latestSessionTime(session);
+  const patientLabel = session.patientName || session.patientId;
+  const base = {
+    id: `${session.id}-${action}`,
+    session,
+    sessionLabel: `Session: ${sessionTimeLabel(session)}`,
+    needsInputSinceLabel: `Needs input since: ${formatSessionTime(sortTime)}`,
+    sortTime,
+  };
+  if (action === "assign-patient") {
+    return {
+      ...base,
+      kind: "assign-patient",
+      title: "Unassigned visit",
+      explanation: needsInputSummary(session),
+      action,
+      actionLabel: "Assign patient",
+      secondaryActionLabel: "Open visit",
+      tone: "amber",
+      icon: "assign",
+    };
+  }
+  if (action === "choose-patient") {
+    const possiblePatients = possiblePatientNames(session);
+    return {
+      ...base,
+      kind: "choose-patient",
+      title: "Patient match uncertain",
+      explanation: possiblePatients.length >= 2
+        ? `This visit may belong to ${formatNameList(possiblePatients)}. Please choose the correct patient.`
+        : "I found a possible patient match before updating memory. Please choose the correct patient.",
+      action,
+      actionLabel: "Choose patient",
+      secondaryActionLabel: "Open visit",
+      possiblePatients,
+      tone: "purple",
+      icon: "match",
+    };
+  }
+  if (action === "resolve-conflict") {
+    return {
+      ...base,
+      kind: "resolve-conflict",
+      title: "Conflicting patient information",
+      contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
+      explanation: "I found patient details that conflict with existing memory. Please review before I update it.",
+      action,
+      actionLabel: "Resolve conflict",
+      secondaryActionLabel: "Open visit",
+      tone: "amber",
+      icon: "conflict",
+    };
+  }
+  const missingField = hasMissingClinicalField(session);
+  return {
+    ...base,
+    kind: missingField ? "missing-field" : "review-summary",
+    title: missingField ? "Clinically important field missing" : "Summary ready for confirmation",
+    contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
+    explanation: missingField
+      ? "This visit is missing a clinically important detail before it becomes patient memory."
+      : "I drafted a summary of this visit before adding it to long-term memory.",
+    action,
+    actionLabel: "Review summary",
+    secondaryActionLabel: "Open visit",
+    tone: "blue",
+    icon: "summary",
+  };
+}
 
 function buildTodayModel({
   activeSession,
@@ -582,6 +736,7 @@ function needsInputBadgeLabel(items: PatientNeedsInputItem[]) {
 function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsInputItem[] {
   const explicitItems = (row.needsInputItems || []).map((item, index) => {
     const action = decisionActionFromKind(item.kind || item.label || "");
+    if (!action) return null;
     const label = needsInputLabelForAction(action);
     return {
       id: item.id || `${row.patientId}-needs-input-${index}`,
@@ -592,7 +747,7 @@ function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsIn
       detail: "This patient memory has a decision waiting.",
       sortTime: item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0,
     };
-  });
+  }).filter((item): item is PatientNeedsInputItem => Boolean(item));
   if (explicitItems.length) return explicitItems.sort((a, b) => b.sortTime - a.sortTime);
   if (!row.needsInput) return [];
   return [
@@ -609,8 +764,8 @@ function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsIn
 }
 
 function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem | null {
-  if (!needsHumanInput(session)) return null;
   const action = decisionActionForSession(session);
+  if (!action) return null;
   const label = needsInputLabelForAction(action);
   return {
     id: `${session.id}-${action}`,
@@ -623,25 +778,30 @@ function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem |
   };
 }
 
-function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] {
+function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] | null {
   const reason = `${session.reviewReason || ""} ${JSON.stringify(session.extractedMetadata || {})}`.toLowerCase();
   const patientMatch = session.extractedMetadata?.patient_match;
   const matchStatus =
     patientMatch && typeof patientMatch === "object" && "status" in patientMatch ? String((patientMatch as Record<string, unknown>).status) : "";
+  if (isTechnicalNeedsInputText(reason)) return null;
   if (reason.includes("conflict")) return "resolve-conflict";
   if (matchStatus === "possible_match" || reason.includes("possible_match") || reason.includes("choose patient") || reason.includes("match")) {
     return "choose-patient";
   }
-  if (!session.patientName && !session.patientId) return "assign-patient";
-  return "review-summary";
+  if (session.status === "unassigned") return "assign-patient";
+  if (reason.includes("missing") && (reason.includes("clinical") || reason.includes("field") || reason.includes("required"))) return "review-summary";
+  if ((session.status === "needs_review" || session.status === "reviewing") && (session.patientName || session.patientId)) return "review-summary";
+  return null;
 }
 
-function decisionActionFromKind(value: string): PatientNeedsInputItem["action"] {
+function decisionActionFromKind(value: string): PatientNeedsInputItem["action"] | null {
   const normalized = value.toLowerCase();
-  if (normalized.includes("assign")) return "assign-patient";
-  if (normalized.includes("choose") || normalized.includes("match")) return "choose-patient";
+  if (isTechnicalNeedsInputText(normalized)) return null;
+  if (normalized.includes("assign") || normalized.includes("unassigned")) return "assign-patient";
+  if (normalized.includes("choose") || normalized.includes("uncertain") || normalized.includes("match")) return "choose-patient";
   if (normalized.includes("conflict")) return "resolve-conflict";
-  return "review-summary";
+  if (normalized.includes("summary") || normalized.includes("confirm") || normalized.includes("review") || normalized.includes("missing")) return "review-summary";
+  return null;
 }
 
 function needsInputLabelForAction(action: PatientNeedsInputItem["action"]): PatientNeedsInputItem["label"] {
@@ -784,6 +944,81 @@ function VisitCard({
         ) : null}
       </div>
     </Card>
+  );
+}
+
+function NeedsInputDecisionCard({
+  item,
+  onOpenVisit,
+  onPrimaryAction,
+}: {
+  item: NeedsInputCardItem;
+  onOpenVisit?: () => void;
+  onPrimaryAction: () => void;
+}) {
+  return (
+    <Card className={["needs-input-card", `needs-input-card-${item.tone}`].join(" ")}>
+      <Avatar label={item.title} tone={item.tone === "purple" ? "blue" : item.tone} />
+      <div className="needs-input-card-icon" aria-hidden="true">
+        <NeedsInputDecisionIcon icon={item.icon} />
+      </div>
+      <div className="needs-input-card-copy">
+        <div className="needs-input-title-row">
+          <h3>{item.title}</h3>
+          {onOpenVisit ? (
+            <button aria-label={`Open visit for ${item.title}`} className="needs-input-open-icon" onClick={onOpenVisit} type="button">
+              <ChevronIcon />
+            </button>
+          ) : null}
+        </div>
+        <div className="visit-metadata" aria-label="Decision context">
+          {item.contextLabel ? (
+            <div>
+              <span>{item.contextLabel.split(":")[0]}:</span>
+              <strong>{item.contextLabel.split(":").slice(1).join(":").trim() || item.contextLabel}</strong>
+            </div>
+          ) : null}
+          {item.sessionLabel ? (
+            <div>
+              <span>Session:</span>
+              <strong>{item.sessionLabel.replace(/^Session:\s*/, "")}</strong>
+            </div>
+          ) : null}
+          {item.kind === "assign-patient" && item.needsInputSinceLabel ? (
+            <div className="visit-metadata-attention">
+              <span>Needs input since:</span>
+              <strong>{item.needsInputSinceLabel.replace(/^Needs input since:\s*/, "")}</strong>
+            </div>
+          ) : null}
+        </div>
+        <p>{item.explanation}</p>
+        {item.session && item.kind !== "choose-patient" ? <CaptureChips session={item.session} tone={item.tone === "purple" ? "blue" : item.tone} /> : null}
+      </div>
+      {item.possiblePatients?.length ? <PossiblePatientOptions patients={item.possiblePatients} /> : null}
+      <div className="needs-input-card-actions">
+        <Button onClick={onPrimaryAction} size="sm" type="button">
+          {item.actionLabel}
+        </Button>
+        {item.secondaryActionLabel && onOpenVisit ? (
+          <Button onClick={onOpenVisit} size="sm" type="button" variant="ghost">
+            {item.secondaryActionLabel}
+          </Button>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+function PossiblePatientOptions({ patients }: { patients: string[] }) {
+  return (
+    <div className="possible-patients" aria-label="Possible patients">
+      {patients.slice(0, 3).map((patient) => (
+        <div className="possible-patient" key={patient}>
+          <span>{avatarInitials(patient).slice(0, 1)}</span>
+          <strong>{patient}</strong>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -940,6 +1175,42 @@ function SummaryReviewSheet({
   );
 }
 
+function StorageReviewSheet({
+  onClose,
+  storageWarning,
+}: {
+  onClose: () => void;
+  storageWarning: StorageWarningDecision | null;
+}) {
+  const percentUsed = storageWarning ? Math.round(storageWarning.usageRatio * 100) : null;
+  const remaining = storageWarning ? formatBytes(storageWarning.remainingBytes) : null;
+  return (
+    <div className="resolver-backdrop" role="presentation">
+      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label="Review storage">
+        <div className="resolver-heading">
+          <div>
+            <p className="eyebrow">Offline safety warning</p>
+            <h2>Storage getting full</h2>
+          </div>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+        <div className="resolver-summary">
+          <span>Device storage</span>
+          <strong>{percentUsed ? `${percentUsed}% used${remaining ? ` · ${remaining} free` : ""}` : "Space is limited"}</strong>
+          <p>Free device storage before capturing offline. Captures already saved remain available, but new offline captures may soon need more room.</p>
+        </div>
+        <div className="resolver-actions">
+          <Button onClick={onClose} size="sm" type="button">
+            Done
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function PatientListLoading() {
   return (
     <>
@@ -1039,6 +1310,35 @@ function NeedsInputIcon() {
   );
 }
 
+function NeedsInputDecisionIcon({ icon }: { icon: NeedsInputCardItem["icon"] }) {
+  if (icon === "match") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.5 19a5 5 0 0 1 10 0M16.5 11a3 3 0 1 0 0-6M15.5 14.2a5 5 0 0 1 5 4.8" />
+      </svg>
+    );
+  }
+  if (icon === "summary") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M8 4.5h8l3 3V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h1ZM15.5 4.8V8h3.2M8.5 12h7M8.5 15.5h5" />
+      </svg>
+    );
+  }
+  if (icon === "storage" || icon === "conflict") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+        <path d="M12 4 21 20H3L12 4ZM12 9.5V14M12 17.2v.1" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M12 17h.1M9.2 9a3 3 0 1 1 5.1 2.1c-.9.8-1.8 1.3-2.1 2.8M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+    </svg>
+  );
+}
+
 function SparkleIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -1093,10 +1393,73 @@ function captureTypeIcon(type: CaptureItemType) {
   );
 }
 
+function possiblePatientNames(session: CaptureSession) {
+  const metadata = session.extractedMetadata || {};
+  const patientMatch = metadata.patient_match;
+  const candidates = [
+    ...namesFromUnknown((patientMatch && typeof patientMatch === "object" ? (patientMatch as Record<string, unknown>).candidates : null) || metadata.possible_patients),
+    ...namesFromUnknown(metadata.patient_options),
+  ];
+  const matchedName =
+    patientMatch && typeof patientMatch === "object" && typeof (patientMatch as Record<string, unknown>).display_name === "string"
+      ? String((patientMatch as Record<string, unknown>).display_name)
+      : "";
+  return uniqueNames([matchedName, ...candidates]);
+}
+
+function namesFromUnknown(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return typeof record.display_name === "string" ? record.display_name : typeof record.name === "string" ? record.name : "";
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
+
+function uniqueNames(names: string[]) {
+  const seen = new Set<string>();
+  return names.filter((name) => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function formatNameList(names: string[]) {
+  if (names.length <= 1) return names[0] || "a possible patient";
+  if (names.length === 2) return `${names[0]} or ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+}
+
+function hasMissingClinicalField(session: CaptureSession) {
+  const text = `${session.reviewReason || ""} ${JSON.stringify(session.extractedMetadata || {})}`.toLowerCase();
+  return text.includes("missing") && (text.includes("clinical") || text.includes("field") || text.includes("required"));
+}
+
+function isTechnicalNeedsInputText(value: string) {
+  return [
+    "ai failed",
+    "ai unavailable",
+    "backend unavailable",
+    "backend",
+    "job pending",
+    "object storage",
+    "retry sync",
+    "retry transcription",
+    "sync",
+    "transcription failed",
+    "upload queue",
+  ].some((token) => value.includes(token));
+}
+
 function needsHumanInput(session: CaptureSession) {
-  if (session.status === "unassigned") return true;
-  if (session.status === "needs_review" || session.status === "reviewing") return true;
-  return false;
+  return Boolean(decisionActionForSession(session));
 }
 
 function needsInputTitle(session: CaptureSession) {
@@ -1286,6 +1649,14 @@ function sessionTimeLabel(session: CaptureSession) {
 function formatSessionTime(timestamp: number) {
   if (!timestamp) return "recently";
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
+}
+
+function formatBytes(bytes: number) {
+  if (!bytes) return "0 MB";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** index;
+  return `${value >= 10 || index === 0 ? Math.round(value) : value.toFixed(1)} ${units[index]}`;
 }
 
 function avatarInitials(label: string) {

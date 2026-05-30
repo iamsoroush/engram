@@ -4452,7 +4452,7 @@ small {
   align-content: start;
   gap: 16px;
   margin: 0 auto;
-  padding-bottom: 18px;
+  padding-bottom: 132px;
 }
 
 .clinical-memory-hero {
@@ -5006,6 +5006,166 @@ small {
   font-size: 0.84rem;
 }
 
+.needs-input-list {
+  display: grid;
+  gap: 12px;
+}
+
+.needs-input-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  overflow: hidden;
+  border-color: #dce6f2;
+  padding: 22px 18px 16px;
+  box-shadow: 0 8px 18px rgb(8 13 45 / 5%);
+}
+
+.needs-input-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  background: #f58a00;
+  content: "";
+}
+
+.needs-input-card-blue::before {
+  background: #075eff;
+}
+
+.needs-input-card-purple::before {
+  background: #7c3aed;
+}
+
+.needs-input-card > .clinical-avatar {
+  grid-row: 1 / span 2;
+  align-self: start;
+  margin-left: 8px;
+  color: transparent;
+}
+
+.needs-input-card-purple > .clinical-avatar {
+  background: #efe7ff;
+}
+
+.needs-input-card-icon {
+  position: absolute;
+  top: 47px;
+  left: 48px;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  color: #f58a00;
+}
+
+.needs-input-card-blue .needs-input-card-icon {
+  color: #075eff;
+}
+
+.needs-input-card-purple .needs-input-card-icon {
+  color: #6d28d9;
+}
+
+.needs-input-card-icon svg,
+.needs-input-open-icon svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.needs-input-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.needs-input-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.needs-input-title-row h3 {
+  color: #080d2d;
+  font-size: 1.07rem;
+  line-height: 1.2;
+}
+
+.needs-input-open-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #53617f;
+}
+
+.needs-input-card-copy p {
+  max-width: 470px;
+  color: #263451;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.possible-patients {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  justify-content: end;
+}
+
+.possible-patient {
+  display: grid;
+  min-width: 58px;
+  justify-items: center;
+  gap: 6px;
+  color: #4e5d93;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.possible-patient span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 999px;
+  background: #efe7ff;
+  color: #6d28d9;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.needs-input-card-actions {
+  grid-column: 2 / span 2;
+  display: grid;
+  grid-template-columns: minmax(180px, 390px) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.needs-input-card-actions .btn {
+  min-height: 44px;
+  font-size: 0.82rem;
+}
+
+.needs-input-card-actions .btn:first-child {
+  justify-content: center;
+}
+
+.needs-input-card-actions .btn-ghost {
+  color: #075eff;
+}
+
 .clinical-offline-note {
   display: flex;
   align-items: center;
@@ -5107,6 +5267,51 @@ small {
 
   .clinical-row-copy h3 {
     white-space: normal;
+  }
+
+  .needs-input-card {
+    grid-template-columns: 86px minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 18px 12px 14px;
+  }
+
+  .needs-input-card > .clinical-avatar {
+    width: 68px;
+    height: 68px;
+    margin-left: 6px;
+  }
+
+  .needs-input-card-icon {
+    top: 38px;
+    left: 34px;
+    width: 38px;
+    height: 38px;
+  }
+
+  .needs-input-card-icon svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .needs-input-title-row h3 {
+    font-size: 1rem;
+  }
+
+  .possible-patients {
+    grid-column: 2;
+    justify-content: start;
+    margin-top: 2px;
+  }
+
+  .needs-input-card-actions {
+    grid-column: 2;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .needs-input-card-actions .btn {
+    width: 100%;
   }
 
 }

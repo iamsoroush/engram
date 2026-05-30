@@ -45,7 +45,9 @@ test.beforeEach(async ({ page }) => {
       json: [
         followUpVisit(),
         unassignedVisit(),
+        uncertainMatchVisit(),
         reviewSummaryVisit(),
+        technicalFailureVisit(),
         updatedInitialConsultation(),
       ],
     });
@@ -129,6 +131,42 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
   await page.screenshot({ path: "test-results/clinical-memory-patients-desktop.png", fullPage: true });
 });
 
+test("Clinical Memory Needs input renders a decision-first inbox", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Doctor" }).click();
+  await page.goto("/#patients");
+  await page.getByRole("tab", { name: "Needs input" }).click();
+
+  await expect(page.getByText("A few things need your judgment to keep memory accurate and useful.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
+  await expect(page.getByText("Session:").first()).toBeVisible();
+  await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
+  await expect(page.getByText("Needs input since:")).toBeVisible();
+  await expect(page.getByText("2 photos")).toBeVisible();
+  await expect(page.getByText("1 audio")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign patient" })).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
+  await expect(page.getByText("This visit may belong to Soroush or Sara. Please choose the correct patient.")).toBeVisible();
+  await expect(page.getByText("Soroush").first()).toBeVisible();
+  await expect(page.getByText("Sara").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose patient" })).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Summary ready for confirmation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review summary" })).toBeVisible();
+  await expect(page.getByText("AI failed")).toHaveCount(0);
+  await expect(page.getByText(/retry transcription/i)).toHaveCount(0);
+
+  await page.screenshot({ path: "test-results/clinical-memory-needs-input-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose patient" })).toBeVisible();
+  await page.screenshot({ path: "test-results/clinical-memory-needs-input-mobile.png", fullPage: true });
+
+  await page.getByRole("button", { name: "Review summary" }).click();
+  await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
+});
+
 function followUpVisit() {
   return {
     id: "session-follow-up",
@@ -154,6 +192,31 @@ function followUpVisit() {
   };
 }
 
+function uncertainMatchVisit() {
+  return {
+    id: "session-uncertain-match",
+    label: "Possible patient match",
+    time: todaySessionTime,
+    dateLabel: todayDateLabel,
+    createdAt: withTodayTime(16, 23),
+    capturedAt: withTodayTime(16, 23),
+    updatedAt: withTodayTime(16, 29),
+    duration: "6 min",
+    summary: "Possible patient match needs confirmation.",
+    status: "needs_review",
+    reviewReason: "Patient match uncertain",
+    extractedMetadata: {
+      patient_match: {
+        status: "possible_match",
+        candidates: [{ display_name: "Soroush" }, { display_name: "Sara" }],
+      },
+    },
+    items: [
+      capture("capture-match-note-1", "note", "Written note", 16, 24),
+    ],
+  };
+}
+
 function reviewSummaryVisit() {
   const reviewDate = new Date(now);
   reviewDate.setDate(now.getDate() - 7);
@@ -173,6 +236,25 @@ function reviewSummaryVisit() {
     assignmentSource: "staff",
     items: [
       capture("capture-review-note-1", "note", "Written note", 10, 10),
+    ],
+  };
+}
+
+function technicalFailureVisit() {
+  return {
+    id: "session-technical-failure",
+    label: "AI failed",
+    time: "12:45 PM",
+    dateLabel: todayDateLabel,
+    createdAt: withTodayTime(12, 45),
+    capturedAt: withTodayTime(12, 45),
+    updatedAt: withTodayTime(12, 51),
+    duration: "4 min",
+    summary: "AI failed and should not appear in Needs input.",
+    status: "needs_review",
+    reviewReason: "AI failed retry transcription",
+    items: [
+      capture("capture-failed-audio-1", "audio", "Audio note", 12, 46),
     ],
   };
 }
