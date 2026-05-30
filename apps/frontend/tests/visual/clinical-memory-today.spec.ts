@@ -78,6 +78,21 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
+  await page.route("**/api/v1/sessions/session-uncertain-match/assign-patient", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        ...uncertainMatchVisit(),
+        patientId: "patient-soroush",
+        patientName: "Soroush",
+        assignmentSource: "staff",
+        status: "organized",
+        reviewReason: "",
+        updatedAt: now.toISOString(),
+      },
+    });
+  });
+
   await page.route("**/api/v1/patient-memory?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -198,7 +213,7 @@ test("Assign patient opens a focused resolver and updates memory state", async (
   await expect(resolver.getByText("Sara")).toBeVisible();
   await expect(resolver.getByText("Patient 0")).toBeVisible();
 
-  await resolver.getByRole("button", { name: /Soroush/ }).click();
+  await resolver.getByRole("button", { name: /Soroush/ }).first().click();
   await expect(resolver.getByRole("button", { name: "Assign to Soroush" })).toBeEnabled();
   await resolver.getByRole("button", { name: "Assign to Soroush" }).click();
 
@@ -206,6 +221,40 @@ test("Assign patient opens a focused resolver and updates memory state", async (
   await expect(page.getByText("Visit assigned to Soroush.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Initial consultation" })).toBeVisible();
+});
+
+test("Choose patient resolves an uncertain patient match without opening the visit", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Doctor" }).click();
+  await page.goto("/#patients");
+  await page.getByRole("tab", { name: "Needs input" }).click();
+
+  await page.getByRole("button", { name: "Choose patient" }).click();
+  const resolver = page.getByRole("dialog", { name: "Choose patient" });
+  await expect(resolver).toBeVisible();
+  await expect(resolver.getByText("This visit may belong to more than one patient. Choose the correct patient.")).toBeVisible();
+  await expect(resolver.getByText(`Session: ${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
+  await expect(resolver.getByText("Captures: 1 note")).toBeVisible();
+  await expect(resolver.getByRole("button", { name: /Soroush/ })).toBeVisible();
+  await expect(resolver.getByRole("button", { name: /Sara/ })).toBeVisible();
+  await expect(resolver.getByPlaceholder("Search another patient")).toBeVisible();
+  await expect(resolver.getByRole("button", { name: "Create new patient" })).toBeDisabled();
+  await expect(resolver.getByRole("button", { name: "Keep unassigned" })).toBeVisible();
+
+  await resolver.getByRole("button", { name: /Sara/ }).click();
+  await expect(resolver.getByRole("button", { name: "Confirm patient" })).toBeEnabled();
+  await resolver.getByPlaceholder("Search another patient").fill("Patient 0");
+  await expect(resolver.getByRole("button", { name: /Patient 0/ })).toBeVisible();
+  await resolver.getByPlaceholder("Search another patient").fill("New Patient");
+  await expect(resolver.getByRole("button", { name: "Create new patient" })).toBeEnabled();
+
+  await resolver.getByRole("button", { name: /Soroush/ }).first().click();
+  await resolver.getByRole("button", { name: "Confirm patient" }).click();
+
+  await expect(resolver).toHaveCount(0);
+  await expect(page.getByText("Patient confirmed")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toHaveCount(0);
+  await expect(page).toHaveURL(/#patients$/);
 });
 
 function followUpVisit() {

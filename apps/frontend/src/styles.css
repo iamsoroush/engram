@@ -5011,6 +5011,16 @@ small {
   line-height: 1.15;
 }
 
+.choose-patient-sheet {
+  gap: 12px;
+}
+
+.choose-patient-explanation {
+  color: #263451;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .assign-context {
   display: grid;
   gap: 8px;
@@ -5105,6 +5115,10 @@ small {
   background: #f4f8ff;
 }
 
+.choose-patient-option {
+  min-height: 72px;
+}
+
 .assign-patient-initials {
   display: grid;
   width: 44px;
@@ -5150,6 +5164,10 @@ small {
 
 .assign-manual-options .btn {
   min-height: 40px;
+}
+
+.choose-patient-options {
+  padding-top: 2px;
 }
 
 .assign-confirm-bar {
@@ -5530,6 +5548,10 @@ small {
     grid-template-columns: 1fr;
   }
 
+  .choose-patient-option {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
   .assign-patient-option {
     justify-items: start;
   }
@@ -5538,6 +5560,10 @@ small {
     width: 100%;
     border-top: 1px solid #e3ebf5;
     padding-top: 8px;
+  }
+
+  .choose-patient-option .assign-patient-select {
+    grid-column: 1 / -1;
   }
 
   .assign-manual-options,

@@ -174,6 +174,16 @@ Assign-patient resolver:
 - Selecting a patient reveals a clear confirmation action such as `Assign to Soroush`.
 - On success, close the resolver, update Clinical Memory state, and show subtle copy such as `Visit assigned to Soroush`.
 
+Choose-patient resolver:
+
+- Title: `Choose patient`.
+- Explain that the visit may belong to more than one patient and the user should choose the correct patient.
+- Show compact session context, capture counts, and a short human-readable hint when available.
+- Show candidate patient cards with initials, name, reason/hint, and selected state.
+- Include `Search another patient`, `Create new patient`, and `Keep unassigned`.
+- Confirm with `Confirm patient`.
+- On success, close the resolver, remove the needs-input item from Clinical Memory, update related session/patient cards, and show `Patient confirmed`.
+
 ## Patient Detail / Timeline
 
 Opening a patient shows the long-term memory view for that patient.

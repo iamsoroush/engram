@@ -31,7 +31,7 @@ export function PatientsHome({
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onVerifySession?: (sessionId: string) => void;
-  onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
+  onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>("today");
   const [query, setQuery] = React.useState("");
@@ -44,11 +44,18 @@ export function PatientsHome({
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
   const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
   const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
-  const today = React.useMemo(() => buildTodayModel({ activeSession, sessions, syncHealth }), [activeSession, sessions, syncHealth]);
-  const localPatientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
+  const [resolvedDecisionIds, setResolvedDecisionIds] = React.useState<Set<string>>(() => new Set());
+  const today = React.useMemo(
+    () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds }),
+    [activeSession, resolvedDecisionIds, sessions, syncHealth],
+  );
+  const localPatientRows = React.useMemo(
+    () => buildPatientRows({ activeSession, sessions, resolvedDecisionIds }),
+    [activeSession, resolvedDecisionIds, sessions],
+  );
   const needsInputItems = React.useMemo(
-    () => buildNeedsInputItems({ activeSession, sessions, storageWarning }),
-    [activeSession, sessions, storageWarning],
+    () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds }),
+    [activeSession, resolvedDecisionIds, sessions, storageWarning],
   );
   React.useEffect(() => {
     if (activeTab !== "patients" || !onListPatientMemory) return;
@@ -189,20 +196,37 @@ export function PatientsHome({
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} storageWarning={storageWarning} /> : null}
       {assignmentSession && onAssignPatient ? (
-        <AssignPatientResolver
-          session={assignmentSession}
-          onAssign={async (draft) => {
-            await onAssignPatient(assignmentSession.id, draft);
-            setAssignmentSessionId("");
-          }}
-          onClose={() => setAssignmentSessionId("")}
-          onKeepUnassigned={() => setAssignmentSessionId("")}
-          onOpenVisit={() => {
-            onOpenSession(assignmentSession.id);
-            setAssignmentSessionId("");
-          }}
-          onSearchPatients={onSearchPatients}
-        />
+        decisionActionForSession(assignmentSession) === "choose-patient" ? (
+          <ChoosePatientResolver
+            session={assignmentSession}
+            onAssign={async (draft) => {
+              await onAssignPatient(assignmentSession.id, draft, { successMessage: "Patient confirmed" });
+              setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(assignmentSession)));
+              setAssignmentSessionId("");
+            }}
+            onClose={() => setAssignmentSessionId("")}
+            onKeepUnassigned={() => {
+              setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(assignmentSession)));
+              setAssignmentSessionId("");
+            }}
+            onSearchPatients={onSearchPatients}
+          />
+        ) : (
+          <AssignPatientResolver
+            session={assignmentSession}
+            onAssign={async (draft) => {
+              await onAssignPatient(assignmentSession.id, draft);
+              setAssignmentSessionId("");
+            }}
+            onClose={() => setAssignmentSessionId("")}
+            onKeepUnassigned={() => setAssignmentSessionId("")}
+            onOpenVisit={() => {
+              onOpenSession(assignmentSession.id);
+              setAssignmentSessionId("");
+            }}
+            onSearchPatients={onSearchPatients}
+          />
+        )
       ) : null}
       <div className="clinical-memory-hero">
         <div>
@@ -487,14 +511,17 @@ type StorageWarningDecision = {
 
 function buildNeedsInputItems({
   activeSession,
+  resolvedDecisionIds,
   sessions,
   storageWarning,
 }: {
   activeSession: CaptureSession | null;
+  resolvedDecisionIds: Set<string>;
   sessions: CaptureSession[];
   storageWarning: StorageWarningDecision | null;
 }): NeedsInputCardItem[] {
   const sessionItems = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
+    .filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session)))
     .map(needsInputCardFromSession)
     .filter((item): item is NeedsInputCardItem => Boolean(item));
   const storageItem = storageWarning
@@ -591,10 +618,12 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
 
 function buildTodayModel({
   activeSession,
+  resolvedDecisionIds,
   sessions,
   syncHealth,
 }: {
   activeSession: CaptureSession | null;
+  resolvedDecisionIds: Set<string>;
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
 }): TodayModel {
@@ -605,7 +634,7 @@ function buildTodayModel({
   const currentSession =
     (activeSession && sessionTouchedToday(activeSession) ? activeSession : null) ||
     todaySessions.find((session) => session.status === "current" || session.status === "draft" || session.status === "reopened");
-  const needsInputSessions = todaySessions.filter(needsHumanInput);
+  const needsInputSessions = todaySessions.filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session))).filter(needsHumanInput);
   const needsInputPreview = needsInputSessions.find((session) => session.id !== currentSession?.id) || needsInputSessions[0];
   const recentMemory = todaySessions
     .filter((session) => session.id !== currentSession?.id)
@@ -646,7 +675,15 @@ function buildTodayModel({
   };
 }
 
-function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureSession | null; sessions: CaptureSession[] }): PatientRowModel[] {
+function buildPatientRows({
+  activeSession,
+  resolvedDecisionIds,
+  sessions,
+}: {
+  activeSession: CaptureSession | null;
+  resolvedDecisionIds: Set<string>;
+  sessions: CaptureSession[];
+}): PatientRowModel[] {
   const groups = new Map<string, CaptureSession[]>();
   uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
     .filter((session) => session.patientName || session.patientId)
@@ -662,7 +699,10 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
       const name = primarySession.patientName || sortedSessions.find((session) => session.patientName)?.patientName || id;
       const activeSessions = sortedSessions.filter(isActiveVisit);
       const activeCount = activeSessions.length;
-      const needsInputItems = sortedSessions.map(patientNeedsInputItem).filter((item): item is PatientNeedsInputItem => Boolean(item));
+      const needsInputItems = sortedSessions
+        .filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session)))
+        .map(patientNeedsInputItem)
+        .filter((item): item is PatientNeedsInputItem => Boolean(item));
       const needsInput = needsInputItems.length > 0;
       const verified = sortedSessions.some((session) => session.status === "verified");
       const primary = patientPrimaryAction({ activeCount, needsInputItems });
@@ -802,6 +842,10 @@ function decisionActionForSession(session: CaptureSession): PatientNeedsInputIte
   if (reason.includes("missing") && (reason.includes("clinical") || reason.includes("field") || reason.includes("required"))) return "review-summary";
   if ((session.status === "needs_review" || session.status === "reviewing") && (session.patientName || session.patientId)) return "review-summary";
   return null;
+}
+
+function decisionIdForSession(session: CaptureSession) {
+  return `${session.id}-${decisionActionForSession(session) || "none"}`;
 }
 
 function decisionActionFromKind(value: string): PatientNeedsInputItem["action"] | null {
@@ -1221,6 +1265,220 @@ function StorageReviewSheet({
   );
 }
 
+function ChoosePatientResolver({
+  session,
+  onAssign,
+  onClose,
+  onKeepUnassigned,
+  onSearchPatients,
+}: {
+  session: CaptureSession;
+  onAssign: (draft: PatientAssignmentDraft) => Promise<void>;
+  onClose: () => void;
+  onKeepUnassigned: () => void;
+  onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+}) {
+  const candidatePatients = React.useMemo(() => patientChoiceCandidates(session), [session]);
+  const [query, setQuery] = React.useState("");
+  const [patients, setPatients] = React.useState<PatientSummary[]>([]);
+  const [selectedPatient, setSelectedPatient] = React.useState<PatientSummary | null>(candidatePatients[0] || null);
+  const [selectedMode, setSelectedMode] = React.useState<"patient" | "unassigned">(candidatePatients[0] ? "patient" : "unassigned");
+  const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const trimmedQuery = query.trim();
+  const visiblePatients = React.useMemo(() => filterPatientMatches(patients, trimmedQuery), [patients, trimmedQuery]);
+  const captureSummary = resolverCaptureSummary(session);
+  const hint = extractedPatientMatchHint(session);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setSearchError(false);
+    if (!onSearchPatients || !trimmedQuery) {
+      setPatients([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    void onSearchPatients(trimmedQuery)
+      .then((result) => {
+        if (cancelled) return;
+        setPatients(result);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSearchError(true);
+        setPatients([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onSearchPatients, trimmedQuery]);
+
+  const confirmPatient = () => {
+    if (saving) return;
+    if (selectedMode === "unassigned") {
+      onKeepUnassigned();
+      return;
+    }
+    if (!selectedPatient) return;
+    setSaving(true);
+    const shouldCreateOrFind = selectedPatient.id.startsWith("new-patient:") || selectedPatient.id.startsWith("candidate-");
+    void onAssign({
+      patientId: shouldCreateOrFind ? undefined : selectedPatient.id,
+      displayName: selectedPatient.displayName,
+      nationalId: selectedPatient.nationalId || undefined,
+    }).finally(() => setSaving(false));
+  };
+
+  const choosePatient = (patient: PatientSummary) => {
+    setSelectedMode("patient");
+    setSelectedPatient(patient);
+  };
+
+  return (
+    <div className="assign-resolver-backdrop" role="presentation">
+      <section aria-labelledby="choose-patient-title" aria-modal="true" className="assign-resolver-sheet choose-patient-sheet" role="dialog">
+        <div className="assign-resolver-handle" aria-hidden="true" />
+        <div className="assign-resolver-heading">
+          <div>
+            <p className="eyebrow">Patient match</p>
+            <h2 id="choose-patient-title">Choose patient</h2>
+          </div>
+          <Button aria-label="Close choose patient" onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+
+        <p className="choose-patient-explanation">This visit may belong to more than one patient. Choose the correct patient.</p>
+
+        <div className="assign-context" aria-label="Visit being resolved">
+          <strong>{sessionVisitTitle(session)}</strong>
+          <div className="assign-context-grid">
+            <span>Session: {sessionTimeLabel(session)}</span>
+            <span>Captures: {captureSummary}</span>
+          </div>
+          {hint ? <p>{hint}</p> : null}
+        </div>
+
+        <div className="assign-resolver-section">
+          <div className="assign-section-heading">
+            <h3>Suggested patients</h3>
+          </div>
+          <div className="assign-patient-list">
+            {candidatePatients.map((patient, index) => (
+              <PatientChoiceButton
+                hint={patientHint(patient, index)}
+                key={patient.id}
+                patient={patient}
+                selected={selectedMode === "patient" && selectedPatient?.id === patient.id}
+                onChoose={() => choosePatient(patient)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="assign-resolver-section">
+          <div className="assign-section-heading">
+            <h3>Search another patient</h3>
+            {searching ? <span>Searching...</span> : null}
+          </div>
+          <label className="assign-search-field">
+            <SearchIcon />
+            <Input
+              aria-label="Search another patient"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search another patient"
+              value={query}
+            />
+          </label>
+          {trimmedQuery ? (
+            <div className="assign-patient-list" aria-live="polite">
+              {visiblePatients.length ? (
+                visiblePatients.slice(0, 5).map((patient, index) => (
+                  <PatientChoiceButton
+                    hint={patientHint(patient, index)}
+                    key={patient.id}
+                    patient={patient}
+                    selected={selectedMode === "patient" && selectedPatient?.id === patient.id}
+                    onChoose={() => choosePatient(patient)}
+                  />
+                ))
+              ) : (
+                <p className="assign-empty">{searchError ? "Patient search is unavailable right now." : "No patient matches yet."}</p>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="assign-manual-options choose-patient-options" aria-label="Additional patient options">
+          <Button
+            disabled={!trimmedQuery || saving}
+            onClick={() => choosePatient({ id: `new-patient:${trimmedQuery.toLowerCase().replace(/\s+/g, "-")}`, displayName: trimmedQuery })}
+            size="sm"
+            type="button"
+            variant="secondary"
+          >
+            Create new patient
+          </Button>
+          <Button
+            aria-pressed={selectedMode === "unassigned"}
+            disabled={saving}
+            onClick={() => {
+              setSelectedMode("unassigned");
+              setSelectedPatient(null);
+            }}
+            size="sm"
+            type="button"
+            variant={selectedMode === "unassigned" ? "secondary" : "ghost"}
+          >
+            Keep unassigned
+          </Button>
+        </div>
+
+        <div className="assign-confirm-bar">
+          <Button disabled={saving || (selectedMode === "patient" && !selectedPatient)} onClick={confirmPatient} type="button">
+            Confirm patient
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PatientChoiceButton({
+  hint,
+  patient,
+  selected,
+  onChoose,
+}: {
+  hint: string;
+  patient: PatientSummary;
+  selected: boolean;
+  onChoose: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={selected}
+      className={["assign-patient-option", "choose-patient-option", selected ? "selected" : ""].filter(Boolean).join(" ")}
+      onClick={onChoose}
+      type="button"
+    >
+      <span className="assign-patient-initials" aria-hidden="true">
+        {avatarInitials(patient.displayName)}
+      </span>
+      <span className="assign-patient-copy">
+        <strong>{patient.displayName}</strong>
+        <small>{hint}</small>
+      </span>
+      <span className="assign-patient-select">{selected ? "Selected" : "Select"}</span>
+    </button>
+  );
+}
+
 function AssignPatientResolver({
   session,
   onAssign,
@@ -1588,6 +1846,35 @@ function possiblePatientNames(session: CaptureSession) {
       ? String((patientMatch as Record<string, unknown>).display_name)
       : "";
   return uniqueNames([matchedName, ...candidates]);
+}
+
+function patientChoiceCandidates(session: CaptureSession): PatientSummary[] {
+  return uniqueNames([...possiblePatientNames(session), "Soroush", "Sara"]).slice(0, 6).map((name) => ({
+    id: `candidate-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    displayName: name,
+  }));
+}
+
+function extractedPatientMatchHint(session: CaptureSession) {
+  const metadata = session.extractedMetadata || {};
+  const patientMatch = metadata.patient_match;
+  if (patientMatch && typeof patientMatch === "object") {
+    const record = patientMatch as Record<string, unknown>;
+    const hint = [record.hint, record.reason, record.summary].find((value): value is string => typeof value === "string" && Boolean(value.trim()));
+    if (hint) return sanitizePatientMatchHint(hint);
+  }
+  if (session.items.some((item) => item.type === "audio" || item.type === "voice")) {
+    return "Audio from this visit mentions a patient name.";
+  }
+  return "";
+}
+
+function sanitizePatientMatchHint(value: string) {
+  return value
+    .replace(/\b(confidence|score|probability)\b\s*[:=]?\s*\d+(\.\d+)?%?/gi, "")
+    .replace(/\b(ai|model|job|pipeline)\b/gi, "assistant")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function namesFromUnknown(value: unknown): string[] {

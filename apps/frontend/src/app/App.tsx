@@ -1031,7 +1031,7 @@ export function App() {
   );
 
   const assignPatientToSession = React.useCallback(
-    async (sessionId: string, draft: PatientAssignmentDraft) => {
+    async (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => {
       const localPatient: PatientSummary = draft.patientId && !isLocalAssignmentPatient(draft.patientId)
         ? { id: draft.patientId, displayName: draft.displayName, nationalId: draft.nationalId || null }
         : {
@@ -1039,7 +1039,7 @@ export function App() {
             displayName: draft.displayName,
             nationalId: draft.nationalId || null,
           };
-      const successMessage = `Visit assigned to ${draft.displayName}.`;
+      const successMessage = options?.successMessage || `Visit assigned to ${draft.displayName}.`;
       const applyLocalAssignment = (patient: PatientSummary) => {
         const enriched = {
           patientId: patient.id,
@@ -1087,7 +1087,7 @@ export function App() {
         if (isLocalSessionId(sessionId) || isLocalAssignmentPatient(patient.id)) {
           applyLocalAssignment(patient);
           await enqueueAssignment(patient);
-          setToast(`Visit assigned to ${patient.displayName}.`);
+          setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
           return;
         }
         const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id);
@@ -1106,7 +1106,7 @@ export function App() {
           current?.id === sessionId ? markReportStaleForPatientChange(current, mergeSessionUpdate(current, enriched)) : current,
         );
         setAssignmentSessionId("");
-        setToast(`Visit assigned to ${patient.displayName}.`);
+        setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
       } catch {
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
