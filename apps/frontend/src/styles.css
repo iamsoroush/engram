@@ -838,6 +838,33 @@ small {
   overflow-wrap: anywhere;
 }
 
+.debug-settings {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e5edf7;
+  padding-top: 10px;
+}
+
+.debug-settings summary {
+  cursor: pointer;
+  color: #475467;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.global-offline-status {
+  width: min(calc(100% - 32px), 820px);
+  margin: 10px auto 0;
+  border: 1px solid #d9e7f7;
+  border-radius: 999px;
+  background: #f7fbff;
+  color: #31526f;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-align: center;
+}
+
 .capture-actions {
   display: grid;
   width: min(100%, 420px);

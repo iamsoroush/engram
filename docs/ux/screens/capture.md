@@ -70,7 +70,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 ## Loading State
 
 - Source previews load cached blobs first, then protected backend file content.
-- When captures are saved locally but not available everywhere, staff see reassurance such as `Offline - captures are saved on this device`.
+- When captures are saved locally but not available everywhere, staff see reassurance such as `Offline · Captures are saved on this device`.
 
 ## Empty State
 

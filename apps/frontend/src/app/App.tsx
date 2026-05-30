@@ -27,7 +27,6 @@ import {
   logoutSession,
   reopenSession,
   refreshAuthToken,
-  retryCaptureProcessing,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
@@ -53,7 +52,7 @@ import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
-import { Shell, SyncSafetyBanner } from "../features/shell/Shell";
+import { Shell } from "../features/shell/Shell";
 import {
   bindPendingSession,
   clearLocalCaptureData,
@@ -330,7 +329,7 @@ export function App() {
         setAssignmentSessionId(workspace.assignmentSessionId);
         setPendingCaptureKind(workspace.pendingCaptureKind);
       }
-      setToast("Backend is not reachable. Captures stay on this device.");
+      setToast("Offline · Captures are saved on this device.");
     } finally {
       workspaceHydratedRef.current = true;
     }
@@ -507,7 +506,7 @@ export function App() {
     if (processingRef.current || !currentAuth || !activeTenantId || currentAuth.user.persona === "patient-preview") return;
     if (!navigator.onLine) {
       setOnline(false);
-      setToast("Offline - saved on this device.");
+      setToast("Offline · Captures are saved on this device.");
       return;
     }
     processingRef.current = true;
@@ -570,16 +569,16 @@ export function App() {
             await removePendingCapture(capture.id);
             await refreshPendingCount();
           } catch {
-            setToast("Capture transferred. Local cleanup will retry.");
+            setToast("Capture safely transferred.");
           }
         } catch {
           await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
-          updateItemStatus(capture.item.id, "failed");
+          updateItemStatus(capture.item.id, "saved");
           await rebuildLocalPendingSessions();
           setBackendReachable(false);
           setSyncError("Capture upload failed");
           captureFailed = true;
-          setToast("Failed.");
+          setToast("Saved on this device. I'll organize it when connection returns.");
           continue;
         }
       }
@@ -726,7 +725,7 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("AI will organize when sync is complete.");
+        setToast("Saved on this device. I'll organize it when connection returns.");
       }
       void processOutbox();
       return;
@@ -748,11 +747,11 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("AI will organize when available.");
+        setToast("Saved. I'll organize it when available.");
         void processOutbox();
         return;
       }
-      setToast("Failed.");
+      setToast("Saved on this device. I'll organize it when connection returns.");
     }
   };
 
@@ -949,58 +948,6 @@ export function App() {
       setToast("Capture deleted. Report moved back to draft.");
     },
     [apiFetch],
-  );
-
-  const retryCaptureUpload = React.useCallback(
-    async (_sessionId: string, captureId: string) => {
-      if (!captureId.startsWith("local-capture-")) {
-        setToast("Only device-saved captures can retry upload here.");
-        return;
-      }
-      try {
-        const pending = await loadPendingCaptures();
-        const target = pending.find((capture) => capture.id === captureId || capture.localCaptureId === captureId);
-        if (!target) {
-          setToast("Upload retry is not available for this capture.");
-          return;
-        }
-        const firstCreatedAt = pending.reduce((min, capture) => Math.min(min, capture.createdAt), Date.now());
-        await updatePendingCapture(target.id, (current) => ({
-          ...normalizePendingCapture(current),
-          retryCount: 0,
-          createdAt: Math.min(firstCreatedAt - 1, Date.now()),
-          item: { ...current.item, status: "saved" },
-          session: {
-            ...current.session,
-            items: current.session.items.map((item) => (item.id === captureId ? { ...item, status: "saved" } : item)),
-          },
-        }));
-        updateItemStatus(captureId, "saved");
-        setToast("Capture moved to the front of the upload queue.");
-        void processOutbox();
-      } catch {
-        setToast("Could not retry upload.");
-      }
-    },
-    [],
-  );
-
-  const retryCaptureAiProcessing = React.useCallback(
-    async (sessionId: string, captureId: string) => {
-      if (captureId.startsWith("local-capture-")) {
-        setToast("Sync before retrying processing.");
-        return;
-      }
-      try {
-        await retryCaptureProcessing(apiFetch, captureId);
-        updateItemStatus(captureId, "processing");
-        setToast("Capture processing retry started.");
-        scheduleCaptureProcessingRefresh(sessionId);
-      } catch {
-        setToast("Could not retry processing.");
-      }
-    },
-    [apiFetch, scheduleCaptureProcessingRefresh],
   );
 
   const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
@@ -1327,8 +1274,6 @@ export function App() {
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
-          onRetryCaptureProcessing={retryCaptureAiProcessing}
-          onRetryCaptureUpload={retryCaptureUpload}
           onVerifySession={verifySelectedSession}
         />
       );
@@ -1359,14 +1304,12 @@ export function App() {
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
-          onRetryCaptureProcessing={retryCaptureAiProcessing}
-          onRetryCaptureUpload={retryCaptureUpload}
           onVerifySession={verifySelectedSession}
         />
       );
     }
     if (screen === "search") {
-      return <SearchHome onOpenSession={openMemorySession} sessions={sessions} />;
+      return <SearchHome onOpenSession={openMemorySession} sessions={sessions} syncHealth={syncHealth} />;
     }
     return (
       <PatientsHome
@@ -1419,17 +1362,12 @@ export function App() {
         auth={auth}
         captureContextLabel={captureContextLabel(activeSession)}
         onCapture={beginCapture}
+        onClearLocal={() => void clearLocalPendingCaptures()}
         onLogout={handleLogout}
         screen={screen}
+        syncHealth={syncHealth}
         onNavigate={handleShellNavigate}
       >
-        {screen !== "patients" ? (
-          <SyncSafetyBanner
-            syncHealth={syncHealth}
-            onClearLocal={() => void clearLocalPendingCaptures()}
-            onRetry={() => void processOutbox()}
-          />
-        ) : null}
         {pendingCaptureKind ? (
           <CaptureDestinationPanel
             activeSession={activeSession}

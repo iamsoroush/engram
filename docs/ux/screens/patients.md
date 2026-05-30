@@ -237,7 +237,7 @@ Clinical Memory follows the shared [offline and AI-unavailable behavior](../stat
 Screen-specific behavior:
 
 - Today and Patients continue to show locally saved memory.
-- Today may show `Offline - Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
-- Search may be limited to patients saved on this device.
+- Today may show `Offline · Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
+- Search may show `You're offline. Patient search may be limited.`
 - Needs input still only shows human-decision or data-safety items.
 - Do not show sync queues, retry buttons, backend job language, or AI failure language on Today.

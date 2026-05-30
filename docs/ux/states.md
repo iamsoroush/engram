@@ -98,11 +98,13 @@ Offline mode should reassure the user that capture can continue.
 
 User-facing copy examples:
 
-- `Offline - captures are saved on this device.`
-- `Saving on this device.`
-- `Search may show only patients saved on this device.`
+- `Offline · Captures are saved on this device`
+- `Saving on this device`
+- `3 captures saved on this device. I'll organize them when connection returns.`
+- `You're offline. Patient search may be limited.`
+- `Storage is getting full. New offline captures may not be safely saved soon.`
 
-Do not show normal UI actions for manual sync retry, upload retry, queue management, or backend recovery. The system should sync when connectivity returns.
+Do not show normal UI actions for manual sync retry, upload retry, queue management, or backend recovery. Clear-cache or local reset tooling belongs behind debug/admin settings, not in the normal clinician UI. The system should sync when connectivity returns.
 
 AI-unavailable mode should be mostly invisible:
 

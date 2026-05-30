@@ -21,8 +21,6 @@ export function CaptureScreen({
   onUpdateCaptureCaption,
   onUpdateCaptureTranscript,
   onDeleteCapture,
-  onRetryCaptureProcessing,
-  onRetryCaptureUpload,
   mode = "active",
   onBack,
   onResumeCapture,
@@ -41,8 +39,6 @@ export function CaptureScreen({
   onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
-  onRetryCaptureProcessing?: (sessionId: string, captureId: string) => Promise<void>;
-  onRetryCaptureUpload?: (sessionId: string, captureId: string) => Promise<void>;
   mode?: "active" | "historical";
   onBack?: () => void;
   onResumeCapture?: () => void;
@@ -196,7 +192,7 @@ export function CaptureScreen({
                 type="button"
               >
                 {activeSession && isLocalSessionId(activeSession.id)
-                  ? "Syncing first"
+                  ? "Saving first"
                   : processingState === "processing"
                     ? "Generating"
                     : "Generate"}
@@ -243,8 +239,6 @@ export function CaptureScreen({
               onOpenCapture={setSelectedCapture}
               onRenameCapture={onRenameCapture}
               onResolveFile={onResolveFile}
-              onRetryCaptureProcessing={onRetryCaptureProcessing}
-              onRetryCaptureUpload={onRetryCaptureUpload}
             />
           )}
         </div>
@@ -643,16 +637,12 @@ function LiveDraftReport({
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
-  onRetryCaptureProcessing,
-  onRetryCaptureUpload,
 }: {
   session: CaptureSession | null;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   onOpenCapture: (item: CaptureItem) => void;
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
-  onRetryCaptureProcessing?: (sessionId: string, captureId: string) => Promise<void>;
-  onRetryCaptureUpload?: (sessionId: string, captureId: string) => Promise<void>;
 }) {
   const [openMenuId, setOpenMenuId] = React.useState("");
 
@@ -681,8 +671,6 @@ function LiveDraftReport({
           onOpenCapture={() => onOpenCapture(item)}
           onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
           onResolveFile={onResolveFile}
-          onRetryProcessing={onRetryCaptureProcessing ? () => onRetryCaptureProcessing(session.id, item.id) : undefined}
-          onRetryUpload={onRetryCaptureUpload ? () => onRetryCaptureUpload(session.id, item.id) : undefined}
           onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
           sequence={index + 1}
         />
@@ -702,8 +690,6 @@ function LiveDraftCaptureItem({
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
-  onRetryProcessing,
-  onRetryUpload,
   onToggleMenu,
   sequence,
 }: {
@@ -714,8 +700,6 @@ function LiveDraftCaptureItem({
   onOpenCapture: () => void;
   onRenameCapture?: (title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
-  onRetryProcessing?: () => Promise<void>;
-  onRetryUpload?: () => Promise<void>;
   onToggleMenu: () => void;
   sequence: number;
 }) {
@@ -727,8 +711,6 @@ function LiveDraftCaptureItem({
   const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
   const textAttribution = captureTextAttribution(item);
   const [busy, setBusy] = React.useState(false);
-  const canRetryUpload = item.status === "failed" && item.id.startsWith("local-capture-");
-  const canRetryProcessing = item.status === "needsReview" && !item.id.startsWith("local-capture-");
 
   const rename = () => {
     if (!onRenameCapture || busy) return;
@@ -746,24 +728,6 @@ function LiveDraftCaptureItem({
     if (!window.confirm(`Delete ${title}? The structured report will move back to draft.`)) return;
     setBusy(true);
     void onDeleteCapture().finally(() => {
-      setBusy(false);
-      onCloseMenu();
-    });
-  };
-
-  const retryUpload = () => {
-    if (!onRetryUpload || busy) return;
-    setBusy(true);
-    void onRetryUpload().finally(() => {
-      setBusy(false);
-      onCloseMenu();
-    });
-  };
-
-  const retryProcessing = () => {
-    if (!onRetryProcessing || busy) return;
-    setBusy(true);
-    void onRetryProcessing().finally(() => {
       setBusy(false);
       onCloseMenu();
     });
@@ -811,16 +775,6 @@ function LiveDraftCaptureItem({
           </button>
           {menuOpen ? (
             <div className="capture-item-menu">
-              {canRetryUpload ? (
-                <button disabled={!onRetryUpload || busy} onClick={retryUpload} type="button">
-                  Retry upload
-                </button>
-              ) : null}
-              {canRetryProcessing ? (
-                <button disabled={!onRetryProcessing || busy} onClick={retryProcessing} type="button">
-                  Retry processing
-                </button>
-              ) : null}
               <button disabled={!onRenameCapture || busy} onClick={rename} type="button">
                 Rename
               </button>
@@ -874,7 +828,7 @@ function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
     return (
       <span className="capture-inline-status active syncing">
         <span aria-hidden="true" />
-        Syncing...
+        Saved on this device
       </span>
     );
   }
@@ -882,11 +836,11 @@ function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
-        Processing...
+        Organizing
       </span>
     );
   }
-  if (status === "failed") return <span className="capture-inline-status issue">Sync failed</span>;
+  if (status === "failed") return <span className="capture-inline-status issue">Saved on this device</span>;
   if (status === "needsReview") return <span className="capture-inline-status issue">Needs attention</span>;
   return null;
 }

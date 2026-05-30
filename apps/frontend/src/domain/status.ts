@@ -4,11 +4,11 @@ export type SessionUxState = "capturing" | "processing" | "needs_review" | "unas
 
 export const sessionUxStateCopy: Record<SessionUxState, string> = {
   capturing: "Capturing",
-  processing: "Processing",
+  processing: "Organizing",
   needs_review: "Needs review",
   unassigned: "Unassigned",
   verified: "Verified",
-  failed: "Failed",
+  failed: "Saved",
 };
 
 export const sessionUxStateTone: Record<SessionUxState, "neutral" | "blue" | "green" | "amber" | "red"> = {
@@ -17,7 +17,7 @@ export const sessionUxStateTone: Record<SessionUxState, "neutral" | "blue" | "gr
   needs_review: "amber",
   unassigned: "neutral",
   verified: "green",
-  failed: "red",
+  failed: "neutral",
 };
 
 export function sessionUxState(status: SessionStatus): SessionUxState {
@@ -30,13 +30,13 @@ export function sessionUxState(status: SessionStatus): SessionUxState {
 }
 
 export const statusCopy: Record<CaptureStatus, string> = {
-  saved: "Saved on device",
-  syncing: "Syncing",
-  uploaded: "Uploaded",
-  processing: "Processing",
+  saved: "Saved on this device",
+  syncing: "Saved on this device",
+  uploaded: "Saved",
+  processing: "Organizing",
   processed: "Processed",
   needsReview: "Needs review",
-  failed: "Failed",
+  failed: "Saved on this device",
 };
 
 export const statusTone: Record<CaptureStatus, "neutral" | "blue" | "green" | "amber" | "red"> = {
@@ -46,7 +46,7 @@ export const statusTone: Record<CaptureStatus, "neutral" | "blue" | "green" | "a
   processing: "amber",
   processed: "green",
   needsReview: "amber",
-  failed: "red",
+  failed: "neutral",
 };
 
 export const sessionStatusCopy: Record<SessionStatus, string> = {

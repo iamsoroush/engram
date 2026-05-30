@@ -41,6 +41,6 @@
 
 - Unknown hashes fall back to Active Session.
 - There is no dedicated not-found screen.
-- If remote loading is unavailable after login, locally saved sessions remain visible and the UI uses calm saved-state copy such as `Offline - captures are saved on this device`.
+- If remote loading is unavailable after login, locally saved sessions remain visible and the UI uses calm saved-state copy such as `Offline · Captures are saved on this device`.
 - If the URL has no hash, the app can restore the last staff screen from local workspace state after auth refresh.
 - The last active session and selected historical review are restored when matching local or remote session data is available.

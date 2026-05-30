@@ -8,9 +8,9 @@ export const titleByType: Record<CaptureDraft["kind"], string> = {
 };
 
 export const detailByType: Record<CaptureDraft["kind"], string> = {
-  audio: "Clinical audio saved on this device. Waiting for safe transfer.",
-  photo: "Clinical photo saved on this device. Waiting for safe transfer.",
-  note: "Typed note saved on this device. Waiting for safe transfer.",
+  audio: "Clinical audio saved on this device. I'll organize it when connection returns.",
+  photo: "Clinical photo saved on this device. I'll organize it when connection returns.",
+  note: "Typed note saved on this device. I'll organize it when connection returns.",
 };
 
 export const nowLabel = () =>
@@ -173,9 +173,9 @@ export function makeLocalCapture(
           updatedAt: now,
           capturedAt: now,
           duration: "just now",
-          summary: "Saved on this device. Waiting for safe transfer.",
+          summary: "Saved on this device. I'll organize it when connection returns.",
           status: "draft",
-          reviewReason: "Not synced yet",
+          reviewReason: "Saved on this device",
           items: [item],
         };
 
@@ -218,7 +218,7 @@ export function sessionsFromPending(captures: PendingCapture[]) {
     const existing = grouped.get(capture.localSessionId);
     const item = {
       ...capture.item,
-      status: capture.retryCount > 0 ? ("failed" as const) : capture.item.status,
+      status: capture.retryCount > 0 ? ("saved" as const) : capture.item.status,
       sourceUrl: URL.createObjectURL(capture.draft.file),
     };
     grouped.set(

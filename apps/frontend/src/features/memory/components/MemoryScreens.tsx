@@ -305,7 +305,7 @@ export function PatientsHome({
 
       {today.isOffline ? (
         <AssistantStatusPill icon={<OfflineIcon />}>
-          Offline - Captures are saved on this device
+          Offline · Captures are saved on this device
         </AssistantStatusPill>
       ) : null}
 
@@ -2803,9 +2803,11 @@ function avatarInitials(label: string) {
 
 export function SearchHome({
   sessions,
+  syncHealth,
   onOpenSession,
 }: {
   sessions: CaptureSession[];
+  syncHealth: SyncHealth;
   onOpenSession: (sessionId: string) => void;
 }) {
   const [query, setQuery] = React.useState("");
@@ -2833,6 +2835,7 @@ export function SearchHome({
         <h1>Find clinical memory</h1>
         <p>Search loaded patients, sessions, and captures from this device session.</p>
       </div>
+      {!syncHealth.online ? <p className="clinical-offline-note"><InfoIcon /> You're offline. Patient search may be limited.</p> : null}
       <Input onChange={(event) => setQuery(event.target.value)} placeholder="Search patients, sessions, captures" value={query} />
       <div className="memory-section">
         <div className="section-heading">

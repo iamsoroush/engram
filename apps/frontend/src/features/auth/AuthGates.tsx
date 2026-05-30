@@ -54,7 +54,7 @@ export function LoginGate({
         </div>
         {pendingCount ? (
           <div className="alert alert-amber">
-            {pendingCount} capture{pendingCount === 1 ? "" : "s"} saved on this device. Sign in to resume sync.
+            {pendingCount} capture{pendingCount === 1 ? "" : "s"} saved on this device. Sign in and I'll organize {pendingCount === 1 ? "it" : "them"} when connection is available.
           </div>
         ) : null}
         {IS_DEV ? (

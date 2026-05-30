@@ -1,7 +1,7 @@
 import React from "react";
 import type { AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
 import type { Screen } from "../../domain/types";
-import { Button, Card } from "../../shared/ui/primitives";
+import { Button } from "../../shared/ui/primitives";
 import { CaptureActions } from "../capture/components/CaptureActions";
 
 export function Shell({
@@ -11,6 +11,8 @@ export function Shell({
   onCapture,
   captureContextLabel,
   auth,
+  syncHealth,
+  onClearLocal,
   onLogout,
 }: {
   screen: Screen;
@@ -19,10 +21,14 @@ export function Shell({
   onCapture: (kind: CaptureDraft["kind"]) => void;
   captureContextLabel?: string;
   auth: AuthSession;
+  syncHealth: SyncHealth;
+  onClearLocal?: () => void;
   onLogout: () => void;
 }) {
   const displayName = auth.user.displayName || auth.user.email;
   const role = auth.memberships[0]?.role || auth.user.persona || "user";
+  const isAdmin = auth.memberships.some((membership) => membership.role === "admin") || auth.user.persona === "admin";
+  const isOffline = !syncHealth.online;
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
@@ -79,6 +85,14 @@ export function Shell({
                 <strong>{displayName}</strong>
                 <span>{role} - {auth.tenant.name}</span>
               </div>
+              {isAdmin && onClearLocal ? (
+                <details className="debug-settings">
+                  <summary>Debug settings</summary>
+                  <Button onClick={onClearLocal} size="sm" variant="ghost">
+                    Clear local capture cache
+                  </Button>
+                </details>
+              ) : null}
               <Button onClick={onLogout} size="sm" variant="secondary">
                 Logout
               </Button>
@@ -86,50 +100,10 @@ export function Shell({
           </details>
         </div>
       </header>
+      {isOffline ? <p className="global-offline-status">Offline · Captures are saved on this device</p> : null}
       {children}
-      <CaptureActions compact contextLabel={captureContextLabel} onAction={onCapture} />
+      <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} />
       <footer className="app-version">MVP v2</footer>
     </main>
-  );
-}
-
-export function SyncSafetyBanner({
-  syncHealth,
-  onClearLocal,
-  onRetry,
-}: {
-  syncHealth: SyncHealth;
-  onClearLocal: () => void;
-  onRetry: () => void;
-}) {
-  const pendingCount = syncHealth.pendingCaptures + syncHealth.pendingOperations;
-  if (!pendingCount && syncHealth.online && syncHealth.backendReachable !== false) return null;
-
-  const title = !syncHealth.online
-    ? "Offline - saved on this device"
-    : syncHealth.syncing
-      ? "Syncing"
-      : syncHealth.backendReachable === false || syncHealth.lastError
-        ? "Needs retry"
-        : "AI organizing when available";
-  const detail = pendingCount
-    ? `${syncHealth.pendingCaptures} capture${syncHealth.pendingCaptures === 1 ? "" : "s"} and ${syncHealth.pendingOperations} local change${syncHealth.pendingOperations === 1 ? "" : "s"} are waiting for safe transfer.`
-    : "Backend is not reachable right now. Recent local work remains available on this device.";
-
-  return (
-    <Card className="sync-warning">
-      <div>
-        <strong>{title}</strong>
-        <p>{detail} Keep this browser data until transfer is complete.</p>
-      </div>
-      <div className="sync-actions">
-        <Button disabled={syncHealth.syncing || !syncHealth.online} onClick={onRetry} size="sm" variant="secondary">
-          {syncHealth.syncing ? "Syncing" : "Retry now"}
-        </Button>
-        <Button disabled={syncHealth.syncing || !pendingCount} onClick={onClearLocal} size="sm" variant="ghost">
-          Clear local
-        </Button>
-      </div>
-    </Card>
   );
 }
