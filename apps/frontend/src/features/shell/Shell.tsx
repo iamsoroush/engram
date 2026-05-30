@@ -9,6 +9,7 @@ export function Shell({
   children,
   onNavigate,
   onCapture,
+  captureContextLabel,
   auth,
   onLogout,
 }: {
@@ -16,6 +17,7 @@ export function Shell({
   children: React.ReactNode;
   onNavigate: (screen: Screen) => void;
   onCapture: (kind: CaptureDraft["kind"]) => void;
+  captureContextLabel?: string;
   auth: AuthSession;
   onLogout: () => void;
 }) {
@@ -85,7 +87,7 @@ export function Shell({
         </div>
       </header>
       {children}
-      <CaptureActions compact onAction={onCapture} />
+      <CaptureActions compact contextLabel={captureContextLabel} onAction={onCapture} />
       <footer className="app-version">MVP v2</footer>
     </main>
   );

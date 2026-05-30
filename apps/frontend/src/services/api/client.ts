@@ -3,9 +3,11 @@ import type {
   AuthSession,
   CaptureDraft,
   PatientAssignmentDraft,
+  PatientMemoryDetailResponse,
   PatientMemoryFilter,
   PatientMemoryListResponse,
   PatientMemoryRow,
+  PatientMemoryTimelineSession,
   PatientSummary,
   PendingCapture,
   Persona,
@@ -153,6 +155,32 @@ export async function fetchPatientMemory(
     limit: numberValue(payload.limit, limit),
     offset: numberValue(payload.offset, offset),
     total: numberValue(payload.total, items.length),
+  };
+}
+
+export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: string): Promise<PatientMemoryDetailResponse> {
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}/memory`);
+  if (!response.ok) throw new Error("Could not load patient memory");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const rawSessions = Array.isArray(payload.sessions) ? payload.sessions : [];
+  const sessions = rawSessions
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map(normalizePatientMemoryTimelineSession);
+  const rawGroups = Array.isArray(payload.groups) ? payload.groups : [];
+  return {
+    patient:
+      payload.patient && typeof payload.patient === "object"
+        ? normalizePatientMemoryRow(payload.patient as Record<string, unknown>)
+        : normalizePatientMemoryRow({ patientId, displayName: "Unnamed patient" }),
+    sessions,
+    groups: rawGroups
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((group) => ({
+        label: String(group.label || "Older"),
+        sessions: (Array.isArray(group.sessions) ? group.sessions : [])
+          .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+          .map(normalizePatientMemoryTimelineSession),
+      })),
   };
 }
 
@@ -312,6 +340,24 @@ function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryR
         createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
       })),
     latestVisitAt: typeof raw.latestVisitAt === "string" ? raw.latestVisitAt : null,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
+  };
+}
+
+function normalizePatientMemoryTimelineSession(raw: Record<string, unknown>): PatientMemoryTimelineSession {
+  return {
+    sessionId: String(raw.sessionId || raw.session_id || ""),
+    title: typeof raw.title === "string" ? raw.title : null,
+    status: String(raw.status || "organized"),
+    summary: String(raw.summary || "No session summary yet."),
+    generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
+    ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,
+    captureCount: numberValue(raw.captureCount, 0),
+    verified: Boolean(raw.verified),
+    needsInput: Boolean(raw.needsInput),
+    groupLabel: String(raw.groupLabel || "Older"),
+    sortDate: typeof raw.sortDate === "string" ? raw.sortDate : null,
+    capturedAt: typeof raw.capturedAt === "string" ? raw.capturedAt : null,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
   };
 }

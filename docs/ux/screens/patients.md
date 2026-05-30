@@ -40,7 +40,7 @@ Today is session-first. A card may include patient context, but the primary obje
 
 Today includes only sessions created, captured, or updated on the user's current calendar day. Older unassigned or historical sessions belong in Patients, Search, or the full Needs input surface, not in the Today preview.
 
-The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue visit`, `Assign patient`, or `Review summary`. When the main task is a decision, `Open visit` is secondary.
+The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Selecting a Today card opens that visit in Active Session, where `Back` returns to Today. Use a visible action only for the focused next task, such as `Continue visit`, `Assign patient`, or `Review summary`; do not show a separate `Open visit` action.
 
 Every Today card must clarify why it appears in Today with section or badge language such as `Active session`, `Needs your input`, `Updated today`, `Recently captured`, or `Saved on this device`. Session time and update/attention time must be labeled separately.
 
@@ -64,7 +64,7 @@ Example needs-input preview card:
 - Needs input since: `2:20 PM`
 - Summary: `3 captures saved. I could not confidently attach this visit to a patient.`
 - Primary action: `Assign patient`
-- Secondary action: `Open visit`
+- Card selection: opens the visit in Active Session
 
 Example updated-today card:
 
@@ -73,7 +73,7 @@ Example updated-today card:
 - Session: `Apr 18 · 11:30 AM`
 - Status: `Updated today · Patient assigned`
 - Summary: `2 photos and 1 note were attached to this visit today.`
-- Primary action: `Open visit`
+- Card selection: opens the visit in Active Session
 
 Example copy:
 
@@ -100,11 +100,12 @@ Each patient row/card includes:
 - latest visit reference when useful
 - active session badge when a patient has an active visit
 - exact needs-input label when relevant, such as `Needs input: review summary`
-- one primary action, usually `Open memory`
+- selecting the row opens patient history
+- one focused action only when there is a current task, such as `Continue`, `Review summary`, or `Assign patient`
 
 Patient rows must not contain nested session cards, vague attention labels, upload states, AI job states, or sync controls.
 
-When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Review summary` or `Choose patient`. `Open patient memory` may be offered as a secondary action.
+When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Review summary` or `Choose patient`. `View patient history` may be offered as a secondary action.
 
 Example patient memory sentences:
 
@@ -119,7 +120,8 @@ Example patient memory card:
 - Latest visit: `Session: Apr 18 · 11:30 AM`
 - Badge: `Active session`
 - Attention: `Needs input: review summary`
-- Action: `Open memory`
+- Row action: select row to view patient history
+- Focused task action: `Continue`, when relevant
 
 Avoid vague labels such as `Needs input` or `Review` when the card needs the user to act.
 
@@ -135,7 +137,7 @@ Each card must answer:
 - why user input is needed
 - the smallest focused action that resolves it
 
-The primary action must open a focused resolver, not simply redirect to the active session page. The full visit/session page can be available as a secondary action such as `Open visit`.
+The primary action must open a focused resolver, not simply redirect to the active session page. Selecting the card itself opens the visit in Active Session, where `Back` returns to Needs input, so Needs input cards do not show a separate `Open visit` action.
 
 Example copy:
 
@@ -144,7 +146,7 @@ Example copy:
   Patient: `Unknown`
   Why: `This visit is saved, but I do not know which patient it belongs to.`
   Primary action: `Assign patient`
-  Secondary action: `Open visit`
+  Card selection: opens the visit in Active Session
 - Decision: `Patient match uncertain`
   Session: `Session: Apr 18 · 11:30 AM`
   Patient: `Possible matches: Sara M., Sarah Mahmoud`
@@ -206,12 +208,16 @@ response.
 It includes:
 
 - assistant-generated or assistant-style patient summary
-- sessions grouped by time, such as `Today`, `Earlier this week`, `Earlier`
+- sessions grouped by actual session time: `Today`, `Earlier this week`, `Older`
 - each session summarized in human language
 - one primary action per session, such as `Open visit`
-- persistent capture context so the user understands where new captures will go
+- persistent capture context, such as `Capturing for: Soroush · Today's visit`, so the user understands where new captures will go
+
+Timeline cards label times explicitly. The session time is primary, for example `Session: Today · 4:23 PM`. Updated time appears only when it adds useful context, for example `Updated: 4:31 PM` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
 
 Timeline sessions may expose source captures and review details after the user opens them, but the Clinical Memory main view stays compact.
+
+Selecting a timeline session opens the visit in Active Session. `Back` returns to the same patient timeline.
 
 ## Patient Card Summary Fallback Hierarchy
 

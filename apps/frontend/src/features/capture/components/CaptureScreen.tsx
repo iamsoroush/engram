@@ -125,6 +125,12 @@ export function CaptureScreen({
 
   return (
     <section className="capture-current session-workspace" aria-label={isHistorical ? "Historical session review" : "Active session workspace"}>
+      {onBack ? (
+        <button className="context-back-button" onClick={onBack} type="button">
+          <BackIcon />
+          Clinical Memory
+        </button>
+      ) : null}
       <div className="active-session-summary">
         <div className="session-summary-copy">
           <div className="session-summary-heading">
@@ -138,11 +144,6 @@ export function CaptureScreen({
           <p>{captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
         </div>
         <div className="workspace-header-actions">
-          {onBack ? (
-            <Button onClick={onBack} size="sm" type="button" variant="secondary">
-              Back
-            </Button>
-          ) : null}
           {isHistorical && onResumeCapture ? (
             <Button disabled={!activeSession} onClick={onResumeCapture} size="sm" type="button" variant="secondary">
               Add capture
@@ -302,6 +303,14 @@ function PatientIcon() {
     <svg viewBox="0 0 40 40" focusable="false" aria-hidden="true">
       <path d="M20 18.2a6.2 6.2 0 1 0 0-12.4 6.2 6.2 0 0 0 0 12.4Z" />
       <path d="M9.5 33.5v-3.2c0-5.3 4.7-9.6 10.5-9.6s10.5 4.3 10.5 9.6v3.2H9.5Z" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="m15 5-7 7 7 7" />
     </svg>
   );
 }

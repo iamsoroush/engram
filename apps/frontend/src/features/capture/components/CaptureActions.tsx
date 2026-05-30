@@ -2,9 +2,11 @@ import type { CaptureDraft } from "../../../domain/appTypes";
 
 export function CaptureActions({
   compact,
+  contextLabel,
   onAction,
 }: {
   compact?: boolean;
+  contextLabel?: string;
   onAction: (kind: CaptureDraft["kind"]) => void;
 }) {
   const actions: Array<{
@@ -39,6 +41,7 @@ export function CaptureActions({
   if (compact) {
     return (
       <div className="capture-pills">
+        {contextLabel ? <div className="capture-pills-context">{contextLabel}</div> : null}
         <div className="capture-pills-actions">{actionButtons}</div>
       </div>
     );

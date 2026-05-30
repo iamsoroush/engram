@@ -4259,13 +4259,40 @@ small {
   bottom: max(12px, env(safe-area-inset-bottom));
   left: 50%;
   width: min(calc(100% - 36px), 820px);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
   border-color: #dce6f2;
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 16px 38px rgb(15 23 42 / 15%);
   transform: translateX(-50%);
+}
+
+.capture-pills-context {
+  justify-self: center;
+  display: inline-flex;
+  min-height: 30px;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid #dce6f2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #334155;
+  padding: 0 14px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.capture-pills-context::before {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #2dbf67;
+  margin-right: 8px;
+  content: "";
 }
 
 .capture-action-button {
@@ -4663,6 +4690,35 @@ small {
   padding: 14px;
 }
 
+.clinical-row-selectable {
+  cursor: pointer;
+}
+
+.clinical-row-selectable:hover,
+.clinical-row-selectable:focus-visible {
+  border-color: #9eb7e4;
+  box-shadow: 0 12px 26px rgb(8 13 45 / 9%);
+  outline: none;
+}
+
+.patient-row-chevron {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: #64748b;
+}
+
+.patient-row-chevron svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .clinical-row.compact {
   padding: 12px;
 }
@@ -4879,6 +4935,241 @@ small {
 .patient-memory-badge.needs-input {
   background: #fff1c2;
   color: #8a4b00;
+}
+
+.patient-detail {
+  display: grid;
+  gap: 18px;
+}
+
+.context-back-button {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 34px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  padding: 0 11px;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.context-back-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.patient-detail-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 4px 18px;
+}
+
+.patient-detail-header .clinical-avatar {
+  width: 112px;
+  height: 112px;
+  font-size: 2.25rem;
+}
+
+.patient-detail-heading {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+}
+
+.patient-detail-heading h1 {
+  color: #080d2d;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.02;
+}
+
+.patient-detail-heading p {
+  max-width: 560px;
+  color: #33415f;
+  font-size: 0.96rem;
+  line-height: 1.55;
+}
+
+.patient-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+
+.patient-detail-meta span {
+  color: #52617e;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.patient-detail-header > .btn {
+  min-width: 180px;
+  min-height: 54px;
+  justify-content: center;
+}
+
+.patient-detail-header > .btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.patient-timeline {
+  position: relative;
+  display: grid;
+  gap: 18px;
+  padding-left: 28px;
+}
+
+.patient-timeline::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 8px;
+  width: 2px;
+  background: #dbe5f2;
+  content: "";
+}
+
+.patient-timeline-group {
+  position: relative;
+  display: grid;
+  gap: 12px;
+}
+
+.patient-timeline-marker {
+  position: absolute;
+  top: 3px;
+  left: -27px;
+  width: 18px;
+  height: 18px;
+  border: 4px solid #eff5ff;
+  border-radius: 999px;
+  background: #075eff;
+  box-shadow: 0 0 0 1px #c9d9f4;
+}
+
+.patient-timeline-group:first-child .patient-timeline-marker {
+  background: #64748b;
+}
+
+.patient-timeline-group h2 {
+  color: #080d2d;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.patient-timeline-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.patient-timeline-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  border-color: #d8e6fb;
+  padding: 18px;
+  box-shadow: 0 8px 18px rgb(8 13 45 / 5%);
+}
+
+.patient-timeline-card-green {
+  border-color: #cfead9;
+  background: #fcfffd;
+}
+
+.patient-timeline-card-amber {
+  border-color: #f6d593;
+  background: #fffdf8;
+}
+
+.patient-timeline-card-icon {
+  display: grid;
+  width: 62px;
+  height: 62px;
+  place-items: center;
+  border-radius: 8px;
+  background: #eef5ff;
+  color: #075eff;
+}
+
+.patient-timeline-card-green .patient-timeline-card-icon {
+  background: #eaf7ef;
+  color: #268252;
+}
+
+.patient-timeline-card-amber .patient-timeline-card-icon {
+  background: #fff0d6;
+  color: #b7791f;
+}
+
+.patient-timeline-card-icon svg,
+.timeline-overflow svg,
+.patient-timeline-actions .btn svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.patient-timeline-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+}
+
+.patient-timeline-card-copy h3 {
+  color: #080d2d;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+
+.patient-timeline-card-copy p {
+  color: #263451;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.patient-timeline-actions {
+  display: grid;
+  min-width: 150px;
+  align-content: space-between;
+  justify-items: end;
+  gap: 22px;
+}
+
+.timeline-overflow {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #33415f;
+}
+
+.patient-timeline-actions .btn {
+  min-width: 144px;
+  min-height: 46px;
+  justify-content: center;
 }
 
 .resolver-backdrop {
@@ -5644,6 +5935,63 @@ small {
 
   .clinical-row-copy h3 {
     white-space: normal;
+  }
+
+  .patient-detail-header {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding-top: 4px;
+  }
+
+  .patient-detail-header .clinical-avatar {
+    width: 74px;
+    height: 74px;
+    font-size: 1.5rem;
+  }
+
+  .patient-detail-heading h1 {
+    font-size: 2rem;
+  }
+
+  .patient-detail-header > .btn {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .patient-timeline {
+    padding-left: 22px;
+  }
+
+  .patient-timeline::before {
+    left: 7px;
+  }
+
+  .patient-timeline-marker {
+    left: -23px;
+  }
+
+  .patient-timeline-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px 12px;
+  }
+
+  .patient-timeline-card-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .patient-timeline-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .patient-timeline-actions .btn {
+    width: 100%;
   }
 
   .needs-input-card {

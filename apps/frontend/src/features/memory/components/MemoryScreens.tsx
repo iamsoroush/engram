@@ -2,8 +2,10 @@ import React from "react";
 import type {
   CaptureDraft,
   PatientAssignmentDraft,
+  PatientMemoryDetailResponse,
   PatientMemoryFilter,
   PatientMemoryListResponse,
+  PatientMemoryTimelineSession,
   PatientMemoryRow as ApiPatientMemoryRow,
   PatientSummary,
   SyncHealth,
@@ -14,10 +16,13 @@ import { SessionStatusBadge } from "../../capture/components/StatusBadges";
 
 export function PatientsHome({
   activeSession,
+  initialPatientId,
+  initialTab,
   sessions,
   syncHealth,
   onOpenSession,
   onContinueSession,
+  onGetPatientMemory,
   onListPatientMemory,
   onSearchPatients,
   onConfirmSummary,
@@ -25,17 +30,20 @@ export function PatientsHome({
   onAssignPatient,
 }: {
   activeSession: CaptureSession | null;
+  initialPatientId?: string;
+  initialTab?: ClinicalMemoryTab;
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
-  onOpenSession: (sessionId: string) => void;
+  onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onContinueSession: (sessionId: string) => void;
+  onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onVerifySession?: (sessionId: string) => void;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
 }) {
-  const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>("today");
+  const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
   const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
@@ -44,6 +52,10 @@ export function PatientsHome({
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
+  const [selectedPatientId, setSelectedPatientId] = React.useState(initialPatientId || "");
+  const [patientDetailCache, setPatientDetailCache] = React.useState<Record<string, PatientMemoryDetailResponse>>({});
+  const [patientDetailLoading, setPatientDetailLoading] = React.useState(false);
+  const [patientDetailError, setPatientDetailError] = React.useState(false);
   const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
   const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
   const [resolvedDecisionIds, setResolvedDecisionIds] = React.useState<Set<string>>(() => new Set());
@@ -121,6 +133,29 @@ export function PatientsHome({
     ? sessions.find((session) => session.id === summaryReviewSessionId) || (activeSession?.id === summaryReviewSessionId ? activeSession : null)
     : null;
   const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
+  const selectedPatient = selectedPatientId ? patientRows.find((patient) => patient.id === selectedPatientId) : null;
+  const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
+
+  React.useEffect(() => {
+    if (!selectedPatientId || !onGetPatientMemory || patientDetailCache[selectedPatientId]) return;
+    let cancelled = false;
+    setPatientDetailLoading(true);
+    setPatientDetailError(false);
+    void onGetPatientMemory(selectedPatientId)
+      .then((detail) => {
+        if (cancelled) return;
+        setPatientDetailCache((current) => ({ ...current, [selectedPatientId]: detail }));
+      })
+      .catch(() => {
+        if (!cancelled) setPatientDetailError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setPatientDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onGetPatientMemory, patientDetailCache, selectedPatientId]);
 
   const handlePatientAction = (patient: PatientRowModel) => {
     if (patient.action === "continue" && patient.activeSessionId) {
@@ -142,7 +177,7 @@ export function PatientsHome({
       else if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
       return;
     }
-    if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
+    setSelectedPatientId(patient.id);
   };
 
   const handleDecisionAction = (item: PatientNeedsInputItem, patient?: PatientRowModel) => {
@@ -177,7 +212,7 @@ export function PatientsHome({
           patient={decisionListPatient}
           onClose={() => setDecisionListPatientId("")}
           onOpenMemory={() => {
-            if (decisionListPatient.latestSessionId) onOpenSession(decisionListPatient.latestSessionId);
+            setSelectedPatientId(decisionListPatient.id);
             setDecisionListPatientId("");
           }}
           onItemAction={(item) => {
@@ -240,6 +275,22 @@ export function PatientsHome({
           />
         )
       ) : null}
+      {selectedPatient ? (
+        <PatientTimelineDetail
+          detail={selectedPatientDetail}
+          loading={patientDetailLoading}
+          loadError={patientDetailError}
+          patient={selectedPatient}
+          sessions={sessions}
+          activeSession={activeSession}
+          onBack={() => setSelectedPatientId("")}
+          onContinueSession={onContinueSession}
+          onOpenSession={onOpenSession}
+          onAssignPatient={(sessionId) => setAssignmentSessionId(sessionId)}
+          onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
+        />
+      ) : (
+        <>
       <div className="clinical-memory-hero">
         <div>
           <h1>Clinical Memory</h1>
@@ -298,6 +349,7 @@ export function PatientsHome({
                 statusLabel={today.currentVisit.statusLabel}
                 tone={today.currentVisit.tone}
                 title={today.currentVisit.title}
+                onSelect={() => onOpenSession(today.currentVisit!.session.id, { tab: "today" })}
                 onPrimaryAction={() => {
                   const currentVisit = today.currentVisit;
                   if (!currentVisit) return;
@@ -317,12 +369,15 @@ export function PatientsHome({
               {today.needsInputPreview ? (
                 <VisitCard
                   primaryActionLabel={todayNeedsInputActionLabel(today.needsInputPreview.session)}
-                  secondaryActionLabel="Open visit"
                   summary={today.needsInputPreview.summary}
                   session={today.needsInputPreview.session}
                   statusLabel={today.needsInputPreview.statusLabel}
                   title={today.needsInputPreview.title}
                   tone="amber"
+                  onSelect={() => {
+                    const preview = today.needsInputPreview;
+                    if (preview) onOpenSession(preview.session.id, { tab: "today" });
+                  }}
                   onPrimaryAction={() => {
                     const preview = today.needsInputPreview;
                     if (!preview) return;
@@ -332,10 +387,6 @@ export function PatientsHome({
                       return;
                     }
                     setSummaryReviewSessionId(preview.session.id);
-                  }}
-                  onSecondaryAction={() => {
-                    const preview = today.needsInputPreview;
-                    if (preview) onOpenSession(preview.session.id);
                   }}
                 />
               ) : (
@@ -351,13 +402,12 @@ export function PatientsHome({
                 {today.recentMemory.map((memory) => (
                   <VisitCard
                     key={memory.session.id}
-                    primaryActionLabel="Open visit"
                     session={memory.session}
                     statusLabel={memory.statusLabel}
                     summary={memory.summary}
                     title={memory.title}
                     tone={memory.tone}
-                    onPrimaryAction={() => onOpenSession(memory.session.id)}
+                    onSelect={() => onOpenSession(memory.session.id, { tab: "today" })}
                   />
                 ))}
               </div>
@@ -392,14 +442,15 @@ export function PatientsHome({
             ) : filteredPatients.length ? (
               filteredPatients.map((patient) => (
                 <PatientRow
-                  actionLabel={patient.actionLabel}
+                  actionLabel={patient.action === "open-memory" ? undefined : patient.actionLabel}
                   badges={patient.badges}
                   latestVisitLabel={patient.latestVisitLabel}
                   key={patient.id}
                   patientName={patient.name}
                   summary={patient.summary}
                   tone={patient.needsInput ? "amber" : "green"}
-                  onOpen={() => handlePatientAction(patient)}
+                  onAction={() => handlePatientAction(patient)}
+                  onSelect={() => setSelectedPatientId(patient.id)}
                 />
               ))
             ) : (
@@ -421,7 +472,7 @@ export function PatientsHome({
                 <NeedsInputDecisionCard
                   item={item}
                   key={item.id}
-                  onOpenVisit={item.session ? () => onOpenSession(item.session!.id) : undefined}
+                  onSelect={item.session ? () => onOpenSession(item.session!.id, { tab: "needs-input" }) : undefined}
                   onPrimaryAction={() => handleNeedsInputAction(item)}
                 />
               ))
@@ -431,6 +482,8 @@ export function PatientsHome({
           </div>
         </div>
       ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -438,6 +491,11 @@ export function PatientsHome({
 type ClinicalMemoryTab = "today" | "patients" | "needs-input";
 type PatientFilter = "recent" | "active" | "all";
 type ClinicalTone = "blue" | "green" | "amber";
+
+export type ClinicalMemoryReturnContext = {
+  tab: ClinicalMemoryTab;
+  patientId?: string;
+};
 
 type TodayCardModel = {
   session: CaptureSession;
@@ -474,13 +532,14 @@ type PatientRowModel = {
   summary: string;
   badges: string[];
   action: PatientPrimaryAction;
-  actionLabel: "Continue" | "Open memory" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Review items";
+  actionLabel: "Continue" | "View history" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Review items";
   isActive: boolean;
   needsInput: boolean;
   needsInputItems: PatientNeedsInputItem[];
   latestVisitLabel: string | null;
   latestSessionId: string | null;
   activeSessionId: string | null;
+  sessionCount: number;
 };
 
 type PatientPrimaryAction = "continue" | "open-memory" | "review-summary" | "assign-patient" | "choose-patient" | "resolve-conflict" | "review-items";
@@ -511,7 +570,6 @@ type NeedsInputCardItem = {
   explanation: string;
   action: NeedsInputAction;
   actionLabel: string;
-  secondaryActionLabel?: string;
   possiblePatients?: string[];
   tone: "amber" | "blue" | "purple";
   icon: "assign" | "match" | "summary" | "storage" | "conflict";
@@ -577,7 +635,6 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
       explanation: needsInputSummary(session),
       action,
       actionLabel: "Assign patient",
-      secondaryActionLabel: "Open visit",
       tone: "amber",
       icon: "assign",
     };
@@ -593,7 +650,6 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
         : "I found a possible patient match before updating memory. Please choose the correct patient.",
       action,
       actionLabel: "Choose patient",
-      secondaryActionLabel: "Open visit",
       possiblePatients,
       tone: "purple",
       icon: "match",
@@ -608,7 +664,6 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
       explanation: "I found patient details that conflict with existing memory. Please review before I update it.",
       action,
       actionLabel: "Resolve conflict",
-      secondaryActionLabel: "Open visit",
       tone: "amber",
       icon: "conflict",
     };
@@ -624,7 +679,6 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
       : "I drafted a summary of this visit before adding it to long-term memory.",
     action,
     actionLabel: "Review summary",
-    secondaryActionLabel: "Open visit",
     tone: "blue",
     icon: "summary",
   };
@@ -737,6 +791,7 @@ function buildPatientRows({
         latestVisitLabel: latestVisitLabelFromTimestamp(sessionVisitTimestamp(primarySession)),
         latestSessionId: primarySession.id,
         activeSessionId: activeSessions[0]?.id || null,
+        sessionCount: sortedSessions.length,
       };
     })
     .sort((a, b) => latestSessionTimeById(b.latestSessionId, sessions, activeSession) - latestSessionTimeById(a.latestSessionId, sessions, activeSession));
@@ -763,6 +818,7 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     latestVisitLabel: latestVisitLabelFromApi(row),
     latestSessionId: row.latestSessionId || null,
     activeSessionId: row.activeSessionId || null,
+    sessionCount: row.sessionCount,
   };
 }
 
@@ -777,7 +833,7 @@ function patientPrimaryAction({
   const item = needsInputItems[0];
   if (item) return { action: item.action, label: labelForDecisionAction(item.action) };
   if (activeCount > 0) return { action: "continue", label: "Continue" };
-  return { action: "open-memory", label: "Open memory" };
+  return { action: "open-memory", label: "View history" };
 }
 
 function labelForDecisionAction(action: PatientNeedsInputItem["action"]): PatientRowModel["actionLabel"] {
@@ -986,48 +1042,92 @@ function ClinicalMemoryCard({
   children,
   className,
   tone = "blue",
+  onSelect,
   onAction,
 }: {
-  actionLabel: string;
+  actionLabel?: string;
   children: React.ReactNode;
   className?: string;
   tone?: ClinicalTone;
-  onAction: () => void;
+  onSelect?: () => void;
+  onAction?: () => void;
 }) {
   return (
-    <Card className={["clinical-row", `clinical-row-${tone}`, className].filter(Boolean).join(" ")}>
+    <Card
+      className={["clinical-row", onSelect ? "clinical-row-selectable" : "", `clinical-row-${tone}`, className].filter(Boolean).join(" ")}
+      onClick={onSelect}
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onKeyDown={
+        onSelect
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect();
+              }
+            }
+          : undefined
+      }
+    >
       {children}
-      <Button onClick={onAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : "default"}>
-        {actionLabel}
-        <ChevronIcon />
-      </Button>
+      {actionLabel && onAction ? (
+        <Button
+          onClick={(event) => {
+            event.stopPropagation();
+            onAction();
+          }}
+          size="sm"
+          type="button"
+          variant={tone === "amber" ? "secondary" : "default"}
+        >
+          {actionLabel}
+          <ChevronIcon />
+        </Button>
+      ) : (
+        <span className="patient-row-chevron" aria-hidden="true">
+          <ChevronIcon />
+        </span>
+      )}
     </Card>
   );
 }
 
 function VisitCard({
   primaryActionLabel,
-  secondaryActionLabel,
   session,
   statusLabel,
   summary,
   title,
   tone,
+  onSelect,
   onPrimaryAction,
-  onSecondaryAction,
 }: {
-  primaryActionLabel: string;
-  secondaryActionLabel?: string;
+  primaryActionLabel?: string;
   session: CaptureSession;
   statusLabel: string;
   summary: string;
   title: string;
   tone: ClinicalTone;
-  onPrimaryAction: () => void;
-  onSecondaryAction?: () => void;
+  onSelect?: () => void;
+  onPrimaryAction?: () => void;
 }) {
   return (
-    <Card className={["clinical-row", "visit-card", `clinical-row-${tone}`].join(" ")}>
+    <Card
+      className={["clinical-row", "visit-card", onSelect ? "clinical-row-selectable" : "", `clinical-row-${tone}`].join(" ")}
+      onClick={onSelect}
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onKeyDown={
+        onSelect
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect();
+              }
+            }
+          : undefined
+      }
+    >
       <Avatar label={title} tone={tone} />
       <div className="clinical-row-copy">
         <div className="visit-card-title-row">
@@ -1039,15 +1139,24 @@ function VisitCard({
         <CaptureChips session={session} tone={tone} />
       </div>
       <div className="visit-card-actions">
-        <Button onClick={onPrimaryAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : "default"}>
-          {primaryActionLabel}
-          <ChevronIcon />
-        </Button>
-        {secondaryActionLabel && onSecondaryAction ? (
-          <Button onClick={onSecondaryAction} size="sm" type="button" variant="ghost">
-            {secondaryActionLabel}
+        {primaryActionLabel && onPrimaryAction ? (
+          <Button
+            onClick={(event) => {
+              event.stopPropagation();
+              onPrimaryAction();
+            }}
+            size="sm"
+            type="button"
+            variant={tone === "amber" ? "secondary" : "default"}
+          >
+            {primaryActionLabel}
+            <ChevronIcon />
           </Button>
-        ) : null}
+        ) : (
+          <span className="patient-row-chevron" aria-hidden="true">
+            <ChevronIcon />
+          </span>
+        )}
       </div>
     </Card>
   );
@@ -1055,15 +1164,30 @@ function VisitCard({
 
 function NeedsInputDecisionCard({
   item,
-  onOpenVisit,
+  onSelect,
   onPrimaryAction,
 }: {
   item: NeedsInputCardItem;
-  onOpenVisit?: () => void;
+  onSelect?: () => void;
   onPrimaryAction: () => void;
 }) {
   return (
-    <Card className={["needs-input-card", `needs-input-card-${item.tone}`].join(" ")}>
+    <Card
+      className={["needs-input-card", onSelect ? "clinical-row-selectable" : "", `needs-input-card-${item.tone}`].join(" ")}
+      onClick={onSelect}
+      role={onSelect ? "button" : undefined}
+      tabIndex={onSelect ? 0 : undefined}
+      onKeyDown={
+        onSelect
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect();
+              }
+            }
+          : undefined
+      }
+    >
       <Avatar label={item.title} tone={item.tone === "purple" ? "blue" : item.tone} />
       <div className="needs-input-card-icon" aria-hidden="true">
         <NeedsInputDecisionIcon icon={item.icon} />
@@ -1071,11 +1195,6 @@ function NeedsInputDecisionCard({
       <div className="needs-input-card-copy">
         <div className="needs-input-title-row">
           <h3>{item.title}</h3>
-          {onOpenVisit ? (
-            <button aria-label={`Open visit for ${item.title}`} className="needs-input-open-icon" onClick={onOpenVisit} type="button">
-              <ChevronIcon />
-            </button>
-          ) : null}
         </div>
         <div className="visit-metadata" aria-label="Decision context">
           {item.contextLabel ? (
@@ -1102,14 +1221,16 @@ function NeedsInputDecisionCard({
       </div>
       {item.possiblePatients?.length ? <PossiblePatientOptions patients={item.possiblePatients} /> : null}
       <div className="needs-input-card-actions">
-        <Button onClick={onPrimaryAction} size="sm" type="button">
+        <Button
+          onClick={(event) => {
+            event.stopPropagation();
+            onPrimaryAction();
+          }}
+          size="sm"
+          type="button"
+        >
           {item.actionLabel}
         </Button>
-        {item.secondaryActionLabel && onOpenVisit ? (
-          <Button onClick={onOpenVisit} size="sm" type="button" variant="ghost">
-            {item.secondaryActionLabel}
-          </Button>
-        ) : null}
       </div>
     </Card>
   );
@@ -1164,6 +1285,191 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
   );
 }
 
+function PatientTimelineDetail({
+  activeSession,
+  detail,
+  loading,
+  loadError,
+  patient,
+  sessions,
+  onAssignPatient,
+  onBack,
+  onContinueSession,
+  onOpenSession,
+  onReviewSummary,
+}: {
+  activeSession: CaptureSession | null;
+  detail?: PatientMemoryDetailResponse;
+  loading: boolean;
+  loadError: boolean;
+  patient: PatientRowModel;
+  sessions: CaptureSession[];
+  onAssignPatient: (sessionId: string) => void;
+  onBack: () => void;
+  onContinueSession: (sessionId: string) => void;
+  onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
+  onReviewSummary: (sessionId: string) => void;
+}) {
+  const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
+  const timelineGroups = buildTimelineGroups(detail, localSessions);
+  const sessionCount = detail?.patient.sessionCount || patient.sessionCount || localSessions.length;
+  const firstSeen = firstSeenLabel(detail?.sessions, localSessions);
+  const latestActiveSession = localSessions.find(isActiveVisit) || (patient.activeSessionId ? localSessions.find((session) => session.id === patient.activeSessionId) : null);
+  const latestSessionId = latestActiveSession?.id || patient.latestSessionId || timelineGroups.flatMap((group) => group.sessions)[0]?.sessionId || "";
+  const primaryLabel = latestActiveSession ? "Continue latest visit" : latestSessionId ? "Open latest" : "Start new visit";
+
+  return (
+    <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
+      <button className="context-back-button" onClick={onBack} type="button">
+        <BackIcon />
+        Clinical Memory
+      </button>
+
+      <section className="patient-detail-header">
+        <Avatar label={patient.name} tone={patient.needsInput ? "amber" : "green"} />
+        <div className="patient-detail-heading">
+          <h1>{patient.name}</h1>
+          <p>AesMem assistant summary: {detail?.patient.summary || patient.summary}</p>
+          <div className="patient-detail-meta" aria-label="Patient metadata">
+            <span>{visitCountLabel(sessionCount)}</span>
+            {firstSeen ? <span>First seen {firstSeen}</span> : null}
+          </div>
+        </div>
+        <Button
+          disabled={!latestSessionId}
+          onClick={() => {
+            if (!latestSessionId) return;
+            if (latestActiveSession) onContinueSession(latestSessionId);
+            else onOpenSession(latestSessionId);
+          }}
+          type="button"
+        >
+          {primaryLabel}
+          <ChevronIcon />
+        </Button>
+      </section>
+
+      {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
+      {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
+
+      <div className="patient-timeline" aria-label="Visit timeline">
+        {timelineGroups.length ? (
+          timelineGroups.map((group) => (
+            <section className="patient-timeline-group" key={group.label}>
+              <div className="patient-timeline-marker" aria-hidden="true" />
+              <h2>{group.label}</h2>
+              <div className="patient-timeline-cards">
+                {group.sessions.map((session) => (
+                  <PatientTimelineCard
+                    key={session.sessionId}
+                    localSession={session.localSession}
+                    session={session}
+                    onAssignPatient={onAssignPatient}
+                    onContinueSession={onContinueSession}
+                    onOpenSession={(sessionId) => onOpenSession(sessionId, { tab: "patients", patientId: patient.id })}
+                    onReviewSummary={onReviewSummary}
+                  />
+                ))}
+              </div>
+            </section>
+          ))
+        ) : loading ? null : (
+          <EmptyClinicalState title="No visits yet." copy="Patient visits will appear here after capture." />
+        )}
+      </div>
+    </div>
+  );
+}
+
+type TimelineSessionModel = PatientMemoryTimelineSession & {
+  localSession?: CaptureSession;
+};
+
+type TimelineGroupModel = {
+  label: "Today" | "Earlier this week" | "Older";
+  sessions: TimelineSessionModel[];
+};
+
+function PatientTimelineCard({
+  localSession,
+  session,
+  onAssignPatient,
+  onContinueSession,
+  onOpenSession,
+  onReviewSummary,
+}: {
+  localSession?: CaptureSession;
+  session: TimelineSessionModel;
+  onAssignPatient: (sessionId: string) => void;
+  onContinueSession: (sessionId: string) => void;
+  onOpenSession: (sessionId: string) => void;
+  onReviewSummary: (sessionId: string) => void;
+}) {
+  const status = timelineSessionStatus(session, localSession);
+  const action = timelineSessionAction(session, localSession);
+  const tone = status.startsWith("Needs input") ? "amber" : status === "Verified" ? "blue" : "green";
+  const title = session.title || (localSession ? sessionVisitTitle(localSession) : "Visit");
+  const summary = session.generatedSummary || session.summary || (localSession ? naturalSessionSummary(localSession) : "") || "This visit is saved in patient memory.";
+  const updatedLabel = timelineUpdatedLabel(session, localSession);
+
+  const runAction = () => {
+    if (action.kind === "continue") onContinueSession(session.sessionId);
+    else if (action.kind === "assign") onAssignPatient(session.sessionId);
+    else if (action.kind === "review") onReviewSummary(session.sessionId);
+    else onOpenSession(session.sessionId);
+  };
+
+  return (
+    <Card className={["patient-timeline-card", `patient-timeline-card-${tone}`].join(" ")}>
+      <div className="patient-timeline-card-icon" aria-hidden="true">
+        <CalendarIcon />
+      </div>
+      <div className="patient-timeline-card-copy">
+        <div className="visit-card-title-row">
+          <h3>{title}</h3>
+          <Badge tone={tone}>{status}</Badge>
+        </div>
+        <div className="visit-metadata" aria-label="Visit times">
+          <div>
+            <span>Session:</span>
+            <strong>{timelineSessionTimeLabel(session, localSession)}</strong>
+          </div>
+          {updatedLabel ? (
+            <div className={updatedLabel.startsWith("Updated today") ? "visit-metadata-success" : undefined}>
+              {updatedLabel.startsWith("Updated today") ? null : <span>Updated:</span>}
+              <strong>{updatedLabel}</strong>
+            </div>
+          ) : null}
+        </div>
+        <p>{summary}</p>
+        <TimelineCaptureChips session={session} localSession={localSession} tone={tone} />
+      </div>
+      <div className="patient-timeline-actions">
+        <button aria-label={`More actions for ${title}`} className="timeline-overflow" type="button">
+          <MoreIcon />
+        </button>
+        <Button onClick={runAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : action.kind === "open" ? "secondary" : "default"}>
+          {action.label}
+          <ChevronIcon />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function PatientTimelineLoading() {
+  return (
+    <Card className="clinical-row clinical-row-loading">
+      <span className="clinical-avatar clinical-avatar-blue" />
+      <div className="clinical-row-copy">
+        <span />
+        <p />
+      </div>
+      <span />
+    </Card>
+  );
+}
+
 function PatientRow({
   actionLabel,
   badges,
@@ -1171,18 +1477,20 @@ function PatientRow({
   patientName,
   summary,
   tone = "green",
-  onOpen,
+  onAction,
+  onSelect,
 }: {
-  actionLabel: string;
+  actionLabel?: string;
   badges: string[];
   latestVisitLabel: string | null;
   patientName: string;
   summary: string;
   tone?: ClinicalTone;
-  onOpen: () => void;
+  onAction: () => void;
+  onSelect: () => void;
 }) {
   return (
-    <ClinicalMemoryCard actionLabel={actionLabel} className="clinical-patient-row" tone={tone} onAction={onOpen}>
+    <ClinicalMemoryCard actionLabel={actionLabel} className="clinical-patient-row" tone={tone} onAction={onAction} onSelect={onSelect}>
       <Avatar label={patientName} tone={tone} />
       <div className="clinical-row-copy">
         <h3>{patientName}</h3>
@@ -1253,7 +1561,7 @@ function PatientDecisionListSheet({
         {onOpenMemory ? (
           <div className="patient-decision-secondary">
             <Button onClick={onOpenMemory} size="sm" type="button" variant="ghost">
-              Open patient memory
+              View patient history
             </Button>
           </div>
         ) : null}
@@ -1829,6 +2137,27 @@ function CaptureChips({ session, tone }: { session: CaptureSession; tone: Clinic
   );
 }
 
+function TimelineCaptureChips({
+  localSession,
+  session,
+  tone,
+}: {
+  localSession?: CaptureSession;
+  session: TimelineSessionModel;
+  tone: ClinicalTone;
+}) {
+  if (localSession) return <CaptureChips session={localSession} tone={tone} />;
+  if (!session.captureCount) return null;
+  return (
+    <div className="capture-chips" aria-label="Capture types">
+      <span className={`capture-chip capture-chip-${tone}`}>
+        {captureTypeIcon("note")}
+        {session.captureCount} capture{session.captureCount === 1 ? "" : "s"}
+      </span>
+    </div>
+  );
+}
+
 function EmptyClinicalState({ copy, title }: { copy: string; title: string }) {
   return (
     <Card className="clinical-empty">
@@ -1840,6 +2169,22 @@ function EmptyClinicalState({ copy, title }: { copy: string; title: string }) {
 
 function Avatar({ label, tone }: { label: string; tone: ClinicalTone }) {
   return <span className={`clinical-avatar clinical-avatar-${tone}`}>{avatarInitials(label)}</span>;
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5 12h.1M12 12h.1M19 12h.1" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="m15 5-7 7 7 7" />
+    </svg>
+  );
 }
 
 function SearchIcon() {
@@ -2185,6 +2530,123 @@ function patientCardSummary(sessions: CaptureSession[]) {
   return "No memory summary yet.";
 }
 
+function patientSessionsForDetail(patient: PatientRowModel, sessions: CaptureSession[], activeSession: CaptureSession | null) {
+  return uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
+    .filter((session) => session.patientId === patient.id || session.patientName === patient.name)
+    .sort((a, b) => sessionVisitTimestamp(b) - sessionVisitTimestamp(a));
+}
+
+function buildTimelineGroups(detail: PatientMemoryDetailResponse | undefined, localSessions: CaptureSession[]): TimelineGroupModel[] {
+  const localById = new Map(localSessions.map((session) => [session.id, session]));
+  const detailSessions = detail?.sessions.length
+    ? detail.sessions.map((session) => ({ ...session, groupLabel: normalizeTimelineGroupLabel(session.groupLabel), localSession: localById.get(session.sessionId) }))
+    : localSessions.map(timelineSessionFromLocal);
+  const groups = new Map<TimelineGroupModel["label"], TimelineSessionModel[]>();
+  detailSessions
+    .sort((a, b) => timelineSortTime(b) - timelineSortTime(a))
+    .forEach((session) => {
+      const label = normalizeTimelineGroupLabel(session.groupLabel || timelineGroupLabel(timelineSortTime(session)));
+      groups.set(label, [...(groups.get(label) || []), session]);
+    });
+  return (["Today", "Earlier this week", "Older"] as const)
+    .map((label) => ({ label, sessions: groups.get(label) || [] }))
+    .filter((group) => group.sessions.length);
+}
+
+function timelineSessionFromLocal(session: CaptureSession): TimelineSessionModel {
+  const visitTime = sessionVisitTimestamp(session);
+  return {
+    sessionId: session.id,
+    title: sessionVisitTitle(session),
+    status: session.status,
+    summary: naturalSessionSummary(session) || "This visit is saved in patient memory.",
+    generatedSummary: session.summaries?.short || null,
+    ruleBasedSummary: null,
+    captureCount: session.items.length,
+    verified: session.status === "verified" || session.report?.status === "verified",
+    needsInput: needsHumanInput(session),
+    groupLabel: timelineGroupLabel(visitTime),
+    sortDate: visitTime ? new Date(visitTime).toISOString() : null,
+    capturedAt: session.capturedAt || session.createdAt || null,
+    updatedAt: session.updatedAt || session.report?.updatedAt || session.processingStatus?.updatedAt || null,
+    localSession: session,
+  };
+}
+
+function normalizeTimelineGroupLabel(label: string): TimelineGroupModel["label"] {
+  if (label === "Today" || label === "Earlier this week") return label;
+  return "Older";
+}
+
+function timelineGroupLabel(timestamp: number): TimelineGroupModel["label"] {
+  if (!timestamp) return "Older";
+  const date = new Date(timestamp);
+  if (isToday(date.toISOString())) return "Today";
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const ageDays = Math.floor((startOfToday - new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()) / 86400000);
+  return ageDays > 0 && ageDays < 7 ? "Earlier this week" : "Older";
+}
+
+function timelineSortTime(session: Pick<TimelineSessionModel, "sortDate" | "capturedAt" | "updatedAt">) {
+  return [session.sortDate, session.capturedAt, session.updatedAt]
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => value && !Number.isNaN(value))
+    .sort((a, b) => b - a)[0] || 0;
+}
+
+function timelineSessionTimeLabel(session: TimelineSessionModel, localSession?: CaptureSession) {
+  if (localSession) return sessionTimeLabel(localSession);
+  const timestamp = timelineSortTime({ sortDate: session.capturedAt || session.sortDate, capturedAt: session.capturedAt, updatedAt: null });
+  return explicitDateTimeLabel(timestamp);
+}
+
+function timelineUpdatedLabel(session: TimelineSessionModel, localSession?: CaptureSession) {
+  const sessionTime = localSession ? sessionVisitTimestamp(localSession) : timelineSortTime({ sortDate: session.capturedAt || session.sortDate, capturedAt: session.capturedAt, updatedAt: null });
+  const updatedTime = localSession ? latestSessionTime(localSession) : timelineSortTime({ sortDate: session.updatedAt, capturedAt: null, updatedAt: session.updatedAt });
+  if (!updatedTime || !sessionTime || updatedTime - sessionTime < 60000) return "";
+  if (isToday(new Date(updatedTime).toISOString()) && (localSession?.assignmentSource || localSession?.patientId)) return "Updated today · Patient assigned";
+  return formatSessionTime(updatedTime);
+}
+
+function timelineSessionStatus(session: TimelineSessionModel, localSession?: CaptureSession) {
+  const action = timelineDecisionAction(session, localSession);
+  if (action) return needsInputLabelForAction(action);
+  if (localSession && isActiveVisit(localSession)) return "In progress";
+  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return "In progress";
+  if (session.verified || localSession?.status === "verified" || localSession?.report?.status === "verified") return "Verified";
+  if (localSession?.id.startsWith("local-session-")) return "Saved on this device";
+  return "Saved on this device";
+}
+
+function timelineSessionAction(session: TimelineSessionModel, localSession?: CaptureSession): { kind: "continue" | "open" | "review" | "assign"; label: string } {
+  const action = timelineDecisionAction(session, localSession);
+  if (action === "assign-patient" || action === "choose-patient") return { kind: "assign", label: labelForDecisionAction(action) };
+  if (action === "review-summary" || action === "resolve-conflict") return { kind: "review", label: labelForDecisionAction(action) };
+  if (localSession && isActiveVisit(localSession)) return { kind: "continue", label: "Continue visit" };
+  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { kind: "continue", label: "Continue visit" };
+  if (session.verified || localSession?.status === "verified") return { kind: "review", label: "Review summary" };
+  return { kind: "open", label: "Open visit" };
+}
+
+function timelineDecisionAction(session: TimelineSessionModel, localSession?: CaptureSession): PatientNeedsInputItem["action"] | null {
+  if (localSession) return decisionActionForSession(localSession);
+  const status = session.status.toLowerCase();
+  if (status === "unassigned") return "assign-patient";
+  if (status === "matched") return "choose-patient";
+  if (session.needsInput || status === "needs_review" || status === "reviewing") return "review-summary";
+  return null;
+}
+
+function firstSeenLabel(detailSessions: PatientMemoryTimelineSession[] | undefined, localSessions: CaptureSession[]) {
+  const timestamps = [
+    ...(detailSessions || []).map((session) => timelineSortTime({ sortDate: session.capturedAt || session.sortDate, capturedAt: session.capturedAt, updatedAt: null })),
+    ...localSessions.map(sessionVisitTimestamp),
+  ].filter(Boolean);
+  if (!timestamps.length) return "";
+  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(Math.min(...timestamps)));
+}
+
 function naturalSessionSummary(session: CaptureSession) {
   if (session.summaries?.short) return session.summaries.short;
   if (session.summaries?.patientHistory) return session.summaries.patientHistory;
@@ -2314,6 +2776,13 @@ function sessionTimeLabel(session: CaptureSession) {
 function formatSessionTime(timestamp: number) {
   if (!timestamp) return "recently";
   return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
+}
+
+function explicitDateTimeLabel(timestamp: number) {
+  if (!timestamp) return "Recent visit";
+  const date = new Date(timestamp);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return `${dateLabel} · ${formatSessionTime(timestamp)}`;
 }
 
 function formatBytes(bytes: number) {

@@ -25,7 +25,8 @@
 - Active Session to capture dialogs: sticky bottom actions `Audio`, `Take photo`, `Write note`; Audio shows `Tap to record`.
 - Clinical Memory/Search to capture destination choice: sticky bottom actions first show a compact destination chooser with current/recent sessions or a new session.
 - Active Session screen to a fresh draft context: `+ New session`, shown only when the active session has captures.
-- Clinical Memory Patients tab to patient detail/timeline: select `Open memory` on a patient row.
+- Clinical Memory Patients tab to patient detail/timeline: select a patient row.
+- Clinical Memory session cards to Active Session: select a Today, Needs input, or patient timeline session card. Active Session shows a `Back` action that returns to the originating Clinical Memory tab or patient timeline.
 - Clinical Memory Needs input tab to focused decision surface: primary actions open resolvers such as assign patient, choose patient, review summary, or review storage. They do not primarily redirect to the active session page.
 - Search to session review: select a session row; the review opens inline using the Active Session Workspace structure.
 

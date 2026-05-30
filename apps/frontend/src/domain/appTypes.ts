@@ -136,6 +136,33 @@ export type PatientMemoryListResponse = {
   total: number;
 };
 
+export type PatientMemoryTimelineSession = {
+  sessionId: string;
+  title?: string | null;
+  status: string;
+  summary: string;
+  generatedSummary?: string | null;
+  ruleBasedSummary?: string | null;
+  captureCount: number;
+  verified: boolean;
+  needsInput: boolean;
+  groupLabel: string;
+  sortDate?: string | null;
+  capturedAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type PatientMemorySessionGroup = {
+  label: string;
+  sessions: PatientMemoryTimelineSession[];
+};
+
+export type PatientMemoryDetailResponse = {
+  patient: PatientMemoryRow;
+  sessions: PatientMemoryTimelineSession[];
+  groups: PatientMemorySessionGroup[];
+};
+
 export type PatientAssignmentDraft = {
   patientId?: string;
   displayName: string;

@@ -19,6 +19,7 @@ import {
   createPatient,
   deleteCapture,
   fetchPatientMemory,
+  fetchPatientMemoryDetail,
   fetchSessionCaptures,
   fetchSessions,
   loginWithPassword,
@@ -51,7 +52,7 @@ import {
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
-import { CaptureDestinationPanel, PatientsHome, SearchHome } from "../features/memory/components/MemoryScreens";
+import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { Shell, SyncSafetyBanner } from "../features/shell/Shell";
 import {
   bindPendingSession,
@@ -103,6 +104,7 @@ export function App() {
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
+  const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
   const processingRef = React.useRef(false);
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
@@ -1249,27 +1251,33 @@ export function App() {
     lastError: syncError || undefined,
   };
 
-  const openMemorySession = (sessionId: string) => {
+  const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
+    setClinicalMemoryReturnContext(returnContext || null);
     const session = sessions.find((candidate) => candidate.id === sessionId);
-    if (session?.status === "draft") {
+    navigateScreen("active-session");
+    if (session) {
       setSelectedSessionId("");
-      navigateScreen("active-session");
-      if (session.items.length || isLocalSessionId(session.id)) {
-        setActiveSession(session);
-        return;
-      }
       setActiveSession(session);
-      void loadCapturesForSession(session.id)
-        .then((captures) => {
-          setActiveSession((current) => (current?.id === session.id ? { ...session, items: captures } : current));
-        })
-        .catch(() => setToast("Could not load captures for this session."));
+      if (!session.items.length && !isLocalSessionId(session.id)) {
+        void loadCapturesForSession(session.id)
+          .then((captures) => {
+            setActiveSession((current) => (current?.id === session.id ? { ...session, items: captures } : current));
+          })
+          .catch(() => setToast("Could not load captures for this session."));
+      }
       return;
     }
     setSelectedSessionId(sessionId);
-    if (session && !session.items.length && !isLocalSessionId(session.id)) {
-      void loadCapturesForSession(session.id).catch(() => setToast("Could not load captures for this session."));
-    }
+  };
+
+  const returnToClinicalMemory = () => {
+    setSelectedSessionId("");
+    navigateScreen("patients");
+  };
+
+  const handleShellNavigate = (nextScreen: Screen) => {
+    setClinicalMemoryReturnContext(null);
+    navigateScreen(nextScreen);
   };
 
   const continueMemorySession = (sessionId: string) => {
@@ -1330,6 +1338,7 @@ export function App() {
         <CaptureScreen
           activeSession={activeSession}
           assignmentOpen={Boolean(activeSession && assignmentSessionId === activeSession.id)}
+          onBack={clinicalMemoryReturnContext ? returnToClinicalMemory : undefined}
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
           onCloseAssignment={() => {
@@ -1362,11 +1371,14 @@ export function App() {
     return (
       <PatientsHome
         activeSession={activeSession}
+        initialPatientId={clinicalMemoryReturnContext?.patientId}
+        initialTab={clinicalMemoryReturnContext?.tab}
         onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
         onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
+        onGetPatientMemory={(patientId) => fetchPatientMemoryDetail(apiFetch, patientId)}
         onSearchPatients={searchPatientsForAssignment}
         onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}
@@ -1405,10 +1417,11 @@ export function App() {
     <>
       <Shell
         auth={auth}
+        captureContextLabel={captureContextLabel(activeSession)}
         onCapture={beginCapture}
         onLogout={handleLogout}
         screen={screen}
-        onNavigate={navigateScreen}
+        onNavigate={handleShellNavigate}
       >
         {screen !== "patients" ? (
           <SyncSafetyBanner
@@ -1463,6 +1476,11 @@ export function App() {
 
 function isLocalAssignmentPatient(patientId: string) {
   return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
+}
+
+function captureContextLabel(session: CaptureSession | null) {
+  const patient = session?.patientName || "Unassigned visit";
+  return `Capturing for: ${patient} · Today's visit`;
 }
 
 function createClientSideId() {
