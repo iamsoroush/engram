@@ -103,12 +103,28 @@ export type PatientMemoryRow = {
   generatedSummary?: string | null;
   ruleBasedSummary?: string | null;
   metadataSentence?: string | null;
+  latestSessionMetadata?: {
+    sessionId?: string | null;
+    title?: string | null;
+    status?: string | null;
+    summary?: string | null;
+    captureCount: number;
+    capturedAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
   latestSessionId?: string | null;
   activeSessionId?: string | null;
   activeSessionCount: number;
   sessionCount: number;
   verified: boolean;
   needsInput: boolean;
+  needsInputItems?: Array<{
+    id: string;
+    sessionId?: string | null;
+    kind: string;
+    label?: string | null;
+    createdAt?: string | null;
+  }>;
   latestVisitAt?: string | null;
   updatedAt?: string | null;
 };

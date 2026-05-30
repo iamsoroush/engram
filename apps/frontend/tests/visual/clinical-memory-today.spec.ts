@@ -45,6 +45,7 @@ test.beforeEach(async ({ page }) => {
       json: [
         followUpVisit(),
         unassignedVisit(),
+        reviewSummaryVisit(),
         updatedInitialConsultation(),
       ],
     });
@@ -82,7 +83,7 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await expect(page.getByRole("heading", { name: "Active session" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Follow-up visit" })).toBeVisible();
   await expect(page.getByText("Patient:").first()).toBeVisible();
-  await expect(page.getByText("Soroush")).toBeVisible();
+  await expect(page.getByText("Soroush").first()).toBeVisible();
   await expect(page.getByText("Session:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
   await expect(page.getByText(/Updated:/).first()).toBeVisible();
@@ -107,6 +108,27 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await page.screenshot({ path: "test-results/clinical-memory-today-mobile.png", fullPage: true });
 });
 
+test("Clinical Memory Patients renders memory-first cards with focused needs-input actions", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Doctor" }).click();
+  await page.goto("/#patients");
+  await page.getByRole("tab", { name: "Patients" }).click();
+
+  await expect(page.getByRole("heading", { name: "Soroush" })).toBeVisible();
+  await expect(page.getByText(/Latest visit: Today ·/).first()).toBeVisible();
+  await expect(page.getByText("Needs input: review summary")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Review summary/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sara" })).toBeVisible();
+  await expect(page.getByText(/Latest visit: Apr 18 ·/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open memory/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /Review summary/ }).click();
+  await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark reviewed" })).toBeVisible();
+
+  await page.screenshot({ path: "test-results/clinical-memory-patients-desktop.png", fullPage: true });
+});
+
 function followUpVisit() {
   return {
     id: "session-follow-up",
@@ -128,6 +150,29 @@ function followUpVisit() {
       capture("capture-photo-3", "photo", "Photo 3", 16, 26),
       capture("capture-audio-1", "audio", "Audio note", 16, 27),
       capture("capture-note-1", "note", "Written note", 16, 28),
+    ],
+  };
+}
+
+function reviewSummaryVisit() {
+  const reviewDate = new Date(now);
+  reviewDate.setDate(now.getDate() - 7);
+  return {
+    id: "session-review-summary",
+    label: "Summary review",
+    time: "10:10 AM",
+    dateLabel: "May 23",
+    createdAt: reviewDate.toISOString(),
+    capturedAt: reviewDate.toISOString(),
+    updatedAt: reviewDate.toISOString(),
+    duration: "9 min",
+    summary: "Generated summary is ready to confirm before memory updates.",
+    status: "needs_review",
+    patientId: "patient-soroush",
+    patientName: "Soroush",
+    assignmentSource: "staff",
+    items: [
+      capture("capture-review-note-1", "note", "Written note", 10, 10),
     ],
   };
 }

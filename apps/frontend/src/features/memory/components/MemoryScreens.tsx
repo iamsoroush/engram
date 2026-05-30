@@ -21,6 +21,7 @@ export function PatientsHome({
   onContinueSession,
   onListPatientMemory,
   onSearchPatients,
+  onVerifySession,
   onAssignPatient,
 }: {
   activeSession: CaptureSession | null;
@@ -40,6 +41,8 @@ export function PatientsHome({
   const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
   const [patientRowsError, setPatientRowsError] = React.useState(false);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
+  const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
+  const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
   const today = React.useMemo(() => buildTodayModel({ activeSession, sessions, syncHealth }), [activeSession, sessions, syncHealth]);
   const localPatientRows = React.useMemo(() => buildPatientRows({ activeSession, sessions }), [activeSession, sessions]);
   React.useEffect(() => {
@@ -84,9 +87,72 @@ export function PatientsHome({
   const assignmentSession = assignmentSessionId
     ? sessions.find((session) => session.id === assignmentSessionId) || (activeSession?.id === assignmentSessionId ? activeSession : null)
     : null;
+  const summaryReviewSession = summaryReviewSessionId
+    ? sessions.find((session) => session.id === summaryReviewSessionId) || (activeSession?.id === summaryReviewSessionId ? activeSession : null)
+    : null;
+  const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
+
+  const handlePatientAction = (patient: PatientRowModel) => {
+    if (patient.action === "continue" && patient.activeSessionId) {
+      onContinueSession(patient.activeSessionId);
+      return;
+    }
+    if (patient.action === "review-items") {
+      setDecisionListPatientId(patient.id);
+      return;
+    }
+    const targetItem = patient.needsInputItems[0];
+    if (targetItem?.action === "assign-patient" || targetItem?.action === "choose-patient") {
+      if (targetItem.sessionId) setAssignmentSessionId(targetItem.sessionId);
+      else if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
+      return;
+    }
+    if (targetItem?.action === "review-summary" || targetItem?.action === "resolve-conflict") {
+      if (targetItem.sessionId) setSummaryReviewSessionId(targetItem.sessionId);
+      else if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
+      return;
+    }
+    if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
+  };
+
+  const handleDecisionAction = (item: PatientNeedsInputItem, patient?: PatientRowModel) => {
+    if (item.action === "assign-patient" || item.action === "choose-patient") {
+      if (item.sessionId) setAssignmentSessionId(item.sessionId);
+      else if (patient?.latestSessionId) onOpenSession(patient.latestSessionId);
+      return;
+    }
+    if (item.action === "review-summary" || item.action === "resolve-conflict") {
+      if (item.sessionId) setSummaryReviewSessionId(item.sessionId);
+      else if (patient?.latestSessionId) onOpenSession(patient.latestSessionId);
+    }
+  };
 
   return (
     <section className="clinical-memory" aria-label="Clinical Memory">
+      {decisionListPatient ? (
+        <PatientDecisionListSheet
+          patient={decisionListPatient}
+          onClose={() => setDecisionListPatientId("")}
+          onItemAction={(item) => {
+            setDecisionListPatientId("");
+            handleDecisionAction(item, decisionListPatient);
+          }}
+        />
+      ) : null}
+      {summaryReviewSession ? (
+        <SummaryReviewSheet
+          session={summaryReviewSession}
+          onClose={() => setSummaryReviewSessionId("")}
+          onOpenVisit={() => {
+            onOpenSession(summaryReviewSession.id);
+            setSummaryReviewSessionId("");
+          }}
+          onReview={() => {
+            onVerifySession?.(summaryReviewSession.id);
+            setSummaryReviewSessionId("");
+          }}
+        />
+      ) : null}
       {assignmentSession && onAssignPatient ? (
         <PatientAssignmentSheet
           session={assignmentSession}
@@ -251,20 +317,12 @@ export function PatientsHome({
                 <PatientRow
                   actionLabel={patient.actionLabel}
                   badges={patient.badges}
+                  latestVisitLabel={patient.latestVisitLabel}
                   key={patient.id}
                   patientName={patient.name}
                   summary={patient.summary}
                   tone={patient.needsInput ? "amber" : "green"}
-                  onOpen={() => {
-                    if (patient.action === "continue" && patient.activeSessionId) {
-                      onContinueSession(patient.activeSessionId);
-                      return;
-                    }
-                    if (patient.latestSessionId) {
-                      onOpenSession(patient.latestSessionId);
-                      return;
-                    }
-                  }}
+                  onOpen={() => handlePatientAction(patient)}
                 />
               ))
             ) : (
@@ -350,12 +408,26 @@ type PatientRowModel = {
   name: string;
   summary: string;
   badges: string[];
-  action: "continue" | "open";
-  actionLabel: "Continue" | "Open";
+  action: PatientPrimaryAction;
+  actionLabel: "Continue" | "Open memory" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Review items";
   isActive: boolean;
   needsInput: boolean;
+  needsInputItems: PatientNeedsInputItem[];
+  latestVisitLabel: string | null;
   latestSessionId: string | null;
   activeSessionId: string | null;
+};
+
+type PatientPrimaryAction = "continue" | "open-memory" | "review-summary" | "assign-patient" | "choose-patient" | "resolve-conflict" | "review-items";
+
+type PatientNeedsInputItem = {
+  id: string;
+  sessionId: string | null;
+  label: "Needs input: review summary" | "Needs input: assign patient" | "Needs input: choose patient" | "Needs input: resolve conflict";
+  action: Exclude<PatientPrimaryAction, "continue" | "open-memory" | "review-items">;
+  title: string;
+  detail: string;
+  sortTime: number;
 };
 
 function buildTodayModel({
@@ -431,10 +503,10 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
       const name = primarySession.patientName || sortedSessions.find((session) => session.patientName)?.patientName || id;
       const activeSessions = sortedSessions.filter(isActiveVisit);
       const activeCount = activeSessions.length;
-      const needsInput = sortedSessions.some(needsHumanInput);
+      const needsInputItems = sortedSessions.map(patientNeedsInputItem).filter((item): item is PatientNeedsInputItem => Boolean(item));
+      const needsInput = needsInputItems.length > 0;
       const verified = sortedSessions.some((session) => session.status === "verified");
-      const action: PatientRowModel["action"] = activeCount ? "continue" : "open";
-      const actionLabel: PatientRowModel["actionLabel"] = action === "continue" ? "Continue" : "Open";
+      const primary = patientPrimaryAction({ activeCount, needsInputItems });
       return {
         id,
         name,
@@ -442,12 +514,14 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
         badges: [
           activeCount ? `${activeCount} active session${activeCount === 1 ? "" : "s"}` : visitCountLabel(sortedSessions.length),
           verified ? "Verified" : undefined,
-          needsInput ? "Needs input" : undefined,
+          needsInputBadgeLabel(needsInputItems),
         ].filter((badge): badge is string => Boolean(badge)),
-        action,
-        actionLabel,
+        action: primary.action,
+        actionLabel: primary.label,
         isActive: Boolean(activeCount),
         needsInput,
+        needsInputItems,
+        latestVisitLabel: latestVisitLabelFromTimestamp(sessionVisitTimestamp(primarySession)),
         latestSessionId: primarySession.id,
         activeSessionId: activeSessions[0]?.id || null,
       };
@@ -457,6 +531,8 @@ function buildPatientRows({ activeSession, sessions }: { activeSession: CaptureS
 
 function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
   const isActive = row.activeSessionCount > 0;
+  const needsInputItems = patientNeedsInputItemsFromApi(row);
+  const primary = patientPrimaryAction({ activeCount: row.activeSessionCount, needsInputItems });
   return {
     id: row.patientId,
     name: row.displayName,
@@ -464,15 +540,115 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     badges: [
       isActive ? `${row.activeSessionCount} active session${row.activeSessionCount === 1 ? "" : "s"}` : visitCountLabel(row.sessionCount),
       row.verified ? "Verified" : undefined,
-      row.needsInput ? "Needs input" : undefined,
+      needsInputBadgeLabel(needsInputItems),
     ].filter((badge): badge is string => Boolean(badge)),
-    action: isActive ? "continue" : "open",
-    actionLabel: isActive ? "Continue" : "Open",
+    action: primary.action,
+    actionLabel: primary.label,
     isActive,
-    needsInput: row.needsInput,
+    needsInput: needsInputItems.length > 0,
+    needsInputItems,
+    latestVisitLabel: latestVisitLabelFromApi(row),
     latestSessionId: row.latestSessionId || null,
     activeSessionId: row.activeSessionId || null,
   };
+}
+
+function patientPrimaryAction({
+  activeCount,
+  needsInputItems,
+}: {
+  activeCount: number;
+  needsInputItems: PatientNeedsInputItem[];
+}): { action: PatientPrimaryAction; label: PatientRowModel["actionLabel"] } {
+  if (needsInputItems.length > 1) return { action: "review-items", label: "Review items" };
+  const item = needsInputItems[0];
+  if (item) return { action: item.action, label: labelForDecisionAction(item.action) };
+  if (activeCount > 0) return { action: "continue", label: "Continue" };
+  return { action: "open-memory", label: "Open memory" };
+}
+
+function labelForDecisionAction(action: PatientNeedsInputItem["action"]): PatientRowModel["actionLabel"] {
+  if (action === "review-summary") return "Review summary";
+  if (action === "assign-patient") return "Assign patient";
+  if (action === "choose-patient") return "Choose patient";
+  return "Resolve conflict";
+}
+
+function needsInputBadgeLabel(items: PatientNeedsInputItem[]) {
+  if (items.length > 1) return `${items.length} items need your input`;
+  return items[0]?.label;
+}
+
+function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsInputItem[] {
+  const explicitItems = (row.needsInputItems || []).map((item, index) => {
+    const action = decisionActionFromKind(item.kind || item.label || "");
+    const label = needsInputLabelForAction(action);
+    return {
+      id: item.id || `${row.patientId}-needs-input-${index}`,
+      sessionId: item.sessionId || row.latestSessionId || row.activeSessionId || null,
+      label,
+      action,
+      title: label.replace("Needs input: ", ""),
+      detail: "This patient memory has a decision waiting.",
+      sortTime: item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0,
+    };
+  });
+  if (explicitItems.length) return explicitItems.sort((a, b) => b.sortTime - a.sortTime);
+  if (!row.needsInput) return [];
+  return [
+    {
+      id: `${row.patientId}-review-summary`,
+      sessionId: row.latestSessionId || row.activeSessionId || null,
+      label: "Needs input: review summary",
+      action: "review-summary",
+      title: "Review summary",
+      detail: "Confirm the latest generated summary before it updates patient memory.",
+      sortTime: latestApiVisitTimestamp(row),
+    },
+  ];
+}
+
+function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem | null {
+  if (!needsHumanInput(session)) return null;
+  const action = decisionActionForSession(session);
+  const label = needsInputLabelForAction(action);
+  return {
+    id: `${session.id}-${action}`,
+    sessionId: session.id,
+    label,
+    action,
+    title: label.replace("Needs input: ", ""),
+    detail: needsInputSummary(session),
+    sortTime: latestSessionTime(session),
+  };
+}
+
+function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] {
+  const reason = `${session.reviewReason || ""} ${JSON.stringify(session.extractedMetadata || {})}`.toLowerCase();
+  const patientMatch = session.extractedMetadata?.patient_match;
+  const matchStatus =
+    patientMatch && typeof patientMatch === "object" && "status" in patientMatch ? String((patientMatch as Record<string, unknown>).status) : "";
+  if (reason.includes("conflict")) return "resolve-conflict";
+  if (matchStatus === "possible_match" || reason.includes("possible_match") || reason.includes("choose patient") || reason.includes("match")) {
+    return "choose-patient";
+  }
+  if (!session.patientName && !session.patientId) return "assign-patient";
+  return "review-summary";
+}
+
+function decisionActionFromKind(value: string): PatientNeedsInputItem["action"] {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("assign")) return "assign-patient";
+  if (normalized.includes("choose") || normalized.includes("match")) return "choose-patient";
+  if (normalized.includes("conflict")) return "resolve-conflict";
+  return "review-summary";
+}
+
+function needsInputLabelForAction(action: PatientNeedsInputItem["action"]): PatientNeedsInputItem["label"] {
+  if (action === "assign-patient") return "Needs input: assign patient";
+  if (action === "choose-patient") return "Needs input: choose patient";
+  if (action === "resolve-conflict") return "Needs input: resolve conflict";
+  return "Needs input: review summary";
 }
 
 function uniqueSessions(sessions: CaptureSession[]) {
@@ -650,6 +826,7 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
 function PatientRow({
   actionLabel,
   badges,
+  latestVisitLabel,
   patientName,
   summary,
   tone = "green",
@@ -657,6 +834,7 @@ function PatientRow({
 }: {
   actionLabel: string;
   badges: string[];
+  latestVisitLabel: string | null;
   patientName: string;
   summary: string;
   tone?: ClinicalTone;
@@ -667,16 +845,98 @@ function PatientRow({
       <Avatar label={patientName} tone={tone} />
       <div className="clinical-row-copy">
         <h3>{patientName}</h3>
+        {latestVisitLabel ? <span className="patient-latest-visit">{latestVisitLabel}</span> : null}
         <p>{summary}</p>
         <div className="patient-memory-badges" aria-label="Patient memory status">
           {badges.map((badge) => (
-            <span className={`patient-memory-badge ${badge === "Needs input" ? "needs-input" : badge === "Verified" ? "verified" : ""}`} key={badge}>
+            <span className={`patient-memory-badge ${badge.startsWith("Needs input") || badge.includes("need your input") ? "needs-input" : badge === "Verified" ? "verified" : ""}`} key={badge}>
               {badge}
             </span>
           ))}
         </div>
       </div>
     </ClinicalMemoryCard>
+  );
+}
+
+function PatientDecisionListSheet({
+  patient,
+  onClose,
+  onItemAction,
+}: {
+  patient: PatientRowModel;
+  onClose: () => void;
+  onItemAction: (item: PatientNeedsInputItem) => void;
+}) {
+  return (
+    <div className="resolver-backdrop" role="presentation">
+      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label={`${patient.name} needs input`}>
+        <div className="resolver-heading">
+          <div>
+            <p className="eyebrow">Patient decisions</p>
+            <h2>{patient.name}</h2>
+          </div>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+        <div className="resolver-list">
+          {patient.needsInputItems.map((item) => (
+            <div className="resolver-item" key={item.id}>
+              <div>
+                <strong>{item.title}</strong>
+                <p>{item.detail}</p>
+              </div>
+              <Button onClick={() => onItemAction(item)} size="sm" type="button" variant="secondary">
+                {labelForDecisionAction(item.action)}
+                <ChevronIcon />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SummaryReviewSheet({
+  session,
+  onClose,
+  onOpenVisit,
+  onReview,
+}: {
+  session: CaptureSession;
+  onClose: () => void;
+  onOpenVisit: () => void;
+  onReview: () => void;
+}) {
+  return (
+    <div className="resolver-backdrop" role="presentation">
+      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label="Review summary">
+        <div className="resolver-heading">
+          <div>
+            <p className="eyebrow">Summary review</p>
+            <h2>{sessionVisitTitle(session)}</h2>
+          </div>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+        <div className="resolver-summary">
+          <span>{session.patientName || session.patientId || "Unassigned visit"}</span>
+          <strong>{sessionTimeLabel(session)}</strong>
+          <p>{naturalSessionSummary(session) || session.summary || "Review the generated visit summary before it becomes patient memory."}</p>
+        </div>
+        <div className="resolver-actions">
+          <Button onClick={onReview} size="sm" type="button">
+            Mark reviewed
+          </Button>
+          <Button onClick={onOpenVisit} size="sm" type="button" variant="secondary">
+            Open visit
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -834,7 +1094,9 @@ function captureTypeIcon(type: CaptureItemType) {
 }
 
 function needsHumanInput(session: CaptureSession) {
-  return !session.patientName && !session.patientId;
+  if (session.status === "unassigned") return true;
+  if (session.status === "needs_review" || session.status === "reviewing") return true;
+  return false;
 }
 
 function needsInputTitle(session: CaptureSession) {
@@ -948,9 +1210,42 @@ function latestSessionTime(session: CaptureSession) {
   return timestamp || 0;
 }
 
+function sessionVisitTimestamp(session: CaptureSession) {
+  const timestamp = [session.capturedAt, session.createdAt]
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => value && !Number.isNaN(value))[0];
+  return timestamp || latestSessionTime(session);
+}
+
 function latestSessionTimeById(sessionId: string | null, sessions: CaptureSession[], activeSession: CaptureSession | null) {
   const session = [activeSession, ...sessions].find((candidate) => candidate?.id === sessionId);
   return session ? latestSessionTime(session) : 0;
+}
+
+function latestVisitLabelFromApi(row: ApiPatientMemoryRow) {
+  const timestamp = latestApiVisitTimestamp(row);
+  return latestVisitLabelFromTimestamp(timestamp);
+}
+
+function latestApiVisitTimestamp(row: ApiPatientMemoryRow) {
+  const candidates = [
+    row.latestVisitAt,
+    row.latestSessionMetadata?.capturedAt,
+    row.latestSessionMetadata?.updatedAt,
+    row.updatedAt,
+  ];
+  return candidates
+    .map((value) => (value ? new Date(value).getTime() : 0))
+    .filter((value) => value && !Number.isNaN(value))
+    .sort((a, b) => b - a)[0] || 0;
+}
+
+function latestVisitLabelFromTimestamp(timestamp: number) {
+  if (!timestamp) return null;
+  const date = new Date(timestamp);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  return `Latest visit: ${dateLabel} · ${timeLabel}`;
 }
 
 function naturalUpdatedDate(session: CaptureSession) {

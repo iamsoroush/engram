@@ -272,6 +272,11 @@ function normalizePatientSummary(raw: Record<string, unknown>): PatientSummary {
 }
 
 function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryRow {
+  const latestSessionMetadata =
+    raw.latestSessionMetadata && typeof raw.latestSessionMetadata === "object"
+      ? (raw.latestSessionMetadata as Record<string, unknown>)
+      : null;
+  const rawNeedsInputItems = Array.isArray(raw.needsInputItems) ? raw.needsInputItems : [];
   return {
     patientId: String(raw.patientId || raw.id || ""),
     displayName: String(raw.displayName || "Unnamed patient"),
@@ -280,12 +285,32 @@ function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryR
     generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
     ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,
     metadataSentence: typeof raw.metadataSentence === "string" ? raw.metadataSentence : null,
+    latestSessionMetadata: latestSessionMetadata
+      ? {
+          sessionId: typeof latestSessionMetadata.sessionId === "string" ? latestSessionMetadata.sessionId : null,
+          title: typeof latestSessionMetadata.title === "string" ? latestSessionMetadata.title : null,
+          status: typeof latestSessionMetadata.status === "string" ? latestSessionMetadata.status : null,
+          summary: typeof latestSessionMetadata.summary === "string" ? latestSessionMetadata.summary : null,
+          captureCount: numberValue(latestSessionMetadata.captureCount, 0),
+          capturedAt: typeof latestSessionMetadata.capturedAt === "string" ? latestSessionMetadata.capturedAt : null,
+          updatedAt: typeof latestSessionMetadata.updatedAt === "string" ? latestSessionMetadata.updatedAt : null,
+        }
+      : null,
     latestSessionId: typeof raw.latestSessionId === "string" ? raw.latestSessionId : null,
     activeSessionId: typeof raw.activeSessionId === "string" ? raw.activeSessionId : null,
     activeSessionCount: numberValue(raw.activeSessionCount, 0),
     sessionCount: numberValue(raw.sessionCount, 0),
     verified: Boolean(raw.verified),
     needsInput: Boolean(raw.needsInput),
+    needsInputItems: rawNeedsInputItems
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item, index) => ({
+        id: String(item.id || item.sessionId || `needs-input-${index}`),
+        sessionId: typeof item.sessionId === "string" ? item.sessionId : null,
+        kind: String(item.kind || item.type || ""),
+        label: typeof item.label === "string" ? item.label : null,
+        createdAt: typeof item.createdAt === "string" ? item.createdAt : null,
+      })),
     latestVisitAt: typeof raw.latestVisitAt === "string" ? raw.latestVisitAt : null,
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
   };

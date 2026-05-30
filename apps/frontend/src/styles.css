@@ -4713,6 +4713,12 @@ small {
   font-weight: 700;
 }
 
+.clinical-row-copy .patient-latest-visit {
+  color: #64748b;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .clinical-row-copy p {
   color: #263451;
   font-size: 0.88rem;
@@ -4873,6 +4879,88 @@ small {
 .patient-memory-badge.needs-input {
   background: #fff1c2;
   color: #8a4b00;
+}
+
+.resolver-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgb(8 13 45 / 28%);
+  padding: 18px;
+}
+
+.resolver-sheet {
+  display: grid;
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 36px));
+  gap: 16px;
+  overflow: auto;
+  border-color: #dce6f2;
+  padding: 18px;
+  box-shadow: 0 24px 70px rgb(8 13 45 / 24%);
+}
+
+.resolver-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+
+.resolver-heading h2 {
+  color: #080d2d;
+  font-size: 1.2rem;
+  line-height: 1.2;
+}
+
+.resolver-list,
+.resolver-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.resolver-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #e3ebf5;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.resolver-item strong,
+.resolver-summary strong {
+  color: #080d2d;
+  font-size: 0.92rem;
+}
+
+.resolver-item p,
+.resolver-summary p {
+  color: #43516a;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.resolver-summary {
+  border: 1px solid #e3ebf5;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.resolver-summary span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.resolver-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .clinical-row-loading {
