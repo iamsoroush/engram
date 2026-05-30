@@ -1039,6 +1039,7 @@ export function App() {
             displayName: draft.displayName,
             nationalId: draft.nationalId || null,
           };
+      const successMessage = `Visit assigned to ${draft.displayName}.`;
       const applyLocalAssignment = (patient: PatientSummary) => {
         const enriched = {
           patientId: patient.id,
@@ -1076,7 +1077,7 @@ export function App() {
       if (isLocalSessionId(sessionId) || !navigator.onLine) {
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
-        setToast(navigator.onLine ? "Patient assigned." : "Patient assignment saved on this device.");
+        setToast(successMessage);
         void processOutbox();
         return;
       }
@@ -1086,7 +1087,7 @@ export function App() {
         if (isLocalSessionId(sessionId) || isLocalAssignmentPatient(patient.id)) {
           applyLocalAssignment(patient);
           await enqueueAssignment(patient);
-          setToast("Patient assigned.");
+          setToast(`Visit assigned to ${patient.displayName}.`);
           return;
         }
         const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id);
@@ -1105,11 +1106,11 @@ export function App() {
           current?.id === sessionId ? markReportStaleForPatientChange(current, mergeSessionUpdate(current, enriched)) : current,
         );
         setAssignmentSessionId("");
-        setToast("Patient assigned.");
+        setToast(`Visit assigned to ${patient.displayName}.`);
       } catch {
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
-        setToast("Patient assignment saved on this device.");
+        setToast(successMessage);
         void processOutbox();
       }
     },

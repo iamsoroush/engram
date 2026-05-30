@@ -4963,6 +4963,208 @@ small {
   gap: 10px;
 }
 
+.assign-resolver-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  background: rgb(8 13 45 / 42%);
+  padding: 0;
+}
+
+.assign-resolver-sheet {
+  display: grid;
+  width: min(100%, 680px);
+  max-height: calc(100dvh - 42px);
+  gap: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #dce6f2;
+  border-radius: 18px 18px 0 0;
+  background: #ffffff;
+  padding: 16px 16px max(18px, calc(18px + env(safe-area-inset-bottom)));
+  box-shadow: 0 -22px 60px rgb(8 13 45 / 24%);
+}
+
+.assign-resolver-handle {
+  justify-self: center;
+  width: 52px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d8dfec;
+}
+
+.assign-resolver-heading,
+.assign-section-heading,
+.assign-manual-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assign-resolver-heading h2 {
+  color: #080d2d;
+  font-size: 1.35rem;
+  line-height: 1.15;
+}
+
+.assign-context {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 13px;
+}
+
+.assign-context strong {
+  color: #080d2d;
+  font-size: 1rem;
+}
+
+.assign-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.assign-context-grid span,
+.assign-context p,
+.assign-empty,
+.assign-patient-copy small {
+  color: #4e5d93;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.assign-search-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border: 1px solid #cbd7e8;
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.assign-search-field svg {
+  width: 21px;
+  height: 21px;
+  color: #16265d;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.assign-search-field .input {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+
+.assign-resolver-section,
+.assign-patient-list {
+  display: grid;
+  gap: 10px;
+}
+
+.assign-section-heading h3 {
+  color: #080d2d;
+  font-size: 0.95rem;
+}
+
+.assign-section-heading span {
+  color: #4e5d93;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.assign-patient-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+  text-align: left;
+}
+
+.assign-patient-option.selected {
+  border-color: #075eff;
+  background: #f4f8ff;
+}
+
+.assign-patient-initials {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf3ff;
+  color: #075eff;
+  font-size: 0.88rem;
+  font-weight: 950;
+}
+
+.assign-patient-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.assign-patient-copy strong {
+  overflow: hidden;
+  color: #080d2d;
+  font-size: 0.96rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assign-patient-select {
+  color: #075eff;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.assign-empty {
+  border: 1px dashed #dce6f2;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.assign-manual-options {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.assign-manual-options .btn {
+  min-height: 40px;
+}
+
+.assign-confirm-bar {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  padding-top: 4px;
+  background: #ffffff;
+}
+
+.assign-confirm-bar .btn {
+  min-height: 48px;
+  justify-content: center;
+}
+
 .clinical-row-loading {
   pointer-events: none;
 }
@@ -5311,6 +5513,35 @@ small {
   }
 
   .needs-input-card-actions .btn {
+    width: 100%;
+  }
+
+  .assign-resolver-sheet {
+    max-height: calc(100dvh - 24px);
+    padding: 14px 12px max(14px, calc(14px + env(safe-area-inset-bottom)));
+  }
+
+  .assign-resolver-heading {
+    align-items: start;
+  }
+
+  .assign-context-grid,
+  .assign-patient-option {
+    grid-template-columns: 1fr;
+  }
+
+  .assign-patient-option {
+    justify-items: start;
+  }
+
+  .assign-patient-select {
+    width: 100%;
+    border-top: 1px solid #e3ebf5;
+    padding-top: 8px;
+  }
+
+  .assign-manual-options,
+  .assign-manual-options .btn {
     width: 100%;
   }
 

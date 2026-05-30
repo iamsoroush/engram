@@ -59,7 +59,22 @@ test.beforeEach(async ({ page }) => {
       json: [
         { id: "patient-soroush", displayName: "Soroush", lastVisit: now.toISOString() },
         { id: "patient-sara", displayName: "Sara", lastVisit: previousVisitDate.toISOString() },
+        { id: "patient-0", displayName: "Patient 0", lastVisit: previousVisitDate.toISOString() },
       ],
+    });
+  });
+
+  await page.route("**/api/v1/sessions/session-unassigned/assign-patient", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        ...unassignedVisit(),
+        patientId: "patient-soroush",
+        patientName: "Soroush",
+        assignmentSource: "staff",
+        status: "organized",
+        updatedAt: now.toISOString(),
+      },
     });
   });
 
@@ -165,6 +180,32 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
 
   await page.getByRole("button", { name: "Review summary" }).click();
   await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
+});
+
+test("Assign patient opens a focused resolver and updates memory state", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Doctor" }).click();
+  await page.goto("/#patients");
+
+  await page.getByRole("button", { name: "Assign patient" }).click();
+  const resolver = page.getByRole("dialog", { name: "Assign patient" });
+  await expect(resolver).toBeVisible();
+  await expect(resolver.getByText("Unassigned visit")).toBeVisible();
+  await expect(resolver.getByText(`Session: ${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
+  await expect(resolver.getByText("Captures: 2 photos, 1 audio")).toBeVisible();
+  await expect(resolver.getByPlaceholder("Search patient")).toBeVisible();
+  await expect(resolver.getByText("Soroush")).toBeVisible();
+  await expect(resolver.getByText("Sara")).toBeVisible();
+  await expect(resolver.getByText("Patient 0")).toBeVisible();
+
+  await resolver.getByRole("button", { name: /Soroush/ }).click();
+  await expect(resolver.getByRole("button", { name: "Assign to Soroush" })).toBeEnabled();
+  await resolver.getByRole("button", { name: "Assign to Soroush" }).click();
+
+  await expect(resolver).toHaveCount(0);
+  await expect(page.getByText("Visit assigned to Soroush.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Unassigned visit" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Initial consultation" })).toBeVisible();
 });
 
 function followUpVisit() {

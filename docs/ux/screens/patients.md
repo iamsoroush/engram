@@ -165,6 +165,15 @@ Action routing:
 - `Review summary` opens the summary review flow.
 - `Review storage` opens the storage guidance or review flow.
 
+Assign-patient resolver:
+
+- Title: `Assign patient`.
+- Show compact visit context: `Unassigned visit`, `Session: ...`, capture counts, and a short summary when available.
+- Show suggested patient rows when patient search data is available, with avatar/initials, name, hint, and selection state.
+- Include `Search patient`, `Create new patient`, `Keep unassigned`, and secondary `Open visit`.
+- Selecting a patient reveals a clear confirmation action such as `Assign to Soroush`.
+- On success, close the resolver, update Clinical Memory state, and show subtle copy such as `Visit assigned to Soroush`.
+
 ## Patient Detail / Timeline
 
 Opening a patient shows the long-term memory view for that patient.
