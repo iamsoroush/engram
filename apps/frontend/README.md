@@ -13,9 +13,9 @@ Vite + React frontend for AesMem, a memory layer for aesthetics clinics.
 
 When running through the development Compose stack:
 
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000/api/v1`
-- Backend docs: `http://localhost:8000/api/v1/docs`
+- Frontend: `http://localhost:5183`
+- Backend API: `http://localhost:8010/api/v1`
+- Backend docs: `http://localhost:8010/api/v1/docs`
 
 ## Recommended Development
 
@@ -38,10 +38,10 @@ npm run dev
 Open:
 
 ```text
-http://localhost:5173
+http://localhost:5183
 ```
 
-Vite proxies `/api/v1` to `http://localhost:8000`, so the app can use the same relative API path as production.
+Vite proxies `/api/v1` to `http://localhost:8010`, so the app can use the same relative API path as production.
 
 ## Full Docker Development
 
@@ -94,7 +94,7 @@ The frontend reads `VITE_API_URL`.
 For the default local workflow, leave it unset and use the Vite proxy. If you want the browser to call the backend directly instead of proxying through Vite:
 
 ```sh
-VITE_API_URL=http://localhost:8000/api/v1
+VITE_API_URL=http://localhost:8010/api/v1
 ```
 
 In production, leave `PROD_VITE_API_URL` empty unless the API is hosted on another origin. With the default production setup, the browser calls `/api/v1/...` on the same origin and nginx proxies those requests to the backend container.

@@ -65,10 +65,10 @@ VITE_ALLOWED_HOSTS=example.ngrok-free.dev
 
 Services:
 
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000/api/v1`
-- Backend docs: `http://localhost:8000/api/v1/docs`
-- Redis: `localhost:6379`
+- Frontend: `http://localhost:5183`
+- Backend API: `http://localhost:8010/api/v1`
+- Backend docs: `http://localhost:8010/api/v1/docs`
+- Redis: `localhost:6389`
 
 Stop the development stack:
 

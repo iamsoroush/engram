@@ -6,12 +6,12 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   webServer: {
     command: "npm run dev -- --host 127.0.0.1",
-    url: "http://127.0.0.1:5173",
+    url: "http://127.0.0.1:5183",
     reuseExistingServer: true,
     timeout: 120_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: "http://127.0.0.1:5183",
     trace: "retain-on-failure",
   },
   projects: [

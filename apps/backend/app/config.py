@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "AesMem API"
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5183"]
     capture_root: str = "/tmp/aesmem-captures"
     auth_mode: str = "dev"
     jwt_secret: str = "dev-only-change-me"

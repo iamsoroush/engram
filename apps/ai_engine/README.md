@@ -21,7 +21,7 @@ For local Python development:
 ```sh
 cd apps/ai_engine
 pip install -r requirements.txt
-AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8000 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs
+AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs
 ```
 
 ## Environment

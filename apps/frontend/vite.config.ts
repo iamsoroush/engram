@@ -9,10 +9,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
-    port: 5173,
+    port: 5183,
     allowedHosts,
     proxy: {
-      "/api/v1": process.env.VITE_PROXY_TARGET || "http://localhost:8000",
+      "/api/v1": process.env.VITE_PROXY_TARGET || "http://localhost:8010",
     },
   },
 });
