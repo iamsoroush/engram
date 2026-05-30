@@ -131,14 +131,14 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await expect(page.getByText("Session:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`).first()).toBeVisible();
   await expect(page.getByText(/Updated:/).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Continue visit/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue visit", exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Needs your input" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
   await expect(page.getByText(/Needs input since:/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Assign patient/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open visit" }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open visit" })).toHaveCount(0);
 
   await expect(page.getByRole("heading", { name: "Updated today" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial consultation" })).toBeVisible();
@@ -148,7 +148,7 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /Continue visit/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue visit", exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/clinical-memory-today-mobile.png", fullPage: true });
 });
 
@@ -161,12 +161,12 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
   await expect(page.getByRole("heading", { name: "Soroush" })).toBeVisible();
   await expect(page.getByText(/Latest visit: Today ·/).first()).toBeVisible();
   await expect(page.getByText("Needs input: review summary")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Review summary/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review summary", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sara" })).toBeVisible();
   await expect(page.getByText(/Latest visit: Apr 18 ·/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open memory/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open memory|View history/ })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Review summary/ }).click();
+  await page.getByRole("button", { name: "Review summary", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm summary" })).toBeVisible();
   await expect(page.getByText("Patient:")).toBeVisible();
@@ -185,29 +185,30 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
   await expect(page.getByText("Session:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
-  await expect(page.getByText("Needs input since:")).toBeVisible();
+  await expect(page.getByText("Needs input since:").first()).toBeVisible();
   await expect(page.getByText("2 photos")).toBeVisible();
   await expect(page.getByText("1 audio").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Assign patient" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
   await expect(page.getByText("This visit may belong to Soroush or Sara. Please choose the correct patient.")).toBeVisible();
+  await expect(page.getByText("Needs input since:").nth(1)).toBeVisible();
   await expect(page.getByText("Soroush").first()).toBeVisible();
   await expect(page.getByText("Sara").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Choose patient" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Summary ready for confirmation" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review summary" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Review summary", exact: true })).toBeVisible();
   await expect(page.getByText("AI failed")).toHaveCount(0);
   await expect(page.getByText(/retry transcription/i)).toHaveCount(0);
 
   await page.screenshot({ path: "test-results/clinical-memory-needs-input-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Choose patient" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/clinical-memory-needs-input-mobile.png", fullPage: true });
 
-  await page.getByRole("button", { name: "Review summary" }).click();
+  await page.getByRole("button", { name: "Review summary", exact: true }).click();
   const reviewDialog = page.getByRole("dialog", { name: "Review summary" });
   await expect(reviewDialog).toBeVisible();
   await expect(reviewDialog.getByText("Patient:")).toBeVisible();
@@ -233,7 +234,7 @@ test("Assign patient opens a focused resolver and updates memory state", async (
   await page.getByRole("button", { name: "Doctor" }).click();
   await page.goto("/#patients");
 
-  await page.getByRole("button", { name: "Assign patient" }).click();
+  await page.getByRole("button", { name: "Assign patient", exact: true }).click();
   const resolver = page.getByRole("dialog", { name: "Assign patient" });
   await expect(resolver).toBeVisible();
   await expect(resolver.getByText("Unassigned visit")).toBeVisible();
@@ -260,7 +261,7 @@ test("Choose patient resolves an uncertain patient match without opening the vis
   await page.goto("/#patients");
   await page.getByRole("tab", { name: "Needs input" }).click();
 
-  await page.getByRole("button", { name: "Choose patient" }).click();
+  await page.getByRole("button", { name: "Choose patient", exact: true }).click();
   const resolver = page.getByRole("dialog", { name: "Choose patient" });
   await expect(resolver).toBeVisible();
   await expect(resolver.getByText("This visit may belong to more than one patient. Choose the correct patient.")).toBeVisible();

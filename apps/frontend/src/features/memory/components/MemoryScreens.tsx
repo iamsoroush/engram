@@ -340,7 +340,11 @@ export function PatientsHome({
 
       {activeTab === "today" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          <ClinicalSection title="Active session" badge={today.currentVisit ? "In progress" : undefined} badgeTone="green">
+          <ClinicalSection
+            title="Active session"
+            badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session) : undefined}
+            badgeTone={today.currentVisit?.tone === "amber" ? "amber" : "green"}
+          >
             {today.currentVisit ? (
               <VisitCard
                 primaryActionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? "Continue visit" : "Assign patient"}
@@ -711,7 +715,7 @@ function buildTodayModel({
     .slice(0, 3)
     .map((session) => ({
       session,
-      statusLabel: isOffline ? "Saved on this device" : "Updated today",
+      statusLabel: updatedTodayStatus(session, isOffline),
       title: sessionVisitTitle(session),
       summary: updatedTodaySummary(session),
       tone: "blue" as const,
@@ -779,7 +783,7 @@ function buildPatientRows({
         name,
         summary: patientCardSummary(sortedSessions),
         badges: [
-          activeCount ? `${activeCount} active session${activeCount === 1 ? "" : "s"}` : visitCountLabel(sortedSessions.length),
+          activeCount ? activePatientBadge(activeCount) : visitCountLabel(sortedSessions.length),
           verified ? "Verified" : undefined,
           needsInputBadgeLabel(needsInputItems),
         ].filter((badge): badge is string => Boolean(badge)),
@@ -806,7 +810,7 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     name: row.displayName,
     summary: row.summary || "No memory summary yet.",
     badges: [
-      isActive ? `${row.activeSessionCount} active session${row.activeSessionCount === 1 ? "" : "s"}` : visitCountLabel(row.sessionCount),
+      isActive ? activePatientBadge(row.activeSessionCount) : visitCountLabel(row.sessionCount),
       row.verified ? "Verified" : undefined,
       needsInputBadgeLabel(needsInputItems),
     ].filter((badge): badge is string => Boolean(badge)),
@@ -848,8 +852,17 @@ function todayNeedsInputActionLabel(session: CaptureSession) {
   return action ? labelForDecisionAction(action) : "Open visit";
 }
 
+function activeSectionBadge(session: CaptureSession) {
+  const action = decisionActionForSession(session);
+  return action ? needsInputLabelForAction(action) : "In progress";
+}
+
+function activePatientBadge(activeCount: number) {
+  return activeCount === 1 ? "Active session" : `${activeCount} active sessions`;
+}
+
 function needsInputBadgeLabel(items: PatientNeedsInputItem[]) {
-  if (items.length > 1) return `${items.length} items need your input`;
+  if (items.length > 1) return `${items.length} decisions need input`;
   return items[0]?.label;
 }
 
@@ -1209,7 +1222,7 @@ function NeedsInputDecisionCard({
               <strong>{item.sessionLabel.replace(/^Session:\s*/, "")}</strong>
             </div>
           ) : null}
-          {item.kind === "assign-patient" && item.needsInputSinceLabel ? (
+          {item.needsInputSinceLabel ? (
             <div className="visit-metadata-attention">
               <span>Needs input since:</span>
               <strong>{item.needsInputSinceLabel.replace(/^Needs input since:\s*/, "")}</strong>
@@ -1273,7 +1286,8 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
         </div>
       ) : showUpdatedTodayStatus ? (
         <div className="visit-metadata-success">
-          <strong>{updatedTodayStatus(session, false)}</strong>
+          <span>Updated:</span>
+          <strong>{formatSessionTime(latestSessionTime(session))}</strong>
         </div>
       ) : (
         <div>
@@ -1314,9 +1328,6 @@ function PatientTimelineDetail({
   const timelineGroups = buildTimelineGroups(detail, localSessions);
   const sessionCount = detail?.patient.sessionCount || patient.sessionCount || localSessions.length;
   const firstSeen = firstSeenLabel(detail?.sessions, localSessions);
-  const latestActiveSession = localSessions.find(isActiveVisit) || (patient.activeSessionId ? localSessions.find((session) => session.id === patient.activeSessionId) : null);
-  const latestSessionId = latestActiveSession?.id || patient.latestSessionId || timelineGroups.flatMap((group) => group.sessions)[0]?.sessionId || "";
-  const primaryLabel = latestActiveSession ? "Continue latest visit" : latestSessionId ? "Open latest" : "Start new visit";
 
   return (
     <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
@@ -1335,18 +1346,6 @@ function PatientTimelineDetail({
             {firstSeen ? <span>First seen {firstSeen}</span> : null}
           </div>
         </div>
-        <Button
-          disabled={!latestSessionId}
-          onClick={() => {
-            if (!latestSessionId) return;
-            if (latestActiveSession) onContinueSession(latestSessionId);
-            else onOpenSession(latestSessionId);
-          }}
-          type="button"
-        >
-          {primaryLabel}
-          <ChevronIcon />
-        </Button>
       </section>
 
       {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
@@ -1445,9 +1444,6 @@ function PatientTimelineCard({
         <TimelineCaptureChips session={session} localSession={localSession} tone={tone} />
       </div>
       <div className="patient-timeline-actions">
-        <button aria-label={`More actions for ${title}`} className="timeline-overflow" type="button">
-          <MoreIcon />
-        </button>
         <Button onClick={runAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : action.kind === "open" ? "secondary" : "default"}>
           {action.label}
           <ChevronIcon />
@@ -2171,14 +2167,6 @@ function Avatar({ label, tone }: { label: string; tone: ClinicalTone }) {
   return <span className={`clinical-avatar clinical-avatar-${tone}`}>{avatarInitials(label)}</span>;
 }
 
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M5 12h.1M12 12h.1M19 12h.1" />
-    </svg>
-  );
-}
-
 function BackIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -2326,7 +2314,7 @@ function possiblePatientNames(session: CaptureSession) {
 }
 
 function patientChoiceCandidates(session: CaptureSession): PatientSummary[] {
-  return uniqueNames([...possiblePatientNames(session), "Soroush", "Sara"]).slice(0, 6).map((name) => ({
+  return uniqueNames(possiblePatientNames(session)).slice(0, 6).map((name) => ({
     id: `candidate-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     displayName: name,
   }));
@@ -2479,7 +2467,7 @@ function sanitizeSessionLabel(label?: string | null) {
 function updatedTodayStatus(session: CaptureSession, isOffline: boolean) {
   if (isOffline) return "Saved on this device";
   if (session.assignmentSource || session.patientName || session.patientId) return "Updated today · Patient assigned";
-  return "Updated today";
+  return "Memory updated today";
 }
 
 function updatedTodaySummary(session: CaptureSession) {
