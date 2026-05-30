@@ -4719,6 +4719,66 @@ small {
   line-height: 1.45;
 }
 
+.visit-card {
+  align-items: stretch;
+}
+
+.visit-card-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.visit-card-title-row .badge {
+  align-self: start;
+  white-space: nowrap;
+}
+
+.visit-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  gap: 4px 18px;
+}
+
+.visit-metadata div {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.visit-metadata span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.visit-metadata strong {
+  min-width: 0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.visit-metadata-success strong {
+  color: #16834a;
+}
+
+.visit-metadata-attention strong,
+.visit-metadata-attention span {
+  color: #b45309;
+}
+
+.visit-card-actions {
+  display: grid;
+  min-width: 132px;
+  align-content: end;
+  justify-items: end;
+  gap: 8px;
+}
+
 .clinical-row .btn {
   justify-self: end;
   gap: 9px;
@@ -4732,6 +4792,10 @@ small {
   border-color: #f5c76d;
   background: #fff5da;
   color: #995c00;
+}
+
+.visit-card-actions .btn-ghost {
+  color: #075eff;
 }
 
 .capture-chips,
@@ -4930,6 +4994,23 @@ small {
   .clinical-row .btn {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .visit-card-actions {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+    width: 100%;
+    justify-items: stretch;
+  }
+
+  .visit-card-title-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .visit-metadata {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 
   .clinical-patient-row .btn {

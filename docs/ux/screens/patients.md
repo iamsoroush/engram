@@ -40,18 +40,40 @@ Today is session-first. A card may include patient context, but the primary obje
 
 Today includes only sessions created, captured, or updated on the user's current calendar day. Older unassigned or historical sessions belong in Patients, Search, or the full Needs input surface, not in the Today preview.
 
-The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue visit`, `Assign patient`, or `Review summary`.
+The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Use one primary action per card, such as `Continue visit`, `Assign patient`, or `Review summary`. When the main task is a decision, `Open visit` is secondary.
+
+Every Today card must clarify why it appears in Today with section or badge language such as `Active session`, `Needs your input`, `Updated today`, `Recently captured`, or `Saved on this device`. Session time and update/attention time must be labeled separately.
 
 Choosing `Assign patient` from Today opens the same patient assignment form in Clinical Memory without navigating away from the tab. Suggested matches come from patient search data; do not use mock patient suggestions in production UI.
 
-Example session card:
+Example active session card:
 
 - Title: `Follow-up visit`
 - Patient: `Soroush`
 - Session: `Today · 4:23 PM`
 - Updated: `4:31 PM`
-- Summary: `4 captures saved. Organizing visit notes.`
-- Action: `Continue visit`
+- Summary: `4 captures saved: 3 photos and 1 audio note. I'm preparing the visit summary.`
+- Capture chips: `3 photos`, `1 audio`, `1 note`
+- Badge: `In progress`
+- Primary action: `Continue visit`
+
+Example needs-input preview card:
+
+- Title: `Unassigned visit`
+- Session: `Today · 2:15 PM`
+- Needs input since: `2:20 PM`
+- Summary: `3 captures saved. I could not confidently attach this visit to a patient.`
+- Primary action: `Assign patient`
+- Secondary action: `Open visit`
+
+Example updated-today card:
+
+- Title: `Initial consultation`
+- Patient: `Sara`
+- Session: `Apr 18 · 11:30 AM`
+- Status: `Updated today · Patient assigned`
+- Summary: `2 photos and 1 note were attached to this visit today.`
+- Primary action: `Open visit`
 
 Example copy:
 

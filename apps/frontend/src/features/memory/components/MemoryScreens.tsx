@@ -147,15 +147,16 @@ export function PatientsHome({
 
       {activeTab === "today" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          <ClinicalSection title="Current visit" badge={today.currentVisit ? "In progress" : undefined} badgeTone="green">
+          <ClinicalSection title="Active session" badge={today.currentVisit ? "In progress" : undefined} badgeTone="green">
             {today.currentVisit ? (
               <VisitCard
-                actionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? "Continue" : "Assign patient"}
+                primaryActionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? "Continue visit" : "Assign patient"}
                 summary={today.currentVisit.summary}
                 session={today.currentVisit.session}
+                statusLabel={today.currentVisit.statusLabel}
                 tone={today.currentVisit.tone}
                 title={today.currentVisit.title}
-                onAction={() => {
+                onPrimaryAction={() => {
                   const currentVisit = today.currentVisit;
                   if (!currentVisit) return;
                   if (currentVisit.session.patientName || currentVisit.session.patientId) {
@@ -173,12 +174,14 @@ export function PatientsHome({
             <ClinicalSection title="Needs your input" badge={needsInputSessions.length ? visitCountLabel(needsInputSessions.length) : undefined} badgeTone="amber">
               {today.needsInputPreview ? (
                 <VisitCard
-                  actionLabel={today.needsInputPreview.session.patientName ? "Review" : "Assign patient"}
+                  primaryActionLabel={today.needsInputPreview.session.patientName ? "Review summary" : "Assign patient"}
+                  secondaryActionLabel="Open visit"
                   summary={today.needsInputPreview.summary}
                   session={today.needsInputPreview.session}
+                  statusLabel={today.needsInputPreview.statusLabel}
                   title={today.needsInputPreview.title}
                   tone="amber"
-                  onAction={() => {
+                  onPrimaryAction={() => {
                     const preview = today.needsInputPreview;
                     if (!preview) return;
                     if (preview.session.patientName || preview.session.patientId) {
@@ -186,6 +189,10 @@ export function PatientsHome({
                       return;
                     }
                     setAssignmentSessionId(preview.session.id);
+                  }}
+                  onSecondaryAction={() => {
+                    const preview = today.needsInputPreview;
+                    if (preview) onOpenSession(preview.session.id);
                   }}
                 />
               ) : (
@@ -195,23 +202,24 @@ export function PatientsHome({
           ) : (
             <p className="clinical-offline-note"><InfoIcon /> You're offline. Patient search may be limited.</p>
           )}
-          <ClinicalSection title="Recent memory" badge={today.recentMemory.length ? today.recentMemoryBadge : undefined}>
+          <ClinicalSection title="Updated today" badge={today.recentMemory.length ? today.recentMemoryBadge : undefined}>
             {today.recentMemory.length ? (
               <div className="clinical-list">
                 {today.recentMemory.map((memory) => (
-                  <PatientMemoryRow
-                    actionLabel="Open"
+                  <VisitCard
                     key={memory.session.id}
-                    patientName={memory.title}
+                    primaryActionLabel="Open visit"
+                    session={memory.session}
+                    statusLabel={memory.statusLabel}
                     summary={memory.summary}
-                    timestamp={sessionTimestamp(memory.session)}
+                    title={memory.title}
                     tone={memory.tone}
-                    onOpen={() => onOpenSession(memory.session.id)}
+                    onPrimaryAction={() => onOpenSession(memory.session.id)}
                   />
                 ))}
               </div>
             ) : (
-              <EmptyClinicalState title="Recent patients will appear here." copy="Memory updates will show after visits are saved." />
+              <EmptyClinicalState title="No visits updated today." copy="Visits appear here when captures or patient details change today." />
             )}
           </ClinicalSection>
         </div>
@@ -276,19 +284,22 @@ export function PatientsHome({
             {needsInputSessions.length ? (
               needsInputSessions.map((session) => (
                 <VisitCard
-                  actionLabel={session.patientName ? "Review" : "Assign patient"}
+                  primaryActionLabel={session.patientName ? "Review summary" : "Assign patient"}
+                  secondaryActionLabel="Open visit"
                   key={session.id}
                   session={session}
+                  statusLabel="Needs your input"
                   summary={needsInputSummary(session)}
                   tone="amber"
                   title={needsInputTitle(session)}
-                  onAction={() => {
+                  onPrimaryAction={() => {
                     if (session.patientName || session.patientId) {
                       onOpenSession(session.id);
                       return;
                     }
                     setAssignmentSessionId(session.id);
                   }}
+                  onSecondaryAction={() => onOpenSession(session.id)}
                 />
               ))
             ) : (
@@ -307,6 +318,7 @@ type ClinicalTone = "blue" | "green" | "amber";
 
 type TodayCardModel = {
   session: CaptureSession;
+  statusLabel: string;
   title: string;
   summary: string;
   tone: ClinicalTone;
@@ -366,12 +378,14 @@ function buildTodayModel({
   const needsInputPreview = needsInputSessions.find((session) => session.id !== currentSession?.id) || needsInputSessions[0];
   const recentMemory = todaySessions
     .filter((session) => session.id !== currentSession?.id)
+    .filter((session) => session.id !== needsInputPreview?.id)
     .filter((session) => session.patientName || session.patientId)
     .slice(0, 3)
     .map((session) => ({
       session,
-      title: session.patientName || session.label,
-      summary: patientMemorySummary([session]),
+      statusLabel: isOffline ? "Saved on this device" : "Updated today",
+      title: sessionVisitTitle(session),
+      summary: updatedTodaySummary(session),
       tone: "blue" as const,
     }));
 
@@ -379,7 +393,8 @@ function buildTodayModel({
     currentVisit: currentSession
       ? {
           session: currentSession,
-          title: currentSession.patientName || "Unassigned visit",
+          statusLabel: isOffline ? "Saved on this device" : "In progress",
+          title: sessionVisitTitle(currentSession),
           summary: currentVisitSummary(currentSession, isOffline),
           tone: currentSession.patientName || currentSession.patientId ? "green" : "amber",
         }
@@ -388,6 +403,7 @@ function buildTodayModel({
     needsInputPreview: needsInputPreview
       ? {
           session: needsInputPreview,
+          statusLabel: "Needs your input",
           title: needsInputTitle(needsInputPreview),
           summary: needsInputSummary(needsInputPreview),
           tone: "amber",
@@ -395,7 +411,7 @@ function buildTodayModel({
       : undefined,
     needsInputSessions,
     recentMemory,
-    recentMemoryBadge: isOffline ? `${recentMemory.length} saved on this device` : `${recentMemory.length} updated`,
+    recentMemoryBadge: isOffline ? `${recentMemory.length} saved on this device` : `${recentMemory.length} updated today`,
   };
 }
 
@@ -548,57 +564,86 @@ function ClinicalMemoryCard({
 }
 
 function VisitCard({
-  actionLabel,
+  primaryActionLabel,
+  secondaryActionLabel,
   session,
+  statusLabel,
   summary,
   title,
   tone,
-  onAction,
+  onPrimaryAction,
+  onSecondaryAction,
 }: {
-  actionLabel: string;
+  primaryActionLabel: string;
+  secondaryActionLabel?: string;
   session: CaptureSession;
+  statusLabel: string;
   summary: string;
   title: string;
   tone: ClinicalTone;
-  onAction: () => void;
+  onPrimaryAction: () => void;
+  onSecondaryAction?: () => void;
 }) {
   return (
-    <ClinicalMemoryCard actionLabel={actionLabel} tone={tone} onAction={onAction}>
+    <Card className={["clinical-row", "visit-card", `clinical-row-${tone}`].join(" ")}>
       <Avatar label={title} tone={tone} />
       <div className="clinical-row-copy">
-        <h3>{title}</h3>
-        <span>{sessionTimestamp(session)}</span>
+        <div className="visit-card-title-row">
+          <h3>{title}</h3>
+          <Badge tone={tone}>{statusLabel}</Badge>
+        </div>
+        <VisitMetadata session={session} tone={tone} />
         <p>{summary}</p>
         <CaptureChips session={session} tone={tone} />
       </div>
-    </ClinicalMemoryCard>
+      <div className="visit-card-actions">
+        <Button onClick={onPrimaryAction} size="sm" type="button" variant={tone === "amber" ? "secondary" : "default"}>
+          {primaryActionLabel}
+          <ChevronIcon />
+        </Button>
+        {secondaryActionLabel && onSecondaryAction ? (
+          <Button onClick={onSecondaryAction} size="sm" type="button" variant="ghost">
+            {secondaryActionLabel}
+          </Button>
+        ) : null}
+      </div>
+    </Card>
   );
 }
 
-function PatientMemoryRow({
-  actionLabel,
-  patientName,
-  summary,
-  timestamp,
-  tone = "blue",
-  onOpen,
-}: {
-  actionLabel: string;
-  patientName: string;
-  summary: string;
-  timestamp: string;
-  tone?: ClinicalTone;
-  onOpen: () => void;
-}) {
+function VisitMetadata({ session, tone }: { session: CaptureSession; tone: ClinicalTone }) {
+  const patientName = session.patientName || session.patientId;
+  const inputTime = formatSessionTime(latestSessionTime(session));
+  const showNeedsInputSince = tone === "amber" && !patientName;
+  const showUpdatedTodayStatus = tone === "blue";
   return (
-    <ClinicalMemoryCard actionLabel={actionLabel} tone={tone} onAction={onOpen}>
-      <Avatar label={patientName} tone={tone} />
-      <div className="clinical-row-copy">
-        <h3>{patientName}</h3>
-        <span>{timestamp}</span>
-        <p>{summary}</p>
+    <div className="visit-metadata" aria-label="Visit details">
+      {patientName ? (
+        <div>
+          <span>Patient:</span>
+          <strong>{patientName}</strong>
+        </div>
+      ) : null}
+      <div>
+        <span>Session:</span>
+        <strong>{sessionTimeLabel(session)}</strong>
       </div>
-    </ClinicalMemoryCard>
+      {showNeedsInputSince ? (
+        <div className="visit-metadata-attention">
+          <span>Needs input since:</span>
+          <strong>{inputTime}</strong>
+        </div>
+      ) : showUpdatedTodayStatus ? (
+        <div className="visit-metadata-success">
+          <strong>{updatedTodayStatus(session, false)}</strong>
+        </div>
+      ) : (
+        <div>
+          <span>Updated:</span>
+          <strong>{formatSessionTime(latestSessionTime(session))}</strong>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -794,7 +839,7 @@ function needsHumanInput(session: CaptureSession) {
 
 function needsInputTitle(session: CaptureSession) {
   if (!session.patientName && !session.patientId) return "Unassigned visit";
-  return "Review visit";
+  return sessionVisitTitle(session);
 }
 
 function needsInputSummary(session: CaptureSession) {
@@ -803,6 +848,36 @@ function needsInputSummary(session: CaptureSession) {
     return `${count || "No"} capture${count === 1 ? "" : "s"} saved. I could not confidently attach this visit to a patient.`;
   }
   return "Review this visit before it becomes part of patient memory.";
+}
+
+function sessionVisitTitle(session: CaptureSession) {
+  const title = session.report?.title || session.reportModel?.title || sanitizeSessionLabel(session.label);
+  if (title) return title;
+  if (!session.patientName && !session.patientId) return "Unassigned visit";
+  return isActiveVisit(session) ? "Follow-up visit" : "Visit";
+}
+
+function sanitizeSessionLabel(label?: string | null) {
+  const trimmed = label?.trim();
+  if (!trimmed) return "";
+  if (/^session\s+\d{1,2}:\d{2}/i.test(trimmed)) return "Follow-up visit";
+  if (/^\d{1,2}:\d{2}\s*(am|pm)?\s*-\s*capture session$/i.test(trimmed)) return "Follow-up visit";
+  if (/^session$/i.test(trimmed)) return "";
+  return trimmed;
+}
+
+function updatedTodayStatus(session: CaptureSession, isOffline: boolean) {
+  if (isOffline) return "Saved on this device";
+  if (session.assignmentSource || session.patientName || session.patientId) return "Updated today · Patient assigned";
+  return "Updated today";
+}
+
+function updatedTodaySummary(session: CaptureSession) {
+  const counts = captureCounts(session);
+  const typeSummary = captureTypeSummary(counts);
+  if (typeSummary) return `${capitalize(typeSummary)} ${countsTotal(counts) === 1 ? "was" : "were"} attached to this visit today.`;
+  const summary = naturalSessionSummary(session);
+  return summary || "This visit was updated today.";
 }
 
 function visitCountLabel(count: number) {
@@ -817,19 +892,7 @@ function currentVisitSummary(session: CaptureSession, isOffline: boolean) {
   }
   if (!captureTotal) return "No captures yet. Start with audio, photo, or note.";
   const typeSummary = captureTypeSummary(counts);
-  return `${captureTotal} capture${captureTotal === 1 ? "" : "s"} saved from today's visit${typeSummary ? `, including ${typeSummary}` : ""}. I'm organizing the summary in the background.`;
-}
-
-function patientMemorySummary(sessions: CaptureSession[]) {
-  const orderedSessions = [...sessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
-  const reviewed = orderedSessions.find((session) => session.status === "verified" && session.summary);
-  const recent = orderedSessions.find((session) => session.summary);
-  const source = reviewed || recent;
-  if (source?.summaries?.short) return source.summaries.short;
-  if (source?.summary) return source.summary;
-  const last = orderedSessions[0];
-  if (last?.items.length) return `Recent visit includes ${captureTypeSummary(captureCounts(last)) || `${last.items.length} saved captures`}.`;
-  return "Patient memory is saved.";
+  return `${captureTotal} capture${captureTotal === 1 ? "" : "s"} saved${typeSummary ? `: ${typeSummary}` : ""}. I'm preparing the visit summary.`;
 }
 
 function patientCardSummary(sessions: CaptureSession[]) {
@@ -907,13 +970,27 @@ function captureCounts(session: CaptureSession) {
 }
 
 function captureTypeSummary(counts: ReturnType<typeof captureCounts>) {
-  const parts = counts.map((item) => `${item.count === 1 ? "an" : item.count} ${item.count === 1 ? item.singular : item.label}`);
+  const parts = counts.map((item) => `${item.count} ${item.count === 1 ? item.singular : item.label}`);
   if (parts.length <= 1) return parts[0] || "";
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
-function sessionTimestamp(session: CaptureSession) {
-  return [session.dateLabel, session.time].filter(Boolean).join(" - ") || "Recent visit";
+function countsTotal(counts: ReturnType<typeof captureCounts>) {
+  return counts.reduce((total, item) => total + item.count, 0);
+}
+
+function capitalize(value: string) {
+  if (!value) return value;
+  return `${value[0].toUpperCase()}${value.slice(1)}`;
+}
+
+function sessionTimeLabel(session: CaptureSession) {
+  return [session.dateLabel, session.time].filter(Boolean).join(" · ") || "Recent visit";
+}
+
+function formatSessionTime(timestamp: number) {
+  if (!timestamp) return "recently";
+  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
 function avatarInitials(label: string) {
