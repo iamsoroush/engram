@@ -1,0 +1,8 @@
+backend
+frontend
+
+ai_engine/.venv
+ai_engine/tests
+ai_engine/notebooks
+ai_engine/**/__pycache__
+ai_engine/**/*.pyc

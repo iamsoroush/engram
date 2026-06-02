@@ -1,4 +1,6 @@
 import base64
+import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from time import sleep
@@ -32,6 +34,10 @@ class CaptureProcessingOutput(TypedDict, total=False):
     generated_at: str
     source_artifact_ids: list[str]
     detected_patient: NotRequired[DetectedPatientOutput]
+    language: NotRequired[str]
+    patient_information: NotRequired[dict[str, Any]]
+    clinical_summary: NotRequired[str | None]
+    uncertainties: NotRequired[list[str]]
 
 
 NOT_DETECTED_PATIENT: DetectedPatientOutput = {
@@ -52,6 +58,19 @@ TEST_CAPTURE_TEXT_BY_FILENAME = {
 }
 
 TEST_FINAL_SUMMARY = "Follow-up cheek filler correction for mild left cheek asymmetry. Conservative 0.3 mL hyaluronic acid filler touch-up was performed in the left mid cheek using cannula technique. Patient tolerated the procedure well and received aftercare instructions."
+
+TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
+
+PATIENT_INFORMATION_FIELDS = (
+    "raw_mentioned_name",
+    "standardized_display_name",
+    "alternate_transliterations",
+    "national_id",
+    "phone",
+    "date_of_birth",
+    "evidence",
+    "confidence",
+)
 
 
 def utc_now() -> datetime:
@@ -140,6 +159,121 @@ def transcription_is_configured() -> bool:
     return bool(settings.transcription_base_url.strip())
 
 
+def empty_patient_information(*, source_text: str | None = None) -> dict[str, Any]:
+    """Return the generated patient-information schema for no detected identity."""
+    return {
+        "raw_mentioned_name": None,
+        "standardized_display_name": None,
+        "alternate_transliterations": [],
+        "national_id": None,
+        "phone": None,
+        "date_of_birth": None,
+        "evidence": None,
+        "confidence": 0.0,
+        "source_text": source_text,
+    }
+
+
+def detected_patient_from_patient_information(patient_information: dict[str, Any], transcript: str) -> DetectedPatientOutput:
+    """Return the legacy detected-patient shape from structured patient information."""
+    name = patient_information.get("standardized_display_name") or patient_information.get("raw_mentioned_name")
+    confidence = patient_information.get("confidence")
+    return {
+        "status": "detected" if name or patient_information.get("national_id") else "not_detected",
+        "full_name": str(name) if name else None,
+        "national_id": str(patient_information.get("national_id")) if patient_information.get("national_id") else None,
+        "confidence": float(confidence) if isinstance(confidence, int | float) else None,
+        "evidence": str(patient_information.get("evidence")) if patient_information.get("evidence") else None,
+        "source_text": transcript,
+    }
+
+
+def structured_transcription_from_text(text: str, *, language: str = "en") -> dict[str, Any]:
+    """Return deterministic structured transcription for fixtures and fallback output."""
+    return {
+        "transcript": text,
+        "language": language,
+        "patient_information": empty_patient_information(source_text=text),
+        "clinical_summary": None,
+        "uncertainties": [],
+    }
+
+
+def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
+    """Build the rich instruction prompt for the OpenAI-compatible gateway."""
+    context = transcription_context if isinstance(transcription_context, dict) else {}
+    configured_prompt = settings.transcription_prompt.strip()
+    return "\n\n".join(
+        part
+        for part in (
+            configured_prompt if configured_prompt and configured_prompt != "Transcribe this audio." else None,
+            (
+                "You are transcribing and extracting clinical identity details for AesMem, an aesthetics clinic memory system. "
+                "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
+                "Names may be spoken in Persian; transliterate them into readable English for standardized_display_name and include alternate plausible transliterations. "
+                "Iranian national IDs and phone numbers may be spoken digit by digit in Persian, Arabic, or English numerals; normalize them to digit strings when explicitly present. "
+                "Aesthetics-clinic vocabulary may include filler, Botox, laser, injection, cannula, hyaluronic acid, aftercare, asymmetry, touch-up, swelling, bruising, and follow-up. "
+                "Use the context only to improve spelling and interpretation. Do not infer patient identity unless it is explicitly present in the audio or strongly supported by assigned-patient/session context. "
+                "Return only strict JSON with no markdown."
+            ),
+            (
+                "Required JSON shape: "
+                '{"transcript":"string","language":"fa|en|mixed|unknown","patient_information":{"raw_mentioned_name":null,'
+                '"standardized_display_name":null,"alternate_transliterations":[],"national_id":null,"phone":null,'
+                '"date_of_birth":null,"evidence":null,"confidence":0.0},"clinical_summary":null,"uncertainties":[]}'
+            ),
+            f"Tenant-scoped transcription context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
+        )
+        if part
+    )
+
+
+def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
+    """Parse and validate strict structured transcription JSON."""
+    text = raw_text.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Audio transcription returned malformed structured JSON") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError("Audio transcription returned non-object structured JSON")
+
+    transcript = parsed.get("transcript")
+    if not isinstance(transcript, str) or not transcript.strip():
+        raise RuntimeError("Audio transcription structured JSON is missing transcript")
+    language = parsed.get("language")
+    if language not in TRANSCRIPTION_LANGUAGES:
+        language = "unknown"
+    patient_information = parsed.get("patient_information")
+    if not isinstance(patient_information, dict):
+        raise RuntimeError("Audio transcription structured JSON is missing patient_information")
+
+    normalized_patient = empty_patient_information(source_text=transcript.strip())
+    for field in PATIENT_INFORMATION_FIELDS:
+        if field in patient_information:
+            normalized_patient[field] = patient_information[field]
+    alternates = normalized_patient.get("alternate_transliterations")
+    normalized_patient["alternate_transliterations"] = [str(value) for value in alternates if isinstance(value, str)] if isinstance(alternates, list) else []
+    confidence = normalized_patient.get("confidence")
+    normalized_patient["confidence"] = max(0.0, min(float(confidence), 1.0)) if isinstance(confidence, int | float) else 0.0
+    for field in ("raw_mentioned_name", "standardized_display_name", "national_id", "phone", "date_of_birth", "evidence"):
+        value = normalized_patient.get(field)
+        normalized_patient[field] = str(value).strip() if value is not None and str(value).strip() else None
+
+    uncertainties = parsed.get("uncertainties")
+    clinical_summary = parsed.get("clinical_summary")
+    return {
+        "transcript": transcript.strip(),
+        "language": language,
+        "patient_information": normalized_patient,
+        "clinical_summary": clinical_summary.strip() if isinstance(clinical_summary, str) and clinical_summary.strip() else None,
+        "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
+    }
+
+
 def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
     """Convert arbitrary audio bytes to mono 16 kHz FLAC and base64 encode them."""
     cmd = [
@@ -161,13 +295,15 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
     ]
     try:
         result = subprocess.run(cmd, input=content, capture_output=True, check=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError("Audio conversion to FLAC failed: ffmpeg is not installed or not available on PATH") from exc
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"Audio conversion to FLAC failed: {stderr or exc}") from exc
     return base64.b64encode(result.stdout).decode("ascii")
 
 
-def transcribe_audio_content(content: bytes) -> str:
+def transcribe_audio_content(content: bytes, transcription_context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
     client = OpenAI(
@@ -181,7 +317,7 @@ def transcribe_audio_content(content: bytes) -> str:
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": settings.transcription_prompt},
+                    {"type": "text", "text": transcription_prompt(transcription_context)},
                     {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
                 ],
             }
@@ -190,31 +326,42 @@ def transcribe_audio_content(content: bytes) -> str:
     text = response.choices[0].message.content
     if not text or not text.strip():
         raise RuntimeError("Audio transcription returned empty text")
-    return text.strip()
+    return parse_structured_transcription_output(text)
 
 
-def completed_audio_metadata(job: dict[str, Any], capture: dict[str, Any], content: bytes | None) -> CaptureProcessingOutput:
+def completed_audio_metadata(
+    job: dict[str, Any],
+    capture: dict[str, Any],
+    content: bytes | None,
+    transcription_context: dict[str, Any] | None = None,
+) -> CaptureProcessingOutput:
     """Return completed audio metadata using real transcription when configured."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
     filename = str(metadata.get("original_filename") or "").strip()
     if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
-        text = TEST_CAPTURE_TEXT_BY_FILENAME[filename]
+        structured = structured_transcription_from_text(TEST_CAPTURE_TEXT_BY_FILENAME[filename])
     elif transcription_is_configured():
         if content is None:
             raise RuntimeError("Audio capture source file is missing")
-        text = transcribe_audio_content(content)
+        structured = transcribe_audio_content(content, transcription_context)
     else:
-        text = placeholder_text_for_capture(capture)
+        structured = structured_transcription_from_text(placeholder_text_for_capture(capture))
+    text = structured["transcript"]
+    patient_information = structured["patient_information"]
 
     return {
         "status": "completed",
         "text": text,
+        "language": structured["language"],
+        "patient_information": patient_information,
+        "clinical_summary": structured["clinical_summary"],
+        "uncertainties": structured["uncertainties"],
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "job_type": job["jobType"],
         "generated_at": utc_now().isoformat(),
         "source_artifact_ids": job.get("inputArtifactIds") or [],
-        "detected_patient": {**NOT_DETECTED_PATIENT, "source_text": text},
+        "detected_patient": detected_patient_from_patient_information(patient_information, text),
     }
 
 
@@ -795,7 +942,11 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
             source_content = client.get_bytes(f"/internal/captures/{capture['id']}/file-content")
         if not transcription_is_configured():
             sleep(settings.mock_stage_delay_seconds)
-        client.complete_job(job_id, output_key=output_key, output=completed_audio_metadata(job, capture, source_content))
+        client.complete_job(
+            job_id,
+            output_key=output_key,
+            output=completed_audio_metadata(job, capture, source_content, payload.get("transcriptionContext")),
+        )
         return
 
     sleep(settings.mock_stage_delay_seconds)

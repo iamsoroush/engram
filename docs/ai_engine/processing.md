@@ -109,13 +109,13 @@ marked non-retryable and skipped by recovery.
 Audio output:
 
 - Transcript status becomes `completed`.
-- Transcript text is generated from the source audio when transcription is configured; otherwise it remains plausible placeholder text.
-- Language defaults to `en` unless known.
+- Transcript text is generated from the source audio when transcription is configured; otherwise it remains plausible placeholder text. The display transcript remains available at `metadata.transcript.text`.
+- Configured transcription jobs receive a tenant-scoped `transcriptionContext` containing clinic assumptions, assigned patient context when present, session metadata, previous same-session transcripts, same-session text notes, and safe assigned-patient history summary when available.
+- Configured transcription jobs ask the gateway for strict structured JSON with `transcript`, `language`, `patient_information`, `clinical_summary`, and `uncertainties`. Malformed structured output is treated as a retryable worker failure.
+- Language is one of `fa`, `en`, `mixed`, or `unknown`.
 - Duration/codec are copied from upload metadata if available.
-- `detected_patient` is present on audio output and currently always returns
-  `status=not_detected` with null patient fields.
-- The detected-patient schema supports `full_name`, `national_id`,
-  `confidence`, `evidence`, `source_text`, and `status`.
+- `patient_information` is generated metadata only. Audio transcription does not create patients, assign patients, or run patient matching.
+- `detected_patient` remains present as a compatibility projection of structured `patient_information`.
 
 Photo output:
 

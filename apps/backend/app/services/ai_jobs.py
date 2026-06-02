@@ -14,6 +14,8 @@ from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, 
 from app.services.capture_storage import get_capture_for_tenant
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
+    get_report_template,
+    patient_information_from_assignment,
     render_report_body_markdown,
     report_template_payload,
     structured_report_from_markdown_body,
@@ -374,6 +376,124 @@ def load_report_template(template_key: str | None) -> dict[str, str]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported report template") from exc
 
 
+def generated_capture_text(value: Any) -> str | None:
+    """Return generated/display text from a capture metadata field."""
+    if isinstance(value, dict) and isinstance(value.get("text"), str):
+        text = value["text"].strip()
+        return text or None
+    if isinstance(value, str):
+        text = value.strip()
+        return text or None
+    return None
+
+
+def patient_summarized_history_for_transcription(db: DbSession, session: Session) -> str | None:
+    """Return a safe assigned-patient history summary for transcription context."""
+    if session.patient_id is None:
+        return None
+    patient = db.execute(
+        select(Patient).where(Patient.id == session.patient_id, Patient.tenant_id == session.tenant_id)
+    ).scalar_one_or_none()
+    if patient is None or not isinstance(patient.notes, str):
+        return None
+    history = patient.notes.strip()
+    return history or None
+
+
+def transcription_context_from_inputs(
+    *,
+    session: Session,
+    clinic: dict[str, Any],
+    assigned_patient: dict[str, Any] | None,
+    patient_history_summary: str | None,
+    captures: list[Capture],
+    current_capture_id: uuid.UUID,
+) -> dict[str, Any]:
+    """Build the stable tenant-scoped context sent to audio transcription."""
+    previous_transcripts: list[dict[str, Any]] = []
+    text_notes: list[dict[str, Any]] = []
+    for capture in captures:
+        if capture.id == current_capture_id or capture.status == CaptureStatus.deleted:
+            continue
+        metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+        if capture.capture_type == CaptureType.audio:
+            transcript = generated_capture_text(metadata.get("transcript"))
+            if transcript:
+                previous_transcripts.append(
+                    {
+                        "captureId": str(capture.id),
+                        "capturedAt": capture.captured_at.isoformat() if capture.captured_at else None,
+                        "text": transcript,
+                    }
+                )
+        elif capture.capture_type == CaptureType.note:
+            note_text = (
+                generated_capture_text(metadata.get("decorated_text"))
+                or generated_capture_text(metadata.get("normalized_note"))
+                or generated_capture_text(metadata.get("detail"))
+            )
+            if note_text:
+                text_notes.append(
+                    {
+                        "captureId": str(capture.id),
+                        "capturedAt": capture.captured_at.isoformat() if capture.captured_at else None,
+                        "text": note_text,
+                    }
+                )
+
+    return {
+        "schemaVersion": "2026-06-02.audio-transcription-context.v1",
+        "clinic": clinic,
+        "assignedPatient": assigned_patient,
+        "patientSummarizedHistory": patient_history_summary,
+        "session": {
+            "id": str(session.id),
+            "tenantId": str(session.tenant_id),
+            "status": session.status.value,
+            "title": session.title,
+            "summary": session.summary,
+            "createdAt": session.created_at.isoformat() if session.created_at else None,
+            "updatedAt": session.updated_at.isoformat() if session.updated_at else None,
+            "capturedAt": session.captured_at.isoformat() if session.captured_at else None,
+        },
+        "previousTranscripts": previous_transcripts[-5:],
+        "textNotes": text_notes[-10:],
+    }
+
+
+def build_transcription_context(db: DbSession, *, session: Session, capture: Capture) -> dict[str, Any]:
+    """Build the audio transcription context for the AI engine worker."""
+    template = get_report_template(session.report_template_key)
+    patient_information = patient_information_from_assignment(db, session)
+    assigned_patient = patient_information if patient_information.get("status") == "assigned" else None
+    captures = list(
+        db.execute(
+            select(Capture)
+            .where(
+                Capture.tenant_id == session.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
+            .order_by(Capture.created_at)
+        ).scalars()
+    )
+    return transcription_context_from_inputs(
+        session=session,
+        clinic={
+            "name": template.clinic_name,
+            "information": list(template.clinic_information),
+            "assumptions": [
+                "Aesthetics clinic context.",
+                "Persian/Iranian patient names, identifiers, phone numbers, and mixed Persian-English visit language are common.",
+            ],
+        },
+        assigned_patient=assigned_patient,
+        patient_history_summary=patient_summarized_history_for_transcription(db, session),
+        captures=captures,
+        current_capture_id=capture.id,
+    )
+
+
 def create_session_processing_job(db: DbSession, *, principal: CurrentPrincipal, session: Session) -> AiJob:
     """Create a queued session processing job and mark the session processing."""
     source_ids = [
@@ -545,6 +665,13 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
             select(Capture).where(Capture.id == job.capture_id, Capture.tenant_id == job.tenant_id)
         ).scalar_one_or_none()
     if capture is not None:
+        transcription_context = None
+        if capture.capture_type == CaptureType.audio:
+            session = db.execute(
+                select(Session).where(Session.id == capture.session_id, Session.tenant_id == job.tenant_id)
+            ).scalar_one_or_none()
+            if session is not None:
+                transcription_context = build_transcription_context(db, session=session, capture=capture)
         return {
             "job": ai_job_payload(job),
             "capture": {
@@ -556,6 +683,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
                 "metadata": capture.capture_metadata,
                 "sourceArtifactId": str(capture.source_artifact_id) if capture.source_artifact_id else None,
             },
+            "transcriptionContext": transcription_context,
         }
     if job.session_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
@@ -684,6 +812,9 @@ def complete_worker_job(
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
     job.error_message = None
+    job.last_error = None
+    job.retry_reason = None
+    job.next_retry_at = None
     job.result_metadata = {
         **(job.result_metadata or {}),
         "output_key": output_key,
@@ -954,6 +1085,9 @@ def complete_session_worker_job(
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
     job.error_message = None
+    job.last_error = None
+    job.retry_reason = None
+    job.next_retry_at = None
     job.result_metadata = {
         **(job.result_metadata or {}),
         "output_key": output_key,
