@@ -174,3 +174,4 @@ class AiJobErrorRequest(BaseModel):
     error_message: str
     celery_task_id: str | None = None
     retry_count: int = 0
+    retry_reason: str | None = None

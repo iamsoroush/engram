@@ -18,4 +18,10 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_time_limit=600,
     task_soft_time_limit=540,
+    beat_schedule={
+        "recover-durable-ai-jobs": {
+            "task": "ai_engine.recover_pending_ai_jobs",
+            "schedule": settings.recovery_interval_seconds,
+        },
+    },
 )

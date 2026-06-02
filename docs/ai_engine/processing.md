@@ -19,8 +19,8 @@ Included:
 - Queued capture-processing job rows created at upload time.
 - Celery/Redis dispatch for capture jobs.
 - Retry-aware job status updates and worker logging.
-- Internal progress callback for partial mock outputs.
-- Placeholder transcriptions for audio.
+- Internal progress callback for partial outputs.
+- Real audio transcription through a configured OpenAI-compatible gateway.
 - Placeholder captions for photos.
 - Placeholder decorated text for notes.
 - Capture-level detected-patient schema for future patient assignment.
@@ -31,7 +31,7 @@ Included:
 
 Excluded:
 
-- Real AI/LLM calls.
+- Real AI/LLM calls for photo, note, session organization, and patient matching.
 - Real patient matching design.
 - Long-running distributed job orchestration.
 
@@ -47,6 +47,13 @@ Excluded:
 - `session_id`, nullable
 - `started_at`, `completed_at`
 - `error_message`, nullable
+- durable retry schedule fields:
+  - `attempt_count`
+  - `last_attempted_at`
+  - `last_dispatched_at`
+  - `next_retry_at`
+  - `last_error`
+  - `retry_reason`
 - `output` JSONB
 - `created_by_user_id`
 - `created_at`
@@ -65,13 +72,13 @@ Every generated output includes:
 
 ## Capture Processing
 
-On capture upload, the backend creates a queued capture processing job row and marks the capture `processing`. The backend dispatches the job to Celery after the source object and metadata transaction is durable. The worker marks the job `running`, posts one deterministic partial generated-text update, waits for the configured mock delay, and then marks the capture `processed` with the relevant completed field:
+On capture upload, the backend creates a queued capture processing job row and marks the capture `processing`. The backend dispatches the job to Celery after the source object and metadata transaction is durable. The worker marks the job `running`, posts one partial generated-text update, and then marks the capture `processed` with the relevant completed field:
 
 - `metadata.transcript` for audio.
 - `metadata.caption` for photo.
 - `metadata.decorated_text` for text captures.
 
-These upload-time placeholder jobs are intentionally minimal scaffolding. They do not create generated artifact rows yet.
+Audio jobs can call a configured gateway. Photo and note jobs remain intentionally minimal placeholder scaffolding. Capture jobs do not create generated artifact rows yet.
 
 Manual enqueue endpoint:
 
@@ -85,17 +92,24 @@ Behavior:
 2. Create a AI job row.
 3. Mark capture `processing`.
 4. Dispatch a Celery task.
-5. Worker writes type-specific partial placeholder output.
-6. Worker waits briefly to simulate asynchronous processing.
-7. Worker writes type-specific completed placeholder output.
+5. Worker writes type-specific partial output.
+6. Audio jobs download the source capture through the protected backend internal API and transcribe it when `AI_ENGINE_TRANSCRIPTION_BASE_URL` is configured; photo and note jobs wait briefly to simulate asynchronous processing.
+7. Worker writes type-specific completed output.
 8. Worker marks capture `processed` and job `succeeded`.
 
-If a worker attempt raises, the task logs the exception, stores the last error in the job row, returns the job to `queued`, and lets Celery retry. After retries are exhausted, the job is marked `failed` and the capture moves to `needs_attention`.
+If a worker attempt raises, the task logs the exception, stores the last error
+and retry reason in the job row, and lets Celery perform its bounded local
+retry. The backend also stores `next_retry_at` using bounded backoff. After
+Celery retries are exhausted, retryable jobs remain durable `failed` rows that
+periodic recovery will re-dispatch when due. Capture rows remain in
+`processing` for retryable operational failures so normal UX can continue to
+say the material is saved and organizing. Deleted capture/session targets are
+marked non-retryable and skipped by recovery.
 
 Audio output:
 
 - Transcript status becomes `completed`.
-- Transcript text is plausible and clearly placeholder.
+- Transcript text is generated from the source audio when transcription is configured; otherwise it remains plausible placeholder text.
 - Language defaults to `en` unless known.
 - Duration/codec are copied from upload metadata if available.
 - `detected_patient` is present on audio output and currently always returns
@@ -179,14 +193,17 @@ replace the mock stage producer without changing the frontend contract shape.
 
 ## Recovery Behavior
 
-AI jobs are durable backend rows. Queued jobs and retryable failed jobs can be
-re-dispatched after broker or worker downtime. Staff/admin users can call the
-public recovery endpoint, and AI workers call the internal recovery endpoint
-when they come online so delayed work resumes without requiring the user to
-restart capture or review workflows.
+AI jobs are durable backend rows. Queued jobs, retryable failed jobs whose
+`next_retry_at` has arrived, and stale running jobs can be re-dispatched after
+broker or worker downtime. Staff/admin users can call the public recovery
+endpoint, AI workers call the internal recovery endpoint when they come online,
+and the AI engine also runs a periodic recovery task through Celery Beat so
+delayed work resumes without requiring a user action or a fresh worker start.
 
-Failed jobs carry retry metadata. A job with `result_metadata.retryable=false`
-is treated as terminal/manual-attention work and is skipped by recovery.
+Failed jobs carry retry metadata and durable retry columns. A job with
+`result_metadata.retryable=false` is treated as terminal/manual-attention work
+and is skipped by recovery. Backend-owned target checks mark jobs for deleted
+captures or sessions non-retryable so they do not retry forever.
 
 ## Session Processing Contract
 

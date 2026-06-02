@@ -2,6 +2,7 @@ import logging
 
 from celery.signals import worker_ready
 from celery.exceptions import MaxRetriesExceededError
+import httpx
 
 from ai_engine.celery_app import celery_app
 from ai_engine.config import settings
@@ -11,13 +12,40 @@ logger = logging.getLogger(__name__)
 
 
 @worker_ready.connect
-def recover_pending_ai_jobs(**_: object) -> None:
+def recover_pending_ai_jobs_on_startup(**_: object) -> None:
     """Resume durable backend AI work when a worker comes online."""
+    recover_pending_ai_jobs()
+
+
+@celery_app.task(name="ai_engine.recover_pending_ai_jobs")
+def recover_pending_ai_jobs() -> None:
+    """Periodically ask the backend to dispatch due durable AI jobs."""
     try:
         result = BackendClient().recover_jobs()
         logger.info("Requested AI job recovery", extra={"result": result})
     except Exception:
-        logger.exception("Failed to request AI job recovery on worker startup")
+        logger.exception("Failed to request AI job recovery")
+
+
+def retry_reason_for_exception(exc: Exception) -> str:
+    """Map worker exceptions to backend retry reason codes."""
+    message = str(exc).lower()
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 404:
+        return "source_missing"
+    if "source file is missing" in message:
+        return "source_missing"
+    if "conversion to flac failed" in message or "ffmpeg" in message:
+        return "conversion_failed"
+    if (
+        isinstance(exc, (httpx.ConnectError, httpx.TimeoutException))
+        or "transcription" in message
+        or "openai" in message
+        or "timeout" in message
+        or "connection" in message
+        or "rate limit" in message
+    ):
+        return "gateway_unavailable"
+    return "worker_error"
 
 
 def run_task_with_retries(task, job_id: str, runner, label: str) -> None:
@@ -35,12 +63,14 @@ def run_task_with_retries(task, job_id: str, runner, label: str) -> None:
             },
         )
         client = BackendClient()
+        retry_reason = retry_reason_for_exception(exc)
         try:
             client.retry_job(
                 job_id,
                 error_message=str(exc),
                 celery_task_id=task.request.id,
                 retry_count=task.request.retries,
+                retry_reason=retry_reason,
             )
         except Exception:
             logger.exception("Failed to persist AI job retry state", extra={"job_id": job_id})
@@ -57,6 +87,7 @@ def run_task_with_retries(task, job_id: str, runner, label: str) -> None:
                     error_message=str(exc),
                     celery_task_id=task.request.id,
                     retry_count=task.request.retries,
+                    retry_reason=retry_reason,
                 )
             except Exception:
                 logger.exception("Failed to persist terminal AI job failure", extra={"job_id": job_id})

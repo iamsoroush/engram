@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://redis:6379/1"
     ai_job_max_retries: int = 3
     ai_job_retry_delay_seconds: int = 30
+    ai_job_retry_max_delay_seconds: int = 900
+    ai_job_dispatch_visibility_timeout_seconds: int = 300
+    ai_job_running_stale_seconds: int = 900
     ai_engine_internal_token: str = "dev-ai-engine-token"
 
     model_config = SettingsConfigDict(env_prefix="BACKEND_")

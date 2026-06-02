@@ -35,10 +35,9 @@ export function Shell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "A";
-  const navigationItems: Array<{ screen: Screen; label: string; icon: React.ReactNode }> = [
-    { screen: "active-session", label: "Active Session", icon: <ActiveSessionNavIcon /> },
-    { screen: "patients", label: "Clinical Memory", icon: <ClinicalMemoryNavIcon /> },
-    { screen: "search", label: "Search", icon: <SearchNavIcon /> },
+  const navigationItems: Array<{ screen: Screen; label: string; shortLabel: string; icon: React.ReactNode }> = [
+    { screen: "active-session", label: "Active Session", shortLabel: "Session", icon: <ActiveSessionNavIcon /> },
+    { screen: "patients", label: "Clinical Memory", shortLabel: "Memory", icon: <ClinicalMemoryNavIcon /> },
   ];
 
   return (
@@ -50,17 +49,27 @@ export function Shell({
               {navigationItems.map((item) => (
                 <button
                   aria-current={screen === item.screen ? "page" : undefined}
-                  aria-label={item.label}
                   className={screen === item.screen ? "active" : ""}
                   key={item.screen}
                   onClick={() => onNavigate(item.screen)}
                   title={item.label}
                   type="button"
                 >
-                  {item.icon}
+                  <span aria-hidden="true">{item.icon}</span>
+                  <span>{item.shortLabel}</span>
                 </button>
               ))}
             </nav>
+            <button
+              aria-current={screen === "search" ? "page" : undefined}
+              aria-label="Search"
+              className={`app-search-button ${screen === "search" ? "active" : ""}`}
+              onClick={() => onNavigate("search")}
+              title="Search"
+              type="button"
+            >
+              <SearchNavIcon />
+            </button>
           </div>
           <strong className="topbar-brand">AesMem</strong>
           <details className="user-menu">

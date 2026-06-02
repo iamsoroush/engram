@@ -38,6 +38,7 @@ from app.services.ai_jobs import (
 )
 from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture
 from app.services.capture_storage import (
+    internal_source_file_content,
     source_file_content,
     source_file_url,
     upload_source_capture,
@@ -193,6 +194,7 @@ def internal_ai_job_retry(
         error_message=request.error_message,
         celery_task_id=request.celery_task_id,
         retry_count=request.retry_count,
+        retry_reason=request.retry_reason,
     )
 
 
@@ -209,6 +211,22 @@ def internal_ai_job_fail(
         error_message=request.error_message,
         celery_task_id=request.celery_task_id,
         retry_count=request.retry_count,
+        retry_reason=request.retry_reason,
+    )
+
+
+@internal_api.get("/captures/{capture_id}/file-content")
+def internal_capture_file_content(
+    capture_id: str,
+    db: Session = Depends(get_db),
+    object_store: ObjectStore = Depends(get_object_store),
+) -> Response:
+    """Stream capture source bytes to trusted internal AI processors."""
+    file_content = internal_source_file_content(db, object_store=object_store, capture_id=capture_id)
+    return Response(
+        content=file_content["content"],
+        media_type=file_content["media_type"],
+        headers={"Content-Disposition": f'inline; filename="{file_content["filename"]}"'},
     )
 
 

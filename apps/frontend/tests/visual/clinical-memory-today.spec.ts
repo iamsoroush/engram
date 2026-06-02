@@ -6,6 +6,7 @@ const todaySessionTime = "4:23 PM";
 const needsInputTime = "2:15 PM";
 const previousVisitDate = new Date(now);
 previousVisitDate.setDate(now.getDate() - 42);
+const previousVisitDateLabel = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(previousVisitDate);
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/v1/auth/dev-login", async (route) => {
@@ -163,7 +164,7 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
   await expect(page.getByText("Needs input: review summary")).toBeVisible();
   await expect(page.getByRole("button", { name: "Review summary", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sara" })).toBeVisible();
-  await expect(page.getByText(/Latest visit: Apr 18 ·/)).toBeVisible();
+  await expect(page.getByText(new RegExp(`Latest visit: ${previousVisitDateLabel} ·`))).toBeVisible();
   await expect(page.getByRole("button", { name: /Open memory|View history/ })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Review summary", exact: true }).click();

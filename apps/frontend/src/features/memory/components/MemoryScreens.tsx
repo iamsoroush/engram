@@ -1333,7 +1333,7 @@ function PatientTimelineDetail({
     <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
       <button className="context-back-button" onClick={onBack} type="button">
         <BackIcon />
-        Clinical Memory
+        Patients
       </button>
 
       <section className="patient-detail-header">

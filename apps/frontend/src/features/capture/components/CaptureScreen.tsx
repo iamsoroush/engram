@@ -23,6 +23,7 @@ export function CaptureScreen({
   onDeleteCapture,
   mode = "active",
   onBack,
+  backLabel = "Clinical Memory",
   onResumeCapture,
   assignmentOpen,
   onAssignPatient,
@@ -41,6 +42,7 @@ export function CaptureScreen({
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   mode?: "active" | "historical";
   onBack?: () => void;
+  backLabel?: string;
   onResumeCapture?: () => void;
   assignmentOpen?: boolean;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
@@ -72,6 +74,7 @@ export function CaptureScreen({
   const captureCount = activeSession?.items.length || 0;
   const captureCountLabel = `${captureCount} capture${captureCount === 1 ? "" : "s"}`;
   const sessionStatusChip = sessionSummaryStatusChip(activeSession);
+  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
   const previousGeneratingRef = React.useRef(isGenerating);
 
@@ -124,7 +127,7 @@ export function CaptureScreen({
       {onBack ? (
         <button className="context-back-button" onClick={onBack} type="button">
           <BackIcon />
-          Clinical Memory
+          {backLabel}
         </button>
       ) : null}
       <div className="active-session-summary">
@@ -136,8 +139,7 @@ export function CaptureScreen({
               {sessionStatusChip.label}
             </span>
           </div>
-          <strong>{patientName}</strong>
-          <p>{captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+          <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
         </div>
         <div className="workspace-header-actions">
           {isHistorical && onResumeCapture ? (
@@ -411,8 +413,9 @@ export function PatientAssignmentSheet({
   const [saving, setSaving] = React.useState(false);
   const trimmedQuery = query.trim();
   const currentPatient = React.useMemo(() => currentSessionPatient(session), [session]);
+  const currentAssignedPatient = currentPatient[0] || null;
   const localMatches = React.useMemo(() => filterPatientMatches(currentPatient, trimmedQuery), [currentPatient, trimmedQuery]);
-  const matches = mergePatientMatches(apiMatches, localMatches).slice(0, 3);
+  const matches = mergePatientMatches(localMatches, apiMatches).slice(0, 3);
   const canCreate = Boolean(trimmedQuery) && !saving;
   const summaryItems = assignmentSessionSummary(session);
 
@@ -450,7 +453,7 @@ export function PatientAssignmentSheet({
       <section aria-labelledby="assignment-sheet-title" aria-modal="true" className="assignment-sheet" role="dialog">
         <div className="assignment-sheet-handle" aria-hidden="true" />
         <div className="assignment-sheet-header">
-          <h2 id="assignment-sheet-title">Assign patient</h2>
+          <h2 id="assignment-sheet-title">{currentAssignedPatient ? "Change patient" : "Assign patient"}</h2>
           {onCancel ? (
             <Button aria-label="Close patient assignment" onClick={onCancel} size="sm" type="button" variant="ghost">
               <span aria-hidden="true">x</span>
@@ -470,6 +473,18 @@ export function PatientAssignmentSheet({
             </div>
           ))}
         </div>
+        {currentAssignedPatient ? (
+          <section className="assignment-current-patient" aria-label="Currently assigned patient">
+            <span className="assignment-patient-avatar" aria-hidden="true">
+              <PatientIcon />
+            </span>
+            <div className="assignment-patient-copy">
+              <small>Currently assigned</small>
+              <strong>{currentAssignedPatient.displayName}</strong>
+              <span>{patientIdentifierLabel(currentAssignedPatient)}</span>
+            </div>
+          </section>
+        ) : null}
         <label className="assignment-search-field">
           <span aria-hidden="true">
             <SearchIcon />
@@ -489,18 +504,20 @@ export function PatientAssignmentSheet({
         </div>
         <div className="assignment-results" aria-live="polite">
           {matches.length ? (
-            matches.map((patient) => (
-              <article className="assignment-patient-row" key={patient.id}>
+            matches.map((patient) => {
+              const alreadyAssigned = currentAssignedPatient ? samePatientSummary(patient, currentAssignedPatient) : false;
+              return (
+              <article className={`assignment-patient-row ${alreadyAssigned ? "assigned" : ""}`} key={patient.id}>
                 <span className="assignment-patient-avatar" aria-hidden="true">
                   <PatientIcon />
                 </span>
                 <div className="assignment-patient-copy">
                   <strong>{patient.displayName}</strong>
                   <span>{patientIdentifierLabel(patient)}</span>
-                  <small>Last visit: {formatLastVisit(patient.lastVisit)}</small>
+                  <small>{alreadyAssigned ? "Currently assigned to this visit" : `Last visit: ${formatLastVisit(patient.lastVisit)}`}</small>
                 </div>
                 <Button
-                  disabled={saving}
+                  disabled={saving || alreadyAssigned}
                   onClick={() =>
                     assignDraft({
                       patientId: patient.id,
@@ -512,10 +529,11 @@ export function PatientAssignmentSheet({
                   type="button"
                   variant="secondary"
                 >
-                  {saving ? "Saving" : "Select"}
+                  {alreadyAssigned ? "Assigned" : saving ? "Saving" : "Select"}
                 </Button>
               </article>
-            ))
+              );
+            })
           ) : (
             <p className="assignment-empty">No suggested matches yet.</p>
           )}
@@ -605,6 +623,14 @@ function mergePatientMatches(primary: PatientSummary[], secondary: PatientSummar
     seen.add(key);
     return true;
   });
+}
+
+function samePatientSummary(left: PatientSummary, right: PatientSummary) {
+  if (left.id && right.id && left.id === right.id) return true;
+  const leftName = left.displayName.trim().toLowerCase();
+  const rightName = right.displayName.trim().toLowerCase();
+  if (leftName && rightName && leftName === rightName) return true;
+  return Boolean(left.nationalId && right.nationalId && left.nationalId === right.nationalId);
 }
 
 function patientIdentifierLabel(patient: PatientSummary) {
@@ -1143,7 +1169,7 @@ function sessionSummaryStatusChip(session: CaptureSession | null) {
 
 function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boolean) {
   if (isHistorical) return session?.label || "Session review";
-  const title = session?.label?.trim();
+  const title = (session?.report?.title || session?.label || "").trim();
   if (title && session && !isLocalSessionId(session.id)) return title;
   return "Current session";
 }
@@ -1152,15 +1178,30 @@ function sessionPatientName(session: CaptureSession | null) {
   return session?.patientName || "Unassigned patient";
 }
 
+function sessionSummaryCreatedLabel(session: CaptureSession | null) {
+  if (!session) return "Created now";
+  const source = session.capturedAt || session.createdAt || session.dateLabel || session.time;
+  const label = sessionDateTimeLabel(source, session.time);
+  return label ? `Created ${label}` : "Created recently";
+}
+
 function sessionSummaryUpdatedLabel(session: CaptureSession | null) {
   const source = session?.report?.updatedAt || session?.processingStatus?.updatedAt || session?.time;
-  if (!source) return "Updated 13:58";
-  const date = new Date(source);
-  if (!Number.isNaN(date.getTime())) {
-    return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+  const label = sessionDateTimeLabel(source);
+  return `Updated ${label || "recently"}`;
+}
+
+function sessionDateTimeLabel(source?: string | null, fallbackTime?: string | null) {
+  if (!source && !fallbackTime) return "";
+  const date = source ? new Date(source) : null;
+  if (date && !Number.isNaN(date.getTime())) {
+    const dateLabel = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+    const timeLabel = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+    return `${dateLabel} · ${timeLabel}`;
   }
-  const time = source.match(/\b\d{1,2}:\d{2}\b/)?.[0];
-  return `Updated ${time || "13:58"}`;
+  const datePart = source && !source.match(/\b\d{1,2}:\d{2}\b/) ? source : "";
+  const time = source?.match(/\b\d{1,2}:\d{2}\b/)?.[0] || fallbackTime || "";
+  return [datePart, time].filter(Boolean).join(" · ");
 }
 
 function formatReportParagraph(paragraph: string, onResolveFile?: (endpoint: string) => Promise<string>) {

@@ -1222,6 +1222,16 @@ export function App() {
     navigateScreen("patients");
   };
 
+  const clinicalMemoryBackLabel = clinicalMemoryReturnContext?.patientId
+    ? "Patient history"
+    : clinicalMemoryReturnContext?.tab === "today"
+      ? "Today"
+      : clinicalMemoryReturnContext?.tab === "needs-input"
+        ? "Needs input"
+        : clinicalMemoryReturnContext?.tab === "patients"
+          ? "Patients"
+          : "Clinical Memory";
+
   const handleShellNavigate = (nextScreen: Screen) => {
     setClinicalMemoryReturnContext(null);
     navigateScreen(nextScreen);
@@ -1284,6 +1294,7 @@ export function App() {
           activeSession={activeSession}
           assignmentOpen={Boolean(activeSession && assignmentSessionId === activeSession.id)}
           onBack={clinicalMemoryReturnContext ? returnToClinicalMemory : undefined}
+          backLabel={clinicalMemoryBackLabel}
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
           onCloseAssignment={() => {

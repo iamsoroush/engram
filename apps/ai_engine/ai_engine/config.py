@@ -10,8 +10,14 @@ class Settings(BaseSettings):
     internal_token: str = "dev-ai-engine-token"
     job_max_retries: int = 3
     job_retry_delay_seconds: int = 30
+    recovery_interval_seconds: int = 60
     mock_stage_delay_seconds: float = 1.25
     http_timeout_seconds: float = 10.0
+    transcription_base_url: str = ""
+    transcription_api_key: str = "unused"
+    transcription_model: str = "gemini-3.1-flash-lite"
+    transcription_prompt: str = "Transcribe this audio."
+    transcription_timeout_seconds: float = 120.0
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

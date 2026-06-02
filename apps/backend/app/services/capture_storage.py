@@ -420,6 +420,30 @@ def source_file_content(db: DbSession, *, object_store: ObjectStore, principal: 
     }
 
 
+def internal_source_file_content(db: DbSession, *, object_store: ObjectStore, capture_id: str) -> dict[str, Any]:
+    """Return source file bytes for trusted internal AI engine processors."""
+    try:
+        capture_uuid = uuid.UUID(capture_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid capture_id") from exc
+
+    capture = db.execute(select(Capture).where(Capture.id == capture_uuid)).scalar_one_or_none()
+    if capture is None or capture.source_artifact_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Capture file not found")
+
+    artifact = db.execute(
+        select(Artifact).where(Artifact.id == capture.source_artifact_id, Artifact.tenant_id == capture.tenant_id)
+    ).scalar_one_or_none()
+    if artifact is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Artifact not found")
+
+    return {
+        "content": object_store.get_object_bytes(artifact.object_key),
+        "media_type": artifact.mime_type,
+        "filename": (capture.capture_metadata or {}).get("original_filename") or f"{capture.id}",
+    }
+
+
 def get_capture_for_tenant(db: DbSession, tenant_id: uuid.UUID, capture_id: uuid.UUID) -> Capture:
     capture = db.execute(
         select(Capture).where(Capture.id == capture_id, Capture.tenant_id == tenant_id)

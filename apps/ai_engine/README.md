@@ -21,7 +21,7 @@ For local Python development:
 ```sh
 cd apps/ai_engine
 pip install -r requirements.txt
-AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs
+AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/aesmem-celerybeat-schedule
 ```
 
 ## Environment
@@ -33,5 +33,16 @@ AI_ENGINE_BACKEND_INTERNAL_URL=http://backend:8000
 AI_ENGINE_INTERNAL_TOKEN=dev-ai-engine-token
 AI_ENGINE_JOB_MAX_RETRIES=3
 AI_ENGINE_JOB_RETRY_DELAY_SECONDS=30
+AI_ENGINE_RECOVERY_INTERVAL_SECONDS=60
 AI_ENGINE_MOCK_STAGE_DELAY_SECONDS=1.25
+AI_ENGINE_TRANSCRIPTION_BASE_URL=
+AI_ENGINE_TRANSCRIPTION_API_KEY=unused
+AI_ENGINE_TRANSCRIPTION_MODEL=gemini-3.1-flash-lite
 ```
+
+When `AI_ENGINE_TRANSCRIPTION_BASE_URL` is set, audio capture jobs download the
+source capture from the backend internal API, convert it to mono 16 kHz FLAC
+with `ffmpeg`, and send it to the configured OpenAI-compatible chat completion
+gateway as `input_audio`. When it is unset, audio jobs keep using deterministic
+placeholder transcript text. The Docker image installs `ffmpeg`; local Python
+development needs `ffmpeg` available on `PATH`.

@@ -1,8 +1,11 @@
+import base64
+import subprocess
 from datetime import datetime, timezone
 from time import sleep
 from typing import Any, Literal, NotRequired, TypedDict
 
 import httpx
+from openai import OpenAI
 
 from ai_engine.config import settings
 
@@ -117,9 +120,10 @@ def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CapturePro
     """Return deterministic in-progress capture output."""
     capture_type = capture.get("type")
     label = "Transcribing" if capture_type == "audio" else "Reading image" if capture_type == "photo" else "Structuring note"
+    text = f"{label} audio..." if capture_type == "audio" and transcription_is_configured() else f"{label} placeholder output..."
     output: CaptureProcessingOutput = {
         "status": "processing",
-        "text": f"{label} placeholder output...",
+        "text": text,
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "job_type": job["jobType"],
@@ -129,6 +133,89 @@ def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CapturePro
     if capture_type == "audio":
         output["detected_patient"] = {**NOT_DETECTED_PATIENT}
     return output
+
+
+def transcription_is_configured() -> bool:
+    """Return whether a real audio transcription gateway is configured."""
+    return bool(settings.transcription_base_url.strip())
+
+
+def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
+    """Convert arbitrary audio bytes to mono 16 kHz FLAC and base64 encode them."""
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-sample_fmt",
+        "s16",
+        "-f",
+        "flac",
+        "pipe:1",
+    ]
+    try:
+        result = subprocess.run(cmd, input=content, capture_output=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Audio conversion to FLAC failed: {stderr or exc}") from exc
+    return base64.b64encode(result.stdout).decode("ascii")
+
+
+def transcribe_audio_content(content: bytes) -> str:
+    """Transcribe audio through the configured OpenAI-compatible gateway."""
+    base64_flac = audio_to_flac_mono_16khz_base64(content)
+    client = OpenAI(
+        base_url=settings.transcription_base_url.strip(),
+        api_key=settings.transcription_api_key,
+        timeout=settings.transcription_timeout_seconds,
+    )
+    response = client.chat.completions.create(
+        model=settings.transcription_model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": settings.transcription_prompt},
+                    {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
+                ],
+            }
+        ],
+    )
+    text = response.choices[0].message.content
+    if not text or not text.strip():
+        raise RuntimeError("Audio transcription returned empty text")
+    return text.strip()
+
+
+def completed_audio_metadata(job: dict[str, Any], capture: dict[str, Any], content: bytes | None) -> CaptureProcessingOutput:
+    """Return completed audio metadata using real transcription when configured."""
+    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
+    filename = str(metadata.get("original_filename") or "").strip()
+    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
+        text = TEST_CAPTURE_TEXT_BY_FILENAME[filename]
+    elif transcription_is_configured():
+        if content is None:
+            raise RuntimeError("Audio capture source file is missing")
+        text = transcribe_audio_content(content)
+    else:
+        text = placeholder_text_for_capture(capture)
+
+    return {
+        "status": "completed",
+        "text": text,
+        "generated_by": "ai-engine",
+        "job_id": job["id"],
+        "job_type": job["jobType"],
+        "generated_at": utc_now().isoformat(),
+        "source_artifact_ids": job.get("inputArtifactIds") or [],
+        "detected_patient": {**NOT_DETECTED_PATIENT, "source_text": text},
+    }
 
 
 def capture_text(capture: dict[str, Any]) -> str:
@@ -614,6 +701,16 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    def get_bytes(self, path: str) -> bytes:
+        """GET binary content from an internal backend endpoint."""
+        response = httpx.get(
+            f"{self.base_url}{path}",
+            headers=self.headers,
+            timeout=settings.http_timeout_seconds,
+        )
+        response.raise_for_status()
+        return response.content
+
     def start_job(self, job_id: str, *, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
         """Mark a job running and fetch its input payload."""
         return self.post(
@@ -635,18 +732,44 @@ class BackendClient:
             {"output_key": output_key, "output": output, "stage": stage},
         )
 
-    def retry_job(self, job_id: str, *, error_message: str, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
+    def retry_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        celery_task_id: str | None,
+        retry_count: int,
+        retry_reason: str | None = None,
+    ) -> dict[str, Any]:
         """Record a failed attempt before Celery retries."""
         return self.post(
             f"/internal/ai/jobs/{job_id}/retry",
-            {"error_message": error_message, "celery_task_id": celery_task_id, "retry_count": retry_count},
+            {
+                "error_message": error_message,
+                "celery_task_id": celery_task_id,
+                "retry_count": retry_count,
+                "retry_reason": retry_reason,
+            },
         )
 
-    def fail_job(self, job_id: str, *, error_message: str, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
+    def fail_job(
+        self,
+        job_id: str,
+        *,
+        error_message: str,
+        celery_task_id: str | None,
+        retry_count: int,
+        retry_reason: str | None = None,
+    ) -> dict[str, Any]:
         """Record terminal job failure."""
         return self.post(
             f"/internal/ai/jobs/{job_id}/fail",
-            {"error_message": error_message, "celery_task_id": celery_task_id, "retry_count": retry_count},
+            {
+                "error_message": error_message,
+                "celery_task_id": celery_task_id,
+                "retry_count": retry_count,
+                "retry_reason": retry_reason,
+            },
         )
 
     def recover_jobs(self) -> dict[str, Any]:
@@ -664,8 +787,17 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         return
 
     output_key = output_key_for_capture(capture["type"])
-    # TODO(ai-integration): Replace this staged placeholder with real media/text processors.
+    # TODO(ai-integration): Replace the remaining photo/text placeholders with real processors.
     client.progress_job(job_id, output_key=output_key, output=partial_metadata(job, capture), stage="transcript")
+    if capture.get("type") == "audio":
+        source_content = None
+        if transcription_is_configured() and capture.get("sourceArtifactId"):
+            source_content = client.get_bytes(f"/internal/captures/{capture['id']}/file-content")
+        if not transcription_is_configured():
+            sleep(settings.mock_stage_delay_seconds)
+        client.complete_job(job_id, output_key=output_key, output=completed_audio_metadata(job, capture, source_content))
+        return
+
     sleep(settings.mock_stage_delay_seconds)
     client.complete_job(job_id, output_key=output_key, output=completed_metadata(job, capture))
 

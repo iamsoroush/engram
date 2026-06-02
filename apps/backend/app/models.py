@@ -324,6 +324,7 @@ class AiJob(Base):
     __table_args__ = (
         Index("ix_ai_jobs_tenant_id_status_created_at", "tenant_id", "status", "created_at"),
         Index("ix_ai_jobs_tenant_id_session_id", "tenant_id", "session_id"),
+        Index("ix_ai_jobs_status_next_retry_at", "status", "next_retry_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -338,6 +339,12 @@ class AiJob(Base):
     input_artifact_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     result_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text)
+    attempt_count: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
+    last_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    retry_reason: Mapped[str | None] = mapped_column(String(120))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
