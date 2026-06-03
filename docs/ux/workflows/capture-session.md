@@ -23,14 +23,16 @@ Capture clinical material quickly without selecting a patient first.
 6. The app makes captures available beyond the device when authenticated and online.
 7. Uploaded captures are merged with remote IDs and local preview cache is retained.
 8. The draft report updates immediately with capture-specific progressive lines:
-   - audio: inline playback plus `Audio capture saved. Organizing.`
-   - photo: inline photo preview plus `Photo saved. Organizing.`
+   - audio: inline playback plus upload/sync status while the capture is still local, then `Transcribing audio` inside the transcript area only after backend processing starts.
+   - photo: inline photo preview plus `Reading image` while caption text is prepared.
    - text: formatted note content
-9. Draft capture cards show source preview/playback, assistant-style saved or organizing text when relevant, and full generated text when available. Completed captures do not show technical status in the card. Audio transcripts and photo captions are fully visible inline and indicate whether the text is assistant-generated or staff-edited; note captures show full decorated text and an expandable raw note.
-10. Users can rename or delete a capture from the capture item settings menu. Deleting a capture removes it from the live draft and returns any generated structured report to draft/stale state.
-11. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
-12. Adding, deleting, or changing patient context after a structured report exists returns report progress to `Draft` until the user generates again.
-13. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
+9. Draft capture cards show source preview/playback, assistant-style saved or type-specific working text when relevant, and full generated text when available. Completed captures do not show technical status in the card. Audio transcripts and photo captions are fully visible inline and indicate whether the text is assistant-generated or staff-edited; note captures show full decorated text and an expandable raw note.
+10. If audio transcription extracts patient identity, deterministic existing matches assign the visit with AI provenance. If no existing patient matches and the extracted identity is usable, the backend creates and assigns an AI-origin patient. Patient assignment is stored as a timeline: the latest valid action is the source of truth, deleted capture actions are skipped, and later manual assignment blocks older AI actions from becoming active again.
+11. Staff are notified when AI matched or created the patient. AI-created patients show inline completion and verification controls in the Active Session instead of forcing staff into a separate patient admin flow.
+12. Users can rename or delete a capture from the capture item settings menu. Deleting a capture removes it from the live draft and returns any generated structured report to draft/stale state.
+13. Structured report navigation becomes available after the first capture exists; before that it stays disabled with guidance to create a capture first.
+14. Adding, deleting, or changing patient context after a structured report exists returns report progress to `Draft` until the user generates again.
+15. If the browser refreshes, the app restores the active workspace from local workspace state plus pending/backend sessions when possible.
 
 ## System Behavior
 
@@ -38,6 +40,7 @@ Capture clinical material quickly without selecting a patient first.
 - Active workspace state is stored locally as a lightweight continuity snapshot.
 - First remote upload creates a draft session when no remote session is supplied.
 - The system stores the source artifact and starts organization when available.
+- Audio identity processing may assign an existing patient or create and assign an AI-origin patient when no match exists. Only the active capture action source carries patient action badges.
 - The frontend keeps local progressive draft output visible while generated output becomes available.
 
 ## Involved Screens
@@ -47,9 +50,9 @@ Capture clinical material quickly without selecting a patient first.
 
 ## Important States
 
-- `Saved`
-- `Organizing`
-- `Saved on this device`
+- `Syncing`
+- `Uploading`
+- `Processing`
 - `Needs your input`
 - `Memory updated`
 

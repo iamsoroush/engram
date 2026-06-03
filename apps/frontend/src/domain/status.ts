@@ -30,13 +30,13 @@ export function sessionUxState(status: SessionStatus): SessionUxState {
 }
 
 export const statusCopy: Record<CaptureStatus, string> = {
-  saved: "Saved on this device",
-  syncing: "Saved on this device",
-  uploaded: "Saved",
-  processing: "Organizing",
+  saved: "Syncing",
+  syncing: "Syncing",
+  uploaded: "Uploading",
+  processing: "Processing",
   processed: "Processed",
   needsReview: "Needs review",
-  failed: "Saved on this device",
+  failed: "Needs attention",
 };
 
 export const statusTone: Record<CaptureStatus, "neutral" | "blue" | "green" | "amber" | "red"> = {

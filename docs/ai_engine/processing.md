@@ -23,7 +23,7 @@ Included:
 - Real audio transcription through a configured OpenAI-compatible gateway.
 - Placeholder captions for photos.
 - Placeholder decorated text for notes.
-- Capture-level detected-patient schema for future patient assignment.
+- Capture-level detected-patient schema and deterministic patient assignment provenance.
 - Generated session summaries.
 - Generated session extracted metadata, including patient full name and national ID.
 - Generated body-level structured session reports rendered through backend-owned report templates.
@@ -32,7 +32,7 @@ Included:
 Excluded:
 
 - Real AI/LLM calls for photo, note, session organization, and patient matching.
-- Real patient matching design.
+- Duplicate merging, whole-table LLM patient search, or automatic assignment from ambiguous matches.
 - Long-running distributed job orchestration.
 
 ## Data Model
@@ -93,7 +93,7 @@ Behavior:
 3. Mark capture `processing`.
 4. Dispatch a Celery task.
 5. Worker writes type-specific partial output.
-6. Audio jobs download the source capture through the protected backend internal API and transcribe it when `AI_ENGINE_TRANSCRIPTION_BASE_URL` is configured; photo and note jobs wait briefly to simulate asynchronous processing.
+6. Audio jobs download the source capture through the protected backend internal API and transcribe it through the configured `AI_ENGINE_TRANSCRIPTION_BASE_URL`; photo and note jobs wait briefly to simulate asynchronous processing.
 7. Worker writes type-specific completed output.
 8. Worker marks capture `processed` and job `succeeded`.
 
@@ -103,18 +103,18 @@ retry. The backend also stores `next_retry_at` using bounded backoff. After
 Celery retries are exhausted, retryable jobs remain durable `failed` rows that
 periodic recovery will re-dispatch when due. Capture rows remain in
 `processing` for retryable operational failures so normal UX can continue to
-say the material is saved and organizing. Deleted capture/session targets are
+show a generic processing state. Deleted capture/session targets are
 marked non-retryable and skipped by recovery.
 
 Audio output:
 
 - Transcript status becomes `completed`.
-- Transcript text is generated from the source audio when transcription is configured; otherwise it remains plausible placeholder text. The display transcript remains available at `metadata.transcript.text`.
+- Transcript text is generated from the source audio through the configured transcription gateway. Non-fixture audio jobs do not write placeholder transcript text when the gateway is missing; they stay on the retryable job path instead.
 - Configured transcription jobs receive a tenant-scoped `transcriptionContext` containing clinic assumptions, assigned patient context when present, session metadata, previous same-session transcripts, same-session text notes, and safe assigned-patient history summary when available.
 - Configured transcription jobs ask the gateway for strict structured JSON with `transcript`, `language`, `patient_information`, `clinical_summary`, and `uncertainties`. Malformed structured output is treated as a retryable worker failure.
 - Language is one of `fa`, `en`, `mixed`, or `unknown`.
 - Duration/codec are copied from upload metadata if available.
-- `patient_information` is generated metadata only. Audio transcription does not create patients, assign patients, or run patient matching.
+- After structured `patient_information` is stored with explicit identity evidence, such as a spoken name or identifier, the backend creates a deterministic `patient_match_candidate`. A deterministic existing match is assigned automatically with AI provenance. A true no-match with usable extracted identity creates an AI-origin patient, assigns the session, and marks the created patient as needing staff verification. Each patient assignment/create action is appended to `patient_assignment_timeline`; the latest valid event becomes `active_patient_assignment_action`. Deleted capture-backed events are skipped when recomputing the active assignment, while later manual assignment remains authoritative over older AI events.
 - `detected_patient` remains present as a compatibility projection of structured `patient_information`.
 
 Photo output:
@@ -229,13 +229,43 @@ The completed output schema is versioned as
 Clinic and patient information are intentionally excluded from generated report
 body output. The backend renders those fields from template and database state.
 
-## AI Patient Assignment
+## AI Patient Matching
 
-AI processing may assign a session or capture to a seeded/demo patient only when the implementation has explicit deterministic demo rules. For example, a seeded note containing a seeded patient name may map to that seeded patient.
+Patient matching is backend-owned and reviewable. The backend preserves
+`Patient.display_name` exactly as staff entered it and stores deterministic
+search aliases in `patient_identifiers`.
 
-Do not build a general AI patient matching design in this version. Session-level
-AI output may produce a deterministic `patient_match` metadata candidate, but it
-must not overwrite the session's DB-owned patient assignment.
+On patient create/update, the backend generates normalized identifiers and
+aliases for:
+
+- national ID, normalized to digits only
+- phone, including Iranian `+98` normalization when possible
+- email, lowercased
+- staff-entered display/legal names, including Arabic/Persian character
+  variants, digit normalization, punctuation/whitespace normalization, and
+  rough Persian-to-Latin aliases
+
+After capture transcription or session organization provides structured
+`patient_information`, matching runs in this order:
+
+1. exact national ID
+2. exact phone or email
+3. exact normalized alias
+4. fuzzy alias candidate search
+5. optional LLM ranking only over the small backend-selected candidate set
+
+The LLM step is optional and ranking-only. It must not search all patients,
+create patients, assign sessions, merge patients, or rewrite display names.
+
+Matching output is stored as `patient_match_candidate` on capture metadata and,
+for unassigned sessions, mirrored into session extracted metadata. Deterministic
+`matched` results assign the existing patient and store `ai_patient_action`
+provenance. Deterministic `no_match` results create and assign an AI-origin
+patient only when extracted identity has a usable name or identifier; the active
+screen asks staff to complete and verify the created record. If a session already
+has a DB-owned patient assignment, generated identity is skipped as an assignment
+source and cannot override it. Ambiguous and insufficient results remain
+human-decision work for assignment/choice resolvers.
 
 ## Replacement Boundary
 

@@ -62,6 +62,12 @@ export async function fetchSessions(apiFetch: ApiFetch) {
   return sessions.map(normalizeApiSession);
 }
 
+export async function fetchSession(apiFetch: ApiFetch, sessionId: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`);
+  if (!response.ok) throw new Error("Could not load session");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function uploadCapture(apiFetch: ApiFetch, clientCaptureId: string, draft: CaptureDraft, sessionId?: string, intoNew = false) {
   const form = new FormData();
   form.append("capture_type", draft.kind);
@@ -194,6 +200,49 @@ export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignment
   });
   if (!response.ok) throw new Error("Could not create patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
+}
+
+export async function updatePatient(
+  apiFetch: ApiFetch,
+  patientId: string,
+  draft: {
+    displayName?: string;
+    nationalId?: string | null;
+    phone?: string | null;
+    dateOfBirth?: string | null;
+  },
+) {
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      displayName: draft.displayName,
+      nationalId: draft.nationalId || null,
+      phone: draft.phone || null,
+      dateOfBirth: draft.dateOfBirth || null,
+    }),
+  });
+  if (!response.ok) throw new Error("Could not update patient");
+  return normalizePatientSummary((await response.json()) as Record<string, unknown>);
+}
+
+export async function verifyAiPatientCreation(apiFetch: ApiFetch, sessionId: string, action: Record<string, unknown>) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      extractedMetadata: {
+        ai_patient_action: {
+          ...action,
+          status: "verified",
+          needsVerification: false,
+          verifiedAt: new Date().toISOString(),
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new Error("Could not verify patient creation");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
 export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string, patientId: string, idempotencyKey?: string) {

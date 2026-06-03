@@ -55,7 +55,11 @@ export function mergeSessionItems(existing: CaptureSession | null | undefined, i
 
 export function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[], incomingItems: CaptureItem[]) {
   const mergedItems = incomingItems.map((incomingItem) => {
-    const existingItem = existingItems.find((item) => item.id === incomingItem.id);
+    const existingItem = existingItems.find(
+      (item) =>
+        item.id === incomingItem.id ||
+        (incomingItem.clientCaptureId && item.clientCaptureId === incomingItem.clientCaptureId),
+    );
     if (!existingItem?.sourceUrl) return incomingItem;
     return {
       ...incomingItem,
@@ -65,7 +69,12 @@ export function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[],
   });
   existingItems.forEach((existingItem) => {
     const stillLocal = isLocalCaptureItem(existingItem) || existingItem.status === "saved" || existingItem.status === "syncing";
-    if (stillLocal && !mergedItems.some((item) => item.id === existingItem.id)) mergedItems.push(existingItem);
+    const replacedByBackend = mergedItems.some(
+      (item) =>
+        item.id === existingItem.id ||
+        (existingItem.clientCaptureId && item.clientCaptureId === existingItem.clientCaptureId),
+    );
+    if (stillLocal && !replacedByBackend) mergedItems.push(existingItem);
   });
   return mergedItems;
 }
@@ -139,6 +148,7 @@ export function makeLocalCapture(
     title: titleByType[draft.kind],
     detail: draft.detail || detailByType[draft.kind],
     time,
+    clientCaptureId,
     capturedAt: now,
     fileName: draft.filename,
     sourceName: draft.filename,

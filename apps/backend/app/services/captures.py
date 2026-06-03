@@ -10,6 +10,7 @@ from app.auth.service import audit
 from app.models import Artifact, CaptureStatus, CaptureType, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, CaptureUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
+from app.services.patient_assignment_timeline import apply_active_patient_assignment
 from app.services.sessions import parse_uuid
 
 
@@ -128,6 +129,7 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
         "deleted_by_user_id": str(principal.user_id),
     }
     mark_session_draft_after_capture_delete(session, str(capture.id), now)
+    apply_active_patient_assignment(db, session)
     audit(
         db,
         tenant_id=principal.tenant_id,

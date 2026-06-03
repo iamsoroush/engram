@@ -24,6 +24,7 @@ export type CaptureItem = {
   detail: string;
   time: string;
   sourceName: string;
+  clientCaptureId?: string;
   status?: CaptureStatus | "ready" | "uploading" | "missing";
   capturedAt?: string;
   fileName?: string;

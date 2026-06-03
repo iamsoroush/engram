@@ -16,7 +16,8 @@ from app.models import (
     Session,
     SessionStatus,
 )
-from app.services.patients import get_patient, normalize_identifier, patient_payload
+from app.services.patient_identity import normalize_identifier, search_keys_for_query
+from app.services.patients import get_patient, patient_payload
 from app.services.sessions import parse_uuid
 
 ACTIVE_SESSION_STATUSES = {
@@ -232,10 +233,15 @@ def _patient_base_statement(principal: CurrentPrincipal, query: str | None, clin
         statement = statement.where(Session.created_by_user_id == clinician_id)
     if query:
         pattern = f"%{query.strip()}%"
-        normalized_identifier = normalize_identifier(query)
+        search_keys = search_keys_for_query(query) or [normalize_identifier(query)]
+        identifier_filters = [
+            PatientIdentifier.normalized_value.ilike(f"%{search_key}%")
+            for search_key in search_keys
+            if search_key
+        ]
         identifier_patient_ids = select(PatientIdentifier.patient_id).where(
             PatientIdentifier.tenant_id == principal.tenant_id,
-            PatientIdentifier.normalized_value.ilike(f"%{normalized_identifier}%"),
+            or_(*identifier_filters) if identifier_filters else PatientIdentifier.id.is_(None),
         )
         statement = statement.where(
             or_(

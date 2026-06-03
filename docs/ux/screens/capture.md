@@ -41,6 +41,9 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Audio captures render playback inline in the draft.
 - Audio transcript and photo caption text render fully inline in the draft so review does not require opening a detail card.
 - Audio transcript and photo caption headings show whether the text is still AI-generated or was edited by staff.
+- Captures that are the active patient action source show action badges such as `Patient assigned` and, when applicable, `Patient created`. Older AI source captures lose the active action badge when a later patient action supersedes them.
+- When AI creates and assigns a patient from audio identity, the patient context stays in the Active Session and shows an inline completion/verification panel for name, national ID, phone, and date of birth.
+- When AI deterministically matches an existing patient, the Active Session updates the patient context and notifies staff that the match was made by AI.
 - Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
 - Note captures show full decorated text inline plus an expandable raw note section.
 - Capture item overflow controls open per-capture settings for rename and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.
@@ -53,7 +56,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
 - Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
 - Capture source previews. Audio and photo captures open mobile-first detail sheets from live draft items, showing the source preview, captured metadata, editable transcript/caption text, edit attribution, and an inline transcript copy control.
-- In-progress capture states render as compact assistant-style text such as `Saved`, `Organizing`, or `Saved on this device`; completed captures do not show technical status in the card.
+- In-progress capture status chips use only `Syncing`, `Uploading`, or `Processing`; type-specific working copy such as `Transcribing audio` belongs inside the generated transcript/caption area. Completed captures do not show technical status in the card.
 - Expandable generated transcript/caption/decorated text.
 - Capture safety banner only when the user needs reassurance or local data safety is at risk.
 
@@ -87,7 +90,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 ## Success State
 
 - Capture appears immediately after local save.
-- Toasts confirm local save, memory update, title update, assignment, and structured report generation start.
+- Toasts confirm local save, memory update, title update, assignment, AI patient match/creation, and structured report generation start.
 
 ## Related Workflows
 

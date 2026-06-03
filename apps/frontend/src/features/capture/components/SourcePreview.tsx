@@ -436,13 +436,15 @@ function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: strin
 }
 
 function captureGeneratedText(item: CaptureItem, generated: Record<string, unknown>, generatedText: string, noteText: string) {
+  const generatedStatus = metadataDisplay(generated.status || generated.state).toLowerCase();
+  const isWorking = generatedStatus === "processing" || generatedStatus === "queued" || generatedStatus === "running";
   const text =
-    item.transcript ||
-    item.caption ||
-    generatedText ||
-    metadataText(generated.transcript) ||
-    metadataText(generated.caption) ||
-    metadataText(generated.text) ||
+    (isWorking ? "" : item.transcript) ||
+    (isWorking ? "" : item.caption) ||
+    (isWorking ? "" : generatedText) ||
+    (isWorking ? "" : metadataText(generated.transcript)) ||
+    (isWorking ? "" : metadataText(generated.caption)) ||
+    (isWorking ? "" : metadataText(generated.text)) ||
     noteText;
   if (text) return text;
   if (item.type === "photo") {

@@ -152,6 +152,11 @@ Example copy:
   Patient: `Possible matches: Sara M., Sarah Mahmoud`
   Why: `I found two possible matches before updating memory.`
   Primary action: `Choose patient`
+- Decision: `Patient match found`
+  Session: `Session: Today · 4:23 PM`
+  Patient: `Likely match: Sara Nazari`
+  Why: `The visit mentions identity details that match an existing patient. Confirm before I update memory.`
+  Primary action: `Choose patient`
 - Decision: `Summary ready for confirmation`
   Session: `Session: Today · 4:23 PM`
   Patient: `Soroush`
@@ -183,7 +188,8 @@ Choose-patient resolver:
 - Title: `Choose patient`.
 - Explain that the visit may belong to more than one patient and the user should choose the correct patient.
 - Show compact session context, capture counts, and a short human-readable hint when available.
-- Show candidate patient cards with initials, name, reason/hint, and selected state.
+- Show candidate patient cards with initials, name, reason/hint, confidence, risks when present, and selected state.
+- Candidate rows may come from backend `patient_match_candidate` metadata. The resolver must still require staff confirmation; suggested matches never assign, create, merge, or rewrite patient names automatically.
 - Include `Search another patient`, `Create new patient`, and `Keep unassigned`.
 - Confirm with `Confirm patient`.
 - On success, close the resolver, remove the needs-input item from Clinical Memory, update related session/patient cards, and show `Patient confirmed`.

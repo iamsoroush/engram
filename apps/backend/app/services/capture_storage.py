@@ -83,6 +83,12 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
     structured_report = session.report_model if isinstance(session.report_model, dict) and session.report_model else None
     rendered_body = None
     patient_information = patient_information_from_assignment(db, session)
+    patient_name = None
+    if db is not None and session.patient_id:
+        patient = db.execute(
+            select(Patient).where(Patient.id == session.patient_id, Patient.tenant_id == session.tenant_id)
+        ).scalar_one_or_none()
+        patient_name = patient.display_name if patient is not None else None
     if structured_report is not None:
         rendered_body = render_report_body_markdown(
             structured_report,
@@ -103,6 +109,7 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
         "id": str(session.id),
         "tenantId": str(session.tenant_id),
         "patientId": str(session.patient_id) if session.patient_id else None,
+        "patientName": patient_name,
         "assignmentSource": assignment_source if isinstance(assignment_source, str) else None,
         "status": session.status.value,
         "title": session.title,
@@ -267,13 +274,6 @@ async def upload_source_capture(
             captured_at=captured_at,
             created_by_user_id=principal.user_id,
         )
-        assignment_source = (session.extracted_metadata or {}).get("patient_assignment_source")
-        if session.patient_id and assignment_source and "patient_assignment_source" not in capture.capture_metadata:
-            capture.capture_metadata = {
-                **capture.capture_metadata,
-                "patient_assignment_source": assignment_source,
-                "patient_assignment_reason": (session.extracted_metadata or {}).get("patient_assignment_reason"),
-            }
         db.add(capture)
         db.flush()
 

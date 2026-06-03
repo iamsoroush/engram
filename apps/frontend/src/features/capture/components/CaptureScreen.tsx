@@ -29,6 +29,7 @@ export function CaptureScreen({
   onAssignPatient,
   onCloseAssignment,
   onSearchPatients,
+  onCompleteAiCreatedPatient,
   onVerifySession,
   onStartNewSession,
 }: {
@@ -48,6 +49,12 @@ export function CaptureScreen({
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onCloseAssignment?: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+  onCompleteAiCreatedPatient?: (
+    sessionId: string,
+    patientId: string,
+    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+    action: Record<string, unknown>,
+  ) => Promise<void>;
   onVerifySession?: (sessionId: string, verified?: boolean) => Promise<void>;
   onStartNewSession?: () => void;
 }) {
@@ -71,6 +78,7 @@ export function CaptureScreen({
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
   const patientName = sessionPatientName(activeSession);
+  const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
   const captureCountLabel = `${captureCount} capture${captureCount === 1 ? "" : "s"}`;
   const sessionStatusChip = sessionSummaryStatusChip(activeSession);
@@ -161,7 +169,13 @@ export function CaptureScreen({
         </span>
         <div>
           <strong>{patientName}</strong>
-          <p>{activeSession?.assignmentSource ? assignmentSourceLabel(activeSession.assignmentSource) : "Assigned manually"}</p>
+          <p>
+            {activeSession?.patientId
+              ? activeSession.assignmentSource
+                ? assignmentSourceLabel(activeSession.assignmentSource)
+                : "Assigned manually"
+              : "No patient assigned"}
+          </p>
         </div>
         {onAssignPatient ? (
           <Button className="edit-patient-button" onClick={onCloseAssignment} size="sm" type="button" variant="secondary">
@@ -170,6 +184,13 @@ export function CaptureScreen({
           </Button>
         ) : null}
       </Card>
+      {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
+        <AiCreatedPatientPanel
+          action={aiPatientAction}
+          session={activeSession}
+          onComplete={onCompleteAiCreatedPatient}
+        />
+      ) : null}
       <Card className={`workspace-report-card ${isGenerating ? "processing" : ""}`}>
         <div className="report-heading">
           <div className="report-title-lockup">
@@ -671,6 +692,7 @@ function LiveDraftReport({
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
   const [openMenuId, setOpenMenuId] = React.useState("");
+  const activePatientAction = activePatientAssignmentActionForSession(session);
 
   React.useEffect(() => {
     setOpenMenuId("");
@@ -689,6 +711,7 @@ function LiveDraftReport({
     <div className="live-draft">
       {session.items.map((item, index) => (
         <LiveDraftCaptureItem
+          activePatientAction={activePatientAction}
           item={item}
           key={item.sourceUrl || item.id}
           menuOpen={openMenuId === item.id}
@@ -709,6 +732,7 @@ function LiveDraftReport({
 }
 
 function LiveDraftCaptureItem({
+  activePatientAction,
   item,
   menuOpen,
   onCloseMenu,
@@ -719,6 +743,7 @@ function LiveDraftCaptureItem({
   onToggleMenu,
   sequence,
 }: {
+  activePatientAction: Record<string, unknown> | null;
   item: CaptureItem;
   menuOpen: boolean;
   onCloseMenu: () => void;
@@ -786,6 +811,7 @@ function LiveDraftCaptureItem({
               <time>{item.time}</time>
             </div>
             <CaptureInlineStatus status={item.status} />
+            <CapturePatientBadges activePatientAction={activePatientAction} item={item} />
           </div>
           <button
             aria-expanded={menuOpen}
@@ -815,9 +841,13 @@ function LiveDraftCaptureItem({
             <div className="live-draft-audio-player">
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
-            <section className="capture-generated-section">
-              <CaptureGeneratedHeading label="Transcript" attribution={textAttribution} />
-              <p className="live-draft-preview">{generatedText || fallbackText}</p>
+            <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
+              <CaptureGeneratedHeading label="Transcript" attribution={generatedText ? textAttribution : pendingGeneratedAttribution(item)} />
+              {generatedText ? (
+                <p className="live-draft-preview">{generatedText}</p>
+              ) : (
+                <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+              )}
             </section>
           </>
         ) : null}
@@ -827,14 +857,16 @@ function LiveDraftCaptureItem({
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
             <div className="live-draft-photo-copy">
-              <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
-              <p>{generatedText || fallbackText}</p>
+              <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
+                <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
+                {generatedText ? <p>{generatedText}</p> : <CaptureWorkingPlaceholder label="Reading image" />}
+              </section>
             </div>
           </div>
         ) : null}
         {!isPhoto && !isAudio ? (
           <>
-            <section className="capture-generated-section">
+            <section className="capture-generated-section ready">
               <h4>Decorated text</h4>
               <p className="live-draft-preview">{decoratedNoteText}</p>
             </section>
@@ -849,12 +881,115 @@ function LiveDraftCaptureItem({
   );
 }
 
+function CapturePatientBadges({
+  activePatientAction,
+  item,
+}: {
+  activePatientAction: Record<string, unknown> | null;
+  item: CaptureItem;
+}) {
+  const action = metadataRecord(activePatientAction);
+  const actionMetadata = metadataRecord(action.actionMetadata);
+  const captureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMetadata.basisCaptureId);
+  if (!captureId || captureId !== item.id) return null;
+  const assigned = action.assigned !== false && Boolean(action.patientId || actionMetadata.patientId);
+  const created = action.created === true || actionMetadata.created === true || action.action === "created_and_assigned" || actionMetadata.action === "created_and_assigned";
+  if (!assigned && !created) return null;
+  return (
+    <div className="capture-patient-badges" aria-label="Patient automation">
+      {assigned ? <span>Patient assigned</span> : null}
+      {created ? <span>Patient created</span> : null}
+    </div>
+  );
+}
+
+function AiCreatedPatientPanel({
+  action,
+  session,
+  onComplete,
+}: {
+  action: Record<string, unknown>;
+  session: CaptureSession;
+  onComplete: (
+    sessionId: string,
+    patientId: string,
+    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+    action: Record<string, unknown>,
+  ) => Promise<void>;
+}) {
+  const patientInfo = metadataRecord(action.patientInformation);
+  const patientId = metadataDisplay(action.patientId || session.patientId);
+  const [displayName, setDisplayName] = React.useState(metadataDisplay(action.displayName || session.patientName || patientInfo.raw_mentioned_name));
+  const [nationalId, setNationalId] = React.useState(metadataDisplay(patientInfo.national_id));
+  const [phone, setPhone] = React.useState(metadataDisplay(patientInfo.phone));
+  const [dateOfBirth, setDateOfBirth] = React.useState(metadataDisplay(patientInfo.date_of_birth));
+  const [saving, setSaving] = React.useState(false);
+  const status = metadataDisplay(action.status);
+  const needsVerification = action.needsVerification !== false && status !== "verified";
+  if (!patientId || action.action !== "created_and_assigned" || !needsVerification) return null;
+  return (
+    <Card className="ai-patient-review-card">
+      <div className="ai-patient-review-copy">
+        <strong>AI created this patient from audio</strong>
+        <p>Complete the details now and verify the patient record while staying in this visit.</p>
+      </div>
+      <div className="ai-patient-review-grid">
+        <label>
+          <span>Name</span>
+          <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+        </label>
+        <label>
+          <span>National ID</span>
+          <Input value={nationalId} onChange={(event) => setNationalId(event.target.value)} />
+        </label>
+        <label>
+          <span>Phone</span>
+          <Input value={phone} onChange={(event) => setPhone(event.target.value)} />
+        </label>
+        <label>
+          <span>Date of birth</span>
+          <Input placeholder="YYYY-MM-DD" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} />
+        </label>
+      </div>
+      <Button
+        disabled={saving || !displayName.trim()}
+        onClick={() => {
+          setSaving(true);
+          void onComplete(
+            session.id,
+            patientId,
+            {
+              displayName: displayName.trim(),
+              nationalId: nationalId.trim(),
+              phone: phone.trim(),
+              dateOfBirth: dateOfBirth.trim(),
+            },
+            action,
+          ).finally(() => setSaving(false));
+        }}
+        size="sm"
+        type="button"
+      >
+        {saving ? "Saving" : "Save & verify patient"}
+      </Button>
+    </Card>
+  );
+}
+
 function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
-  if (status === "saved" || status === "syncing" || status === "uploading") {
+  if (status === "saved" || status === "syncing") {
     return (
       <span className="capture-inline-status active syncing">
         <span aria-hidden="true" />
-        Saved on this device
+        Syncing
+      </span>
+    );
+  }
+  if (status === "uploading") {
+    return (
+      <span className="capture-inline-status active syncing">
+        <span aria-hidden="true" />
+        Uploading
       </span>
     );
   }
@@ -862,13 +997,42 @@ function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
-        Organizing
+        Processing
       </span>
     );
   }
-  if (status === "failed") return <span className="capture-inline-status issue">Saved on this device</span>;
+  if (status === "failed") return <span className="capture-inline-status issue">Needs attention</span>;
   if (status === "needsReview") return <span className="capture-inline-status issue">Needs attention</span>;
   return null;
+}
+
+function CaptureWorkingPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="capture-working-placeholder" aria-live="polite">
+      <span className="capture-working-copy">
+        <span className="capture-working-spark" aria-hidden="true" />
+        <span>{label}</span>
+        <span className="capture-working-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      </span>
+      <span className="capture-working-track" aria-hidden="true" />
+    </div>
+  );
+}
+
+function pendingGeneratedAttribution(item: CaptureItem) {
+  if (item.status === "saved") return "Pending upload";
+  if (item.status === "syncing" || item.status === "uploading") return "Uploading";
+  return "Generated by AI";
+}
+
+function audioPendingTranscriptLabel(item: CaptureItem) {
+  if (item.status === "saved") return "Waiting to upload";
+  if (item.status === "syncing" || item.status === "uploading") return "Uploading audio";
+  return "Transcribing audio";
 }
 
 function CaptureGeneratedHeading({ attribution, label }: { attribution: string; label: string }) {
@@ -1066,7 +1230,7 @@ function captureDraftLabel(item: CaptureItem, sequence: number) {
 function draftCaptureText(item: CaptureItem) {
   const generated = generatedTextForReport(item);
   if (generated) return generated;
-  if (item.type === "audio" || item.type === "voice") return "Audio capture added, processing...";
+  if (item.type === "audio" || item.type === "voice") return "Transcribing audio...";
   if (item.type === "photo") return "Photo added, analyzing...";
   return item.detail || "Text note added to the draft.";
 }
@@ -1080,6 +1244,8 @@ function generatedTextForReport(item: CaptureItem) {
         ? metadata.caption || metadata.ocr
         : metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
   const generatedRecord = metadataRecord(generated);
+  const status = metadataDisplay(generatedRecord.status || generatedRecord.state).toLowerCase();
+  if (status === "processing" || status === "queued" || status === "running") return "";
   const text =
     metadataText(generated) ||
     metadataText(generatedRecord.text) ||
@@ -1092,9 +1258,6 @@ function generatedTextForReport(item: CaptureItem) {
   if (text) return text;
   if (item.type === "note") return item.detail;
   if (item.status === "processed" || item.status === "ready") {
-    if (item.type === "audio" || item.type === "voice") {
-      return `Mock transcript: clinical audio captured at ${item.time}. Source audio remains attached for review.`;
-    }
     if (item.type === "photo") {
       return `Mock photo analysis: clinical photo captured at ${item.time}. Review the image above with this generated caption.`;
     }
@@ -1176,6 +1339,18 @@ function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boole
 
 function sessionPatientName(session: CaptureSession | null) {
   return session?.patientName || "Unassigned patient";
+}
+
+function aiPatientActionForSession(session: CaptureSession | null) {
+  if (!session?.extractedMetadata) return null;
+  const action = metadataRecord(session.extractedMetadata.ai_patient_action);
+  return Object.keys(action).length ? action : null;
+}
+
+function activePatientAssignmentActionForSession(session: CaptureSession | null) {
+  if (!session?.extractedMetadata) return null;
+  const action = metadataRecord(session.extractedMetadata.active_patient_assignment_action || session.extractedMetadata.ai_patient_action);
+  return Object.keys(action).length ? action : null;
 }
 
 function sessionSummaryCreatedLabel(session: CaptureSession | null) {

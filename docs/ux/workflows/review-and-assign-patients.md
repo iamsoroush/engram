@@ -21,13 +21,14 @@ Keep capturing with almost no friction while AesMem quietly saves, organizes, su
 5. User opens a patient to view the patient assistant summary and timeline.
 6. Timeline sessions are grouped by actual session time: `Today`, `Earlier this week`, and `Older`.
 7. Each session is summarized in human language and has one primary action.
-8. `Needs input` contains only decisions the user must make. Each item explains the decision, visit, known patient, reason, and smallest resolver action. Selecting a needs-input card opens the visit in Active Session; the primary button opens the focused resolver.
+8. `Needs input` contains only decisions the user must make. Each item explains the decision, visit, known patient or backend-proposed candidates, reason, and smallest resolver action. Selecting a needs-input card opens the visit in Active Session; the primary button opens the focused resolver.
 9. The persistent capture bar stays visible so the user always understands where captures will go and whether they are safely saved.
 
 ## Resolver Rules
 
 - `Assign patient` opens assignment, not the active session page.
 - `Choose patient` opens patient choice, not the active session page.
+- Backend patient-match candidates are suggestions only; staff confirmation is required before any assignment or memory update.
 - `Review summary` opens the summary review flow.
 - `Review storage` opens storage guidance or review.
 - Session card selection opens the visit when the user needs broader context.

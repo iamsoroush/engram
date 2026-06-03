@@ -11,6 +11,11 @@ from app.auth.service import audit
 from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSource, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
+from app.services.patient_assignment_timeline import (
+    append_patient_assignment_event,
+    apply_active_patient_assignment,
+    patient_assignment_event,
+)
 from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
 
 
@@ -202,37 +207,24 @@ def assign_session_patient(
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
     previous = session.patient_id
     next_patient_id = require_patient(db, principal.tenant_id, request.patient_id)
-    session.patient_id = next_patient_id
+    patient = (
+        db.execute(
+            select(Patient).where(Patient.id == next_patient_id, Patient.tenant_id == principal.tenant_id)
+        ).scalar_one_or_none()
+        if next_patient_id
+        else None
+    )
     existing_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
-    if next_patient_id:
-        session.extracted_metadata = {
-            **existing_metadata,
-            "patient_assignment_source": request.source,
-            "patient_assignment_reason": request.reason,
-        }
-    else:
-        session.extracted_metadata = {
-            key: value
-            for key, value in existing_metadata.items()
-            if key not in {"patient_assignment_source", "patient_assignment_reason"}
-        }
-    if session.status == SessionStatus.unassigned and next_patient_id:
-        session.status = SessionStatus.needs_review
-    if next_patient_id:
-        for capture in db.execute(
-        select(Capture).where(
-            Capture.tenant_id == principal.tenant_id,
-            Capture.session_id == session.id,
-            Capture.status != CaptureStatus.deleted,
-            Capture.patient_id.is_(None),
-        )
-        ).scalars():
-            capture.patient_id = next_patient_id
-            capture.capture_metadata = {
-                **(capture.capture_metadata or {}),
-                "patient_assignment_source": request.source,
-                "patient_assignment_reason": request.reason,
-            }
+    event = patient_assignment_event(
+        source=request.source or "staff",
+        action="manually_assigned" if next_patient_id else "manually_unassigned",
+        patient_id=next_patient_id,
+        display_name=patient.display_name if patient else None,
+        reason=request.reason,
+        actor_user_id=principal.user_id,
+    )
+    session.extracted_metadata = append_patient_assignment_event(existing_metadata, event)
+    apply_active_patient_assignment(db, session)
     audit(
         db,
         tenant_id=principal.tenant_id,

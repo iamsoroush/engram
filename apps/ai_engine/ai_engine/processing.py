@@ -96,7 +96,7 @@ def placeholder_text_for_capture(capture: dict[str, Any]) -> str:
     detail = str(metadata.get("detail") or "").strip()
     capture_type = capture.get("type")
     if capture_type == "audio":
-        return "Transcript placeholder. Audio capture processing completed successfully."
+        raise RuntimeError("Audio transcription gateway is not configured")
     if capture_type == "photo":
         return "Caption placeholder. Image capture processing completed successfully."
     if detail:
@@ -139,7 +139,7 @@ def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CapturePro
     """Return deterministic in-progress capture output."""
     capture_type = capture.get("type")
     label = "Transcribing" if capture_type == "audio" else "Reading image" if capture_type == "photo" else "Structuring note"
-    text = f"{label} audio..." if capture_type == "audio" and transcription_is_configured() else f"{label} placeholder output..."
+    text = f"{label} audio..." if capture_type == "audio" else f"{label} placeholder output..."
     output: CaptureProcessingOutput = {
         "status": "processing",
         "text": text,
@@ -335,7 +335,7 @@ def completed_audio_metadata(
     content: bytes | None,
     transcription_context: dict[str, Any] | None = None,
 ) -> CaptureProcessingOutput:
-    """Return completed audio metadata using real transcription when configured."""
+    """Return completed audio metadata using real transcription."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
     filename = str(metadata.get("original_filename") or "").strip()
     if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
@@ -345,7 +345,7 @@ def completed_audio_metadata(
             raise RuntimeError("Audio capture source file is missing")
         structured = transcribe_audio_content(content, transcription_context)
     else:
-        structured = structured_transcription_from_text(placeholder_text_for_capture(capture))
+        raise RuntimeError("Audio transcription gateway is not configured")
     text = structured["transcript"]
     patient_information = structured["patient_information"]
 
@@ -437,6 +437,20 @@ def extracted_patient_information_from_context(
             "display_name": assigned_patient.get("displayName"),
             "source": "db-session-assignment",
         }
+    for capture in captures:
+        patient_information = capture.get("patientInformation")
+        if isinstance(patient_information, dict):
+            meaningful_values = [
+                patient_information.get("raw_mentioned_name"),
+                patient_information.get("standardized_display_name"),
+                patient_information.get("national_id"),
+                patient_information.get("phone"),
+            ]
+            if any(isinstance(value, str) and value.strip() for value in meaningful_values):
+                return {
+                    **patient_information,
+                    "source": "capture-transcription-patient-information",
+                }
     return extracted_patient_information(captures)
 
 

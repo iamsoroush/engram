@@ -32,6 +32,7 @@ class SessionProcessingCaptureInput(TypedDict, total=False):
     rawText: str | None
     decoratedText: str | None
     detectedPatient: dict[str, Any] | None
+    patientInformation: dict[str, Any] | None
 
 
 class SessionProcessingInput(TypedDict):
@@ -239,6 +240,7 @@ def _capture_input(capture: Capture, artifact: Artifact | None) -> SessionProces
     metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
     transcript = _generated_text(metadata.get("transcript"))
     detected_patient = _detected_patient(metadata.get("transcript"))
+    patient_information = _patient_information(metadata.get("transcript"))
     caption = _generated_text(metadata.get("caption")) or _generated_text(metadata.get("ocr"))
     decorated_text = _generated_text(metadata.get("decorated_text")) or _generated_text(metadata.get("normalized_note"))
     raw_text = str(metadata.get("detail")).strip() if metadata.get("detail") else None
@@ -252,6 +254,7 @@ def _capture_input(capture: Capture, artifact: Artifact | None) -> SessionProces
         "s3Url": _s3_url(artifact),
         "transcript": transcript if capture.capture_type == CaptureType.audio else None,
         "detectedPatient": detected_patient if capture.capture_type == CaptureType.audio else None,
+        "patientInformation": patient_information if capture.capture_type == CaptureType.audio else None,
         "caption": caption if capture.capture_type == CaptureType.photo else None,
         "rawText": raw_text if capture.capture_type == CaptureType.note else None,
         "decoratedText": decorated_text if capture.capture_type == CaptureType.note else None,
@@ -280,6 +283,12 @@ def _generated_text(value: Any) -> str | None:
 def _detected_patient(value: Any) -> dict[str, Any] | None:
     if isinstance(value, dict) and isinstance(value.get("detected_patient"), dict):
         return value["detected_patient"]
+    return None
+
+
+def _patient_information(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict) and isinstance(value.get("patient_information"), dict):
+        return value["patient_information"]
     return None
 
 

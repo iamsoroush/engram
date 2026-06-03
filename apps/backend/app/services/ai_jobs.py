@@ -10,8 +10,15 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.config import settings
-from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, PatientIdentifier, Session, SessionStatus
+from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, Session, SessionStatus
 from app.services.capture_storage import get_capture_for_tenant
+from app.services.patient_assignment_timeline import (
+    append_patient_assignment_event,
+    apply_active_patient_assignment,
+    patient_assignment_event,
+)
+from app.services.patient_matching import match_patient_from_metadata, match_patient_from_patient_information
+from app.services.patients import create_patient_from_patient_information, patient_information_has_explicit_identity
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
     get_report_template,
@@ -65,6 +72,100 @@ def ai_job_payload(job: AiJob) -> dict[str, Any]:
         "startedAt": job.started_at.isoformat() if job.started_at else None,
         "completedAt": job.completed_at.isoformat() if job.completed_at else None,
     }
+
+
+def ai_patient_action_metadata(
+    *,
+    action: str,
+    patient: Patient,
+    capture: Capture,
+    patient_information: dict[str, Any],
+    match_candidate: dict[str, Any] | None,
+    created: bool,
+) -> dict[str, Any]:
+    """Return durable provenance for AI patient creation and assignment."""
+    return {
+        "schemaVersion": "2026-06-02.ai-patient-action.v1",
+        "action": action,
+        "source": "ai-engine",
+        "basisCaptureId": str(capture.id),
+        "patientId": str(patient.id),
+        "displayName": patient.display_name,
+        "created": created,
+        "assigned": True,
+        "needsVerification": created,
+        "status": "needs_verification" if created else "assigned",
+        "reason": (
+            "AI created and assigned this patient from extracted audio identity."
+            if created
+            else "AI matched and assigned this visit to an existing patient."
+        ),
+        "patientInformation": patient_information,
+        "matchCandidate": match_candidate,
+    }
+
+
+def assign_session_to_ai_patient(
+    db: DbSession,
+    *,
+    session: Session,
+    capture: Capture,
+    patient: Patient,
+    action: dict[str, Any],
+) -> None:
+    """Assign a session/capture set to an AI-selected patient with provenance."""
+    assignment_source = "ai_created" if action.get("created") else "ai_matched"
+    assignment_reason = action.get("reason")
+    session_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    event = patient_assignment_event(
+        source="ai-engine",
+        action=action.get("action") if isinstance(action.get("action"), str) else assignment_source,
+        patient_id=patient.id,
+        display_name=patient.display_name,
+        reason=assignment_reason if isinstance(assignment_reason, str) else None,
+        capture_id=capture.id,
+        created=bool(action.get("created")),
+        action_metadata=action,
+        effective_at=(capture.captured_at or capture.created_at).isoformat() if (capture.captured_at or capture.created_at) else None,
+    )
+    session.extracted_metadata = append_patient_assignment_event(
+        {
+            **session_metadata,
+            "patient_match_candidate": action.get("matchCandidate"),
+        },
+        event,
+    )
+    apply_active_patient_assignment(db, session)
+
+
+def resolve_ai_patient_from_match(
+    db: DbSession,
+    *,
+    job: AiJob,
+    capture: Capture,
+    patient_information: dict[str, Any],
+    patient_match_candidate: dict[str, Any] | None,
+) -> tuple[Patient | None, bool]:
+    """Return the patient selected or created by deterministic AI identity."""
+    if patient_match_candidate and patient_match_candidate.get("decision") == "matched" and patient_match_candidate.get("patientId"):
+        try:
+            matched_patient_id = uuid.UUID(str(patient_match_candidate["patientId"]))
+        except ValueError:
+            return None, False
+        patient = db.execute(
+            select(Patient).where(Patient.id == matched_patient_id, Patient.tenant_id == job.tenant_id)
+        ).scalar_one_or_none()
+        return patient, False
+    if patient_match_candidate and patient_match_candidate.get("decision") == "no_match":
+        patient = create_patient_from_patient_information(
+            db,
+            tenant_id=job.tenant_id,
+            created_by_user_id=job.created_by_user_id,
+            patient_information=patient_information,
+            source_capture_id=capture.id,
+        )
+        return patient, patient is not None
+    return None, False
 
 
 def get_ai_job(db: DbSession, principal: CurrentPrincipal, job_id: str) -> dict[str, Any]:
@@ -800,14 +901,81 @@ def complete_worker_job(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
 
     completed_at = utc_now()
+    session = db.execute(
+        select(Session).where(Session.id == capture.session_id, Session.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    patient_match_candidate = None
+    ai_patient_action = None
+    patient_information = output.get("patient_information")
+    if isinstance(patient_information, dict) and patient_information_has_explicit_identity(patient_information):
+        may_assign_from_identity = (
+            session is not None
+            and (
+                session.patient_id is None
+                or (capture.capture_type == CaptureType.audio and session.status != SessionStatus.verified)
+            )
+        )
+        if may_assign_from_identity:
+            patient_match_candidate = match_patient_from_patient_information(
+                db,
+                tenant_id=job.tenant_id,
+                patient_information=patient_information,
+            )
+            assigned_patient, created_patient = resolve_ai_patient_from_match(
+                db,
+                job=job,
+                capture=capture,
+                patient_information=patient_information,
+                patient_match_candidate=patient_match_candidate,
+            )
+            if assigned_patient is not None:
+                ai_patient_action = ai_patient_action_metadata(
+                    action="created_and_assigned" if created_patient else "matched_and_assigned",
+                    patient=assigned_patient,
+                    capture=capture,
+                    patient_information=patient_information,
+                    match_candidate=patient_match_candidate,
+                    created=created_patient,
+                )
+                assign_session_to_ai_patient(
+                    db,
+                    session=session,
+                    capture=capture,
+                    patient=assigned_patient,
+                    action=ai_patient_action,
+                )
+        elif session is not None:
+            patient_match_candidate = {
+                "schemaVersion": "2026-06-02.patient-match-candidate.v1",
+                "decision": "skipped_assigned_patient",
+                "status": "skipped_assigned_patient",
+                "patientId": str(session.patient_id) if session.patient_id else None,
+                "confidence": 0.0,
+                "matchedOn": [],
+                "reason": "Session already has a DB-owned patient assignment; generated identity did not override it.",
+                "risks": [],
+                "candidateSet": [],
+                "llmRanking": {"eligible": False, "status": "not_applicable", "candidateCount": 0, "maxCandidates": 5},
+                "source": "deterministic-patient-matching",
+                "patientInformation": patient_information,
+            }
+    output_with_match = (
+        {**output, "patient_match_candidate": patient_match_candidate, "ai_patient_action": ai_patient_action}
+        if patient_match_candidate is not None
+        else output
+    )
     capture.capture_metadata = {
         **(capture.capture_metadata or {}),
-        output_key: output,
-        "ai_processing": output,
+        output_key: output_with_match,
+        "ai_processing": output_with_match,
     }
-    # TODO(ai-integration): When real capture patient detection lands, consume
-    # output.detected_patient here or in session organization to propose or
-    # perform explicit patient assignment without trusting body text.
+    if patient_match_candidate is not None:
+        capture.capture_metadata = {**capture.capture_metadata, "patient_match_candidate": patient_match_candidate}
+        if ai_patient_action is not None:
+            capture.capture_metadata = {**capture.capture_metadata, "ai_patient_action": ai_patient_action}
+        if session is not None and session.patient_id is None:
+            session_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+            session.extracted_metadata = {**session_metadata, "patient_match_candidate": patient_match_candidate}
     capture.status = CaptureStatus.processed
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
@@ -820,6 +988,8 @@ def complete_worker_job(
         "output_key": output_key,
         "capture_status": capture.status.value,
         "completed_at": completed_at.isoformat(),
+        "patient_match_candidate": patient_match_candidate,
+        "ai_patient_action": ai_patient_action,
     }
     audit(
         db,
@@ -930,56 +1100,6 @@ def progress_worker_job(
     return {"job": ai_job_payload(job)}
 
 
-def normalize_patient_national_id(value: Any) -> str | None:
-    """Normalize patient national IDs for deterministic matching."""
-    if value is None:
-        return None
-    normalized = "".join(character for character in str(value) if character.isdigit())
-    return normalized or None
-
-
-def match_patient_from_metadata(db: DbSession, *, tenant_id: uuid.UUID, extracted_metadata: dict[str, Any]) -> dict[str, Any] | None:
-    """Find an existing patient using extracted patient metadata."""
-    patient_info = extracted_metadata.get("patient_information")
-    if not isinstance(patient_info, dict):
-        return None
-
-    national_id = normalize_patient_national_id(patient_info.get("national_id"))
-    if national_id:
-        identifier = db.execute(
-            select(PatientIdentifier)
-            .where(
-                PatientIdentifier.tenant_id == tenant_id,
-                PatientIdentifier.identifier_type == "national_id",
-                PatientIdentifier.normalized_value == national_id,
-            )
-            .order_by(PatientIdentifier.created_at.desc())
-        ).scalars().first()
-        if identifier is not None:
-            patient = db.get(Patient, identifier.patient_id)
-            if patient is not None:
-                return {
-                    "status": "matched",
-                    "patient_id": str(patient.id),
-                    "display_name": patient.display_name,
-                    "matched_on": "national_id",
-                }
-
-    full_name = patient_info.get("full_name")
-    if isinstance(full_name, str) and full_name.strip():
-        patient = db.execute(
-            select(Patient).where(Patient.tenant_id == tenant_id, Patient.display_name.ilike(full_name.strip())).limit(1)
-        ).scalar_one_or_none()
-        if patient is not None:
-            return {
-                "status": "possible_match",
-                "patient_id": str(patient.id),
-                "display_name": patient.display_name,
-                "matched_on": "full_name",
-            }
-    return None
-
-
 def complete_session_worker_job(
     db: DbSession,
     *,
@@ -1025,7 +1145,11 @@ def complete_session_worker_job(
             ],
         }
 
-    patient_match = match_patient_from_metadata(db, tenant_id=job.tenant_id, extracted_metadata=extracted_metadata)
+    patient_match = (
+        match_patient_from_metadata(db, tenant_id=job.tenant_id, extracted_metadata=extracted_metadata)
+        if session.patient_id is None
+        else None
+    )
     if patient_match:
         extracted_metadata = {**extracted_metadata, "patient_match": patient_match}
         # AI output can propose a deterministic match, but DB-owned patient
@@ -1069,11 +1193,23 @@ def complete_session_worker_job(
     )
     preserved_assignment = {
         key: previous_metadata[key]
-        for key in ("patient_assignment_source", "patient_assignment_reason")
+        for key in (
+            "patient_assignment_source",
+            "patient_assignment_reason",
+            "ai_patient_action",
+            "active_patient_assignment_action",
+            "patient_assignment_timeline",
+        )
         if key in previous_metadata and key not in extracted_metadata
+    }
+    preserved_patient_match = {
+        key: previous_metadata[key]
+        for key in ("patient_match", "patient_match_candidate")
+        if session.patient_id is None and key in previous_metadata and key not in extracted_metadata
     }
     session.extracted_metadata = {
         **preserved_assignment,
+        **preserved_patient_match,
         **extracted_metadata,
         "session_processing_output": session_processing_output,
         "generated_output_stale": False,

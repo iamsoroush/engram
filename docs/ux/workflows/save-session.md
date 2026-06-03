@@ -15,10 +15,10 @@ Generate structured session output from the live draft while keeping the Active 
 3. User selects `Generate Structured Report`.
 4. The session moves into assistant-style `Organizing` language.
 5. The frontend shows subtle generation feedback while the live draft remains available.
-7. The live draft remains available as a switchable report view while structured output is generating.
-8. When memory is updated, Clinical Memory reflects the visit in Today, patient detail/timeline, or Needs input if a human decision is required.
-9. Inline historical review shows the generated report, summary, extracted findings, and source captures when present.
-10. If a user adds capture material after processing, the same session receives deterministic progressive report, summary, finding, and processing-status updates.
+6. The live draft remains available as a switchable report view while structured output is generating.
+7. When memory is updated, Clinical Memory reflects the visit in Today, patient detail/timeline, or Needs input if a human decision is required.
+8. Inline historical review shows the generated report, summary, extracted findings, and source captures when present.
+9. If a user adds capture material after processing, the same session receives deterministic progressive report, summary, finding, and processing-status updates.
 
 ## System Behavior
 
@@ -43,7 +43,6 @@ Generate structured session output from the live draft while keeping the Active 
 - Organizing
 - Needs your input
 - Memory updated
-- Saved on this device
 - Missing patient information, shown as a human-decision item
 
 ## Related APIs

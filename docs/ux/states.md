@@ -7,9 +7,11 @@ AesMem should translate technical system work into calm assistant language.
 Preferred user-facing states:
 
 - `Saved`
+- `Syncing`
+- `Uploading`
+- `Processing`
 - `Organizing`
 - `Needs your input`
-- `Saved on this device`
 - `In progress`
 - `Verified`
 - `Updated today`
@@ -36,9 +38,10 @@ Use plain clinical-memory language:
 - `Capturing`, when the user is actively adding material.
 - `Saved`, when capture material is safely stored.
 - `Organizing`, when the system is preparing summaries or memory updates.
+- `Processing`, when a capture is available to the backend and generated details are being prepared.
 - `Needs your input`, when human judgment is required.
 - `Memory updated`, when the session is reflected in patient memory.
-- `Saved on this device`, when the material is local and safe but not fully available everywhere yet.
+- `Syncing` or `Uploading`, when the material is local and safe but not fully available everywhere yet.
 
 Do not show `Failed` as a default state in normal memory surfaces. If something requires attention, translate it into either human decision copy or a data-safety warning.
 
@@ -52,7 +55,7 @@ Do not show `Failed` as a default state in normal memory surfaces. If something 
 
 ## Organizing
 
-- New captures confirm local safety first, then may show `Organizing` while summaries or memory updates improve.
+- New captures confirm local safety first with `Syncing` or `Uploading`, then show `Processing` while generated details improve. Type-specific assistant language, such as `Transcribing audio`, belongs inside the generated transcript/caption area.
 - Capture generated details are expandable:
   - Audio: `Transcription`
   - Photo: `Caption`
@@ -65,7 +68,7 @@ Do not show `Failed` as a default state in normal memory surfaces. If something 
 Examples:
 
 - `Saved.`
-- `Saved on this device.`
+- `Uploading.`
 - `Memory updated.`
 - `Summary is ready for your review.`
 - `Patient memory updated.`
@@ -78,6 +81,7 @@ Use human-readable warnings:
 
 - `Device storage is almost full. Free space so new captures stay safe.`
 - `This visit is saved. Choose which patient it belongs to.`
+- `I found a likely patient match. Confirm before I update memory.`
 - `I found two possible patient matches. Confirm before I update memory.`
 - `Source preview is not available right now.`
 
@@ -126,6 +130,8 @@ Needs input contains only human-decision items:
 
 - unassigned visit
 - uncertain patient match
+- reviewable patient match proposal from structured capture identity
+- AI-created patient record needing staff completion/verification
 - summary ready for confirmation
 - critical storage or local-save warning
 

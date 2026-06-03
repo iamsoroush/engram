@@ -114,7 +114,9 @@ than exact identifiers or manually verified aliases.
 
 ## Patient Matching Boundary
 
-Patient matching should be a separate job from audio transcription.
+Patient matching is backend-owned and separate from audio transcription. Audio
+transcription stores structured `patient_information`; the backend then creates
+a reviewable `patient_match_candidate` from normalized identifiers and aliases.
 
 Matching order:
 
@@ -143,3 +145,16 @@ Do not silently override a manually assigned session patient. Do not silently
 merge patients. Do not let an LLM create a patient directly. If no safe match
 exists, store a patient candidate for a later resolver where staff can assign an
 existing patient, create a new patient, or mark identity unknown.
+
+Current backend behavior:
+
+- Uses `patient_identifiers` for deterministic aliases and normalized exact
+  identifiers instead of rewriting patient display names.
+- Runs exact national ID, contact, exact alias, then fuzzy alias matching.
+- Stores the proposal on capture metadata and mirrors it to unassigned session
+  metadata for existing assignment/choice flows.
+- Includes confidence, reason, risks, and a capped candidate set. Optional LLM
+  ranking is represented only after backend candidate selection; no whole-table
+  LLM patient search is allowed.
+- Does not create patients, assign sessions, merge duplicates, or override an
+  already assigned session patient.

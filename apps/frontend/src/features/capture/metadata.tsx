@@ -4,6 +4,8 @@ import { Badge } from "../../shared/ui/primitives";
 export function assignmentSourceLabel(source?: string | null) {
   if (source === "staff") return "Assigned by staff";
   if (source === "ai_engine" || source === "ai-engine") return "Suggested by AI";
+  if (source === "ai_matched") return "Matched by AI";
+  if (source === "ai_created") return "Created and assigned by AI";
   return source ? `Assigned by ${source}` : "";
 }
 

@@ -239,6 +239,7 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
     title: raw.title || titleByType[raw.type === "audio" || raw.type === "photo" ? raw.type : "note"],
     detail: raw.detail || (typeof metadata.detail === "string" ? metadata.detail : "Captured source saved to the backend."),
     time: raw.time || formatApiTime(typeof raw.capturedAt === "string" ? raw.capturedAt : null),
+    clientCaptureId: typeof raw.clientCaptureId === "string" ? raw.clientCaptureId : undefined,
     capturedAt: typeof raw.capturedAt === "string" ? raw.capturedAt : undefined,
     fileName: typeof raw.fileName === "string" ? raw.fileName : typeof sourceName === "string" ? sourceName : undefined,
     sourceName: sourceName || "capture",

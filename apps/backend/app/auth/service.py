@@ -22,6 +22,7 @@ from app.models import (
     UserStatus,
 )
 from app.schemas.auth import AuthResponse, MembershipProfile, MeResponse, RefreshResponse, TenantProfile, UserProfile
+from app.services.patient_identity import deterministic_identifier_specs
 
 DEV_NAMESPACE = uuid.UUID("43e7c2ca-b3a2-40a1-a1c8-a0f64a1d2c22")
 DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
@@ -119,21 +120,15 @@ def ensure_dev_seed(db: Session) -> None:
                 PatientIdentifier(
                     tenant_id=DEV_TENANT_ID,
                     patient_id=sample_patient_id,
-                    identifier_type="normalized_name",
-                    identifier_value="Sara N.",
-                    normalized_value="sara n",
+                    **spec,
+                )
+                for spec in deterministic_identifier_specs(
+                    display_name="Sara N.",
+                    legal_first_name="Sara",
+                    legal_last_name="N.",
+                    phone="+1 555 0100",
                     source="dev-seed",
-                    identifier_metadata={},
-                ),
-                PatientIdentifier(
-                    tenant_id=DEV_TENANT_ID,
-                    patient_id=sample_patient_id,
-                    identifier_type="phone",
-                    identifier_value="+1 555 0100",
-                    normalized_value="+15550100",
-                    source="dev-seed",
-                    identifier_metadata={},
-                ),
+                )
             ]
         )
 

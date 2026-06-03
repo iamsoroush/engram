@@ -43,6 +43,7 @@ AI_ENGINE_TRANSCRIPTION_MODEL=gemini-3.1-flash-lite
 When `AI_ENGINE_TRANSCRIPTION_BASE_URL` is set, audio capture jobs download the
 source capture from the backend internal API, convert it to mono 16 kHz FLAC
 with `ffmpeg`, and send it to the configured OpenAI-compatible chat completion
-gateway as `input_audio`. When it is unset, audio jobs keep using deterministic
-placeholder transcript text. The Docker image installs `ffmpeg`; local Python
-development needs `ffmpeg` available on `PATH`.
+gateway as `input_audio`. When it is unset, non-fixture audio jobs fail through
+the normal retryable job path instead of writing placeholder transcript text.
+The Docker image installs `ffmpeg`; local Python development needs `ffmpeg`
+available on `PATH`.

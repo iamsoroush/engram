@@ -20,6 +20,7 @@ import {
   deleteCapture,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
+  fetchSession,
   fetchSessionCaptures,
   fetchSessions,
   loginWithPassword,
@@ -34,8 +35,10 @@ import {
   updateCaptureCaption,
   updateCaptureTitle,
   updateCaptureTranscript,
+  updatePatient,
   updateSessionTitle,
   uploadCapture,
+  verifyAiPatientCreation,
   verifySession,
 } from "../services/api/client";
 import { standardizeCaptureDraft } from "../features/capture/audio";
@@ -51,6 +54,7 @@ import {
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
+import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { Shell } from "../features/shell/Shell";
 import {
@@ -108,6 +112,7 @@ export function App() {
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
   const sessionsRef = React.useRef<CaptureSession[]>([]);
+  const aiPatientToastIdsRef = React.useRef(new Set<string>());
 
   React.useEffect(() => {
     activeSessionRef.current = activeSession;
@@ -309,7 +314,18 @@ export function App() {
     try {
       const loadedSessions = await loadBackendSessions();
       setBackendReachable(true);
-      const nextSessions = [...localSessions, ...loadedSessions.filter((session) => !localSessions.some((local) => local.id === session.id))];
+      const nextSessions = [
+        ...loadedSessions.map((session) => {
+          const localSession = localSessions.find((local) => local.id === session.id);
+          if (!localSession) return session;
+          return mergeSessionUpdate(
+            localSession,
+            session,
+            mergeCaptureItemsPreservingPreview(localSession.items, session.items),
+          );
+        }),
+        ...localSessions.filter((local) => !loadedSessions.some((session) => session.id === local.id)),
+      ];
       setSessions(nextSessions);
       if (workspace) {
         setActiveSession(resolveRestoredSession(workspace.activeSession, nextSessions));
@@ -360,6 +376,23 @@ export function App() {
     ]);
   };
 
+  const notifyAiPatientAction = React.useCallback((session: CaptureSession) => {
+    const action = metadataRecord(session.extractedMetadata?.ai_patient_action);
+    const patientId = typeof action.patientId === "string" ? action.patientId : session.patientId;
+    const basisCaptureId = typeof action.basisCaptureId === "string" ? action.basisCaptureId : "";
+    const actionName = typeof action.action === "string" ? action.action : "";
+    if (!patientId || !actionName) return;
+    const toastId = `${session.id}:${actionName}:${patientId}:${basisCaptureId}`;
+    if (aiPatientToastIdsRef.current.has(toastId)) return;
+    aiPatientToastIdsRef.current.add(toastId);
+    const displayName = typeof action.displayName === "string" ? action.displayName : session.patientName || "patient";
+    setToast(
+      actionName === "created_and_assigned"
+        ? `AI created and assigned ${displayName}.`
+        : `AI matched this visit to ${displayName}.`,
+    );
+  }, []);
+
   const rebuildLocalPendingSessions = async () => {
     const pending = await loadPendingCaptures();
     const localSessions = sessionsFromPending(pending);
@@ -373,22 +406,33 @@ export function App() {
     (sessionId: string) => {
       PROCESSING_REFRESH_DELAYS.forEach((delay) => {
         window.setTimeout(() => {
-        void fetchSessionCaptures(apiFetch, sessionId)
-          .then((captures) => {
-            setSessions((current) =>
-              current.map((session) =>
-                session.id === sessionId ? { ...session, items: mergeCaptureItemsPreservingPreview(session.items, captures) } : session,
-              ),
-            );
-            setActiveSession((current) =>
-              current?.id === sessionId ? { ...current, items: mergeCaptureItemsPreservingPreview(current.items, captures) } : current,
-            );
-          })
-          .catch(() => undefined);
+          void Promise.all([fetchSessionCaptures(apiFetch, sessionId), fetchSession(apiFetch, sessionId)])
+            .then(([captures, updatedSession]) => {
+              setSessions((current) =>
+                current.map((session) => {
+                  if (session.id !== sessionId) return session;
+                  const items = mergeCaptureItemsPreservingPreview(session.items, captures);
+                  const merged = mergeSessionUpdate(session, updatedSession, items);
+                  notifyAiPatientAction(merged);
+                  return merged;
+                }),
+              );
+              setActiveSession((current) =>
+                current?.id === sessionId
+                  ? (() => {
+                      const items = mergeCaptureItemsPreservingPreview(current.items, captures);
+                      const merged = mergeSessionUpdate(current, updatedSession, items);
+                      notifyAiPatientAction(merged);
+                      return merged;
+                    })()
+                  : current,
+              );
+            })
+            .catch(() => undefined);
         }, delay);
       });
     },
-    [apiFetch],
+    [apiFetch, notifyAiPatientAction],
   );
 
   const scheduleSessionProcessingRefresh = React.useCallback(
@@ -1067,6 +1111,31 @@ export function App() {
   );
 
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
+  const completeAiCreatedPatient = React.useCallback(
+    async (
+      sessionId: string,
+      patientId: string,
+      draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+      action: Record<string, unknown>,
+    ) => {
+      const patient = await updatePatient(apiFetch, patientId, {
+        displayName: draft.displayName,
+        nationalId: draft.nationalId || null,
+        phone: draft.phone || null,
+        dateOfBirth: draft.dateOfBirth || null,
+      });
+      const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
+        ...action,
+        displayName: patient.displayName,
+        patientId: patient.id,
+      });
+      const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
+      setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
+      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
+      setToast("AI-created patient verified.");
+    },
+    [apiFetch],
+  );
   const listPatientMemory = React.useCallback(
     (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }): Promise<PatientMemoryListResponse> =>
       fetchPatientMemory(apiFetch, params),
@@ -1276,6 +1345,7 @@ export function App() {
           assignmentOpen={assignmentSessionId === selectedSession.id}
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
+          onCompleteAiCreatedPatient={completeAiCreatedPatient}
           onCloseAssignment={() => setAssignmentSessionId((current) => (current === selectedSession.id ? "" : selectedSession.id))}
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
@@ -1297,6 +1367,7 @@ export function App() {
           backLabel={clinicalMemoryBackLabel}
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
+          onCompleteAiCreatedPatient={completeAiCreatedPatient}
           onCloseAssignment={() => {
             if (activeSession) {
               setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));

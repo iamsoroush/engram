@@ -220,10 +220,17 @@ export async function bindPendingSession(localSessionId: string, sessionId: stri
 }
 
 export function normalizePendingCapture(capture: PendingCapture) {
+  const clientCaptureId = capture.clientCaptureId || capture.id;
+  const localCaptureId = capture.localCaptureId || capture.id;
   return {
     ...capture,
-    localCaptureId: capture.localCaptureId || capture.id,
-    clientCaptureId: capture.clientCaptureId || capture.id,
+    localCaptureId,
+    clientCaptureId,
     backendSessionId: capture.backendSessionId || capture.sessionId,
+    item: {
+      ...capture.item,
+      id: capture.item.id || localCaptureId,
+      clientCaptureId: capture.item.clientCaptureId || clientCaptureId,
+    },
   };
 }
