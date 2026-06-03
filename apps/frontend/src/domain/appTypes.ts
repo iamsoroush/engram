@@ -167,6 +167,7 @@ export type PatientAssignmentDraft = {
   patientId?: string;
   displayName: string;
   nationalId?: string;
+  unassign?: boolean;
 };
 
 export type CachedCapture = {

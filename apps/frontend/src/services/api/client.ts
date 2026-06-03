@@ -212,15 +212,17 @@ export async function updatePatient(
     dateOfBirth?: string | null;
   },
 ) {
+  // Partial PATCH: only send keys that were provided, so an untouched field is never
+  // overwritten (e.g. editing a phone must not clear an existing national ID).
+  const body: Record<string, unknown> = {};
+  if (draft.displayName !== undefined) body.displayName = draft.displayName;
+  if (draft.nationalId !== undefined) body.nationalId = draft.nationalId;
+  if (draft.phone !== undefined) body.phone = draft.phone;
+  if (draft.dateOfBirth !== undefined) body.dateOfBirth = draft.dateOfBirth;
   const response = await apiFetch(`${API_BASE}/patients/${patientId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      displayName: draft.displayName,
-      nationalId: draft.nationalId || null,
-      phone: draft.phone || null,
-      dateOfBirth: draft.dateOfBirth || null,
-    }),
+    body: JSON.stringify(body),
   });
   if (!response.ok) throw new Error("Could not update patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
@@ -254,6 +256,18 @@ export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string
     body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment" }),
   });
   if (!response.ok) throw new Error("Could not assign patient");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+export async function unassignSessionPatient(apiFetch: ApiFetch, sessionId: string, idempotencyKey?: string) {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/assign-patient`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ patientId: null, source: "staff", reason: "Unassigned by staff" }),
+  });
+  if (!response.ok) throw new Error("Could not unassign patient");
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 

@@ -96,6 +96,82 @@ class StructuredTranscriptionTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Audio transcription gateway is not configured"):
             placeholder_text_for_capture({"type": "audio", "metadata": {"detail": "Audio note saved."}})
 
+    def test_parse_extracts_explicit_assignment_intent(self):
+        parsed = parse_structured_transcription_output(
+            """
+            {
+              "transcript": "نام بیمار عوض شه به سروش معاصد.",
+              "language": "fa",
+              "patient_information": {"raw_mentioned_name": "سروش معاصد", "confidence": 0.7},
+              "clinical_summary": null,
+              "uncertainties": [],
+              "intents": {
+                "assignment": {"present": true, "basis": "explicit", "confidence": 0.9, "evidence": "change the patient to Soroush"},
+                "append": {"present": false, "confidence": 0.0},
+                "out_of_context": {"present": false, "confidence": 0.0, "reason": null}
+              }
+            }
+            """
+        )
+
+        self.assertIsNotNone(parsed["intents"])
+        self.assertEqual(parsed["intents"]["assignment"]["basis"], "explicit")
+        self.assertEqual(parsed["intents"]["assignment"]["confidence"], 0.9)
+        self.assertEqual(parsed["intents"]["assignment"]["evidence"], "change the patient to Soroush")
+        # Absent intents are dropped, not carried as present=false.
+        self.assertNotIn("append", parsed["intents"])
+        self.assertNotIn("out_of_context", parsed["intents"])
+
+    def test_parse_extracts_implicit_assignment_intent(self):
+        # A fronted name with no instruction ("Ms. Ghasemi, forehead botox") is implicit.
+        parsed = parse_structured_transcription_output(
+            '{"transcript": "خانم قاسمی بوتاکس پیشانی.", "language": "fa", '
+            '"patient_information": {"raw_mentioned_name": "خانم قاسمی"}, '
+            '"intents": {"assignment": {"present": true, "basis": "implicit", "confidence": 0.6}}}'
+        )
+
+        self.assertEqual(parsed["intents"]["assignment"]["present"], True)
+        self.assertEqual(parsed["intents"]["assignment"]["basis"], "implicit")
+
+    def test_parse_tolerates_missing_or_malformed_intents(self):
+        parsed = parse_structured_transcription_output(
+            '{"transcript": "ok", "language": "en", "patient_information": {}, "clinical_summary": null, "uncertainties": []}'
+        )
+        self.assertEqual(parsed["transcript"], "ok")
+        self.assertIsNone(parsed["intents"])
+
+        # A malformed intents payload must not invalidate an otherwise usable transcript.
+        parsed2 = parse_structured_transcription_output(
+            '{"transcript": "ok2", "language": "en", "patient_information": {}, "intents": "nonsense"}'
+        )
+        self.assertEqual(parsed2["transcript"], "ok2")
+        self.assertIsNone(parsed2["intents"])
+
+    def test_parse_normalizes_unknown_assignment_basis_and_out_of_range_confidence(self):
+        parsed = parse_structured_transcription_output(
+            '{"transcript": "ok", "language": "en", "patient_information": {}, '
+            '"intents": {"assignment": {"present": true, "basis": "weird", "confidence": 5}}}'
+        )
+
+        self.assertEqual(parsed["intents"]["assignment"]["basis"], "implicit")
+        self.assertEqual(parsed["intents"]["assignment"]["confidence"], 1.0)
+
+    def test_prompt_includes_intent_classification_guidance(self):
+        prompt = transcription_prompt(None)
+
+        self.assertIn("intents", prompt)
+        self.assertIn("basis='explicit'", prompt)
+
+    def test_fixture_audio_output_includes_null_intents(self):
+        output = completed_audio_metadata(
+            {"id": "job-1", "jobType": "audio_capture_process", "inputArtifactIds": ["artifact-1"]},
+            {"type": "audio", "metadata": {"original_filename": "audio_01_initial_consultation.wav"}},
+            content=None,
+        )
+
+        self.assertIn("intents", output)
+        self.assertIsNone(output["intents"])
+
 
 if __name__ == "__main__":
     unittest.main()

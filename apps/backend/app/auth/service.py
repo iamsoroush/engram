@@ -63,6 +63,7 @@ def ensure_dev_seed(db: Session) -> None:
             name="AesMem Demo Clinic",
             slug="aesmem-demo",
             status=TenantStatus.active,
+            tier="pro",
         )
         db.add(tenant)
 
@@ -186,7 +187,7 @@ def profile_response(db: Session, user: User, tenant: Tenant, persona: str | Non
         accessToken=tokens[0],
         refreshToken=tokens[1],
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(id=str(tenant.id), name=tenant.name),
+        tenant=TenantProfile(id=str(tenant.id), name=tenant.name, tier=tenant.tier),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],
@@ -197,7 +198,7 @@ def me_response(db: Session, user: User, tenant: Tenant, persona: str | None = N
     memberships = active_memberships(db, user.id)
     return MeResponse(
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(id=str(tenant.id), name=tenant.name),
+        tenant=TenantProfile(id=str(tenant.id), name=tenant.name, tier=tenant.tier),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],

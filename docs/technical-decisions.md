@@ -18,6 +18,20 @@ Every backend session payload exposes stable frontend contracts for `report`, `s
 
 The backend still owns report template selection and can pass template content to the AI engine through the report refresh endpoint. Patient full name and national ID remain special extracted metadata fields because they support deterministic placeholder matching now and future patient matching later.
 
+## Intelligence Layer Is Intent-Driven With An Explicit AI↔Backend↔Frontend Contract
+
+Capture intelligence (assignment/reassignment, append, out-of-context) is being redesigned
+from "AI extracts identity, backend decides silently" to an explicit, versioned contract:
+the AI emits typed intents, the backend applies them with non-destructive, reversible,
+capture-attributed semantics, and the frontend renders each capture's effect as a chip.
+The `edit` intent and field-level provenance are deferred. Assignment reuses the existing
+event-sourced `patient_assignment_timeline` (latest-valid-event-wins, undo by capture
+deletion). Tiering (`basic`/`pro`) gates how much intelligence runs. `Patient` stays the universal
+assignment target; the entity that generalizes across verticals is the *encounter*
+(`Session` today; Study/Case in radiology/pathology), typed by `tenant.vertical`.
+
+See [intelligence-layer.md](intelligence-layer.md) for the full v1 contract and open decisions.
+
 ## Structured Report Model Owns Report Content
 
 The backend stores generated report body content in `sessions.report_model`, a JSON model with report sections, paragraph/image/artifact blocks, extracted findings, and source capture references. The active-session frontend renders clinic and patient information from non-AI template/session context, then renders backend-owned body markdown from the session report contract.

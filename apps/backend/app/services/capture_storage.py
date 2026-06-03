@@ -331,7 +331,11 @@ async def upload_source_capture(
         db.refresh(capture)
         db.refresh(artifact)
         db.refresh(ai_job)
-        dispatch_capture_processing_job(db, ai_job)
+        from app.services.ai_jobs import is_capture_chain_head
+
+        # Same-session captures process in order; only dispatch when this is the chain head.
+        if is_capture_chain_head(db, ai_job):
+            dispatch_capture_processing_job(db, ai_job)
         db.refresh(ai_job)
         from app.services.ai_jobs import ai_job_payload
 

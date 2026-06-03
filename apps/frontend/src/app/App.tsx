@@ -16,6 +16,7 @@ import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../doma
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
+  unassignSessionPatient,
   createPatient,
   deleteCapture,
   fetchPatientMemory,
@@ -482,25 +483,32 @@ export function App() {
     }
 
     if (operation.type === "patientAssignment") {
-      const draft = {
-        patientId: typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined,
-        displayName: String(operation.payload.displayName || "").trim(),
-        nationalId: typeof operation.payload.nationalId === "string" ? operation.payload.nationalId : undefined,
-      };
-      let patientId = operation.backendPatientId || (draft.patientId && !isLocalAssignmentPatient(draft.patientId) ? draft.patientId : undefined);
-      if (!patientId && draft.displayName) {
-        const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
-        const normalizedName = draft.displayName.toLowerCase();
-        const exact = matches.find(
-          (patient) =>
-            patient.displayName.trim().toLowerCase() === normalizedName ||
-            (draft.nationalId && patient.nationalId === draft.nationalId),
-        );
-        patientId = (exact || (await createPatient(apiFetch, draft, operation.id))).id;
-      }
-      if (patientId) {
-        const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id);
-        applySessionUpdate(backendSessionId, assigned);
+      if (operation.payload.unassign === true) {
+        if (backendSessionId) {
+          const unassigned = await unassignSessionPatient(apiFetch, backendSessionId, operation.id);
+          applySessionUpdate(backendSessionId, unassigned);
+        }
+      } else {
+        const draft = {
+          patientId: typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined,
+          displayName: String(operation.payload.displayName || "").trim(),
+          nationalId: typeof operation.payload.nationalId === "string" ? operation.payload.nationalId : undefined,
+        };
+        let patientId = operation.backendPatientId || (draft.patientId && !isLocalAssignmentPatient(draft.patientId) ? draft.patientId : undefined);
+        if (!patientId && draft.displayName) {
+          const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
+          const normalizedName = draft.displayName.toLowerCase();
+          const exact = matches.find(
+            (patient) =>
+              patient.displayName.trim().toLowerCase() === normalizedName ||
+              (draft.nationalId && patient.nationalId === draft.nationalId),
+          );
+          patientId = (exact || (await createPatient(apiFetch, draft, operation.id))).id;
+        }
+        if (patientId) {
+          const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id);
+          applySessionUpdate(backendSessionId, assigned);
+        }
       }
     }
 
@@ -1025,6 +1033,26 @@ export function App() {
 
   const assignPatientToSession = React.useCallback(
     async (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => {
+      if (draft.unassign) {
+        const clearPatient = (session: CaptureSession) =>
+          markReportStaleForPatientChange(session, { ...session, patientId: undefined, patientName: undefined, assignmentSource: undefined });
+        setSessions((current) => current.map((session) => (session.id === sessionId ? clearPatient(session) : session)));
+        setActiveSession((current) => (current?.id === sessionId ? clearPatient(current) : current));
+        setAssignmentSessionId("");
+        if (authRef.current?.tenant.id) {
+          await queueOperation({
+            id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
+            type: "patientAssignment",
+            localSessionId: sessionId,
+            backendSessionId: isLocalSessionId(sessionId) ? undefined : sessionId,
+            tenantId: authRef.current.tenant.id,
+            payload: { unassign: true },
+          });
+        }
+        setToast("Visit unassigned.");
+        void processOutbox();
+        return;
+      }
       const localPatient: PatientSummary = draft.patientId && !isLocalAssignmentPatient(draft.patientId)
         ? { id: draft.patientId, displayName: draft.displayName, nationalId: draft.nationalId || null }
         : {
@@ -1133,6 +1161,22 @@ export function App() {
       setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
       setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
       setToast("AI-created patient verified.");
+    },
+    [apiFetch],
+  );
+  const editPatientDetails = React.useCallback(
+    async (
+      patientId: string,
+      draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null },
+    ) => {
+      const patient = await updatePatient(apiFetch, patientId, draft);
+      if (draft.displayName) {
+        setSessions((current) =>
+          current.map((session) => (session.patientId === patientId ? { ...session, patientName: patient.displayName } : session)),
+        );
+        setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
+      }
+      setToast("Patient details updated.");
     },
     [apiFetch],
   );
@@ -1404,6 +1448,7 @@ export function App() {
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
         onGetPatientMemory={(patientId) => fetchPatientMemoryDetail(apiFetch, patientId)}
+        onUpdatePatient={editPatientDetails}
         onSearchPatients={searchPatientsForAssignment}
         onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}

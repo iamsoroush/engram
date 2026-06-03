@@ -35,6 +35,7 @@ class UserProfile(BaseModel):
 class TenantProfile(BaseModel):
     id: str
     name: str
+    tier: str = "pro"
 
 
 class MembershipProfile(BaseModel):

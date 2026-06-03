@@ -258,6 +258,7 @@ export function CaptureScreen({
           ) : (
             <LiveDraftReport
               session={activeSession}
+              onAssignPatient={onAssignPatient}
               onDeleteCapture={onDeleteCapture}
               onOpenCapture={setSelectedCapture}
               onRenameCapture={onRenameCapture}
@@ -504,6 +505,14 @@ export function PatientAssignmentSheet({
               <strong>{currentAssignedPatient.displayName}</strong>
               <span>{patientIdentifierLabel(currentAssignedPatient)}</span>
             </div>
+            <button
+              className="assignment-unassign"
+              disabled={saving}
+              onClick={() => assignDraft({ unassign: true, displayName: "" })}
+              type="button"
+            >
+              Unassign
+            </button>
           </section>
         ) : null}
         <label className="assignment-search-field">
@@ -680,12 +689,14 @@ function formatLastVisit(value?: string | null) {
 
 function LiveDraftReport({
   session,
+  onAssignPatient,
   onDeleteCapture,
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
 }: {
   session: CaptureSession | null;
+  onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   onOpenCapture: (item: CaptureItem) => void;
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
@@ -715,6 +726,7 @@ function LiveDraftReport({
           item={item}
           key={item.sourceUrl || item.id}
           menuOpen={openMenuId === item.id}
+          onApplyReassignment={onAssignPatient ? (draft) => onAssignPatient(session.id, draft) : undefined}
           onCloseMenu={() => setOpenMenuId("")}
           onDeleteCapture={onDeleteCapture ? () => onDeleteCapture(session.id, item.id) : undefined}
           onOpenCapture={() => onOpenCapture(item)}
@@ -735,6 +747,7 @@ function LiveDraftCaptureItem({
   activePatientAction,
   item,
   menuOpen,
+  onApplyReassignment,
   onCloseMenu,
   onDeleteCapture,
   onOpenCapture,
@@ -746,6 +759,7 @@ function LiveDraftCaptureItem({
   activePatientAction: Record<string, unknown> | null;
   item: CaptureItem;
   menuOpen: boolean;
+  onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
   onCloseMenu: () => void;
   onDeleteCapture?: () => Promise<void>;
   onOpenCapture: () => void;
@@ -762,6 +776,8 @@ function LiveDraftCaptureItem({
   const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
   const textAttribution = captureTextAttribution(item);
   const [busy, setBusy] = React.useState(false);
+  const [markedRelevant, setMarkedRelevant] = React.useState(false);
+  const outOfContext = captureOutOfContext(item) && !markedRelevant;
 
   const rename = () => {
     if (!onRenameCapture || busy) return;
@@ -786,7 +802,7 @@ function LiveDraftCaptureItem({
 
   return (
     <article
-      className={`live-draft-capture ${item.type}`}
+      className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}`}
       onClick={(event) => {
         if ((event.target as HTMLElement).closest("audio, button, input, textarea, summary, details, .capture-item-menu")) return;
         onOpenCapture();
@@ -811,7 +827,13 @@ function LiveDraftCaptureItem({
               <time>{item.time}</time>
             </div>
             <CaptureInlineStatus status={item.status} />
-            <CapturePatientBadges activePatientAction={activePatientAction} item={item} />
+            <CapturePatientBadges
+              activePatientAction={activePatientAction}
+              item={item}
+              onApplyReassignment={onApplyReassignment}
+              outOfContext={outOfContext}
+              onMarkRelevant={() => setMarkedRelevant(true)}
+            />
           </div>
           <button
             aria-expanded={menuOpen}
@@ -884,23 +906,96 @@ function LiveDraftCaptureItem({
 function CapturePatientBadges({
   activePatientAction,
   item,
+  onApplyReassignment,
+  outOfContext,
+  onMarkRelevant,
 }: {
   activePatientAction: Record<string, unknown> | null;
   item: CaptureItem;
+  onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
+  outOfContext?: boolean;
+  onMarkRelevant?: () => void;
 }) {
+  const [dismissed, setDismissed] = React.useState(false);
+  const [applying, setApplying] = React.useState(false);
+
+  // Active assignment / creation effect, shown on the capture that produced it.
   const action = metadataRecord(activePatientAction);
   const actionMetadata = metadataRecord(action.actionMetadata);
-  const captureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMetadata.basisCaptureId);
-  if (!captureId || captureId !== item.id) return null;
-  const assigned = action.assigned !== false && Boolean(action.patientId || actionMetadata.patientId);
-  const created = action.created === true || actionMetadata.created === true || action.action === "created_and_assigned" || actionMetadata.action === "created_and_assigned";
-  if (!assigned && !created) return null;
+  const actionCaptureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMetadata.basisCaptureId);
+  const isActionCapture = Boolean(actionCaptureId) && actionCaptureId === item.id;
+  const assigned = isActionCapture && action.assigned !== false && Boolean(action.patientId || actionMetadata.patientId);
+  const created =
+    isActionCapture &&
+    (action.created === true || actionMetadata.created === true || action.action === "created_and_assigned" || actionMetadata.action === "created_and_assigned");
+
+  // Suggested reassignment: an implicit mention on an already-assigned visit (not applied).
+  const candidate = metadataRecord(metadataRecord(item.metadata).patient_match_candidate);
+  const candidateStatus = metadataDisplay(candidate.status || candidate.decision);
+  const suggestionName = metadataDisplay(candidate.displayName) || suggestionNameFromInformation(candidate);
+  const showSuggestion = candidateStatus === "suggested_reassignment" && !dismissed;
+
+  if (!assigned && !created && !showSuggestion && !outOfContext) return null;
+
+  const applySuggestion = () => {
+    if (!onApplyReassignment || applying || !suggestionName) return;
+    const patientId = metadataDisplay(candidate.patientId);
+    const draft: PatientAssignmentDraft = patientId
+      ? { patientId, displayName: suggestionName }
+      : { displayName: suggestionName, nationalId: suggestionNationalId(candidate) };
+    setApplying(true);
+    void onApplyReassignment(draft).finally(() => setApplying(false));
+  };
+
   return (
-    <div className="capture-patient-badges" aria-label="Patient automation">
-      {assigned ? <span>Patient assigned</span> : null}
-      {created ? <span>Patient created</span> : null}
+    <div className="capture-effect-chips" aria-label="Capture effects">
+      {created ? (
+        <span className="effect-chip is-created">New patient + assigned</span>
+      ) : assigned ? (
+        <span className="effect-chip is-assign">Patient assigned</span>
+      ) : null}
+      {showSuggestion ? (
+        <span className="effect-chip is-suggested">
+          <span className="effect-chip-label">Suggested: reassign{suggestionName ? ` to ${suggestionName}` : ""}</span>
+          {onApplyReassignment ? (
+            <button className="effect-chip-action" disabled={applying} onClick={applySuggestion} type="button">
+              {applying ? "Applying…" : "Apply"}
+            </button>
+          ) : null}
+          <button className="effect-chip-dismiss" onClick={() => setDismissed(true)} type="button">
+            Dismiss
+          </button>
+        </span>
+      ) : null}
+      {outOfContext ? (
+        <span className="effect-chip is-context">
+          <span className="effect-chip-label">⌀ Out of context · not in report</span>
+          {onMarkRelevant ? (
+            <button className="effect-chip-dismiss" onClick={onMarkRelevant} type="button">
+              Mark relevant
+            </button>
+          ) : null}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+function captureOutOfContext(item: CaptureItem): boolean {
+  const meta = metadataRecord(item.metadata);
+  if (metadataRecord(meta.out_of_context).present === true) return true;
+  const intents = metadataRecord(metadataRecord(meta.ai_processing).intents);
+  return metadataRecord(intents.out_of_context).present === true;
+}
+
+function suggestionNameFromInformation(candidate: Record<string, unknown>): string {
+  const info = metadataRecord(candidate.patientInformation);
+  return metadataDisplay(info.standardized_display_name || info.raw_mentioned_name || info.full_name);
+}
+
+function suggestionNationalId(candidate: Record<string, unknown>): string | undefined {
+  const info = metadataRecord(candidate.patientInformation);
+  return metadataDisplay(info.national_id) || undefined;
 }
 
 function AiCreatedPatientPanel({

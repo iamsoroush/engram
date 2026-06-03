@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.config import settings
-from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, Session, SessionStatus
+from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, Session, SessionStatus, Tenant
 from app.services.capture_storage import get_capture_for_tenant
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
@@ -166,6 +166,118 @@ def resolve_ai_patient_from_match(
         )
         return patient, patient is not None
     return None, False
+
+
+def tenant_tier(db: DbSession, tenant_id: uuid.UUID) -> str:
+    """Return a tenant's intelligence tier ('basic'|'pro'); AI auto-assignment is Pro-only."""
+    tier = db.execute(select(Tenant.tier).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    return tier if tier in {"basic", "pro"} else "pro"
+
+
+def assignment_intent_basis(output: dict[str, Any]) -> str | None:
+    """Return the assignment-intent basis ('explicit'/'implicit') from AI output, if present."""
+    intents = output.get("intents")
+    if not isinstance(intents, dict):
+        return None
+    assignment = intents.get("assignment")
+    if not isinstance(assignment, dict) or assignment.get("present") is not True:
+        return None
+    basis = assignment.get("basis")
+    return basis if basis in {"explicit", "implicit"} else "implicit"
+
+
+def out_of_context_marker(output: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a staff-overridable out-of-context marker from AI intents, if flagged."""
+    intents = output.get("intents")
+    if not isinstance(intents, dict):
+        return None
+    ooc = intents.get("out_of_context")
+    if not isinstance(ooc, dict) or ooc.get("present") is not True:
+        return None
+    reason = ooc.get("reason")
+    confidence = ooc.get("confidence")
+    return {
+        "present": True,
+        "confidence": float(confidence) if isinstance(confidence, int | float) else 0.0,
+        "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
+        "source": "ai",
+    }
+
+
+def should_apply_identity_assignment(
+    *,
+    has_session: bool,
+    has_existing_patient: bool,
+    assignment_basis: str | None,
+) -> bool:
+    """Decide whether extracted identity may be applied to the session.
+
+    First identity on an unassigned visit is always applied (basis irrelevant). Once a
+    patient is assigned, only an explicit (re)assignment instruction overrides it; an
+    implicit mention is handled as a suggestion, not an application.
+    """
+    if not has_session:
+        return False
+    return not has_existing_patient or assignment_basis == "explicit"
+
+
+def suggested_reassignment_candidate(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    session: Session,
+    patient_information: dict[str, Any],
+) -> dict[str, Any]:
+    """Build an actionable but unapplied reassignment suggestion for an already-assigned visit.
+
+    Used when a later capture only implicitly mentions a patient: the assignment is not
+    changed, but staff can apply the suggestion in one tap.
+    """
+    match = match_patient_from_patient_information(db, tenant_id=tenant_id, patient_information=patient_information)
+    return {
+        **(match if isinstance(match, dict) else {}),
+        "schemaVersion": "2026-06-02.patient-match-candidate.v1",
+        "decision": "suggested_reassignment",
+        "status": "suggested_reassignment",
+        "appliedAutomatically": False,
+        "currentPatientId": str(session.patient_id) if session.patient_id else None,
+        "reason": "Implicit patient mention on an already-assigned visit; suggested for review, not applied.",
+        "patientInformation": patient_information,
+    }
+
+
+NEAR_MATCH_SUGGEST_THRESHOLD = 0.78
+
+
+def near_match_suggestion(candidate: dict[str, Any] | None, *, patient_information: dict[str, Any]) -> dict[str, Any] | None:
+    """Turn a single confident fuzzy/`possible_match` into an actionable reassignment suggestion.
+
+    Fuzzy matches are never auto-applied (a near-spelling could be a different person), but a
+    clear single front-runner is surfaced as a one-tap suggestion instead of a silent no-op —
+    this covers ASR name variance (e.g. spoke معاصد, transcribed معاضد). Returns None when
+    there is no dominant high-confidence candidate, so it stays a choose-patient decision.
+    """
+    if not isinstance(candidate, dict) or candidate.get("decision") != "possible_match":
+        return None
+    ranked = [c for c in (candidate.get("candidateSet") or []) if isinstance(c, dict) and c.get("patientId")]
+    if not ranked:
+        return None
+    top = ranked[0]
+    top_confidence = float(top.get("confidence") or 0.0)
+    if top_confidence < NEAR_MATCH_SUGGEST_THRESHOLD:
+        return None
+    if len(ranked) > 1 and float(ranked[1].get("confidence") or 0.0) >= top_confidence:
+        return None  # tie at the top -> ambiguous, keep it a choose-patient decision
+    return {
+        **candidate,
+        "decision": "suggested_reassignment",
+        "status": "suggested_reassignment",
+        "appliedAutomatically": False,
+        "patientId": top.get("patientId"),
+        "displayName": top.get("displayName"),
+        "reason": "Close name match found; confirm to apply.",
+        "patientInformation": patient_information,
+    }
 
 
 def get_ai_job(db: DbSession, principal: CurrentPrincipal, job_id: str) -> dict[str, Any]:
@@ -360,7 +472,10 @@ def recover_ai_jobs(db: DbSession, principal: CurrentPrincipal, limit: int = 50)
         if job is None:
             continue
         if job.capture_id:
-            dispatch_capture_processing_job(db, job)
+            # Respect per-session capture ordering: only the chain head dispatches; this also
+            # makes recovery the self-healing driver of a stalled chain.
+            if is_capture_chain_head(db, job):
+                dispatch_capture_processing_job(db, job)
         elif job.session_id:
             dispatch_session_processing_job(db, job)
 
@@ -408,7 +523,10 @@ def recover_all_ai_jobs(db: DbSession, limit: int = 100) -> dict[str, Any]:
         if job is None:
             continue
         if job.capture_id:
-            dispatch_capture_processing_job(db, job)
+            # Respect per-session capture ordering: only the chain head dispatches; this also
+            # makes recovery the self-healing driver of a stalled chain.
+            if is_capture_chain_head(db, job):
+                dispatch_capture_processing_job(db, job)
         elif job.session_id:
             dispatch_session_processing_job(db, job)
 
@@ -467,6 +585,94 @@ def create_capture_processing_job(db: DbSession, *, principal: CurrentPrincipal,
         "ai_processing": queued_metadata(job, capture),
     }
     return job
+
+
+def _capture_chain_order_key(capture: Capture, job: AiJob) -> tuple[datetime, datetime]:
+    """Ordering key for a session's capture chain: capture time first, then job creation."""
+    return (capture.captured_at or capture.created_at, job.created_at)
+
+
+def earliest_pending_capture_job(ordered: list[tuple[tuple[datetime, datetime], AiJob]]) -> AiJob | None:
+    """Return the job with the smallest order key (pure helper for capture-chain ordering)."""
+    if not ordered:
+        return None
+    return min(ordered, key=lambda item: item[0])[1]
+
+
+def _session_capture_jobs(
+    db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID, statuses: list[AiJobStatus]
+) -> list[tuple[tuple[datetime, datetime], AiJob]]:
+    rows = db.execute(
+        select(AiJob, Capture)
+        .join(Capture, Capture.id == AiJob.capture_id)
+        .where(
+            AiJob.tenant_id == tenant_id,
+            AiJob.session_id == session_id,
+            AiJob.capture_id.is_not(None),
+            AiJob.status.in_(statuses),
+            Capture.status != CaptureStatus.deleted,
+        )
+    ).all()
+    return [(_capture_chain_order_key(capture, job), job) for job, capture in rows]
+
+
+def is_capture_chain_head(db: DbSession, job: AiJob) -> bool:
+    """Whether a capture-processing job is the earliest unfinished one in its session.
+
+    Captures must process in capture order because the assignment gate depends on cumulative
+    session state; a job is the head when no earlier capture in the same session still has an
+    in-flight (queued/running) job. Session-level jobs are never gated.
+    """
+    if job.capture_id is None or job.session_id is None:
+        return True
+    if db.get(Capture, job.capture_id) is None:
+        return True
+    in_flight = _session_capture_jobs(
+        db,
+        tenant_id=job.tenant_id,
+        session_id=job.session_id,
+        statuses=[AiJobStatus.queued, AiJobStatus.running],
+    )
+    head = earliest_pending_capture_job(in_flight)
+    return head is None or head.id == job.id
+
+
+def dispatch_next_session_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> None:
+    """Dispatch the next queued capture job in a session's chain, in capture order.
+
+    No-op while a capture job is already running for the session (wait for it) or none queued.
+    """
+    if _session_capture_jobs(db, tenant_id=tenant_id, session_id=session_id, statuses=[AiJobStatus.running]):
+        return
+    head = earliest_pending_capture_job(
+        _session_capture_jobs(db, tenant_id=tenant_id, session_id=session_id, statuses=[AiJobStatus.queued])
+    )
+    if head is not None:
+        dispatch_capture_processing_job(db, head)
+
+
+def requeue_failed_session_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> None:
+    """Make failed-retryable capture jobs in a session eligible to retry immediately.
+
+    Called when a capture just succeeded — the gateway is up, so instead of waiting for the
+    periodic recovery beat, reset retryable siblings to queued for the chain to pick up.
+    """
+    rows = db.execute(
+        select(AiJob)
+        .join(Capture, Capture.id == AiJob.capture_id)
+        .where(
+            AiJob.tenant_id == tenant_id,
+            AiJob.session_id == session_id,
+            AiJob.capture_id.is_not(None),
+            AiJob.status == AiJobStatus.failed,
+            Capture.status != CaptureStatus.deleted,
+        )
+    ).scalars()
+    for job in rows:
+        if ai_job_retryable(job):
+            job.status = AiJobStatus.queued
+            job.completed_at = None
+            job.next_retry_at = None
 
 
 def load_report_template(template_key: str | None) -> dict[str, str]:
@@ -907,15 +1113,23 @@ def complete_worker_job(
     patient_match_candidate = None
     ai_patient_action = None
     patient_information = output.get("patient_information")
-    if isinstance(patient_information, dict) and patient_information_has_explicit_identity(patient_information):
-        may_assign_from_identity = (
-            session is not None
-            and (
-                session.patient_id is None
-                or (capture.capture_type == CaptureType.audio and session.status != SessionStatus.verified)
-            )
-        )
-        if may_assign_from_identity:
+    # AI auto-assignment (match/create/reassign/suggest) is a Pro capability; Basic tenants
+    # assign patients manually. Out-of-context flagging below still runs for both tiers.
+    if (
+        tenant_tier(db, job.tenant_id) == "pro"
+        and isinstance(patient_information, dict)
+        and patient_information_has_explicit_identity(patient_information)
+    ):
+        assignment_basis = assignment_intent_basis(output)
+        has_existing_patient = session is not None and session.patient_id is not None
+        # First identity on an unassigned visit is always applied; once a patient is
+        # assigned, only an explicit (re)assignment instruction overrides it. An implicit
+        # mention on an assigned visit becomes a suggestion, not a silent change.
+        if should_apply_identity_assignment(
+            has_session=session is not None,
+            has_existing_patient=has_existing_patient,
+            assignment_basis=assignment_basis,
+        ):
             patient_match_candidate = match_patient_from_patient_information(
                 db,
                 tenant_id=job.tenant_id,
@@ -944,21 +1158,19 @@ def complete_worker_job(
                     patient=assigned_patient,
                     action=ai_patient_action,
                 )
-        elif session is not None:
-            patient_match_candidate = {
-                "schemaVersion": "2026-06-02.patient-match-candidate.v1",
-                "decision": "skipped_assigned_patient",
-                "status": "skipped_assigned_patient",
-                "patientId": str(session.patient_id) if session.patient_id else None,
-                "confidence": 0.0,
-                "matchedOn": [],
-                "reason": "Session already has a DB-owned patient assignment; generated identity did not override it.",
-                "risks": [],
-                "candidateSet": [],
-                "llmRanking": {"eligible": False, "status": "not_applicable", "candidateCount": 0, "maxCandidates": 5},
-                "source": "deterministic-patient-matching",
-                "patientInformation": patient_information,
-            }
+            else:
+                # Apply was intended but the match is only a confident fuzzy one — surface a
+                # one-tap suggestion instead of a silent no-op (never auto-apply a fuzzy name).
+                near_match = near_match_suggestion(patient_match_candidate, patient_information=patient_information)
+                if near_match is not None:
+                    patient_match_candidate = near_match
+        elif has_existing_patient:
+            patient_match_candidate = suggested_reassignment_candidate(
+                db,
+                tenant_id=job.tenant_id,
+                session=session,
+                patient_information=patient_information,
+            )
     output_with_match = (
         {**output, "patient_match_candidate": patient_match_candidate, "ai_patient_action": ai_patient_action}
         if patient_match_candidate is not None
@@ -969,6 +1181,9 @@ def complete_worker_job(
         output_key: output_with_match,
         "ai_processing": output_with_match,
     }
+    ooc_marker = out_of_context_marker(output)
+    if ooc_marker is not None:
+        capture.capture_metadata = {**capture.capture_metadata, "out_of_context": ooc_marker}
     if patient_match_candidate is not None:
         capture.capture_metadata = {**capture.capture_metadata, "patient_match_candidate": patient_match_candidate}
         if ai_patient_action is not None:
@@ -1000,8 +1215,16 @@ def complete_worker_job(
         target_id=capture.id,
         details={"job_id": str(job.id), "job_type": job.job_type.value},
     )
+    if capture.session_id is not None:
+        # This capture succeeded, so the gateway is up: make failed-retryable siblings
+        # eligible to retry now instead of waiting for the periodic recovery beat.
+        requeue_failed_session_captures(db, tenant_id=job.tenant_id, session_id=capture.session_id)
     db.commit()
     db.refresh(job)
+    # Captures in a session process strictly in order: dispatch the next one now that this
+    # capture's assignment has been applied to the session.
+    if capture.session_id is not None:
+        dispatch_next_session_capture(db, tenant_id=job.tenant_id, session_id=capture.session_id)
     return {"job": ai_job_payload(job)}
 
 

@@ -111,5 +111,51 @@ class PatientMatchingOrderTests(unittest.TestCase):
         self.assertEqual(result["llmRanking"]["candidateCount"], 5)
 
 
+class PatientMatchingConflictTests(unittest.TestCase):
+    def _name_candidate(self):
+        return MatchCandidate(
+            patient_id=uuid.uuid4(),
+            display_name="Name Patient",
+            confidence=0.88,
+            matched_on=["normalized_alias"],
+            reason="alias",
+        )
+
+    def test_name_match_with_conflicting_national_id_goes_to_review(self):
+        candidate = self._name_candidate()
+        with (
+            patch("app.services.patient_matching._exact_identifier_candidates", return_value=[]),
+            patch("app.services.patient_matching._exact_alias_candidates", return_value=[candidate]),
+            patch("app.services.patient_matching._fuzzy_alias_candidates", return_value=[]),
+            patch("app.services.patient_matching._stored_national_ids", return_value={"9999999999"}),
+        ):
+            result = match_patient_from_patient_information(
+                object(),
+                tenant_id=uuid.uuid4(),
+                patient_information={"standardized_display_name": "Soraya Ghasemi", "national_id": "0012345678"},
+            )
+
+        self.assertEqual(result["decision"], "possible_match")
+        self.assertIsNone(result["patientId"])
+        self.assertTrue(any("national ID" in risk for risk in result["risks"]))
+
+    def test_name_match_without_national_id_conflict_assigns(self):
+        candidate = self._name_candidate()
+        with (
+            patch("app.services.patient_matching._exact_identifier_candidates", return_value=[]),
+            patch("app.services.patient_matching._exact_alias_candidates", return_value=[candidate]),
+            patch("app.services.patient_matching._fuzzy_alias_candidates", return_value=[]),
+            patch("app.services.patient_matching._stored_national_ids", return_value=set()),
+        ):
+            result = match_patient_from_patient_information(
+                object(),
+                tenant_id=uuid.uuid4(),
+                patient_information={"standardized_display_name": "Soraya Ghasemi", "national_id": "0012345678"},
+            )
+
+        self.assertEqual(result["decision"], "matched")
+        self.assertEqual(result["patientId"], str(candidate.patient_id))
+
+
 if __name__ == "__main__":
     unittest.main()

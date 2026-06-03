@@ -212,6 +212,42 @@ def _fuzzy_alias_candidates(
     return sorted(by_patient.values(), key=lambda candidate: candidate.confidence, reverse=True)[:MAX_BACKEND_CANDIDATES]
 
 
+NATIONAL_ID_CONFLICT_RISK = "The extracted national ID does not match this patient's national ID. Staff must confirm before assignment."
+
+
+def _stored_national_ids(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> set[str]:
+    return {
+        value
+        for value in db.execute(
+            select(PatientIdentifier.normalized_value).where(
+                PatientIdentifier.tenant_id == tenant_id,
+                PatientIdentifier.patient_id == patient_id,
+                PatientIdentifier.identifier_type == "national_id",
+            )
+        ).scalars()
+        if value
+    }
+
+
+def _national_id_conflict(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    candidate: MatchCandidate,
+    provided_national_id: str | None,
+) -> bool:
+    """Whether a non-national-ID match is contradicted by a provided national ID.
+
+    National ID is the strongest key. If the visit provides one and the name/contact-matched
+    patient already stores a *different* national ID, the deterministic match is unsafe and
+    must go to staff review rather than auto-assignment.
+    """
+    if not provided_national_id:
+        return False
+    stored = _stored_national_ids(db, tenant_id=tenant_id, patient_id=candidate.patient_id)
+    return bool(stored) and provided_national_id not in stored
+
+
 def _result(
     *,
     decision: str,
@@ -297,26 +333,37 @@ def match_patient_from_patient_information(
             )
         )
     if contact_candidates:
+        decision = "matched"
+        risks = list(contact_candidates[0].risks)
+        if _national_id_conflict(db, tenant_id=tenant_id, candidate=contact_candidates[0], provided_national_id=values["national_id"]):
+            decision = "possible_match"
+            risks = [*risks, NATIONAL_ID_CONFLICT_RISK]
         return _result(
-            decision="matched",
+            decision=decision,
             candidates=contact_candidates[:MAX_BACKEND_CANDIDATES],
             matched_on=contact_candidates[0].matched_on,
             reason="Exact contact match selected deterministically.",
             patient_information=patient_information,
-            risks=contact_candidates[0].risks,
+            risks=risks,
         )
 
     aliases = list(dict.fromkeys(alias for name in values["names"] for alias in normalized_aliases_for_value(name)))
     exact_alias = _exact_alias_candidates(db, tenant_id=tenant_id, aliases=aliases)
     if exact_alias:
         decision = "matched" if len({candidate.patient_id for candidate in exact_alias}) == 1 else "possible_match"
+        risks = [] if decision == "matched" else ["Multiple patients share this normalized alias."]
+        if decision == "matched" and _national_id_conflict(
+            db, tenant_id=tenant_id, candidate=exact_alias[0], provided_national_id=values["national_id"]
+        ):
+            decision = "possible_match"
+            risks = [NATIONAL_ID_CONFLICT_RISK]
         return _result(
             decision=decision,
             candidates=exact_alias,
             matched_on=["normalized_alias"],
             reason="Extracted name matched a normalized alias; staff should review before assignment.",
             patient_information=patient_information,
-            risks=[] if decision == "matched" else ["Multiple patients share this normalized alias."],
+            risks=risks,
         )
 
     fuzzy = _fuzzy_alias_candidates(db, tenant_id=tenant_id, aliases=aliases)

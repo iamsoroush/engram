@@ -9,6 +9,8 @@
 
 Primary working screen for building and reviewing a session from audio, photo, and text captures. The same workspace structure is reused for historical session review from Clinical Memory and Search.
 
+> **Redesign in progress.** The `Live draft`/`Structured report` tabs become `Captures`/`Live report`, with per-capture effect chips and a template-driven live report (no Generate button). Target design: [redesign-capture-surface.md](../redesign-capture-surface.md). This doc describes current behavior until Epics C/E of the [intelligence layer](../../intelligence-layer.md) land.
+
 ## Primary Actions
 
 - Start audio capture.

@@ -115,7 +115,7 @@ def mark_session_stale_after_source_text_update(
 
 
 def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
-    """Soft-delete a capture and move generated session output back to draft."""
+    """Soft-delete a capture and recompute patient assignment from the timeline."""
     capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
     session = db.get(Session, capture.session_id)
     if session is None or session.tenant_id != principal.tenant_id:
@@ -129,6 +129,10 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
         "deleted_by_user_id": str(principal.user_id),
     }
     mark_session_draft_after_capture_delete(session, str(capture.id), now)
+    # Patient assignment is recomputed from the timeline (cheap; no AI job): the deleted
+    # capture's assignment event is dropped and the active assignment recomputed.
+    # NOTE: live-report regeneration on capture change is deferred to Epic E — no report
+    # job runs for now, so deleting a capture never puts the session into a processing lock.
     apply_active_patient_assignment(db, session)
     audit(
         db,
@@ -155,7 +159,7 @@ def mark_session_draft_after_capture_delete(session: Session, capture_id: str, c
     report_body = (
         "# Draft report\n\n"
         f"- {remaining_count} source capture{'s' if remaining_count != 1 else ''} attached.\n"
-        "- A capture was removed. Generate a structured report again when you are ready."
+        "- A capture was removed."
     )
     session.generated_report = report_body
     session.summary = (

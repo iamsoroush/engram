@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AesMem — Capture surface redesign (B1+B2) v2</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --color-danger:#b42318; --color-danger-soft:#fdeceb;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:var(--color-page);color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:36px 22px 70px}
+  .wrap{max-width:740px;margin:0 auto;display:flex;flex-direction:column;gap:42px}
+  .frame-label{font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:8px 2px 0;line-height:1.5}
+  .frame-note b{color:var(--color-text-soft)}
+  .app{background:var(--color-page);border:1px solid var(--color-border);border-radius:18px;padding:16px;box-shadow:var(--shadow-card)}
+  .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic.sm{width:13px;height:13px}
+
+  /* header */
+  .sess-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:10px}
+  .sess-title{font-size:1.1rem;font-weight:800;display:flex;align-items:center;gap:9px}
+  .sess-sub{font-size:.75rem;color:var(--color-muted);margin-top:3px}
+  .dot{width:9px;height:9px;border-radius:50%;background:#9fb3cf;display:inline-block}
+  .dot.live{background:var(--color-success);box-shadow:0 0 0 3px var(--color-success-soft)}
+  .mini-btn{border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-pill);
+    font-size:.75rem;font-weight:600;color:var(--color-text-soft);padding:6px 12px;cursor:pointer;white-space:nowrap}
+
+  /* patient row */
+  .patient-row{display:flex;align-items:center;gap:11px;background:var(--color-surface);border:1px solid var(--color-border);
+    border-radius:var(--radius-lg);padding:11px 13px;margin-bottom:11px}
+  .pavatar{width:36px;height:36px;border-radius:50%;background:var(--color-primary-soft);color:var(--color-primary);
+    display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  .patient-row .name{font-weight:700}
+  .patient-row .meta{font-size:.74rem;color:var(--color-muted);margin-top:1px}
+  .grow{flex:1}
+  .link{color:var(--color-primary);font-weight:700}
+
+  /* report card + header row with centered tabs */
+  .report-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);
+    box-shadow:var(--shadow-card);overflow:hidden}
+  .report-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:13px 15px}
+  .report-top h2{font-size:.96rem;font-weight:800;margin:0;display:flex;align-items:center;gap:8px}
+  .tier{font-size:.62rem;font-weight:800;letter-spacing:.05em;color:var(--violet);background:var(--violet-soft);
+    border:1px solid var(--violet-border);border-radius:var(--radius-pill);padding:3px 8px;text-transform:uppercase}
+  .tier.basic{color:#475569;background:#eef2f9;border-color:var(--color-border)}
+  .updating{justify-self:end;display:flex;align-items:center;gap:7px;font-size:.72rem;color:var(--color-muted)}
+  .spin{width:12px;height:12px;border-radius:50%;border:2px solid var(--color-border-strong);border-top-color:var(--color-primary);
+    animation:spin 1s linear infinite;flex:0 0 auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .tabs{justify-self:center;display:inline-flex;gap:4px;background:#eef2f9;border-radius:var(--radius-pill);padding:4px}
+  .tab{border:0;background:transparent;border-radius:var(--radius-pill);font-size:.8rem;font-weight:600;color:var(--color-muted);
+    padding:6px 15px;cursor:pointer}
+  .tab.active{background:#fff;color:var(--color-primary);box-shadow:0 1px 3px rgb(8 13 45 / 8%)}
+  .divider{height:1px;background:var(--color-border)}
+
+  /* capture feed + timeline node with icon */
+  .feed{padding:6px 15px 14px}
+  .cap{position:relative;padding:13px 0 13px 40px;border-left:2px solid var(--color-border);margin-left:13px}
+  .cap-node{position:absolute;left:-15px;top:11px;width:28px;height:28px;border-radius:50%;background:#fff;
+    border:1.5px solid var(--color-primary);color:var(--color-primary);display:flex;align-items:center;justify-content:center}
+  .cap.photo .cap-node{border-color:#0a9d6e;color:#0a9d6e}
+  .cap.note .cap-node{border-color:var(--violet);color:var(--violet)}
+  .cap-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .cap-head .t{font-weight:700;font-size:.86rem}
+  .cap-head .time{font-size:.72rem;color:var(--color-muted);margin-left:auto}
+  .player{display:flex;align-items:center;gap:10px;background:var(--color-surface-soft);border:1px solid var(--color-border);
+    border-radius:var(--radius-pill);padding:6px 11px;font-size:.74rem;color:var(--color-muted)}
+  .player .play{width:21px;height:21px;border-radius:50%;background:var(--color-primary);color:#fff;display:flex;
+    align-items:center;justify-content:center;font-size:.55rem;flex:0 0 auto}
+  .bar{flex:1;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--color-primary) 22%,var(--color-border) 22%)}
+  .gen{margin-top:8px;border-left:3px solid var(--color-success);background:var(--color-surface-soft);
+    border-radius:0 var(--radius-md) var(--radius-md) 0;padding:8px 11px}
+  .gen .lab{font-size:.6rem;font-weight:800;letter-spacing:.06em;color:var(--color-muted);text-transform:uppercase;
+    display:flex;align-items:center;gap:8px}
+  .gen .lab .ai{color:var(--color-primary)}
+  .gen .lab .edit{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;
+    color:var(--color-text-soft);font-weight:700;font-size:.66rem;cursor:pointer;text-transform:none;letter-spacing:0}
+  .gen p{margin:5px 0 0;font-size:.84rem;line-height:1.5}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .photo-wrap{display:flex;gap:11px}
+  .photo-img{width:108px;height:78px;border-radius:var(--radius-md);border:1px solid var(--color-border);flex:0 0 auto;
+    background:radial-gradient(circle at 50% 42%, #f2d3c4 0 34%, #f6ece6 36% 100%)}
+
+  /* effect chips */
+  .effects{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);font-size:.74rem;font-weight:700;
+    padding:5px 10px;border:1px solid transparent;line-height:1}
+  .chip.assign{background:var(--color-info-soft);color:var(--color-info);border-color:#d6e4ff}
+  .chip.reassign{background:#eaf1ff;color:#1746c9;border-color:#c9dbff}
+  .chip.created{background:var(--violet-soft);color:var(--violet);border-color:var(--violet-border)}
+  .chip.report{background:var(--color-success-soft);color:var(--color-success);border-color:#cdeede}
+  .chip.context{background:var(--color-warning-soft);color:var(--color-warning);border-color:#f3e3bf}
+  .chip.processing{background:#eef2f9;color:var(--color-muted);border-color:var(--color-border)}
+  .chip.superseded{background:transparent;color:#93a1b8;border-color:var(--color-border);text-decoration:line-through;font-weight:600}
+  .act{border:0;background:transparent;color:var(--color-primary);font-weight:700;font-size:.74rem;cursor:pointer;padding:5px 3px}
+  .act.soft{color:var(--color-text-soft);text-decoration:underline}
+  .micro{font-size:.7rem;color:var(--color-muted)}
+  .shimmer{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--color-muted);opacity:.5;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.7}}
+  .cap.muted{opacity:.6}
+  .cap.muted .cap-node{border-color:var(--color-border-strong);color:#93a1b8}
+  .cap.muted .gen{border-left-color:var(--color-border-strong)}
+
+  /* live report document */
+  .doc-header{display:flex;align-items:center;gap:12px;padding:15px;background:var(--color-surface-soft);border-bottom:1px solid var(--color-border)}
+  .clinic-logo{width:42px;height:42px;border-radius:11px;background:var(--color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .clinic-name{font-weight:800;font-size:.95rem}
+  .clinic-addr{font-size:.72rem;color:var(--color-muted);margin-top:1px}
+  .pinfo{display:flex;flex-wrap:wrap;gap:6px 26px;padding:13px 15px;border-bottom:1px solid var(--color-border)}
+  .pinfo .f{font-size:.82rem}
+  .pinfo .f span{font-size:.62rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);display:block;margin-bottom:1px}
+  .rep-meta{padding:9px 15px;font-size:.72rem;color:var(--color-muted);display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--color-border)}
+  .rep-body{padding:6px 16px 16px}
+  .rep-sec{padding:13px 0;border-top:1px solid var(--color-border)}
+  .rep-sec:first-child{border-top:0}
+  .rep-sec h3{margin:0 0 5px;font-size:.7rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-soft)}
+  .rep-sec p{margin:0;font-size:.88rem;line-height:1.55;color:var(--color-text-soft)}
+  .rep-img{width:160px;height:104px;border-radius:var(--radius-md);border:1px solid var(--color-border);margin-top:8px;
+    background:radial-gradient(circle at 50% 42%, #f2d3c4 0 34%, #f6ece6 36% 100%)}
+  /* basic chronological entries */
+  .b-entry{display:flex;gap:10px;padding:11px 0;border-top:1px solid var(--color-border)}
+  .b-entry:first-child{border-top:0}
+  .b-node{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--color-primary);color:var(--color-primary);
+    display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .b-entry.photo .b-node{border-color:#0a9d6e;color:#0a9d6e}
+  .b-entry .b-time{font-size:.66rem;color:var(--color-muted);margin-bottom:3px}
+  .b-entry p{margin:0;font-size:.85rem;line-height:1.5;color:var(--color-text-soft)}
+  .b-img{width:130px;height:84px;border-radius:var(--radius-md);border:1px solid var(--color-border);margin-top:6px;
+    background:radial-gradient(circle at 50% 42%, #f2d3c4 0 34%, #f6ece6 36% 100%)}
+
+  /* slim capture footer */
+  .capbar{display:flex;gap:9px;margin-top:13px}
+  .capbtn{flex:1;border:1px solid var(--color-border);background:#fff;border-radius:var(--radius-md);padding:11px;
+    display:flex;align-items:center;justify-content:center;gap:8px;font-size:.84rem;font-weight:700;color:var(--color-text-soft);cursor:pointer}
+  .capbtn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+  .capbtn .ic{width:18px;height:18px}
+
+  /* states */
+  .states{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  .state{background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 13px}
+  .state .st-h{font-size:.82rem;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:7px}
+  .state p{margin:0;font-size:.76rem;color:var(--color-muted);line-height:1.45}
+  .state.warn{background:var(--color-warning-soft);border-color:#f3e3bf}.state.warn .st-h{color:var(--color-warning)}
+  .state.block{background:var(--color-danger-soft);border-color:#f4cdc9}.state.block .st-h{color:var(--color-danger)}
+
+  @media(max-width:480px){
+    body{font-size:13px;padding:20px 12px 50px}
+    .report-top{grid-template-columns:1fr auto;row-gap:10px}
+    .tabs{grid-column:1 / -1;justify-self:stretch}.tab{flex:1;text-align:center}
+    .updating{grid-column:1 / -1;justify-self:start}
+    .states{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v12H9l-4 3.5z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9.5 7L4.5 12l5 5"/><path d="M4.5 12h10a5.5 5.5 0 0 1 0 11h-2.5"/></symbol>
+</defs></svg>
+<div class="wrap">
+
+  <!-- FRAME 1 : CAPTURES TAB (PRO) -->
+  <section>
+    <p class="frame-label">B1 · Captures — Pro · icons back, per-capture edit, effect chips, tabs in header</p>
+    <div class="app">
+      <div class="sess-head">
+        <div>
+          <div class="sess-title"><span class="dot live"></span> Session · Today 13:37</div>
+          <div class="sess-sub">5 captures · updated 14:04 · saved on this device</div>
+        </div>
+        <button class="mini-btn">+ New session</button>
+      </div>
+
+      <div class="patient-row">
+        <div class="pavatar">س</div>
+        <div>
+          <div class="name rtl" lang="fa">سروش معاصد</div>
+          <div class="meta">Reassigned by voice · 14:04 · <span class="link">View patient</span></div>
+        </div>
+        <div class="grow"></div>
+        <button class="mini-btn">Change · Unassign</button>
+      </div>
+
+      <div class="report-card">
+        <div class="report-top">
+          <h2>Clinical report <span class="tier">Pro</span></h2>
+          <div class="tabs"><button class="tab active">Captures</button><button class="tab">Live report</button></div>
+          <div class="updating"><span class="spin"></span> refining…</div>
+        </div>
+        <div class="divider"></div>
+
+        <div class="feed">
+          <!-- 1: created + assigned (two actions), superseded later -->
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio note</span><span class="time">13:37</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:07</span></div>
+            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span>
+              <button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">بیمار خانم ثریا قاسمی هستند. برای بوتاکس تشریف آوردند.</p></div>
+            <div class="effects">
+              <span class="chip superseded"><svg class="ic sm"><use href="#i-undo"/></svg> New patient + assigned → ثریا قاسمی</span>
+              <span class="micro">superseded by 14:04 · ثریا kept for review</span>
+            </div>
+          </div>
+
+          <!-- 2: processing -->
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio note</span><span class="time">13:41</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:08</span></div>
+            <div class="effects"><span class="chip processing"><span class="shimmer"></span> Transcribing…</span></div>
+          </div>
+
+          <!-- 3: photo, caption editable, added to report -->
+          <div class="cap photo">
+            <div class="cap-node"><svg class="ic"><use href="#i-cam"/></svg></div>
+            <div class="cap-head"><span class="t">Photo</span><span class="time">13:43</span></div>
+            <div class="photo-wrap"><div class="photo-img"></div>
+              <div class="gen" style="flex:1"><div class="lab"><span>Caption</span><span class="ai">AI</span>
+                <button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
+                <p>Pre-correction image showing mild left-cheek asymmetry before touch-up.</p></div></div>
+            <div class="effects"><span class="chip report">✓ Added to report</span></div>
+          </div>
+
+          <!-- 4: audio, added to report -->
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio note</span><span class="time">14:02</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:06</span></div>
+            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span>
+              <button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">بوتاکس کار شد به همراه یک ذره ژل لب.</p></div>
+            <div class="effects"><span class="chip report">✓ Added to report</span></div>
+          </div>
+
+          <!-- 5: reassignment (hero / fix) -->
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio note</span><span class="time">14:04</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:05</span></div>
+            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span>
+              <button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">نام بیمار عوض شه به سروش معاصد.</p></div>
+            <div class="effects">
+              <span class="chip reassign"><svg class="ic sm"><use href="#i-undo"/></svg> Patient reassigned → سروش معاصد</span>
+              <button class="act">Undo</button>
+            </div>
+          </div>
+
+          <!-- 6: out of context -->
+          <div class="cap audio muted">
+            <div class="cap-node"><svg class="ic"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio note</span><span class="time">14:06</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:03</span></div>
+            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span></div>
+              <p class="rtl" lang="fa">الو… صدامو داری؟ باشه بعداً.</p></div>
+            <div class="effects"><span class="chip context">⌀ Out of context · not in report</span>
+              <button class="act soft">Mark relevant</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="capbar">
+        <button class="capbtn primary"><svg class="ic"><use href="#i-mic"/></svg> Audio</button>
+        <button class="capbtn"><svg class="ic"><use href="#i-cam"/></svg> Photo</button>
+        <button class="capbtn"><svg class="ic"><use href="#i-note"/></svg> Note</button>
+      </div>
+    </div>
+    <p class="frame-note">Type <b>icons</b> back on the timeline nodes; every AI text block has an inline <b>Edit</b>. Capture #1 shows the <b>two-action</b> case (created + assigned), here superseded by the 14:04 reassignment with ثریا "kept for review". Footer buttons slimmed to icon + word.</p>
+  </section>
+
+  <!-- FRAME 2 : LIVE REPORT (PRO) -->
+  <section>
+    <p class="frame-label">B2 · Live report — Pro · clinic + patient header, template-driven, synthesized (no timestamps)</p>
+    <div class="app">
+      <div class="report-card">
+        <div class="report-top"><h2>Clinical report <span class="tier">Pro</span></h2>
+          <div class="tabs"><button class="tab">Captures</button><button class="tab active">Live report</button></div>
+          <div class="updating"><span class="spin"></span> updating…</div></div>
+        <div class="doc-header">
+          <div class="clinic-logo">AM</div>
+          <div><div class="clinic-name">AesMem Demo Clinic</div>
+            <div class="clinic-addr">No. 12, Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div>
+        </div>
+        <div class="pinfo">
+          <div class="f"><span>Patient</span><span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--color-text)" class="rtl" lang="fa" dir="rtl">سروش معاصد</span></div>
+          <div class="f"><span>National ID</span>00xx xxx 421</div>
+          <div class="f"><span>Date of visit</span>Today · 13:37</div>
+        </div>
+        <div class="rep-meta"><b style="color:var(--color-text-soft)">Aesthetic visit</b> · default template <span class="link" style="font-size:.68rem">Change</span><span class="grow"></span>Generated from 4 captures · 1 set aside · <span class="link">Verify report</span></div>
+        <div class="rep-body">
+          <div class="rep-sec"><h3>Reason for visit</h3><p>Attended for botulinum toxin treatment of the upper face.</p></div>
+          <div class="rep-sec"><h3>Procedure performed</h3><p>Botulinum toxin administered to the upper face. A small volume of lip filler was also placed.</p></div>
+          <div class="rep-sec"><h3>Clinical findings</h3><p>Pre-treatment assessment noted mild left-cheek asymmetry prior to touch-up.</p>
+            <div class="rep-img"></div></div>
+          <div class="rep-sec"><h3>Plan &amp; aftercare</h3><p>Routine aftercare advised. Review at follow-up as clinically indicated.</p></div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">Reads like a real <b>templated clinical report</b>, regenerated by an AI job as each capture lands — not a timestamped list. Clinic + patient header from template/DB (not AI). The aesthetic template is the fixed default today; radiology/pathology templates can be uploaded later. Images embed where relevant.</p>
+  </section>
+
+  <!-- FRAME 3 : LIVE REPORT (BASIC) -->
+  <section>
+    <p class="frame-label">B2 · Live report — Basic · same header, chronological body with images</p>
+    <div class="app">
+      <div class="report-card">
+        <div class="report-top"><h2>Clinical report <span class="tier basic">Basic</span></h2>
+          <div class="tabs"><button class="tab">Captures</button><button class="tab active">Live report</button></div>
+          <div class="updating"></div></div>
+        <div class="doc-header">
+          <div class="clinic-logo">AM</div>
+          <div><div class="clinic-name">AesMem Demo Clinic</div>
+            <div class="clinic-addr">No. 12, Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div>
+        </div>
+        <div class="pinfo">
+          <div class="f"><span>Patient</span><span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--color-text)" class="rtl" lang="fa" dir="rtl">ثریا قاسمی</span></div>
+          <div class="f"><span>Assignment</span>Manual</div>
+          <div class="f"><span>Date of visit</span>Today · 13:37</div>
+        </div>
+        <div class="rep-body" style="padding-top:0">
+          <div class="b-entry audio"><div class="b-node"><svg class="ic sm"><use href="#i-mic"/></svg></div>
+            <div><div class="b-time">13:37</div><p class="rtl" lang="fa">بیمار خانم ثریا قاسمی هستند. برای بوتاکس تشریف آوردند.</p></div></div>
+          <div class="b-entry photo"><div class="b-node"><svg class="ic sm"><use href="#i-cam"/></svg></div>
+            <div><div class="b-time">13:43</div><p>Pre-correction image — mild left-cheek asymmetry before touch-up.</p><div class="b-img"></div></div></div>
+          <div class="b-entry audio"><div class="b-node"><svg class="ic sm"><use href="#i-mic"/></svg></div>
+            <div><div class="b-time">14:02</div><p class="rtl" lang="fa">بوتاکس کار شد به همراه یک ذره ژل لب.</p></div></div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">Basic keeps the same clinic + patient header, then a clean chronological body — transcripts + <b>images shown</b>, timestamps are honest here. No synthesis, no AI chips, manual assignment. A tidy notebook that stands on its own.</p>
+  </section>
+
+  <!-- FRAME 4 : STATES -->
+  <section>
+    <p class="frame-label">States · offline / AI-out / storage</p>
+    <div class="app">
+      <div class="states">
+        <div class="state"><p class="st-h"><span class="dot live"></span> Saved on this device</p><p>Captures persist locally before any upload. "Will sync" when the connection returns.</p></div>
+        <div class="state"><p class="st-h"><span class="spin"></span> Processing…</p><p>AI-out is silent &amp; self-healing. The capture plays now; transcript/report fill in when AI recovers.</p></div>
+        <div class="state warn"><p class="st-h">⚠ Storage almost full</p><p>12 captures waiting to sync. Reconnect soon to free space, or export them.</p></div>
+        <div class="state block"><p class="st-h">⛔ Can't add new captures</p><p>Device storage is full of unsynced captures. Reconnect to sync — the only time capture is blocked.</p></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

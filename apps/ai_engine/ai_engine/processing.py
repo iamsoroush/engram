@@ -38,6 +38,7 @@ class CaptureProcessingOutput(TypedDict, total=False):
     patient_information: NotRequired[dict[str, Any]]
     clinical_summary: NotRequired[str | None]
     uncertainties: NotRequired[list[str]]
+    intents: NotRequired[dict[str, Any] | None]
 
 
 NOT_DETECTED_PATIENT: DetectedPatientOutput = {
@@ -60,6 +61,8 @@ TEST_CAPTURE_TEXT_BY_FILENAME = {
 TEST_FINAL_SUMMARY = "Follow-up cheek filler correction for mild left cheek asymmetry. Conservative 0.3 mL hyaluronic acid filler touch-up was performed in the left mid cheek using cannula technique. Patient tolerated the procedure well and received aftercare instructions."
 
 TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
+
+ASSIGNMENT_INTENT_BASES = {"explicit", "implicit"}
 
 PATIENT_INFORMATION_FIELDS = (
     "raw_mentioned_name",
@@ -196,7 +199,46 @@ def structured_transcription_from_text(text: str, *, language: str = "en") -> di
         "patient_information": empty_patient_information(source_text=text),
         "clinical_summary": None,
         "uncertainties": [],
+        "intents": None,
     }
+
+
+def clamp_confidence(value: Any) -> float:
+    """Clamp a model-provided confidence into [0.0, 1.0], defaulting to 0.0."""
+    return max(0.0, min(float(value), 1.0)) if isinstance(value, int | float) else 0.0
+
+
+def normalize_intents(raw: Any) -> dict[str, Any] | None:
+    """Normalize best-effort intent classification, dropping absent or malformed intents.
+
+    The transcript is the required, high-trust field; intents are optional so a malformed
+    intent payload never invalidates an otherwise usable transcript.
+    """
+    if not isinstance(raw, dict):
+        return None
+    intents: dict[str, Any] = {}
+    assignment = raw.get("assignment")
+    if isinstance(assignment, dict) and assignment.get("present") is True:
+        basis = assignment.get("basis")
+        evidence = assignment.get("evidence")
+        intents["assignment"] = {
+            "present": True,
+            "basis": basis if basis in ASSIGNMENT_INTENT_BASES else "implicit",
+            "confidence": clamp_confidence(assignment.get("confidence")),
+            "evidence": str(evidence).strip() if isinstance(evidence, str) and evidence.strip() else None,
+        }
+    append = raw.get("append")
+    if isinstance(append, dict) and append.get("present") is True:
+        intents["append"] = {"present": True, "confidence": clamp_confidence(append.get("confidence"))}
+    out_of_context = raw.get("out_of_context")
+    if isinstance(out_of_context, dict) and out_of_context.get("present") is True:
+        reason = out_of_context.get("reason")
+        intents["out_of_context"] = {
+            "present": True,
+            "confidence": clamp_confidence(out_of_context.get("confidence")),
+            "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
+        }
+    return intents or None
 
 
 def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
@@ -214,13 +256,16 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
                 "Iranian national IDs and phone numbers may be spoken digit by digit in Persian, Arabic, or English numerals; normalize them to digit strings when explicitly present. "
                 "Aesthetics-clinic vocabulary may include filler, Botox, laser, injection, cannula, hyaluronic acid, aftercare, asymmetry, touch-up, swelling, bruising, and follow-up. "
                 "Use the context only to improve spelling and interpretation. Do not infer patient identity unless it is explicitly present in the audio or strongly supported by assigned-patient/session context. "
+                "Also classify intent in `intents`: set assignment.present=true whenever the audio indicates which patient this visit is about (a stated or mentioned name or identifier counts). Set basis='explicit' ONLY for a clear instruction to change or correct an existing assignment (for example 'change the patient to X', 'this is actually X not Y', or 'wrong patient, it's X'). Treat any statement of who the patient is as basis='implicit' — this includes a name simply stated or fronted and identity declarations (for example 'Ms. Ghasemi, forehead botox', 'the patient is X', 'this is X', or 'I am X'). When unsure, prefer 'implicit'. Set out_of_context.present=true when the audio has no clinical or visit content; set append.present=true when it only adds incremental detail to an ongoing note; use null for any intent you cannot determine. "
                 "Return only strict JSON with no markdown."
             ),
             (
                 "Required JSON shape: "
                 '{"transcript":"string","language":"fa|en|mixed|unknown","patient_information":{"raw_mentioned_name":null,'
                 '"standardized_display_name":null,"alternate_transliterations":[],"national_id":null,"phone":null,'
-                '"date_of_birth":null,"evidence":null,"confidence":0.0},"clinical_summary":null,"uncertainties":[]}'
+                '"date_of_birth":null,"evidence":null,"confidence":0.0},"clinical_summary":null,"uncertainties":[],'
+                '"intents":{"assignment":{"present":false,"basis":"implicit","confidence":0.0,"evidence":null},'
+                '"append":{"present":false,"confidence":0.0},"out_of_context":{"present":false,"confidence":0.0,"reason":null}}}'
             ),
             f"Tenant-scoped transcription context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )
@@ -271,6 +316,7 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
         "patient_information": normalized_patient,
         "clinical_summary": clinical_summary.strip() if isinstance(clinical_summary, str) and clinical_summary.strip() else None,
         "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
+        "intents": normalize_intents(parsed.get("intents")),
     }
 
 
@@ -356,6 +402,7 @@ def completed_audio_metadata(
         "patient_information": patient_information,
         "clinical_summary": structured["clinical_summary"],
         "uncertainties": structured["uncertainties"],
+        "intents": structured.get("intents"),
         "generated_by": "ai-engine",
         "job_id": job["id"],
         "job_type": job["jobType"],

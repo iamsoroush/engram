@@ -128,6 +128,7 @@ class Tenant(Base):
     status: Mapped[TenantStatus] = mapped_column(
         pg_enum(TenantStatus, "tenant_status"), nullable=False, default=TenantStatus.active
     )
+    tier: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pro")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")

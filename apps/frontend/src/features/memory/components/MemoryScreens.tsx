@@ -23,6 +23,7 @@ export function PatientsHome({
   onOpenSession,
   onContinueSession,
   onGetPatientMemory,
+  onUpdatePatient,
   onListPatientMemory,
   onSearchPatients,
   onConfirmSummary,
@@ -37,6 +38,7 @@ export function PatientsHome({
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onContinueSession: (sessionId: string) => void;
   onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
+  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
@@ -286,6 +288,7 @@ export function PatientsHome({
           onBack={() => setSelectedPatientId("")}
           onContinueSession={onContinueSession}
           onOpenSession={onOpenSession}
+          onUpdatePatient={onUpdatePatient}
           onAssignPatient={(sessionId) => setAssignmentSessionId(sessionId)}
           onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
         />
@@ -1299,6 +1302,81 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
   );
 }
 
+function PatientIdentityEditor({
+  patient,
+  onUpdatePatient,
+}: {
+  patient: PatientRowModel;
+  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [name, setName] = React.useState(patient.name || "");
+  const [nationalId, setNationalId] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [dob, setDob] = React.useState("");
+
+  React.useEffect(() => {
+    setName(patient.name || "");
+  }, [patient.name]);
+
+  if (!onUpdatePatient) return null;
+
+  if (!open) {
+    return (
+      <div className="patient-edit-row">
+        <button className="patient-edit-toggle" onClick={() => setOpen(true)} type="button">
+          Edit details
+        </button>
+      </div>
+    );
+  }
+
+  const save = () => {
+    if (saving || !name.trim()) return;
+    setSaving(true);
+    void onUpdatePatient(patient.id, {
+      displayName: name.trim(),
+      nationalId: nationalId.trim() || undefined,
+      phone: phone.trim() || undefined,
+      dateOfBirth: dob.trim() || undefined,
+    })
+      .then(() => setOpen(false))
+      .finally(() => setSaving(false));
+  };
+
+  return (
+    <section className="patient-edit-card" aria-label="Edit patient details">
+      <div className="patient-edit-grid">
+        <label className="patient-edit-field">
+          <span>Full name</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label className="patient-edit-field">
+          <span>National ID <em>· leave blank to keep</em></span>
+          <input value={nationalId} placeholder="Add / update" onChange={(event) => setNationalId(event.target.value)} />
+        </label>
+        <label className="patient-edit-field">
+          <span>Phone <em>· leave blank to keep</em></span>
+          <input value={phone} placeholder="Add / update" onChange={(event) => setPhone(event.target.value)} />
+        </label>
+        <label className="patient-edit-field">
+          <span>Date of birth <em>· leave blank to keep</em></span>
+          <input value={dob} placeholder="YYYY-MM-DD" onChange={(event) => setDob(event.target.value)} />
+        </label>
+      </div>
+      <div className="patient-edit-actions">
+        <button className="patient-edit-cancel" onClick={() => setOpen(false)} type="button">
+          Cancel
+        </button>
+        <button className="patient-edit-save" disabled={saving || !name.trim()} onClick={save} type="button">
+          {saving ? "Saving…" : "Save details"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function PatientTimelineDetail({
   activeSession,
   detail,
@@ -1311,6 +1389,7 @@ function PatientTimelineDetail({
   onContinueSession,
   onOpenSession,
   onReviewSummary,
+  onUpdatePatient,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1323,6 +1402,7 @@ function PatientTimelineDetail({
   onContinueSession: (sessionId: string) => void;
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onReviewSummary: (sessionId: string) => void;
+  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
 }) {
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
   const timelineGroups = buildTimelineGroups(detail, localSessions);
@@ -1347,6 +1427,8 @@ function PatientTimelineDetail({
           </div>
         </div>
       </section>
+
+      <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} />
 
       {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
       {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
