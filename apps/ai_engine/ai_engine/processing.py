@@ -64,6 +64,34 @@ TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
 
 ASSIGNMENT_INTENT_BASES = {"explicit", "implicit"}
 
+TRANSCRIPTION_LANGUAGE_NAMES = {
+    "fa": "Persian (Farsi)",
+    "en": "English",
+    "ar": "Arabic",
+}
+
+
+def transcription_language_directive(transcription_context: dict[str, Any] | None) -> str:
+    """Instruct the model on transcript language/script.
+
+    Default ('auto') transcribes verbatim in the original script — this prevents Persian speech
+    from coming back romanized in Latin, which otherwise breaks name matching and reassignment.
+    A specific preferred language asks the model to transcribe in that language's native script.
+    """
+    context = transcription_context if isinstance(transcription_context, dict) else {}
+    preferred = str(context.get("preferredLanguage") or "auto").strip().lower()
+    if preferred and preferred not in {"auto", "unknown", "mixed"}:
+        name = TRANSCRIPTION_LANGUAGE_NAMES.get(preferred, preferred)
+        return (
+            f"The clinic's preferred transcription language is {name}: write the transcript in {name} using its "
+            "native script. Do not translate into another language and do not romanize."
+        )
+    return (
+        "Transcribe VERBATIM in whatever language(s) are actually spoken, preserving the ORIGINAL SCRIPT — "
+        "Persian/Farsi speech MUST be written in Persian script (e.g. «بیمار را عوض کن به سروش»), never romanized "
+        "Latin (not «Bimar ro avaz kon be Soroush»). Never translate the transcript and never romanize it."
+    )
+
 PATIENT_INFORMATION_FIELDS = (
     "raw_mentioned_name",
     "standardized_display_name",
@@ -245,6 +273,7 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
     """Build the rich instruction prompt for the OpenAI-compatible gateway."""
     context = transcription_context if isinstance(transcription_context, dict) else {}
     configured_prompt = settings.transcription_prompt.strip()
+    language_directive = transcription_language_directive(context)
     return "\n\n".join(
         part
         for part in (
@@ -252,7 +281,8 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
             (
                 "You are transcribing and extracting clinical identity details for AesMem, an aesthetics clinic memory system. "
                 "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
-                "Names may be spoken in Persian; transliterate them into readable English for standardized_display_name and include alternate plausible transliterations. "
+                f"{language_directive} "
+                "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
                 "Iranian national IDs and phone numbers may be spoken digit by digit in Persian, Arabic, or English numerals; normalize them to digit strings when explicitly present. "
                 "Aesthetics-clinic vocabulary may include filler, Botox, laser, injection, cannula, hyaluronic acid, aftercare, asymmetry, touch-up, swelling, bruising, and follow-up. "
                 "Use the context only to improve spelling and interpretation. Do not infer patient identity unless it is explicitly present in the audio or strongly supported by assigned-patient/session context. "

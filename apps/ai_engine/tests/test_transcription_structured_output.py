@@ -6,8 +6,29 @@ from ai_engine.processing import (
     completed_audio_metadata,
     parse_structured_transcription_output,
     placeholder_text_for_capture,
+    transcription_language_directive,
     transcription_prompt,
 )
+
+
+class TranscriptionLanguageDirectiveTests(unittest.TestCase):
+    def test_auto_forbids_translation_and_romanization(self):
+        directive = transcription_language_directive({"preferredLanguage": "auto"})
+        self.assertIn("ORIGINAL SCRIPT", directive)
+        self.assertIn("never romanize", directive.lower())
+
+    def test_missing_or_blank_defaults_to_auto(self):
+        self.assertIn("ORIGINAL SCRIPT", transcription_language_directive(None))
+        self.assertIn("ORIGINAL SCRIPT", transcription_language_directive({"preferredLanguage": ""}))
+
+    def test_specific_language_names_it_and_native_script(self):
+        directive = transcription_language_directive({"preferredLanguage": "fa"})
+        self.assertIn("Persian (Farsi)", directive)
+        self.assertIn("native script", directive)
+
+    def test_prompt_embeds_directive(self):
+        self.assertIn("ORIGINAL SCRIPT", transcription_prompt(None))
+        self.assertIn("Persian (Farsi)", transcription_prompt({"preferredLanguage": "fa"}))
 
 
 class StructuredTranscriptionTests(unittest.TestCase):
