@@ -17,7 +17,11 @@ from app.services.patient_assignment_timeline import (
     apply_active_patient_assignment,
     patient_assignment_event,
 )
-from app.services.patient_matching import match_patient_from_metadata, match_patient_from_patient_information
+from app.services.patient_matching import (
+    NATIONAL_ID_CONFLICT_RISK,
+    match_patient_from_metadata,
+    match_patient_from_patient_information,
+)
 from app.services.patients import create_patient_from_patient_information, patient_information_has_explicit_identity
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
@@ -29,6 +33,7 @@ from app.services.reporting import (
 )
 from app.services.session_processing import (
     build_session_processing_input,
+    capture_is_out_of_context,
     report_model_from_session_processing_output,
     session_processing_output_from_legacy_report,
 )
@@ -174,6 +179,28 @@ def tenant_tier(db: DbSession, tenant_id: uuid.UUID) -> str:
     return tier if tier in {"basic", "pro"} else "pro"
 
 
+def tenant_transcription_language(db: DbSession, tenant_id: uuid.UUID) -> str:
+    """Return the tenant's preferred transcription language ('auto' | a BCP-47-ish code).
+
+    'auto' = transcribe verbatim in the spoken language/script; a specific code asks the model
+    to transcribe in that language (improves accuracy/matching for known-language clinics).
+    """
+    value = db.execute(select(Tenant.transcription_language).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    return value.strip() if isinstance(value, str) and value.strip() else "auto"
+
+
+def tenant_report_language(db: DbSession, tenant_id: uuid.UUID) -> str | None:
+    """Return the tenant's preferred report language, or None to follow the template default."""
+    value = db.execute(select(Tenant.report_language).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def tenant_match_strictness(db: DbSession, tenant_id: uuid.UUID) -> str:
+    """Return the tenant's fuzzy-match auto-apply strictness ('strict'|'balanced'|'lenient')."""
+    value = db.execute(select(Tenant.match_strictness).where(Tenant.id == tenant_id)).scalar_one_or_none()
+    return value if value in {"strict", "balanced", "lenient"} else "strict"
+
+
 def assignment_intent_basis(output: dict[str, Any]) -> str | None:
     """Return the assignment-intent basis ('explicit'/'implicit') from AI output, if present."""
     intents = output.get("intents")
@@ -221,6 +248,45 @@ def should_apply_identity_assignment(
     return not has_existing_patient or assignment_basis == "explicit"
 
 
+NEAR_MATCH_SUGGEST_THRESHOLD = 0.78
+# Fuzzy auto-apply line per match strictness (H3): the single-candidate confidence a fuzzy
+# `possible_match` must clear to auto-apply. `strict` (None) = never; deterministic matches only.
+# Fuzzy confidence is capped at 0.84 in patient_matching, so `balanced` catches a strong single
+# variant (e.g. معاضد→معاصد @0.84) while `lenient` reaches down to the suggestion floor.
+MATCH_STRICTNESS_AUTOAPPLY_THRESHOLD: dict[str, float | None] = {"strict": None, "balanced": 0.82, "lenient": 0.78}
+
+
+def spoken_name_from_information(patient_information: dict[str, Any] | None) -> str | None:
+    """The patient name as spoken/transcribed, for the 'Matched X · you said Y' surface (H4)."""
+    if not isinstance(patient_information, dict):
+        return None
+    for key in ("raw_mentioned_name", "standardized_display_name", "full_name", "display_name"):
+        value = patient_information.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _dominant_match_candidate(candidate: dict[str, Any] | None, *, threshold: float) -> dict[str, Any] | None:
+    """Return the single high-confidence candidate from a match result, else None.
+
+    None when the top candidate is below `threshold` or ties with the runner-up — an ambiguous
+    or weak match stays a choose-patient decision rather than a one-tap target.
+    """
+    if not isinstance(candidate, dict):
+        return None
+    ranked = [c for c in (candidate.get("candidateSet") or []) if isinstance(c, dict) and c.get("patientId")]
+    if not ranked:
+        return None
+    top = ranked[0]
+    top_confidence = float(top.get("confidence") or 0.0)
+    if top_confidence < threshold:
+        return None
+    if len(ranked) > 1 and float(ranked[1].get("confidence") or 0.0) >= top_confidence:
+        return None  # tie at the top -> ambiguous
+    return top
+
+
 def suggested_reassignment_candidate(
     db: DbSession,
     *,
@@ -231,53 +297,89 @@ def suggested_reassignment_candidate(
     """Build an actionable but unapplied reassignment suggestion for an already-assigned visit.
 
     Used when a later capture only implicitly mentions a patient: the assignment is not
-    changed, but staff can apply the suggestion in one tap.
+    changed, but staff can apply the suggestion in one tap. A dominant fuzzy candidate is
+    promoted to `patientId` so Apply reassigns to the existing patient rather than creating one.
     """
     match = match_patient_from_patient_information(db, tenant_id=tenant_id, patient_information=patient_information)
+    match = match if isinstance(match, dict) else {}
+    patient_id = match.get("patientId")
+    matched_name = match.get("displayName")
+    if not patient_id:
+        dominant = _dominant_match_candidate(match, threshold=NEAR_MATCH_SUGGEST_THRESHOLD)
+        if dominant is not None:
+            patient_id = dominant.get("patientId")
+            matched_name = dominant.get("displayName")
     return {
-        **(match if isinstance(match, dict) else {}),
+        **match,
         "schemaVersion": "2026-06-02.patient-match-candidate.v1",
         "decision": "suggested_reassignment",
         "status": "suggested_reassignment",
         "appliedAutomatically": False,
         "currentPatientId": str(session.patient_id) if session.patient_id else None,
+        "patientId": patient_id,
+        "displayName": matched_name,
+        "matchedName": matched_name,
+        "spokenName": spoken_name_from_information(patient_information),
         "reason": "Implicit patient mention on an already-assigned visit; suggested for review, not applied.",
         "patientInformation": patient_information,
     }
 
 
-NEAR_MATCH_SUGGEST_THRESHOLD = 0.78
-
-
 def near_match_suggestion(candidate: dict[str, Any] | None, *, patient_information: dict[str, Any]) -> dict[str, Any] | None:
     """Turn a single confident fuzzy/`possible_match` into an actionable reassignment suggestion.
 
-    Fuzzy matches are never auto-applied (a near-spelling could be a different person), but a
+    Fuzzy matches are never auto-applied here (a near-spelling could be a different person), but a
     clear single front-runner is surfaced as a one-tap suggestion instead of a silent no-op —
     this covers ASR name variance (e.g. spoke معاصد, transcribed معاضد). Returns None when
     there is no dominant high-confidence candidate, so it stays a choose-patient decision.
     """
     if not isinstance(candidate, dict) or candidate.get("decision") != "possible_match":
         return None
-    ranked = [c for c in (candidate.get("candidateSet") or []) if isinstance(c, dict) and c.get("patientId")]
-    if not ranked:
+    top = _dominant_match_candidate(candidate, threshold=NEAR_MATCH_SUGGEST_THRESHOLD)
+    if top is None:
         return None
-    top = ranked[0]
-    top_confidence = float(top.get("confidence") or 0.0)
-    if top_confidence < NEAR_MATCH_SUGGEST_THRESHOLD:
-        return None
-    if len(ranked) > 1 and float(ranked[1].get("confidence") or 0.0) >= top_confidence:
-        return None  # tie at the top -> ambiguous, keep it a choose-patient decision
+    matched_name = top.get("displayName")
     return {
         **candidate,
         "decision": "suggested_reassignment",
         "status": "suggested_reassignment",
         "appliedAutomatically": False,
         "patientId": top.get("patientId"),
-        "displayName": top.get("displayName"),
+        "displayName": matched_name,
+        "matchedName": matched_name,
+        "spokenName": spoken_name_from_information(patient_information),
         "reason": "Close name match found; confirm to apply.",
         "patientInformation": patient_information,
     }
+
+
+def fuzzy_auto_apply_candidate(
+    candidate: dict[str, Any] | None,
+    *,
+    strictness: str,
+    assignment_basis: str | None,
+) -> dict[str, Any] | None:
+    """Return the single fuzzy candidate that match strictness permits auto-applying, else None.
+
+    H3/H4: a partial (fuzzy) `possible_match` auto-applies only under `balanced`/`lenient`
+    strictness, with an **explicit** reassignment instruction and a single dominant
+    high-confidence candidate (no tie). The national-ID conflict guard and ambiguous routing
+    win at every strictness level — a candidate carrying a national-ID conflict is never
+    auto-applied, and an implicit mention is always a suggestion, not an application.
+    """
+    threshold = MATCH_STRICTNESS_AUTOAPPLY_THRESHOLD.get(strictness)
+    if threshold is None:  # strict — deterministic matches only
+        return None
+    if assignment_basis != "explicit":  # implicit partial is always a suggestion
+        return None
+    if not isinstance(candidate, dict) or candidate.get("decision") != "possible_match":
+        return None
+    if NATIONAL_ID_CONFLICT_RISK in (candidate.get("risks") or []):
+        return None
+    top = _dominant_match_candidate(candidate, threshold=threshold)
+    if top is None or NATIONAL_ID_CONFLICT_RISK in (top.get("risks") or []):
+        return None
+    return top
 
 
 def get_ai_job(db: DbSession, principal: CurrentPrincipal, job_id: str) -> dict[str, Any]:
@@ -715,6 +817,7 @@ def transcription_context_from_inputs(
     patient_history_summary: str | None,
     captures: list[Capture],
     current_capture_id: uuid.UUID,
+    preferred_language: str = "auto",
 ) -> dict[str, Any]:
     """Build the stable tenant-scoped context sent to audio transcription."""
     previous_transcripts: list[dict[str, Any]] = []
@@ -751,6 +854,7 @@ def transcription_context_from_inputs(
     return {
         "schemaVersion": "2026-06-02.audio-transcription-context.v1",
         "clinic": clinic,
+        "preferredLanguage": preferred_language,
         "assignedPatient": assigned_patient,
         "patientSummarizedHistory": patient_history_summary,
         "session": {
@@ -798,37 +902,224 @@ def build_transcription_context(db: DbSession, *, session: Session, capture: Cap
         patient_history_summary=patient_summarized_history_for_transcription(db, session),
         captures=captures,
         current_capture_id=capture.id,
+        preferred_language=tenant_transcription_language(db, session.tenant_id),
     )
 
 
-def create_session_processing_job(db: DbSession, *, principal: CurrentPrincipal, session: Session) -> AiJob:
-    """Create a queued session processing job and mark the session processing."""
+def create_session_report_job(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    created_by_user_id: uuid.UUID | None,
+    session: Session,
+    trigger: str = "manual",
+) -> AiJob:
+    """Create a queued session live-report job and mark the session processing."""
     source_ids = [
         str(source_id)
         for source_id in db.execute(
             select(Capture.source_artifact_id).where(
-                Capture.tenant_id == principal.tenant_id,
+                Capture.tenant_id == tenant_id,
                 Capture.session_id == session.id,
                 Capture.source_artifact_id.is_not(None),
             )
         ).scalars()
     ]
     job = AiJob(
-        tenant_id=principal.tenant_id,
+        tenant_id=tenant_id,
         session_id=session.id,
         capture_id=None,
         job_type=AiJobType.session_organize,
         status=AiJobStatus.queued,
         generated_by="ai-engine",
         input_artifact_ids=source_ids,
-        result_metadata={"queue": "ai_jobs", "report_template_key": session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY},
-        created_by_user_id=principal.user_id,
+        result_metadata={
+            "queue": "ai_jobs",
+            "report_template_key": session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY,
+            "trigger": trigger,
+        },
+        created_by_user_id=created_by_user_id,
     )
     db.add(job)
     db.flush()
     session.status = SessionStatus.processing
     session.summary = session.summary or "Session processing has started."
     return job
+
+
+def create_session_processing_job(db: DbSession, *, principal: CurrentPrincipal, session: Session) -> AiJob:
+    """Create a queued session processing job and mark the session processing."""
+    return create_session_report_job(
+        db,
+        tenant_id=principal.tenant_id,
+        created_by_user_id=principal.user_id,
+        session=session,
+    )
+
+
+def report_contribution_effect(status: str, *, generated_at: str | None = None, had_append_intent: bool = False) -> dict[str, Any]:
+    """Build the per-capture report-contribution effect (Pro live report).
+
+    `status` is one of `pending` (processed, awaiting the report job), `updating` (report
+    job in flight), or `added` (folded into the current report).
+    """
+    return {
+        "type": "report_contribution",
+        "status": status,
+        "appendIntent": had_append_intent,
+        "generatedAt": generated_at,
+        "source": "ai-engine",
+    }
+
+
+def mark_session_report_contributions(
+    db: DbSession, *, session: Session, generated_at: str, source_capture_ids: list[str] | None = None
+) -> dict[str, int]:
+    """Flip the captures this report actually folded in to `added`; return included/set-aside counts.
+
+    Run after a Pro live-report job completes. Only captures in the report's source set are
+    marked `added` — a capture that arrived *while the job ran* (not in the source set) stays
+    `pending` so the follow-up refinement folds it in. Out-of-context captures are counted as
+    set aside for the report meta strip ("Generated from N captures · M set aside"). With no
+    source set (legacy/empty output) all in-context captures are marked, to avoid a re-dispatch loop.
+    """
+    source_set = {str(value) for value in source_capture_ids} if source_capture_ids else None
+    captures = list(
+        db.execute(
+            select(Capture).where(
+                Capture.tenant_id == session.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status == CaptureStatus.processed,
+            )
+        ).scalars()
+    )
+    included = 0
+    set_aside = 0
+    for capture in captures:
+        if capture_is_out_of_context(capture):
+            set_aside += 1
+            continue
+        if source_set is not None and str(capture.id) not in source_set:
+            continue  # arrived after this report was built — left pending for the next pass
+        included += 1
+        capture.capture_metadata = {
+            **(capture.capture_metadata or {}),
+            "report_contribution": report_contribution_effect("added", generated_at=generated_at),
+        }
+    return {"included": included, "set_aside": set_aside}
+
+
+def has_append_intent(output: dict[str, Any]) -> bool:
+    """Whether AI output carries an explicit append intent (Pro report-refinement signal)."""
+    intents = output.get("intents")
+    if not isinstance(intents, dict):
+        return False
+    append = intents.get("append")
+    return isinstance(append, dict) and append.get("present") is True
+
+
+def session_has_pending_capture_jobs(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    """Whether a session still has queued/running capture jobs (chain not yet drained)."""
+    return bool(
+        _session_capture_jobs(
+            db,
+            tenant_id=tenant_id,
+            session_id=session_id,
+            statuses=[AiJobStatus.queued, AiJobStatus.running],
+        )
+    )
+
+
+def session_has_active_report_job(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    """Whether a session-level live-report job is already queued/running (avoid duplicates)."""
+    row = db.execute(
+        select(AiJob.id)
+        .where(
+            AiJob.tenant_id == tenant_id,
+            AiJob.session_id == session_id,
+            AiJob.capture_id.is_(None),
+            AiJob.job_type == AiJobType.session_organize,
+            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running]),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    return row is not None
+
+
+def _reportable_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:
+    """Processed, in-context captures of a session (eligible to feed the live report)."""
+    captures = db.execute(
+        select(Capture).where(
+            Capture.tenant_id == tenant_id,
+            Capture.session_id == session_id,
+            Capture.status == CaptureStatus.processed,
+        )
+    ).scalars()
+    return [capture for capture in captures if not capture_is_out_of_context(capture)]
+
+
+def session_has_reportable_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    """Whether a session has at least one processed capture eligible for the report (not out-of-context)."""
+    return bool(_reportable_captures(db, tenant_id=tenant_id, session_id=session_id))
+
+
+def session_has_uncontributed_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    """Whether a reportable capture isn't yet folded into the report (its contribution != `added`).
+
+    Lets refinement self-heal: a capture added *while a report job was running* stays
+    uncontributed, so the next idle moment regenerates — without looping once everything is in.
+    """
+    for capture in _reportable_captures(db, tenant_id=tenant_id, session_id=session_id):
+        metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+        contribution = metadata.get("report_contribution")
+        status = contribution.get("status") if isinstance(contribution, dict) else None
+        if status != "added":
+            return True
+    return False
+
+
+def maybe_dispatch_session_report_job(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    session_id: uuid.UUID,
+    created_by_user_id: uuid.UUID | None,
+    force: bool = False,
+) -> None:
+    """Auto-regenerate the Pro live report once a session's capture chain is idle.
+
+    The live report is regenerated by an AI job as each capture lands (E2) — a calm background
+    job that never blocks capture. Pro only (Basic = chronological render, no synthesis job).
+    No-op while captures are still processing or a report job is already in flight. `force=True`
+    (capture deleted / marked relevant) regenerates whenever any reportable capture remains;
+    otherwise it only fires when a capture isn't yet folded in, so it converges and doesn't loop.
+    """
+    if tenant_tier(db, tenant_id) != "pro":
+        return
+    if session_has_pending_capture_jobs(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    if session_has_active_report_job(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    if force:
+        if not session_has_reportable_capture(db, tenant_id=tenant_id, session_id=session_id):
+            return
+    elif not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    session = db.execute(
+        select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if session is None:
+        return
+    job = create_session_report_job(
+        db,
+        tenant_id=tenant_id,
+        created_by_user_id=created_by_user_id,
+        session=session,
+        trigger="auto_live_report",
+    )
+    db.commit()
+    db.refresh(job)
+    dispatch_session_processing_job(db, job)
 
 
 def dispatch_capture_processing_job(db: DbSession, job: AiJob) -> None:
@@ -999,18 +1290,26 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     ).scalar_one_or_none()
     if session is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
-    captures = db.execute(
-        select(Capture)
-        .where(
-            Capture.tenant_id == job.tenant_id,
-            Capture.session_id == session.id,
-            Capture.status != CaptureStatus.deleted,
-        )
-        .order_by(Capture.created_at)
-    ).scalars()
+    captures = [
+        capture
+        for capture in db.execute(
+            select(Capture)
+            .where(
+                Capture.tenant_id == job.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
+            .order_by(Capture.created_at)
+        ).scalars()
+        # Out-of-context captures are kept but excluded from the synthesized report.
+        if not capture_is_out_of_context(capture)
+    ]
     # TODO(ai-integration): Real session processors should consume this stable
     # context and return the structured body-level output contract.
     processing_context = build_session_processing_input(db, session)
+    # The preferred report language (None = follow the report template's default) is consumed by
+    # a real synthesizer; the placeholder body is language-neutral.
+    processing_context = {**processing_context, "reportLanguage": tenant_report_language(db, job.tenant_id)}
     return {
         "job": ai_job_payload(job),
         "session": {
@@ -1113,14 +1412,16 @@ def complete_worker_job(
     patient_match_candidate = None
     ai_patient_action = None
     patient_information = output.get("patient_information")
+    tier = tenant_tier(db, job.tenant_id)
     # AI auto-assignment (match/create/reassign/suggest) is a Pro capability; Basic tenants
     # assign patients manually. Out-of-context flagging below still runs for both tiers.
     if (
-        tenant_tier(db, job.tenant_id) == "pro"
+        tier == "pro"
         and isinstance(patient_information, dict)
         and patient_information_has_explicit_identity(patient_information)
     ):
         assignment_basis = assignment_intent_basis(output)
+        strictness = tenant_match_strictness(db, job.tenant_id)
         has_existing_patient = session is not None and session.patient_id is not None
         # First identity on an unassigned visit is always applied; once a patient is
         # assigned, only an explicit (re)assignment instruction overrides it. An implicit
@@ -1159,11 +1460,59 @@ def complete_worker_job(
                     action=ai_patient_action,
                 )
             else:
-                # Apply was intended but the match is only a confident fuzzy one — surface a
-                # one-tap suggestion instead of a silent no-op (never auto-apply a fuzzy name).
-                near_match = near_match_suggestion(patient_match_candidate, patient_information=patient_information)
-                if near_match is not None:
-                    patient_match_candidate = near_match
+                # Apply was intended but the match is only a confident fuzzy one. Under
+                # balanced/lenient strictness a single high-confidence variant with an explicit
+                # instruction auto-applies (reversible, with notify); the national-ID conflict
+                # guard and ambiguity always win. Otherwise surface a one-tap suggestion instead
+                # of a silent no-op (never silently apply a fuzzy name).
+                auto_top = fuzzy_auto_apply_candidate(
+                    patient_match_candidate, strictness=strictness, assignment_basis=assignment_basis
+                )
+                auto_patient = None
+                if auto_top is not None:
+                    try:
+                        auto_patient = db.execute(
+                            select(Patient).where(
+                                Patient.id == uuid.UUID(str(auto_top["patientId"])),
+                                Patient.tenant_id == job.tenant_id,
+                            )
+                        ).scalar_one_or_none()
+                    except (ValueError, KeyError):
+                        auto_patient = None
+                if auto_patient is not None:
+                    spoken_name = spoken_name_from_information(patient_information)
+                    patient_match_candidate = {
+                        **patient_match_candidate,
+                        "decision": "matched",
+                        "status": "matched",
+                        "patientId": str(auto_patient.id),
+                        "displayName": auto_patient.display_name,
+                        "appliedAutomatically": True,
+                        "autoAppliedCloseMatch": True,
+                        "matchedName": auto_patient.display_name,
+                        "spokenName": spoken_name,
+                    }
+                    ai_patient_action = {
+                        **ai_patient_action_metadata(
+                            action="matched_and_assigned",
+                            patient=auto_patient,
+                            capture=capture,
+                            patient_information=patient_information,
+                            match_candidate=patient_match_candidate,
+                            created=False,
+                        ),
+                        # Flag the close match so the chip shows "· close match" + matched-vs-spoken.
+                        "closeMatch": True,
+                        "matchedName": auto_patient.display_name,
+                        "spokenName": spoken_name,
+                    }
+                    assign_session_to_ai_patient(
+                        db, session=session, capture=capture, patient=auto_patient, action=ai_patient_action
+                    )
+                else:
+                    near_match = near_match_suggestion(patient_match_candidate, patient_information=patient_information)
+                    if near_match is not None:
+                        patient_match_candidate = near_match
         elif has_existing_patient:
             patient_match_candidate = suggested_reassignment_candidate(
                 db,
@@ -1184,6 +1533,15 @@ def complete_worker_job(
     ooc_marker = out_of_context_marker(output)
     if ooc_marker is not None:
         capture.capture_metadata = {**capture.capture_metadata, "out_of_context": ooc_marker}
+    # Pro folds each in-context capture into the synthesized live report (E2). The capture is
+    # marked `pending` here; the report job flips it to `added` once it's folded in. Basic is a
+    # chronological render with no synthesis, so it carries no contribution effect, and an
+    # out-of-context capture is set aside rather than contributed.
+    if tier == "pro" and ooc_marker is None:
+        capture.capture_metadata = {
+            **capture.capture_metadata,
+            "report_contribution": report_contribution_effect("pending", had_append_intent=has_append_intent(output)),
+        }
     if patient_match_candidate is not None:
         capture.capture_metadata = {**capture.capture_metadata, "patient_match_candidate": patient_match_candidate}
         if ai_patient_action is not None:
@@ -1225,6 +1583,14 @@ def complete_worker_job(
     # capture's assignment has been applied to the session.
     if capture.session_id is not None:
         dispatch_next_session_capture(db, tenant_id=job.tenant_id, session_id=capture.session_id)
+        # Once the chain has drained, regenerate the Pro live report from the cumulative
+        # session state (no-op while more captures are still in flight).
+        maybe_dispatch_session_report_job(
+            db,
+            tenant_id=job.tenant_id,
+            session_id=capture.session_id,
+            created_by_user_id=job.created_by_user_id,
+        )
     return {"job": ai_job_payload(job)}
 
 
@@ -1430,6 +1796,15 @@ def complete_session_worker_job(
         for key in ("patient_match", "patient_match_candidate")
         if session.patient_id is None and key in previous_metadata and key not in extracted_metadata
     }
+    # The synthesized live report is a Pro capability: mark the captures it folded in as
+    # contributed and record the included / set-aside counts for the report meta strip.
+    report_contribution_summary: dict[str, int] | None = None
+    is_pro = tenant_tier(db, job.tenant_id) == "pro"
+    if is_pro:
+        report_source_ids = extracted_metadata.get("source_capture_ids") if isinstance(extracted_metadata.get("source_capture_ids"), list) else None
+        report_contribution_summary = mark_session_report_contributions(
+            db, session=session, generated_at=completed_at.isoformat(), source_capture_ids=report_source_ids
+        )
     session.extracted_metadata = {
         **preserved_assignment,
         **preserved_patient_match,
@@ -1437,6 +1812,7 @@ def complete_session_worker_job(
         "session_processing_output": session_processing_output,
         "generated_output_stale": False,
         "processed_versions": previous_versions[-5:],
+        **({"report_contribution_summary": report_contribution_summary} if report_contribution_summary is not None else {}),
     }
     session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     session.organization_source = OrganizationSource.ai_engine
@@ -1466,6 +1842,15 @@ def complete_session_worker_job(
     )
     db.commit()
     db.refresh(job)
+    # Self-heal: if a capture landed while this report was being built, it's still uncontributed —
+    # regenerate now that the job slot is free (converges once everything is folded in).
+    if is_pro and job.session_id is not None:
+        maybe_dispatch_session_report_job(
+            db,
+            tenant_id=job.tenant_id,
+            session_id=job.session_id,
+            created_by_user_id=job.created_by_user_id,
+        )
     return {"job": ai_job_payload(job)}
 
 

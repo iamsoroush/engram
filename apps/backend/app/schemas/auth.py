@@ -3,6 +3,17 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class DevLoginRequest(BaseModel):
     persona: str = Field(pattern="^(doctor|assistant|admin|patient-preview)$")
+    # Dev-only tier selector so Pro and Basic tenants are testable side-by-side.
+    tier: str = Field(default="pro", pattern="^(basic|pro)$")
+
+
+class TenantSettingsUpdate(BaseModel):
+    # Language preferences. transcription: "auto" | fa | en | ar. report: fa | en | ar, or
+    # null/"" to follow the report template default. Only provided keys are changed.
+    transcriptionLanguage: str | None = None
+    reportLanguage: str | None = None
+    # Fuzzy-match auto-apply line (H3): "strict" | "balanced" | "lenient".
+    matchStrictness: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -36,6 +47,12 @@ class TenantProfile(BaseModel):
     id: str
     name: str
     tier: str = "pro"
+    transcriptionLanguage: str = "auto"
+    reportLanguage: str | None = None
+    matchStrictness: str = "strict"
+    # A0 — vertical + the presentation label for its report-required work-unit ("Session" for clinics).
+    vertical: str = "clinic"
+    encounterLabel: str = "Session"
 
 
 class MembershipProfile(BaseModel):

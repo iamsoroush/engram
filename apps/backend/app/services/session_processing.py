@@ -17,6 +17,21 @@ SESSION_PROCESSING_INPUT_VERSION = "2026-05-21.session-processing-input.v1"
 SESSION_PROCESSING_OUTPUT_VERSION = "2026-05-21.session-processing-output.v1"
 
 
+def capture_is_out_of_context(capture: Capture) -> bool:
+    """Whether a capture is flagged out-of-context and not staff-overridden.
+
+    Out-of-context captures are kept but excluded from the (Pro) live report; a staff
+    "Mark relevant" override clears the marker so the capture flows back into the report.
+    """
+    metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+    marker = metadata.get("out_of_context")
+    if not isinstance(marker, dict):
+        return False
+    if marker.get("overridden_by_staff") is True:
+        return False
+    return marker.get("present") is True
+
+
 class SessionProcessingCaptureInput(TypedDict, total=False):
     """Capture-level input available to session processing."""
 
@@ -86,8 +101,9 @@ class SessionProcessingOutput(TypedDict, total=False):
 def build_session_processing_input(db: DbSession, session: Session) -> SessionProcessingInput:
     """Build the session-processing input context for the AI boundary."""
     template = get_report_template(session.report_template_key)
-    captures = list(
-        db.execute(
+    captures = [
+        capture
+        for capture in db.execute(
             select(Capture)
             .where(
                 Capture.tenant_id == session.tenant_id,
@@ -96,7 +112,9 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
             )
             .order_by(Capture.created_at)
         ).scalars()
-    )
+        # Out-of-context captures are kept but excluded from the synthesized report.
+        if not capture_is_out_of_context(capture)
+    ]
     artifact_ids = [capture.source_artifact_id for capture in captures if capture.source_artifact_id]
     artifacts_by_id = {
         artifact.id: artifact

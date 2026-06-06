@@ -150,6 +150,10 @@ class AssignPatientRequest(BaseModel):
     patient_id: str | None = Field(default=None, alias="patientId")
     reason: str | None = None
     source: str | None = "staff"
+    # The capture that justifies this (re)assignment — set when applying a per-capture
+    # `Suggested: reassign` so the assignment is attributed to that capture (its suggestion chip
+    # clears), and the prior basis capture becomes a switchable alternate.
+    basis_capture_id: str | None = Field(default=None, alias="basisCaptureId")
 
     model_config = {"populate_by_name": True}
 

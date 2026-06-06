@@ -129,6 +129,18 @@ class Tenant(Base):
         pg_enum(TenantStatus, "tenant_status"), nullable=False, default=TenantStatus.active
     )
     tier: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pro")
+    # Language preferences: transcription "auto" = transcribe verbatim in the spoken
+    # language/script; report_language NULL = follow the report template's default.
+    transcription_language: Mapped[str] = mapped_column(String(20), nullable=False, server_default="auto")
+    report_language: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Fuzzy-match auto-apply line (H3): "strict" = deterministic matches only (default,
+    # preserves prior behavior); "balanced"/"lenient" auto-apply a single high-confidence
+    # fuzzy match on an explicit reassignment instruction (high/lower threshold).
+    match_strictness: Mapped[str] = mapped_column(String(20), nullable=False, server_default="strict")
+    # Vertical (A0): the kind of clinic/lab this tenant runs. The report-required work-unit
+    # (today's Session) is the generic Encounter; its presentation label and per-type
+    # `Session.attributes` are derived from this. "clinic" for v1; "radiology"/"pathology" later.
+    vertical: Mapped[str] = mapped_column(String(40), nullable=False, server_default="clinic")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
@@ -272,6 +284,10 @@ class Session(Base):
     generated_report: Mapped[str | None] = mapped_column(Text)
     report_model: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     extracted_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    # Per-vertical extension point (A0): reserved for the second vertical's typed fields
+    # (radiology: accession/modality/body_part; pathology: specimen_id/stain). Empty for clinics.
+    # Kept separate from extracted_metadata (which holds AI/processing output).
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     report_template_key: Mapped[str | None] = mapped_column(String(120))
     organization_source: Mapped[OrganizationSource] = mapped_column(
         pg_enum(OrganizationSource, "organization_source"), nullable=False, default=OrganizationSource.none

@@ -23,9 +23,17 @@ from app.models import (
 )
 from app.schemas.auth import AuthResponse, MembershipProfile, MeResponse, RefreshResponse, TenantProfile, UserProfile
 from app.services.patient_identity import deterministic_identifier_specs
+from app.services.verticals import encounter_label
 
 DEV_NAMESPACE = uuid.UUID("43e7c2ca-b3a2-40a1-a1c8-a0f64a1d2c22")
 DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
+# A second dev tenant on the Basic tier so Pro and Basic can be exercised side-by-side
+# (dev-login `tier` selects which one). Mirrors production, where tier is a tenant attribute.
+DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
+DEV_TENANTS = {
+    "pro": {"id": DEV_TENANT_ID, "name": "AesMem Demo Clinic", "slug": "aesmem-demo", "tier": "pro"},
+    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "AesMem Demo Clinic (Basic)", "slug": "aesmem-demo-basic", "tier": "basic"},
+}
 
 DEV_PERSONAS = {
     "doctor": {
@@ -56,16 +64,17 @@ DEV_PERSONAS = {
 
 
 def ensure_dev_seed(db: Session) -> None:
-    tenant = db.get(Tenant, DEV_TENANT_ID)
-    if tenant is None:
-        tenant = Tenant(
-            id=DEV_TENANT_ID,
-            name="AesMem Demo Clinic",
-            slug="aesmem-demo",
-            status=TenantStatus.active,
-            tier="pro",
-        )
-        db.add(tenant)
+    for spec in DEV_TENANTS.values():
+        if db.get(Tenant, spec["id"]) is None:
+            db.add(
+                Tenant(
+                    id=spec["id"],
+                    name=spec["name"],
+                    slug=spec["slug"],
+                    status=TenantStatus.active,
+                    tier=spec["tier"],
+                )
+            )
 
     for persona, data in DEV_PERSONAS.items():
         user = db.get(User, data["id"])
@@ -84,56 +93,60 @@ def ensure_dev_seed(db: Session) -> None:
             user.auth_subject = f"dev:{persona}"
             user.status = UserStatus.active
 
-        membership = db.execute(
-            select(TenantMembership).where(
-                TenantMembership.tenant_id == DEV_TENANT_ID,
-                TenantMembership.user_id == data["id"],
-            )
-        ).scalar_one_or_none()
-        if membership is None:
-            db.add(
-                TenantMembership(
-                    tenant_id=DEV_TENANT_ID,
-                    user_id=data["id"],
-                    role=data["role"],
-                    status=MembershipStatus.active,
+        for spec in DEV_TENANTS.values():
+            membership = db.execute(
+                select(TenantMembership).where(
+                    TenantMembership.tenant_id == spec["id"],
+                    TenantMembership.user_id == data["id"],
                 )
-            )
-        else:
-            membership.role = data["role"]
-            membership.status = MembershipStatus.active
+            ).scalar_one_or_none()
+            if membership is None:
+                db.add(
+                    TenantMembership(
+                        tenant_id=spec["id"],
+                        user_id=data["id"],
+                        role=data["role"],
+                        status=MembershipStatus.active,
+                    )
+                )
+            else:
+                membership.role = data["role"]
+                membership.status = MembershipStatus.active
 
-    if db.execute(select(Patient.id).where(Patient.tenant_id == DEV_TENANT_ID).limit(1)).scalar_one_or_none() is None:
-        sample_patient_id = uuid.uuid5(DEV_NAMESPACE, "patient:sara-n")
-        db.add(
-            Patient(
-                id=sample_patient_id,
-                tenant_id=DEV_TENANT_ID,
-                display_name="Sara N.",
-                legal_first_name="Sara",
-                legal_last_name="N.",
-                status=PatientStatus.active,
-                created_by_user_id=DEV_PERSONAS["doctor"]["id"],
-            )
-        )
-        db.add_all(
-            [
-                PatientIdentifier(
-                    tenant_id=DEV_TENANT_ID,
-                    patient_id=sample_patient_id,
-                    **spec,
-                )
-                for spec in deterministic_identifier_specs(
-                    display_name="Sara N.",
-                    legal_first_name="Sara",
-                    legal_last_name="N.",
-                    phone="+1 555 0100",
-                    source="dev-seed",
-                )
-            ]
-        )
-
+    # Each tenant gets its own distinct demo patient so it's obvious which tier you're in.
+    _ensure_dev_patient(db, tenant_id=DEV_TENANT_ID, key="patient:sara-n", display_name="Sara N.", first="Sara", last="N.", phone="+1 555 0100")
+    _ensure_dev_patient(db, tenant_id=DEV_TENANT_BASIC_ID, key="patient:basic-bita", display_name="Bita B.", first="Bita", last="B.", phone="+1 555 0200")
     db.commit()
+
+
+def _ensure_dev_patient(db: Session, *, tenant_id: uuid.UUID, key: str, display_name: str, first: str, last: str, phone: str) -> None:
+    """Seed one deterministic demo patient into a dev tenant when it has none."""
+    if db.execute(select(Patient.id).where(Patient.tenant_id == tenant_id).limit(1)).scalar_one_or_none() is not None:
+        return
+    patient_id = uuid.uuid5(DEV_NAMESPACE, key)
+    db.add(
+        Patient(
+            id=patient_id,
+            tenant_id=tenant_id,
+            display_name=display_name,
+            legal_first_name=first,
+            legal_last_name=last,
+            status=PatientStatus.active,
+            created_by_user_id=DEV_PERSONAS["doctor"]["id"],
+        )
+    )
+    db.add_all(
+        [
+            PatientIdentifier(tenant_id=tenant_id, patient_id=patient_id, **spec)
+            for spec in deterministic_identifier_specs(
+                display_name=display_name,
+                legal_first_name=first,
+                legal_last_name=last,
+                phone=phone,
+                source="dev-seed",
+            )
+        ]
+    )
 
 
 def active_memberships(db: Session, user_id: uuid.UUID) -> list[TenantMembership]:
@@ -187,7 +200,16 @@ def profile_response(db: Session, user: User, tenant: Tenant, persona: str | Non
         accessToken=tokens[0],
         refreshToken=tokens[1],
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(id=str(tenant.id), name=tenant.name, tier=tenant.tier),
+        tenant=TenantProfile(
+            id=str(tenant.id),
+            name=tenant.name,
+            tier=tenant.tier,
+            transcriptionLanguage=tenant.transcription_language,
+            reportLanguage=tenant.report_language,
+            matchStrictness=tenant.match_strictness,
+            vertical=tenant.vertical,
+            encounterLabel=encounter_label(tenant.vertical),
+        ),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],
@@ -198,10 +220,72 @@ def me_response(db: Session, user: User, tenant: Tenant, persona: str | None = N
     memberships = active_memberships(db, user.id)
     return MeResponse(
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(id=str(tenant.id), name=tenant.name, tier=tenant.tier),
+        tenant=TenantProfile(
+            id=str(tenant.id),
+            name=tenant.name,
+            tier=tenant.tier,
+            transcriptionLanguage=tenant.transcription_language,
+            reportLanguage=tenant.report_language,
+            matchStrictness=tenant.match_strictness,
+            vertical=tenant.vertical,
+            encounterLabel=encounter_label(tenant.vertical),
+        ),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],
+    )
+
+
+TRANSCRIPTION_LANGUAGE_OPTIONS = {"auto", "fa", "en", "ar"}
+REPORT_LANGUAGE_OPTIONS = {"fa", "en", "ar"}
+MATCH_STRICTNESS_OPTIONS = {"strict", "balanced", "lenient"}
+
+
+def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provided: dict) -> TenantProfile:
+    """Update a tenant's language + match-strictness preferences (only the keys provided)."""
+    tenant = db.get(Tenant, principal.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    if "transcriptionLanguage" in provided:
+        value = str(provided["transcriptionLanguage"] or "auto").strip().lower()
+        if value not in TRANSCRIPTION_LANGUAGE_OPTIONS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported transcription language")
+        tenant.transcription_language = value
+    if "reportLanguage" in provided:
+        raw = provided["reportLanguage"]
+        value = str(raw).strip().lower() if raw is not None else ""
+        if value and value not in REPORT_LANGUAGE_OPTIONS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported report language")
+        tenant.report_language = value or None
+    if "matchStrictness" in provided:
+        value = str(provided["matchStrictness"] or "strict").strip().lower()
+        if value not in MATCH_STRICTNESS_OPTIONS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported match strictness")
+        tenant.match_strictness = value
+    audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=principal.user_id,
+        action="tenant.update_settings",
+        target_type="tenant",
+        target_id=tenant.id,
+        details={
+            "transcription_language": tenant.transcription_language,
+            "report_language": tenant.report_language,
+            "match_strictness": tenant.match_strictness,
+        },
+    )
+    db.commit()
+    db.refresh(tenant)
+    return TenantProfile(
+        id=str(tenant.id),
+        name=tenant.name,
+        tier=tenant.tier,
+        transcriptionLanguage=tenant.transcription_language,
+        reportLanguage=tenant.report_language,
+        matchStrictness=tenant.match_strictness,
+        vertical=tenant.vertical,
+        encounterLabel=encounter_label(tenant.vertical),
     )
 
 
@@ -236,17 +320,18 @@ def issue_tokens(db: Session, user: User, tenant_id: uuid.UUID) -> tuple[str, st
     return access_token, refresh_token
 
 
-def dev_login(db: Session, persona: str) -> AuthResponse:
+def dev_login(db: Session, persona: str, tier: str = "pro") -> AuthResponse:
     if settings.auth_mode != "dev":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dev login is disabled")
     ensure_dev_seed(db)
     data = DEV_PERSONAS[persona]
+    tenant_spec = DEV_TENANTS.get(tier, DEV_TENANTS["pro"])
     user = db.get(User, data["id"])
-    tenant = db.get(Tenant, DEV_TENANT_ID)
+    tenant = db.get(Tenant, tenant_spec["id"])
     if user is None or tenant is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Dev seed failed")
     tokens = issue_tokens(db, user, tenant.id)
-    audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="auth.dev_login", details={"persona": persona})
+    audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="auth.dev_login", details={"persona": persona, "tier": tenant.tier})
     db.commit()
     return profile_response(db, user, tenant, persona, tokens)
 

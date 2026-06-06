@@ -37,8 +37,24 @@ def update_capture(
             capture.status = CaptureStatus(request.status)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid capture status") from exc
+    relevance_marked = False
     if request.metadata is not None:
-        capture.capture_metadata = merged_capture_metadata_for_staff_edit(capture.capture_metadata or {}, request.metadata, principal)
+        incoming_metadata = dict(request.metadata)
+        # Staff "Mark relevant" clears the AI out-of-context marker non-destructively so the
+        # capture flows back into the (Pro) live report, while keeping the AI marker for audit.
+        if isinstance(incoming_metadata.get("out_of_context"), dict):
+            relevance_marked = True
+            existing_ooc = (capture.capture_metadata or {}).get("out_of_context")
+            existing_present = isinstance(existing_ooc, dict) and existing_ooc.get("present") is True
+            incoming_metadata["out_of_context"] = {
+                "present": False,
+                "overridden_by_staff": True,
+                "source": "staff",
+                "overridden_by_user_id": str(principal.user_id),
+                "overridden_at": datetime.now(timezone.utc).isoformat(),
+                "ai_marker": existing_ooc if existing_present else (existing_ooc.get("ai_marker") if isinstance(existing_ooc, dict) else None),
+            }
+        capture.capture_metadata = merged_capture_metadata_for_staff_edit(capture.capture_metadata or {}, incoming_metadata, principal)
         if capture.capture_type == CaptureType.photo and "caption" in request.metadata:
             session = db.get(Session, capture.session_id)
             if session is not None and session.tenant_id == principal.tenant_id:
@@ -50,6 +66,19 @@ def update_capture(
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="capture.update", target_type="capture", target_id=capture.id)
     db.commit()
     db.refresh(capture)
+    # A capture moving in/out of the report changes its contents, so regenerate the Pro live
+    # report (no-op for Basic / mid-chain / nothing reportable).
+    if relevance_marked and capture.session_id is not None:
+        from app.services.ai_jobs import maybe_dispatch_session_report_job
+
+        maybe_dispatch_session_report_job(
+            db,
+            tenant_id=principal.tenant_id,
+            session_id=capture.session_id,
+            created_by_user_id=principal.user_id,
+            force=True,
+        )
+        db.refresh(capture)
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
     return capture_payload(capture, artifact)
 
@@ -129,10 +158,13 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
         "deleted_by_user_id": str(principal.user_id),
     }
     mark_session_draft_after_capture_delete(session, str(capture.id), now)
+    # Flush the soft-delete before recomputing: the session uses autoflush=False, and
+    # `apply_active_patient_assignment` queries for non-deleted captures to drop the deleted
+    # capture's assignment event. Without this flush that query still sees the capture as
+    # active, so deleting the assignment-source capture would NOT revert to the prior patient.
+    db.flush()
     # Patient assignment is recomputed from the timeline (cheap; no AI job): the deleted
     # capture's assignment event is dropped and the active assignment recomputed.
-    # NOTE: live-report regeneration on capture change is deferred to Epic E — no report
-    # job runs for now, so deleting a capture never puts the session into a processing lock.
     apply_active_patient_assignment(db, session)
     audit(
         db,
@@ -144,6 +176,18 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
         details={"session_id": str(session.id)},
     )
     db.commit()
+    db.refresh(session)
+    # Removing a capture changes what the report should contain, so regenerate the Pro live
+    # report from the remaining captures (no-op for Basic / when nothing reportable remains).
+    from app.services.ai_jobs import maybe_dispatch_session_report_job
+
+    maybe_dispatch_session_report_job(
+        db,
+        tenant_id=principal.tenant_id,
+        session_id=session.id,
+        created_by_user_id=principal.user_id,
+        force=True,
+    )
     db.refresh(session)
     return {"session": session_payload(session, db)}
 

@@ -101,9 +101,26 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
         db.refresh(session)
         return {"session": session_payload(session, db), "processingJob": None}
 
-    from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload
+    from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload, tenant_tier
 
     session.report_template_key = request.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
+    # The Pro live report regenerates automatically as captures land (Epic E), so the manual
+    # Generate button is gone; this endpoint now only backs explicit retries. Basic live reports
+    # are a chronological render with no synthesis job, so there is nothing to (re)generate.
+    if tenant_tier(db, principal.tenant_id) != "pro":
+        audit(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            action="session.process.request_basic_noop",
+            target_type="session",
+            target_id=session.id,
+            details={"report_template_key": session.report_template_key},
+        )
+        db.commit()
+        db.refresh(session)
+        return {"session": session_payload(session, db), "processingJob": None}
+
     # TODO(ai-integration): Keep this placeholder queue boundary; replace worker output with real progressive AI jobs later.
     job = create_session_processing_job(db, principal=principal, session=session)
     audit(
@@ -215,16 +232,36 @@ def assign_session_patient(
         else None
     )
     existing_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    # When staff apply a per-capture suggestion, attribute the assignment to that capture so it
+    # becomes the source (and the prior basis capture turns into a switchable alternate).
+    basis_capture = None
+    if request.basis_capture_id and next_patient_id:
+        basis_capture = db.execute(
+            select(Capture).where(
+                Capture.id == parse_uuid(request.basis_capture_id, "basis_capture_id"),
+                Capture.tenant_id == principal.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
+        ).scalar_one_or_none()
     event = patient_assignment_event(
         source=request.source or "staff",
         action="manually_assigned" if next_patient_id else "manually_unassigned",
         patient_id=next_patient_id,
         display_name=patient.display_name if patient else None,
         reason=request.reason,
+        capture_id=basis_capture.id if basis_capture is not None else None,
         actor_user_id=principal.user_id,
     )
     session.extracted_metadata = append_patient_assignment_event(existing_metadata, event)
     apply_active_patient_assignment(db, session)
+    if basis_capture is not None:
+        # The suggestion on the now-applied capture is consumed — drop it so the chip clears.
+        basis_capture.capture_metadata = {
+            key: value
+            for key, value in (basis_capture.capture_metadata or {}).items()
+            if key != "patient_match_candidate"
+        }
     audit(
         db,
         tenant_id=principal.tenant_id,

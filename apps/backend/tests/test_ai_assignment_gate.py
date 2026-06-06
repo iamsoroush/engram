@@ -7,12 +7,15 @@ from unittest.mock import patch
 from app.services.ai_jobs import (
     assignment_intent_basis,
     earliest_pending_capture_job,
+    fuzzy_auto_apply_candidate,
     near_match_suggestion,
     out_of_context_marker,
     should_apply_identity_assignment,
     suggested_reassignment_candidate,
+    tenant_match_strictness,
     tenant_tier,
 )
+from app.services.patient_matching import NATIONAL_ID_CONFLICT_RISK
 
 
 class _TierDb:
@@ -31,6 +34,55 @@ class TenantTierTests(unittest.TestCase):
     def test_missing_or_unknown_defaults_to_pro(self):
         self.assertEqual(tenant_tier(_TierDb(None), uuid.uuid4()), "pro")
         self.assertEqual(tenant_tier(_TierDb("enterprise"), uuid.uuid4()), "pro")
+
+
+class TenantMatchStrictnessTests(unittest.TestCase):
+    def test_known_levels_pass_through(self):
+        for level in ("strict", "balanced", "lenient"):
+            self.assertEqual(tenant_match_strictness(_TierDb(level), uuid.uuid4()), level)
+
+    def test_missing_or_unknown_defaults_to_strict(self):
+        self.assertEqual(tenant_match_strictness(_TierDb(None), uuid.uuid4()), "strict")
+        self.assertEqual(tenant_match_strictness(_TierDb("aggressive"), uuid.uuid4()), "strict")
+
+
+class FuzzyAutoApplyCandidateTests(unittest.TestCase):
+    def _possible_match(self, candidates, risks=None):
+        return {"decision": "possible_match", "candidateSet": candidates, "risks": risks or []}
+
+    def _single(self, confidence=0.84, risks=None):
+        return self._possible_match([{"patientId": str(uuid.uuid4()), "displayName": "سروش معاصد", "confidence": confidence, "risks": risks or []}])
+
+    def test_strict_never_auto_applies_a_fuzzy_match(self):
+        self.assertIsNone(fuzzy_auto_apply_candidate(self._single(), strictness="strict", assignment_basis="explicit"))
+
+    def test_balanced_auto_applies_single_high_confidence_explicit(self):
+        top = fuzzy_auto_apply_candidate(self._single(0.84), strictness="balanced", assignment_basis="explicit")
+        self.assertIsNotNone(top)
+        self.assertEqual(top["displayName"], "سروش معاصد")
+
+    def test_balanced_below_threshold_is_suggestion(self):
+        self.assertIsNone(fuzzy_auto_apply_candidate(self._single(0.80), strictness="balanced", assignment_basis="explicit"))
+
+    def test_lenient_reaches_lower_threshold(self):
+        self.assertIsNotNone(fuzzy_auto_apply_candidate(self._single(0.78), strictness="lenient", assignment_basis="explicit"))
+
+    def test_implicit_basis_never_auto_applies(self):
+        self.assertIsNone(fuzzy_auto_apply_candidate(self._single(0.84), strictness="lenient", assignment_basis="implicit"))
+
+    def test_national_id_conflict_guard_blocks_auto_apply_at_every_level(self):
+        result_conflict = self._single(0.84, risks=[NATIONAL_ID_CONFLICT_RISK])
+        result_conflict["risks"] = [NATIONAL_ID_CONFLICT_RISK]
+        self.assertIsNone(fuzzy_auto_apply_candidate(result_conflict, strictness="lenient", assignment_basis="explicit"))
+
+    def test_tie_at_top_stays_choose_patient(self):
+        tie = self._possible_match(
+            [
+                {"patientId": str(uuid.uuid4()), "displayName": "نگار احمدی", "confidence": 0.84},
+                {"patientId": str(uuid.uuid4()), "displayName": "بابک احمدی", "confidence": 0.84},
+            ]
+        )
+        self.assertIsNone(fuzzy_auto_apply_candidate(tie, strictness="lenient", assignment_basis="explicit"))
 
 
 class AssignmentIntentBasisTests(unittest.TestCase):
@@ -100,6 +152,30 @@ class SuggestedReassignmentTests(unittest.TestCase):
         self.assertEqual(candidate["currentPatientId"], str(current_patient_id))
         # Carries the underlying match target so the UI can offer "reassign to X".
         self.assertEqual(candidate["displayName"], "Ms Ghasemi")
+        # Matched-vs-spoken identity for the H4 partial-match surface.
+        self.assertEqual(candidate["matchedName"], "Ms Ghasemi")
+        self.assertEqual(candidate["spokenName"], "خانم قاسمی")
+
+    def test_promotes_dominant_fuzzy_candidate_so_apply_reassigns_existing(self):
+        session = SimpleNamespace(tenant_id=uuid.uuid4(), patient_id=uuid.uuid4())
+        pid = str(uuid.uuid4())
+        # A possible_match carries no top-level patientId; the dominant candidate is promoted.
+        fuzzy = {
+            "decision": "possible_match",
+            "patientId": None,
+            "displayName": None,
+            "candidateSet": [{"patientId": pid, "displayName": "سروش معاصد", "confidence": 0.84}],
+        }
+        with patch("app.services.ai_jobs.match_patient_from_patient_information", return_value=fuzzy):
+            candidate = suggested_reassignment_candidate(
+                object(),
+                tenant_id=session.tenant_id,
+                session=session,
+                patient_information={"raw_mentioned_name": "سروش معاضد"},
+            )
+        self.assertEqual(candidate["patientId"], pid)
+        self.assertEqual(candidate["matchedName"], "سروش معاصد")
+        self.assertEqual(candidate["spokenName"], "سروش معاضد")
 
 
 class NearMatchSuggestionTests(unittest.TestCase):
@@ -120,6 +196,8 @@ class NearMatchSuggestionTests(unittest.TestCase):
         self.assertEqual(out["decision"], "suggested_reassignment")
         self.assertEqual(out["patientId"], pid)
         self.assertEqual(out["displayName"], "سروش معاصد")
+        self.assertEqual(out["matchedName"], "سروش معاصد")
+        self.assertEqual(out["spokenName"], "سروش معاضد")
         self.assertFalse(out["appliedAutomatically"])
 
     def test_tie_at_top_stays_choose_patient(self):

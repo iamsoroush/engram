@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPExcepti
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required
-from app.auth.service import dev_login, login, logout, me_response, refresh
+from app.auth.service import dev_login, login, logout, me_response, refresh, update_tenant_settings
 from app.config import settings
 from app.db.session import get_db
 from app.schemas.api import (
@@ -23,7 +23,7 @@ from app.schemas.api import (
     SessionSaveRequest,
     SessionUpdate,
 )
-from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest
+from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest, TenantSettingsUpdate
 from app.services.ai_jobs import (
     complete_worker_job,
     enqueue_capture_processing_job,
@@ -233,7 +233,7 @@ def internal_capture_file_content(
 @api_v1.post("/auth/dev-login")
 def auth_dev_login(request: DevLoginRequest, db: Session = Depends(get_db)) -> Any:
     """Create a development authentication session for a demo persona."""
-    return dev_login(db, request.persona)
+    return dev_login(db, request.persona, request.tier)
 
 
 @api_v1.post("/auth/login")
@@ -263,6 +263,16 @@ def auth_logout(
 def get_me(principal: CurrentPrincipal = Depends(get_current_principal), db: Session = Depends(get_db)) -> Any:
     """Return the authenticated user, tenant, and membership context."""
     return me_response(db, principal.user, principal.tenant)
+
+
+@api_v1.patch("/tenant/settings")
+def update_tenant_settings_route(
+    request: TenantSettingsUpdate,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Update tenant language preferences (transcription / report)."""
+    return update_tenant_settings(db, principal, provided=request.model_dump(exclude_unset=True))
 
 
 @api_v1.get("/patients")
