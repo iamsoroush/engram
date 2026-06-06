@@ -12,11 +12,12 @@ export function LoginGate({
   error: string;
   pendingCount: number;
   onLogin: (email: string, password: string) => Promise<void>;
-  onPersonaLogin: (persona: Persona) => Promise<void>;
+  onPersonaLogin: (persona: Persona, tier: "pro" | "basic") => Promise<void>;
 }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busyPersona, setBusyPersona] = React.useState<Persona | null>(null);
+  const [devTier, setDevTier] = React.useState<"pro" | "basic">("pro");
   const [submitting, setSubmitting] = React.useState(false);
   const personas: Array<{ value: Persona; label: string }> = [
     { value: "doctor", label: "Doctor" },
@@ -38,7 +39,7 @@ export function LoginGate({
   const loginPersona = async (persona: Persona) => {
     setBusyPersona(persona);
     try {
-      await onPersonaLogin(persona);
+      await onPersonaLogin(persona, devTier);
     } finally {
       setBusyPersona(null);
     }
@@ -55,6 +56,24 @@ export function LoginGate({
         {pendingCount ? (
           <div className="alert alert-amber">
             {pendingCount} capture{pendingCount === 1 ? "" : "s"} saved on this device. Sign in and I'll organize {pendingCount === 1 ? "it" : "them"} when connection is available.
+          </div>
+        ) : null}
+        {IS_DEV ? (
+          <div className="dev-tier-switch" role="radiogroup" aria-label="Development tenant tier">
+            <span>Tier</span>
+            {(["pro", "basic"] as const).map((tier) => (
+              <button
+                aria-checked={devTier === tier}
+                className={devTier === tier ? "active" : ""}
+                disabled={busyPersona !== null}
+                key={tier}
+                onClick={() => setDevTier(tier)}
+                role="radio"
+                type="button"
+              >
+                {tier === "pro" ? "Pro" : "Basic"}
+              </button>
+            ))}
           </div>
         ) : null}
         {IS_DEV ? (

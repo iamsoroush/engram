@@ -12,16 +12,16 @@ import type {
   PendingCapture,
   Persona,
 } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession } from "../../domain/types";
+import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
 
-export async function loginWithPersona(persona: Persona) {
+export async function loginWithPersona(persona: Persona, tier: "pro" | "basic" = "pro") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ persona }),
+    body: JSON.stringify({ persona, tier }),
   });
   if (!response.ok) throw new Error("Login failed");
   return (await response.json()) as AuthSession;
@@ -193,25 +193,67 @@ export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: st
 export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignmentDraft, idempotencyKey?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
+  // Persist every demographic field the unified create form collected (B3), not just the name.
   const response = await apiFetch(`${API_BASE}/patients`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ displayName: draft.displayName, nationalId: draft.nationalId || null }),
+    body: JSON.stringify({
+      displayName: draft.displayName,
+      nationalId: draft.nationalId || null,
+      phone: draft.phone || null,
+      dateOfBirth: draft.dateOfBirth || null,
+      sex: draft.sex || null,
+      notes: draft.notes || null,
+    }),
   });
   if (!response.ok) throw new Error("Could not create patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
 }
 
-export async function updatePatient(
+export async function updateTenantSettings(
   apiFetch: ApiFetch,
-  patientId: string,
-  draft: {
-    displayName?: string;
-    nationalId?: string | null;
-    phone?: string | null;
-    dateOfBirth?: string | null;
-  },
+  settings: { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string },
 ) {
+  const response = await apiFetch(`${API_BASE}/tenant/settings`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) throw new Error("Could not update tenant settings");
+  return (await response.json()) as { id: string; name: string; tier?: string; transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string };
+}
+
+export async function getPatient(apiFetch: ApiFetch, patientId: string): Promise<StructuredPatientInformation | null> {
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}`);
+  if (!response.ok) return null;
+  const raw = (await response.json()) as Record<string, unknown>;
+  const str = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
+  return {
+    source: "db",
+    status: "assigned",
+    patientId: str(raw.id),
+    displayName: str(raw.displayName),
+    legalFirstName: str(raw.legalFirstName),
+    legalLastName: str(raw.legalLastName),
+    nationalId: str(raw.nationalId),
+    dateOfBirth: str(raw.dateOfBirth),
+    sex: str(raw.sex),
+    phone: str(raw.phone),
+    email: str(raw.email),
+    notes: str(raw.notes),
+  };
+}
+
+export type PatientEditDraft = {
+  displayName?: string;
+  nationalId?: string | null;
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  sex?: string | null;
+  notes?: string | null;
+};
+
+export async function updatePatient(apiFetch: ApiFetch, patientId: string, draft: PatientEditDraft) {
   // Partial PATCH: only send keys that were provided, so an untouched field is never
   // overwritten (e.g. editing a phone must not clear an existing national ID).
   const body: Record<string, unknown> = {};
@@ -219,6 +261,8 @@ export async function updatePatient(
   if (draft.nationalId !== undefined) body.nationalId = draft.nationalId;
   if (draft.phone !== undefined) body.phone = draft.phone;
   if (draft.dateOfBirth !== undefined) body.dateOfBirth = draft.dateOfBirth;
+  if (draft.sex !== undefined) body.sex = draft.sex;
+  if (draft.notes !== undefined) body.notes = draft.notes;
   const response = await apiFetch(`${API_BASE}/patients/${patientId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -247,13 +291,13 @@ export async function verifyAiPatientCreation(apiFetch: ApiFetch, sessionId: str
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
-export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string, patientId: string, idempotencyKey?: string) {
+export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string, patientId: string, idempotencyKey?: string, basisCaptureId?: string) {
   const headers = new Headers({ "Content-Type": "application/json" });
   if (idempotencyKey) headers.set("Idempotency-Key", idempotencyKey);
   const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/assign-patient`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment" }),
+    body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment", basisCaptureId }),
   });
   if (!response.ok) throw new Error("Could not assign patient");
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
@@ -336,6 +380,18 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
     }),
   });
   if (!response.ok) throw new Error("Could not update capture transcript");
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+export async function markCaptureRelevant(apiFetch: ApiFetch, captureId: string) {
+  // Clears the AI out-of-context marker (the backend records the staff override and
+  // re-folds the capture into the Pro live report).
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metadata: { out_of_context: { present: false } } }),
+  });
+  if (!response.ok) throw new Error("Could not update capture relevance");
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
 }
 

@@ -159,6 +159,37 @@ small {
   gap: 10px;
 }
 
+/* Dev-only tenant-tier selector (Pro/Basic) on the persona sign-in. */
+.dev-tier-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+}
+.dev-tier-switch > span {
+  font-weight: 700;
+  color: var(--color-muted);
+  margin-right: 2px;
+}
+.dev-tier-switch button {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+.dev-tier-switch button.active {
+  background: var(--color-primary-soft);
+  border-color: #d6e4ff;
+  color: var(--color-primary);
+}
+.dev-tier-switch button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .field-label {
   display: grid;
   gap: 6px;
@@ -257,6 +288,214 @@ small {
   }
 }
 
+/* B3 — shared PatientForm (used for both creating and editing a patient). */
+.patient-form {
+  display: grid;
+  gap: 12px;
+}
+.patient-form-loading {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.patient-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.patient-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--color-text-soft);
+}
+.patient-form-field-wide {
+  grid-column: 1 / -1;
+}
+.patient-form-field input,
+.patient-form-field select,
+.patient-form-field textarea {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  font-size: 0.86rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: #fff;
+}
+.patient-form-field textarea {
+  resize: vertical;
+  min-height: 38px;
+}
+.patient-form-field input:disabled,
+.patient-form-field select:disabled,
+.patient-form-field textarea:disabled {
+  background: #f7f9fc;
+  color: var(--color-muted);
+}
+.patient-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.patient-form-cancel,
+.patient-form-save {
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.patient-form-cancel {
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-soft);
+}
+.patient-form-save {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+.patient-form-save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+@media (max-width: 560px) {
+  .patient-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* B3 — Patients tab: a create entry point + a paginated list (synced with search). */
+.patients-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.patients-create-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 14px;
+  cursor: pointer;
+}
+.patients-create-button:hover {
+  filter: brightness(0.95);
+}
+.patients-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.patients-count {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.patients-load-more {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-pill);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+.patients-load-more:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+.patients-load-more:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Epic G — storage durability: the full hard-stop dialog + the low-storage recording warning. */
+.storage-guard-sheet {
+  max-width: 440px;
+}
+.storage-guard-close {
+  border: 0;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.storage-guard-close:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+.storage-guard-copy {
+  margin: 4px 0 14px;
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.storage-guard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.storage-guard-export {
+  flex: 1 1 auto;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: var(--radius-md);
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.storage-guard-export:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.storage-guard-dismiss {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-soft);
+  border-radius: var(--radius-md);
+  font-size: 0.86rem;
+  font-weight: 700;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.storage-guard-note {
+  margin: 10px 0 0;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+}
+.recording-storage-warning {
+  margin: 0 16px 10px;
+  border: 1px solid #f3e3bf;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .assignment-unassign {
   margin-left: auto;
   align-self: center;
@@ -309,8 +548,17 @@ small {
   color: var(--color-warning);
   border-color: #f3e3bf;
 }
-.live-draft-capture.is-out-of-context {
-  opacity: 0.6;
+/* Dim the set-aside capture's content, but keep the effect chips (incl. "Mark relevant")
+   fully legible/actionable so a wrong out-of-context detection stays one-tap correctable.
+   (opacity can't be un-dimmed by a child, so we dim the inner content, not the whole card.) */
+.live-draft-capture.is-out-of-context .live-draft-marker,
+.live-draft-capture.is-out-of-context .live-draft-title-row,
+.live-draft-capture.is-out-of-context .capture-inline-status,
+.live-draft-capture.is-out-of-context .live-draft-audio-player,
+.live-draft-capture.is-out-of-context .live-draft-photo-row,
+.live-draft-capture.is-out-of-context .capture-generated-section,
+.live-draft-capture.is-out-of-context .capture-raw-note {
+  opacity: 0.55;
 }
 .effect-chip-action,
 .effect-chip-dismiss {
@@ -331,6 +579,270 @@ small {
 }
 .effect-chip-dismiss {
   color: var(--color-muted);
+}
+.effect-chip-note {
+  font-weight: 600;
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+/* H4 — partial-match resolution & disambiguation surface. A compact card (own row, not a
+   stretched pill): moderate radius so it doesn't read as a blob, capped width on desktop, and
+   it wraps cleanly on mobile. */
+/* The row claims the full line so the suggestion card sits on its own row; the card itself is a
+   capped-width card centered in that row. */
+.partial-match-row {
+  flex: 0 0 100%;
+  display: flex;
+  justify-content: center;
+}
+.effect-chip.partial-match {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 460px;
+  background: var(--color-warning-soft);
+  border-color: #f0ddb0;
+}
+.partial-match-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.partial-match-head .effect-chip-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* "×" dismiss in the card's top-right corner (replaces the old "Dismiss" text button). */
+.partial-match-close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-warning);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 6px;
+  opacity: 0.7;
+}
+.partial-match-close:hover {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.06);
+}
+.effect-chip.partial-match > .effect-chip-label {
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+.partial-match-identity {
+  font-weight: 500;
+  font-size: 0.71rem;
+  color: var(--color-warning);
+  opacity: 0.95;
+  line-height: 1.3;
+}
+.partial-match-identity strong {
+  font-weight: 800;
+}
+.partial-match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+/* Make the partial-match quick actions read as real buttons (not plain text). */
+.partial-match-actions button,
+.partial-match-edit-actions button {
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  padding: 4px 11px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease, filter 0.12s ease;
+}
+.partial-match-actions button:disabled,
+.partial-match-edit-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+/* Primary: Keep match / Create patient. */
+.partial-match-actions .effect-chip-action,
+.partial-match-edit-actions .effect-chip-action {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+.partial-match-actions .effect-chip-action:hover:not(:disabled),
+.partial-match-edit-actions .effect-chip-action:hover:not(:disabled) {
+  filter: brightness(0.94);
+}
+/* Secondary: Create new instead / Choose another — outlined on a white surface. */
+.partial-match-actions .effect-chip-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.partial-match-actions .effect-chip-secondary:hover:not(:disabled) {
+  border-color: var(--color-warning);
+}
+/* Ghost: Dismiss / Cancel. */
+.partial-match-actions .effect-chip-ghost,
+.partial-match-edit-actions .effect-chip-ghost {
+  background: transparent;
+  color: var(--color-muted);
+  border-color: transparent;
+}
+.partial-match-actions .effect-chip-ghost:hover,
+.partial-match-edit-actions .effect-chip-ghost:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+.partial-match-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid #e6cf9a;
+  border-radius: 12px;
+  padding: 10px;
+}
+.partial-match-edit-title {
+  font-weight: 800;
+  font-size: 0.72rem;
+  color: var(--color-text);
+}
+.partial-match-edit input {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 0.8rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.partial-match-edit-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+/* Epic E — report contribution + live report chrome */
+.effect-chip.is-report.added {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-color: #c7ebd5;
+}
+.effect-chip.is-report.pending {
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  border-color: var(--color-border);
+}
+.report-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  line-height: 1.4;
+}
+.report-tier-badge.pro {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  border: 1px solid #d6e4ff;
+}
+.report-tier-badge.basic {
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+}
+.report-updating {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.report-updating-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid #c4d6ff;
+  border-top-color: var(--color-primary);
+  animation: report-updating-spin 0.8s linear infinite;
+}
+@keyframes report-updating-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.report-meta-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.74rem;
+  color: var(--color-muted);
+}
+.report-meta-template {
+  font-weight: 700;
+  color: var(--color-text-soft);
+}
+.report-meta-counts {
+  margin-left: auto;
+}
+.report-doc-status {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.basic-report-entry {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 0;
+}
+.basic-report-entry + .basic-report-entry {
+  border-top: 1px solid var(--color-border);
+}
+.basic-report-entry-node {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+}
+.basic-report-entry-node svg {
+  width: 15px;
+  height: 15px;
+}
+.basic-report-entry-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.basic-report-entry-time {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-muted-2);
+}
+.basic-report-entry-photo .capture-raw-photo {
+  width: 100%;
+  max-height: 220px;
+  object-fit: contain;
+  border-radius: 7px;
+  background: #f8fafc;
 }
 
 .capture-metadata {
@@ -1008,44 +1520,193 @@ small {
   right: 0;
   z-index: 30;
   display: grid;
-  width: min(260px, calc(100vw - 28px));
-  gap: 12px;
+  width: min(252px, calc(100vw - 28px));
+  gap: 2px;
   border: 1px solid #dbe3ef;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #ffffff;
-  padding: 12px;
+  padding: 8px;
   box-shadow: 0 18px 40px rgb(15 23 42 / 14%);
 }
 
-.user-menu-panel div {
-  display: grid;
-  gap: 3px;
+/* B4 — account menu offers Profile / Settings / Logout that navigate to dedicated pages. */
+.user-menu-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #eef2f8;
 }
-
-.user-menu-panel strong {
+.user-menu-identity-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.user-menu-identity-text strong {
   color: #101828;
   font-size: 0.86rem;
   overflow-wrap: anywhere;
 }
-
-.user-menu-panel span {
+.user-menu-identity-text small {
   color: #667085;
   font-size: 0.74rem;
+  text-transform: capitalize;
   overflow-wrap: anywhere;
 }
-
-.debug-settings {
-  display: grid;
-  gap: 8px;
-  border-top: 1px solid #e5edf7;
-  padding-top: 10px;
+.user-menu-avatar.lg {
+  width: 38px;
+  height: 38px;
+  font-size: 0.82rem;
+  flex: 0 0 auto;
+}
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  padding: 9px 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+.user-menu-item:hover {
+  background: #f3f6fb;
+}
+.user-menu-item svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--color-muted);
+}
+.user-menu-item-danger {
+  color: #b42318;
+}
+.user-menu-item-danger svg {
+  color: #b42318;
 }
 
-.debug-settings summary {
-  cursor: pointer;
-  color: #475467;
-  font-size: 0.74rem;
-  font-weight: 850;
+/* B4 — Settings & Profile pages */
+.account-screen {
+  width: min(100%, 720px);
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+  padding: 4px 0 8px;
+}
+.account-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.account-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--color-text);
+}
+.account-header .account-back {
+  flex: 0 0 auto;
+  width: auto;
+}
+.settings-group {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+.settings-group-head h2 {
+  margin: 0 0 2px;
+  font-size: 0.98rem;
+  color: var(--color-text);
+}
+.settings-group-head p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8rem;
+}
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.setting-row-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.setting-row-label {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--color-text);
+}
+.setting-row-hint {
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.setting-row-control {
+  flex: 0 0 auto;
+}
+.setting-row-control select {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.84rem;
+  font-weight: 650;
+  padding: 7px 10px;
+}
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+}
+.profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  font-weight: 800;
+  font-size: 1.05rem;
+  flex: 0 0 auto;
+}
+.profile-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.profile-identity strong {
+  font-size: 1.02rem;
+  color: var(--color-text);
+}
+.profile-identity span {
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+.profile-value {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  text-transform: capitalize;
+}
+.profile-actions {
+  justify-items: start;
 }
 
 .global-offline-status {
@@ -1465,6 +2126,33 @@ small {
   font-weight: 650;
 }
 
+/* Assigned patient details inside the resolver (replaces the old session-metadata summary). */
+.assignment-patient-details {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+}
+.assignment-patient-detail {
+  display: flex;
+  gap: 6px;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+.assignment-patient-detail dt {
+  color: var(--color-muted);
+  font-weight: 650;
+}
+.assignment-patient-detail dd {
+  margin: 0;
+  color: var(--color-text-soft);
+  font-weight: 650;
+}
+.assignment-no-patient {
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
 .assignment-patient-row .btn {
   min-width: 86px;
   min-height: 52px;
@@ -1699,17 +2387,10 @@ small {
   background: #ffffff;
 }
 
-.workspace-report-card.processing .report-toolbar,
-.workspace-report-card.processing .workspace-report-body,
-.workspace-report-card.processing .workspace-report-footer {
-  opacity: 0.58;
-  pointer-events: none;
-  transition: opacity 180ms ease;
-}
-
-.workspace-report-card.processing .workspace-report-body {
-  filter: saturate(0.82);
-}
+/* The Pro live report refines continuously as captures land (Epic E), so refining is a calm
+   inline state — it must NOT freeze the Captures feed, tabs, or footer (the user keeps
+   capturing while the system structures in the background). The "Updating…" header/footer
+   indicator is the only cue; no pointer-events block or dimming here. */
 
 .report-heading {
   display: grid;
@@ -2049,6 +2730,13 @@ small {
   bottom: calc(100% - 30px);
 }
 
+/* Highlight the capture the current patient assignment originated from, so it's easy to spot. */
+.live-draft-capture.is-assignment-source {
+  background: #eff5ff;
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px #d3e3ff;
+}
+
 .live-draft-capture:hover,
 .live-draft-capture:focus-visible {
   background: #fbfdff;
@@ -2134,6 +2822,23 @@ small {
   color: #53649a;
   font-size: 0.78rem;
   font-weight: 700;
+}
+
+/* Title + report badge group: wraps internally so on narrow screens the badge drops below the
+   title instead of squeezing it; the time stays right-aligned on the first line. */
+.live-draft-title-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.live-draft-title-row .capture-title-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 8px;
 }
 
 .capture-inline-status {
@@ -2372,6 +3077,75 @@ small {
 .capture-generated-section {
   display: grid;
   gap: 5px;
+}
+
+/* A4 — inline edit affordance on a generated-text block (transcript/caption). */
+.capture-generated-heading-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.capture-generated-heading-meta > span {
+  max-width: none;
+}
+.capture-generated-edit {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 11px;
+  cursor: pointer;
+}
+.capture-generated-edit:hover {
+  border-color: var(--color-primary);
+}
+.capture-generated-editor {
+  display: grid;
+  gap: 8px;
+}
+.capture-generated-editor textarea {
+  width: 100%;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 8px;
+  padding: 9px 11px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: #fff;
+  resize: vertical;
+}
+.capture-generated-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.capture-generated-cancel,
+.capture-generated-save {
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.capture-generated-cancel {
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-text-soft);
+}
+.capture-generated-save {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #fff;
+}
+.capture-generated-save:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .capture-raw-note {

@@ -1,7 +1,6 @@
 import React from "react";
 import type { AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
 import type { Screen } from "../../domain/types";
-import { Button } from "../../shared/ui/primitives";
 import { CaptureActions } from "../capture/components/CaptureActions";
 
 export function Shell({
@@ -12,7 +11,6 @@ export function Shell({
   captureContextLabel,
   auth,
   syncHealth,
-  onClearLocal,
   onLogout,
 }: {
   screen: Screen;
@@ -22,13 +20,17 @@ export function Shell({
   captureContextLabel?: string;
   auth: AuthSession;
   syncHealth: SyncHealth;
-  onClearLocal?: () => void;
   onLogout: () => void;
 }) {
+  const menuRef = React.useRef<HTMLDetailsElement>(null);
   const displayName = auth.user.displayName || auth.user.email;
   const role = auth.memberships[0]?.role || auth.user.persona || "user";
-  const isAdmin = auth.memberships.some((membership) => membership.role === "admin") || auth.user.persona === "admin";
   const isOffline = !syncHealth.online;
+  const closeMenu = () => menuRef.current?.removeAttribute("open");
+  const goTo = (target: Screen) => {
+    closeMenu();
+    onNavigate(target);
+  };
   const initials = displayName
     .split(/\s+/)
     .filter(Boolean)
@@ -72,7 +74,7 @@ export function Shell({
             </button>
           </div>
           <strong className="topbar-brand">AesMem</strong>
-          <details className="user-menu">
+          <details className="user-menu" ref={menuRef}>
             <summary>
               <span className="user-menu-avatar" aria-hidden="true">{initials}</span>
               <span className="user-menu-label">
@@ -81,22 +83,25 @@ export function Shell({
               </span>
             </summary>
             <div className="user-menu-panel">
-              <div>
-                <span>Profile</span>
-                <strong>{displayName}</strong>
-                <span>{role} - {auth.tenant.name}</span>
+              <div className="user-menu-identity">
+                <span className="user-menu-avatar lg" aria-hidden="true">{initials}</span>
+                <span className="user-menu-identity-text">
+                  <strong>{displayName}</strong>
+                  <small>{role} · {auth.tenant.name}</small>
+                </span>
               </div>
-              {isAdmin && onClearLocal ? (
-                <details className="debug-settings">
-                  <summary>Debug settings</summary>
-                  <Button onClick={onClearLocal} size="sm" variant="ghost">
-                    Clear local capture cache
-                  </Button>
-                </details>
-              ) : null}
-              <Button onClick={onLogout} size="sm" variant="secondary">
+              <button className="user-menu-item" onClick={() => goTo("profile")} type="button">
+                <ProfileMenuIcon />
+                Profile
+              </button>
+              <button className="user-menu-item" onClick={() => goTo("settings")} type="button">
+                <SettingsMenuIcon />
+                Settings
+              </button>
+              <button className="user-menu-item user-menu-item-danger" onClick={onLogout} type="button">
+                <LogoutMenuIcon />
                 Logout
-              </Button>
+              </button>
             </div>
           </details>
         </div>
@@ -106,6 +111,33 @@ export function Shell({
       <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} />
       <footer className="app-version">MVP v2</footer>
     </main>
+  );
+}
+
+function ProfileMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="12" cy="8.5" r="3.25" />
+      <path d="M5.5 19a6.5 6.5 0 0 1 13 0" />
+    </svg>
+  );
+}
+
+function SettingsMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v2M12 18.5v2M4.7 7.5l1.7 1M17.6 15.5l1.7 1M4.7 16.5l1.7-1M17.6 8.5l1.7-1" />
+    </svg>
+  );
+}
+
+function LogoutMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M14 8.5V6.5A1.5 1.5 0 0 0 12.5 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19h6a1.5 1.5 0 0 0 1.5-1.5v-2" />
+      <path d="M10 12h9M16 9l3 3-3 3" />
+    </svg>
   );
 }
 

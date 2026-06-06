@@ -66,6 +66,13 @@ export type AuthUser = {
 export type AuthTenant = {
   id: string;
   name: string;
+  tier?: "basic" | "pro" | string;
+  transcriptionLanguage?: string;
+  reportLanguage?: string | null;
+  matchStrictness?: "strict" | "balanced" | "lenient" | string;
+  /** A0 — vertical ("clinic" today) + the presentation label for its work-unit ("Session"). */
+  vertical?: string;
+  encounterLabel?: string;
 };
 
 export type AuthMembership = {
@@ -167,7 +174,14 @@ export type PatientAssignmentDraft = {
   patientId?: string;
   displayName: string;
   nationalId?: string;
+  /** Demographic fields carried when creating a new patient from the unified create form (B3). */
+  phone?: string;
+  dateOfBirth?: string;
+  sex?: string;
+  notes?: string;
   unassign?: boolean;
+  /** The capture that justifies this (re)assignment — set when applying a per-capture suggestion. */
+  basisCaptureId?: string;
 };
 
 export type CachedCapture = {

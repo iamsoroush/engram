@@ -1,7 +1,9 @@
 import type { CaptureSession } from "../domain/types";
 import { createClientId, nowLabel } from "../features/capture/captureModel";
 
-export const PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600, 11000, 16000];
+// The Pro live-report job is auto-dispatched only after a session's capture chain drains, so
+// the later beats give that follow-on job time to land (Epic E).
+export const PROCESSING_REFRESH_DELAYS = [1200, 3000, 5200, 7600, 11000, 16000, 22000, 30000];
 
 export function mergeSessionUpdate(existing: CaptureSession, updated: CaptureSession, items = existing.items) {
   const patientChanged = Boolean(updated.patientId && existing.patientId && updated.patientId !== existing.patientId);

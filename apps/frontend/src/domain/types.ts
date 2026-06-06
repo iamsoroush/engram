@@ -1,4 +1,4 @@
-export type Screen = "active-session" | "patients" | "search";
+export type Screen = "active-session" | "patients" | "search" | "settings" | "profile";
 
 export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "processed" | "needsReview" | "failed";
 
@@ -104,6 +104,7 @@ export type StructuredPatientInformation = {
   sex?: string | null;
   phone?: string | null;
   email?: string | null;
+  notes?: string | null;
 };
 
 export type SessionFinding = {

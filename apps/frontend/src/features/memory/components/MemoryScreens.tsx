@@ -10,9 +10,13 @@ import type {
   PatientSummary,
   SyncHealth,
 } from "../../../domain/appTypes";
-import type { CaptureItemType, CaptureSession } from "../../../domain/types";
+import type { CaptureItemType, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
+import type { PatientEditDraft } from "../../../services/api/client";
 import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
+import { PatientForm } from "../../patient/PatientForm";
 import { SessionStatusBadge } from "../../capture/components/StatusBadges";
+
+const PATIENT_PAGE_SIZE = 25;
 
 export function PatientsHome({
   activeSession,
@@ -24,11 +28,14 @@ export function PatientsHome({
   onContinueSession,
   onGetPatientMemory,
   onUpdatePatient,
+  onFetchPatient,
+  onCreatePatient,
   onListPatientMemory,
   onSearchPatients,
   onConfirmSummary,
   onVerifySession,
   onAssignPatient,
+  onExportCaptures,
 }: {
   activeSession: CaptureSession | null;
   initialPatientId?: string;
@@ -38,12 +45,15 @@ export function PatientsHome({
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onContinueSession: (sessionId: string) => void;
   onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
-  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
+  onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
+  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  onCreatePatient?: (draft: PatientAssignmentDraft) => Promise<PatientSummary | null>;
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onVerifySession?: (sessionId: string) => void;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
+  onExportCaptures?: () => Promise<void> | void;
 }) {
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
@@ -51,6 +61,10 @@ export function PatientsHome({
   const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
   const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
   const [patientRowsError, setPatientRowsError] = React.useState(false);
+  const [patientTotal, setPatientTotal] = React.useState(0);
+  const [patientLoadingMore, setPatientLoadingMore] = React.useState(false);
+  const [patientListVersion, setPatientListVersion] = React.useState(0);
+  const [creatingPatient, setCreatingPatient] = React.useState(false);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
@@ -73,15 +87,18 @@ export function PatientsHome({
     () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds }),
     [activeSession, resolvedDecisionIds, sessions, storageWarning],
   );
+  // First page: re-fetched from offset 0 whenever the tab, search query, filter, or a create
+  // (patientListVersion) changes — keeping the list in sync with the shared search box.
   React.useEffect(() => {
     if (activeTab !== "patients" || !onListPatientMemory) return;
     let cancelled = false;
     setPatientRowsLoading(true);
     setPatientRowsError(false);
-    void onListPatientMemory({ query, filter: patientFilter, limit: 50 })
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: 0 })
       .then((result) => {
         if (cancelled) return;
         setBackendPatientRows(result.items);
+        setPatientTotal(result.total);
       })
       .catch(() => {
         if (cancelled) return;
@@ -93,7 +110,28 @@ export function PatientsHome({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, onListPatientMemory, patientFilter, query]);
+  }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion]);
+
+  const loadMorePatients = () => {
+    if (!onListPatientMemory || patientLoadingMore) return;
+    setPatientLoadingMore(true);
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: backendPatientRows.length })
+      .then((result) => {
+        setBackendPatientRows((current) => [...current, ...result.items]);
+        setPatientTotal(result.total);
+      })
+      .catch(() => setPatientRowsError(true))
+      .finally(() => setPatientLoadingMore(false));
+  };
+
+  const submitNewPatient = (draft: PatientAssignmentDraft) => {
+    if (!onCreatePatient) return;
+    void onCreatePatient(draft).then((patient) => {
+      setCreatingPatient(false);
+      setPatientListVersion((version) => version + 1); // refresh the list
+      if (patient?.id) setSelectedPatientId(patient.id); // open the new patient's detail
+    });
+  };
   React.useEffect(() => {
     let cancelled = false;
     if (!navigator.storage?.estimate) return;
@@ -242,7 +280,7 @@ export function PatientsHome({
           }}
         />
       ) : null}
-      {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} storageWarning={storageWarning} /> : null}
+      {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
       {assignmentSession && onAssignPatient ? (
         decisionActionForSession(assignmentSession) === "choose-patient" ? (
           <ChoosePatientResolver
@@ -289,6 +327,7 @@ export function PatientsHome({
           onContinueSession={onContinueSession}
           onOpenSession={onOpenSession}
           onUpdatePatient={onUpdatePatient}
+          onFetchPatient={onFetchPatient}
           onAssignPatient={(sessionId) => setAssignmentSessionId(sessionId)}
           onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
         />
@@ -427,19 +466,31 @@ export function PatientsHome({
 
       {activeTab === "patients" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          <div className="clinical-filter-row" aria-label="Patient filters">
-            {patientFilters.map((filter) => (
-              <button
-                aria-pressed={patientFilter === filter.value}
-                className={patientFilter === filter.value ? "active" : ""}
-                key={filter.value}
-                onClick={() => setPatientFilter(filter.value)}
-                type="button"
-              >
-                {filter.label}
+          <div className="patients-toolbar">
+            <div className="clinical-filter-row" aria-label="Patient filters">
+              {patientFilters.map((filter) => (
+                <button
+                  aria-pressed={patientFilter === filter.value}
+                  className={patientFilter === filter.value ? "active" : ""}
+                  key={filter.value}
+                  onClick={() => setPatientFilter(filter.value)}
+                  type="button"
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+            {onCreatePatient ? (
+              <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
+                <span aria-hidden="true">+</span> New patient
               </button>
-            ))}
+            ) : null}
           </div>
+          {creatingPatient && onCreatePatient ? (
+            <section className="patient-edit-card" aria-label="Create a new patient">
+              <PatientForm onCancel={() => setCreatingPatient(false)} onSubmit={submitNewPatient} submitLabel="Create patient" />
+            </section>
+          ) : null}
           <div className="clinical-list">
             {patientRowsError ? (
               <p className="clinical-offline-note"><InfoIcon /> Patient memory is showing saved items from this device.</p>
@@ -467,6 +518,16 @@ export function PatientsHome({
               />
             )}
           </div>
+          {backendRowsActive && filteredPatients.length ? (
+            <div className="patients-pagination">
+              <span className="patients-count">Showing {filteredPatients.length} of {patientTotal}</span>
+              {filteredPatients.length < patientTotal ? (
+                <button className="patients-load-more" disabled={patientLoadingMore} onClick={loadMorePatients} type="button">
+                  {patientLoadingMore ? "Loading…" : "Load more"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1305,74 +1366,72 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
 function PatientIdentityEditor({
   patient,
   onUpdatePatient,
+  onFetchPatient,
 }: {
   patient: PatientRowModel;
-  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
+  onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
+  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
 }) {
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [name, setName] = React.useState(patient.name || "");
-  const [nationalId, setNationalId] = React.useState("");
-  const [phone, setPhone] = React.useState("");
-  const [dob, setDob] = React.useState("");
-
-  React.useEffect(() => {
-    setName(patient.name || "");
-  }, [patient.name]);
+  const [loading, setLoading] = React.useState(false);
+  const [initial, setInitial] = React.useState<Partial<{ displayName: string; nationalId: string; phone: string; dateOfBirth: string; sex: string; notes: string }>>({ displayName: patient.name || "" });
 
   if (!onUpdatePatient) return null;
+
+  const openEditor = () => {
+    setOpen(true);
+    if (!onFetchPatient) return;
+    // Pre-fill the form with the patient's current values (reuses GET /patients/{id}).
+    setLoading(true);
+    void onFetchPatient(patient.id)
+      .then((info) => {
+        if (!info) return;
+        setInitial({
+          displayName: info.displayName || patient.name || "",
+          nationalId: info.nationalId || "",
+          phone: info.phone || "",
+          dateOfBirth: info.dateOfBirth || "",
+          sex: info.sex || "",
+          notes: info.notes || "",
+        });
+      })
+      .finally(() => setLoading(false));
+  };
 
   if (!open) {
     return (
       <div className="patient-edit-row">
-        <button className="patient-edit-toggle" onClick={() => setOpen(true)} type="button">
+        <button className="patient-edit-toggle" onClick={openEditor} type="button">
           Edit details
         </button>
       </div>
     );
   }
 
-  const save = () => {
-    if (saving || !name.trim()) return;
-    setSaving(true);
-    void onUpdatePatient(patient.id, {
-      displayName: name.trim(),
-      nationalId: nationalId.trim() || undefined,
-      phone: phone.trim() || undefined,
-      dateOfBirth: dob.trim() || undefined,
-    })
-      .then(() => setOpen(false))
-      .finally(() => setSaving(false));
-  };
-
   return (
     <section className="patient-edit-card" aria-label="Edit patient details">
-      <div className="patient-edit-grid">
-        <label className="patient-edit-field">
-          <span>Full name</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <label className="patient-edit-field">
-          <span>National ID <em>· leave blank to keep</em></span>
-          <input value={nationalId} placeholder="Add / update" onChange={(event) => setNationalId(event.target.value)} />
-        </label>
-        <label className="patient-edit-field">
-          <span>Phone <em>· leave blank to keep</em></span>
-          <input value={phone} placeholder="Add / update" onChange={(event) => setPhone(event.target.value)} />
-        </label>
-        <label className="patient-edit-field">
-          <span>Date of birth <em>· leave blank to keep</em></span>
-          <input value={dob} placeholder="YYYY-MM-DD" onChange={(event) => setDob(event.target.value)} />
-        </label>
-      </div>
-      <div className="patient-edit-actions">
-        <button className="patient-edit-cancel" onClick={() => setOpen(false)} type="button">
-          Cancel
-        </button>
-        <button className="patient-edit-save" disabled={saving || !name.trim()} onClick={save} type="button">
-          {saving ? "Saving…" : "Save details"}
-        </button>
-      </div>
+      <PatientForm
+        busy={saving}
+        initial={initial}
+        loading={loading}
+        onCancel={() => setOpen(false)}
+        onSubmit={(values) => {
+          setSaving(true);
+          // Pre-filled = WYSIWYG, so send every field (a cleared field clears it).
+          void onUpdatePatient(patient.id, {
+            displayName: values.displayName,
+            nationalId: values.nationalId,
+            phone: values.phone,
+            dateOfBirth: values.dateOfBirth,
+            sex: values.sex,
+            notes: values.notes,
+          })
+            .then(() => setOpen(false))
+            .finally(() => setSaving(false));
+        }}
+        submitLabel="Save details"
+      />
     </section>
   );
 }
@@ -1390,6 +1449,7 @@ function PatientTimelineDetail({
   onOpenSession,
   onReviewSummary,
   onUpdatePatient,
+  onFetchPatient,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1402,7 +1462,8 @@ function PatientTimelineDetail({
   onContinueSession: (sessionId: string) => void;
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onReviewSummary: (sessionId: string) => void;
-  onUpdatePatient?: (patientId: string, draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null }) => Promise<void>;
+  onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
+  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
 }) {
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
   const timelineGroups = buildTimelineGroups(detail, localSessions);
@@ -1428,7 +1489,7 @@ function PatientTimelineDetail({
         </div>
       </section>
 
-      <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} />
+      <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
 
       {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
       {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
@@ -1749,13 +1810,21 @@ function SummaryReviewSheet({
 
 function StorageReviewSheet({
   onClose,
+  onExport,
   storageWarning,
 }: {
   onClose: () => void;
+  onExport?: () => Promise<void> | void;
   storageWarning: StorageWarningDecision | null;
 }) {
+  const [exporting, setExporting] = React.useState(false);
   const percentUsed = storageWarning ? Math.round(storageWarning.usageRatio * 100) : null;
   const remaining = storageWarning ? formatBytes(storageWarning.remainingBytes) : null;
+  const exportQueued = () => {
+    if (!onExport || exporting) return;
+    setExporting(true);
+    void Promise.resolve(onExport()).finally(() => setExporting(false));
+  };
   return (
     <div className="resolver-backdrop" role="presentation">
       <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label="Review storage">
@@ -1771,9 +1840,14 @@ function StorageReviewSheet({
         <div className="resolver-summary">
           <span>Device storage</span>
           <strong>{percentUsed ? `${percentUsed}% used${remaining ? ` · ${remaining} free` : ""}` : "Space is limited"}</strong>
-          <p>Free device storage before capturing offline. Captures already saved remain available, but new offline captures may soon need more room.</p>
+          <p>Free device storage before capturing offline. Captures already saved remain available, but new offline captures may soon need more room. Export queued captures first to keep them safe.</p>
         </div>
         <div className="resolver-actions">
+          {onExport ? (
+            <Button disabled={exporting} onClick={exportQueued} size="sm" type="button" variant="secondary">
+              {exporting ? "Exporting…" : "Export queued captures"}
+            </Button>
+          ) : null}
           <Button onClick={onClose} size="sm" type="button">
             Done
           </Button>

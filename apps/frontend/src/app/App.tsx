@@ -19,6 +19,7 @@ import {
   unassignSessionPatient,
   createPatient,
   deleteCapture,
+  getPatient,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
   fetchSession,
@@ -27,6 +28,7 @@ import {
   loginWithPassword,
   loginWithPersona,
   logoutSession,
+  markCaptureRelevant,
   reopenSession,
   refreshAuthToken,
   resolveCaptureFileUrl,
@@ -37,7 +39,9 @@ import {
   updateCaptureTitle,
   updateCaptureTranscript,
   updatePatient,
+  type PatientEditDraft,
   updateSessionTitle,
+  updateTenantSettings,
   uploadCapture,
   verifyAiPatientCreation,
   verifySession,
@@ -52,9 +56,11 @@ import {
   sessionWithLocalPreview,
   sessionsFromPending,
 } from "../features/capture/captureModel";
+import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
+import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { Shell } from "../features/shell/Shell";
@@ -74,6 +80,8 @@ import {
   updatePendingCapture,
   updatePendingOperation,
 } from "../services/storage/captureStorage";
+import { exportPendingCaptures } from "../services/storage/exportCaptures";
+import { estimateStorageStatus, OK_STORAGE_STATUS, type StorageStatus } from "../services/storage/storageStatus";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
 import { replaceScreenLocation, screenFromLocation } from "./navigation";
 import {
@@ -105,6 +113,8 @@ export function App() {
   const [textOpen, setTextOpen] = React.useState(false);
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [audioOpen, setAudioOpen] = React.useState(false);
+  const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
+  const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
@@ -113,6 +123,7 @@ export function App() {
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
   const sessionsRef = React.useRef<CaptureSession[]>([]);
+  const accountReturnRef = React.useRef<Screen>("active-session");
   const aiPatientToastIdsRef = React.useRef(new Set<string>());
 
   React.useEffect(() => {
@@ -209,6 +220,7 @@ export function App() {
     if (!auth || auth.user.persona === "patient-preview") return;
     void hydrateFromStorage();
     void navigator.storage?.persist?.();
+    void refreshStorage();
   }, [auth]);
 
   React.useEffect(() => {
@@ -270,12 +282,32 @@ export function App() {
     return () => window.removeEventListener("online", retryWhenOnline);
   }, []);
 
+  const refreshStorage = React.useCallback(async () => {
+    setStorage(await estimateStorageStatus());
+  }, []);
+
   const refreshPendingCount = async () => {
     const [pending, operations] = await Promise.all([loadPendingCaptures(), loadPendingOperations()]);
     setPendingCount(pending.length);
     setPendingOperationCount(operations.length);
+    void refreshStorage();
     return pending;
   };
+
+  // Export queued (unsynced) captures to disk — the durability escape hatch (Epic G).
+  const exportQueuedCaptures = React.useCallback(async () => {
+    const pending = await loadPendingCaptures();
+    if (!pending.length) {
+      setToast("No queued captures to export.");
+      return;
+    }
+    try {
+      const count = await exportPendingCaptures(pending, new Date().toISOString());
+      setToast(`Exported ${count} queued capture${count === 1 ? "" : "s"}.`);
+    } catch {
+      setToast("Could not export queued captures.");
+    }
+  }, []);
 
   const queueOperation = async (operation: Omit<PendingOperation, "retryCount" | "status" | "createdAt" | "updatedAt">) => {
     const now = Date.now();
@@ -506,7 +538,8 @@ export function App() {
           patientId = (exact || (await createPatient(apiFetch, draft, operation.id))).id;
         }
         if (patientId) {
-          const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id);
+          const basisCaptureId = typeof operation.payload.basisCaptureId === "string" ? operation.payload.basisCaptureId : undefined;
+          const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id, basisCaptureId);
           applySessionUpdate(backendSessionId, assigned);
         }
       }
@@ -686,6 +719,13 @@ export function App() {
   };
 
   const beginCapture = (kind: CaptureDraft["kind"]) => {
+    // Durability hard-stop (Epic G): when durable storage is full we can't guarantee a new
+    // capture survives, so pause capturing and offer the export escape hatch instead.
+    if (storage.level === "full") {
+      void refreshStorage();
+      setStorageGuardOpen(true);
+      return;
+    }
     if (screen !== "active-session") {
       setPendingCaptureKind(kind);
       return;
@@ -997,9 +1037,28 @@ export function App() {
           ? mergeSessionUpdate(current, updated, current.items.filter((item) => item.id !== captureId))
           : current,
       );
-      setToast("Capture deleted. Report moved back to draft.");
+      // Deleting a capture regenerates the Pro live report; poll for the refreshed result.
+      scheduleCaptureProcessingRefresh(sessionId);
+      setToast("Capture deleted. The live report is updating.");
     },
-    [apiFetch],
+    [apiFetch, scheduleCaptureProcessingRefresh],
+  );
+
+  const markCaptureRelevantInSession = React.useCallback(
+    async (sessionId: string, captureId: string) => {
+      if (captureId.startsWith("local-capture-")) return;
+      const updated = await markCaptureRelevant(apiFetch, captureId);
+      const applyItem = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId
+          ? { ...session, items: session.items.map((item) => (item.id === captureId ? { ...item, ...updated } : item)) }
+          : session;
+      setSessions((current) => current.map(applyItem));
+      setActiveSession((current) => (current?.id === sessionId ? applyItem(current) : current));
+      // Marking relevant re-folds the capture into the Pro live report; poll for the refresh.
+      scheduleCaptureProcessingRefresh(sessionId);
+      setToast("Marked relevant. The live report is updating.");
+    },
+    [apiFetch, scheduleCaptureProcessingRefresh],
   );
 
   const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
@@ -1091,6 +1150,7 @@ export function App() {
             patientId: patient.id,
             displayName: patient.displayName,
             nationalId: patient.nationalId || undefined,
+            basisCaptureId: draft.basisCaptureId,
           },
         });
       };
@@ -1111,7 +1171,7 @@ export function App() {
           setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
           return;
         }
-        const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id);
+        const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id, undefined, draft.basisCaptureId);
         const enriched = {
           ...assigned,
           patientId: patient.id,
@@ -1139,11 +1199,15 @@ export function App() {
   );
 
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
+  const fetchAssignedPatientDetails = React.useCallback(
+    (patientId: string) => (isLocalAssignmentPatient(patientId) ? Promise.resolve(null) : getPatient(apiFetch, patientId).catch(() => null)),
+    [apiFetch],
+  );
   const completeAiCreatedPatient = React.useCallback(
     async (
       sessionId: string,
       patientId: string,
-      draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+      draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
       action: Record<string, unknown>,
     ) => {
       const patient = await updatePatient(apiFetch, patientId, {
@@ -1151,6 +1215,8 @@ export function App() {
         nationalId: draft.nationalId || null,
         phone: draft.phone || null,
         dateOfBirth: draft.dateOfBirth || null,
+        sex: draft.sex || null,
+        notes: draft.notes || null,
       });
       const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
         ...action,
@@ -1165,10 +1231,7 @@ export function App() {
     [apiFetch],
   );
   const editPatientDetails = React.useCallback(
-    async (
-      patientId: string,
-      draft: { displayName?: string; nationalId?: string | null; phone?: string | null; dateOfBirth?: string | null },
-    ) => {
+    async (patientId: string, draft: PatientEditDraft) => {
       const patient = await updatePatient(apiFetch, patientId, draft);
       if (draft.displayName) {
         setSessions((current) =>
@@ -1177,6 +1240,19 @@ export function App() {
         setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
       }
       setToast("Patient details updated.");
+    },
+    [apiFetch],
+  );
+  const createNewPatient = React.useCallback(
+    async (draft: PatientAssignmentDraft): Promise<PatientSummary | null> => {
+      try {
+        const patient = await createPatient(apiFetch, draft);
+        setToast("Patient created.");
+        return patient;
+      } catch {
+        setToast("Could not create patient.");
+        return null;
+      }
     },
     [apiFetch],
   );
@@ -1263,10 +1339,10 @@ export function App() {
 
   const resolveSourceFile = React.useCallback((endpoint: string) => resolveCaptureFileUrl(apiFetch, endpoint), [apiFetch]);
 
-  const handlePersonaLogin = async (persona: Persona) => {
+  const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
     setAuthError("");
     try {
-      commitAuth(await loginWithPersona(persona));
+      commitAuth(await loginWithPersona(persona, tier));
       navigateScreen("active-session");
     } catch {
       setAuthError("Could not sign in with that persona.");
@@ -1282,6 +1358,30 @@ export function App() {
       setAuthError("Invalid email or password.");
     }
   };
+
+  const handleUpdateTenantSettings = React.useCallback(
+    async (settings: { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string }) => {
+      const currentAuth = authRef.current;
+      if (!currentAuth) return;
+      const changingStrictness = "matchStrictness" in settings;
+      try {
+        const updated = await updateTenantSettings(apiFetch, settings);
+        commitAuth({
+          ...currentAuth,
+          tenant: {
+            ...currentAuth.tenant,
+            transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
+            reportLanguage: updated.reportLanguage ?? null,
+            matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,
+          },
+        });
+        setToast(changingStrictness ? "Patient-matching preference updated." : "Language preferences updated.");
+      } catch {
+        setToast(changingStrictness ? "Could not update matching preference." : "Could not update language preferences.");
+      }
+    },
+    [apiFetch, commitAuth],
+  );
 
   const handleLogout = async () => {
     const currentAuth = authRef.current;
@@ -1346,6 +1446,11 @@ export function App() {
           : "Clinical Memory";
 
   const handleShellNavigate = (nextScreen: Screen) => {
+    // Settings/Profile are utility pages reached from the account menu; remember where we came
+    // from so Back returns there (don't record an account page as its own return target).
+    if ((nextScreen === "settings" || nextScreen === "profile") && screen !== "settings" && screen !== "profile") {
+      accountReturnRef.current = screen;
+    }
     setClinicalMemoryReturnContext(null);
     navigateScreen(nextScreen);
   };
@@ -1371,6 +1476,19 @@ export function App() {
   };
 
   const renderCurrentScreen = () => {
+    if (screen === "settings" && auth) {
+      return <SettingsScreen auth={auth} onBack={() => navigateScreen(accountReturnRef.current)} onUpdateSettings={handleUpdateTenantSettings} />;
+    }
+    if (screen === "profile" && auth) {
+      return (
+        <ProfileScreen
+          auth={auth}
+          onBack={() => navigateScreen(accountReturnRef.current)}
+          onClearLocal={() => void clearLocalPendingCaptures()}
+          onLogout={handleLogout}
+        />
+      );
+    }
     if (screen !== "active-session" && selectedSession) {
       return (
         <CaptureScreen
@@ -1390,7 +1508,9 @@ export function App() {
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
           onCompleteAiCreatedPatient={completeAiCreatedPatient}
+          onFetchPatient={fetchAssignedPatientDetails}
           onCloseAssignment={() => setAssignmentSessionId((current) => (current === selectedSession.id ? "" : selectedSession.id))}
+          onOpenResolver={() => setAssignmentSessionId(selectedSession.id)}
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
           onUpdateTitle={renameSession}
@@ -1398,7 +1518,9 @@ export function App() {
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
+          onMarkRelevant={markCaptureRelevantInSession}
           onVerifySession={verifySelectedSession}
+          tier={auth?.tenant.tier}
         />
       );
     }
@@ -1412,6 +1534,7 @@ export function App() {
           onAssignPatient={assignPatientToSession}
           onSearchPatients={searchPatientsForAssignment}
           onCompleteAiCreatedPatient={completeAiCreatedPatient}
+          onFetchPatient={fetchAssignedPatientDetails}
           onCloseAssignment={() => {
             if (activeSession) {
               setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));
@@ -1422,6 +1545,9 @@ export function App() {
             upsertSession(session);
             setAssignmentSessionId(session.id);
           }}
+          onOpenResolver={() => {
+            if (activeSession) setAssignmentSessionId(activeSession.id);
+          }}
           onSaveSession={saveSession}
           onResolveFile={resolveSourceFile}
           onStartNewSession={startNewSession}
@@ -1430,7 +1556,9 @@ export function App() {
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
+          onMarkRelevant={markCaptureRelevantInSession}
           onVerifySession={verifySelectedSession}
+          tier={auth?.tenant.tier}
         />
       );
     }
@@ -1449,6 +1577,9 @@ export function App() {
         onListPatientMemory={listPatientMemory}
         onGetPatientMemory={(patientId) => fetchPatientMemoryDetail(apiFetch, patientId)}
         onUpdatePatient={editPatientDetails}
+        onFetchPatient={fetchAssignedPatientDetails}
+        onCreatePatient={createNewPatient}
+        onExportCaptures={exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
         onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}
@@ -1489,7 +1620,6 @@ export function App() {
         auth={auth}
         captureContextLabel={captureContextLabel(activeSession)}
         onCapture={beginCapture}
-        onClearLocal={() => void clearLocalPendingCaptures()}
         onLogout={handleLogout}
         screen={screen}
         syncHealth={syncHealth}
@@ -1533,7 +1663,16 @@ export function App() {
           setAudioOpen(false);
         }}
         open={audioOpen}
+        storageWarning={storage.level === "warn" ? storage : null}
       />
+      {storageGuardOpen ? (
+        <StorageGuardDialog
+          onClose={() => setStorageGuardOpen(false)}
+          onExport={exportQueuedCaptures}
+          pendingCount={pendingCount}
+          storage={storage}
+        />
+      ) : null}
       <Toast message={toast} />
     </>
   );

@@ -10,11 +10,11 @@ import { isLocalSessionId } from "../captureModel";
 import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } from "../metadata";
 import { sessionUxState } from "../../../domain/status";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
+import { PatientForm } from "../../patient/PatientForm";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 
 export function CaptureScreen({
   activeSession,
-  onSaveSession,
   onResolveFile,
   onUpdateTitle,
   onRenameCapture,
@@ -28,13 +28,18 @@ export function CaptureScreen({
   assignmentOpen,
   onAssignPatient,
   onCloseAssignment,
+  onOpenResolver,
   onSearchPatients,
   onCompleteAiCreatedPatient,
   onVerifySession,
   onStartNewSession,
+  onMarkRelevant,
+  onFetchPatient,
+  tier,
 }: {
   activeSession: CaptureSession | null;
-  onSaveSession: (sessionId: string) => void;
+  /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
+  onSaveSession?: (sessionId: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateTitle: (sessionId: string, title: string) => Promise<void>;
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
@@ -48,32 +53,31 @@ export function CaptureScreen({
   assignmentOpen?: boolean;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onCloseAssignment?: () => void;
+  /** Open the assignment resolver from a capture-card "Choose another" quick action (H4). */
+  onOpenResolver?: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onCompleteAiCreatedPatient?: (
     sessionId: string,
     patientId: string,
-    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
     action: Record<string, unknown>,
   ) => Promise<void>;
   onVerifySession?: (sessionId: string, verified?: boolean) => Promise<void>;
   onStartNewSession?: () => void;
+  onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
+  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  tier?: string | null;
 }) {
+  const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [verifying, setVerifying] = React.useState(false);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
   const processingState = activeSession?.processingStatus?.state;
-  const hasCaptures = Boolean(activeSession?.items.length);
-  const isGenerating = processingState === "processing" || activeSession?.report?.status === "generating";
-  const hasFreshGeneratedReport = Boolean(
-    activeSession &&
-      !activeSession.report?.isStale &&
-      (activeSession.report?.status === "processed" || activeSession.report?.status === "verified" || activeSession.status === "verified"),
-  );
-  const canSaveSession = activeSession
-    ? !isHistorical && !isLocalSessionId(activeSession.id) && !isGenerating && !hasFreshGeneratedReport
-    : false;
+  // The live report regenerates automatically as captures land (Epic E); "updating" is a calm
+  // inline state, never a gate. Pro = synthesized; Basic = chronological.
+  const isUpdatingReport = isPro && (processingState === "processing" || activeSession?.report?.status === "generating");
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
@@ -84,34 +88,11 @@ export function CaptureScreen({
   const sessionStatusChip = sessionSummaryStatusChip(activeSession);
   const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
-  const previousGeneratingRef = React.useRef(isGenerating);
 
+  // The report is always live; default to the Captures feed and let the user toggle tabs.
   React.useEffect(() => {
     setReportView("draft");
   }, [activeSession?.id]);
-
-  React.useEffect(() => {
-    if (!hasCaptures && reportView === "structured") setReportView("draft");
-  }, [hasCaptures, reportView]);
-
-  React.useEffect(() => {
-    if (activeSession?.report?.isStale) setReportView("draft");
-  }, [activeSession?.report?.isStale]);
-
-  React.useEffect(() => {
-    if (isGenerating) setReportView("structured");
-  }, [isGenerating]);
-
-  React.useEffect(() => {
-    const wasGenerating = previousGeneratingRef.current;
-    previousGeneratingRef.current = isGenerating;
-    if (wasGenerating && !isGenerating && activeSession?.report?.status === "processed") {
-      setReportView("structured");
-      window.requestAnimationFrame(() => {
-        document.querySelector(".workspace-report-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, [activeSession?.report?.status, isGenerating]);
 
   React.useEffect(() => {
     if (!activeSession) previousCaptureCountRef.current = 0;
@@ -191,35 +172,21 @@ export function CaptureScreen({
           onComplete={onCompleteAiCreatedPatient}
         />
       ) : null}
-      <Card className={`workspace-report-card ${isGenerating ? "processing" : ""}`}>
+      <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
         <div className="report-heading">
           <div className="report-title-lockup">
             <span className="report-title-icon" aria-hidden="true">
               <ClipboardIcon />
             </span>
             <h2>Clinical report</h2>
+            <span className={`report-tier-badge ${isPro ? "pro" : "basic"}`}>{isPro ? "Pro" : "Basic"}</span>
           </div>
           <div className="report-heading-actions">
-            {!isHistorical ? (
-              <Button
-                className={`report-generate-button ${isGenerating ? "processing" : ""}`}
-                disabled={!canSaveSession || !activeSession}
-                title={hasFreshGeneratedReport ? "Add a capture or change the patient to generate again." : undefined}
-                onClick={() => {
-                  if (activeSession) {
-                    setReportView("structured");
-                    onSaveSession(activeSession.id);
-                  }
-                }}
-                size="sm"
-                type="button"
-              >
-                {activeSession && isLocalSessionId(activeSession.id)
-                  ? "Saving first"
-                  : processingState === "processing"
-                    ? "Generating"
-                    : "Generate"}
-              </Button>
+            {isUpdatingReport ? (
+              <span className="report-updating" aria-live="polite">
+                <span className="report-updating-spinner" aria-hidden="true" />
+                {reportUpdatingLabel(activeSession)}
+              </span>
             ) : null}
           </div>
         </div>
@@ -227,16 +194,14 @@ export function CaptureScreen({
           <div className="report-toolbar-actions">
             <div className="report-view-switch" aria-label="Report view">
               <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                Live draft
+                Captures
               </button>
               <button
                 className={selectedReportView === "structured" ? "active" : ""}
-                disabled={!hasCaptures}
                 onClick={() => setReportView("structured")}
-                title={!hasCaptures ? "Create a capture first to open the structured report." : undefined}
                 type="button"
               >
-                Structured report
+                Live report
               </button>
             </div>
           </div>
@@ -246,35 +211,42 @@ export function CaptureScreen({
             session={activeSession}
             onAssign={(draft) => onAssignPatient(activeSession.id, draft)}
             onCancel={onCloseAssignment}
+            onFetchPatient={onFetchPatient}
             onSearchPatients={onSearchPatients}
           />
         ) : null}
         <div className={`workspace-report-body ${reportState.kind}`}>
           {selectedReportView === "structured" ? (
-            <StructuredReportView
+            <LiveReportView
+              isPro={isPro}
               session={activeSession}
               onResolveFile={onResolveFile}
             />
           ) : (
             <LiveDraftReport
+              isPro={isPro}
               session={activeSession}
+              onApplyRelevant={onMarkRelevant}
               onAssignPatient={onAssignPatient}
               onDeleteCapture={onDeleteCapture}
               onOpenCapture={setSelectedCapture}
+              onOpenResolver={onOpenResolver}
               onRenameCapture={onRenameCapture}
               onResolveFile={onResolveFile}
+              onUpdateCaptureCaption={onUpdateCaptureCaption}
+              onUpdateCaptureTranscript={onUpdateCaptureTranscript}
             />
           )}
         </div>
         <div className="workspace-report-footer">
           <div className="workspace-report-footer-copy">
-            {activeSession?.processingStatus?.state === "processing" ? <span>Structured report is updating from the live draft</span> : null}
+            {isUpdatingReport ? <span>{reportUpdatingLabel(activeSession)}</span> : null}
           </div>
           {onVerifySession ? (
             <button
               aria-checked={activeSession?.status === "verified"}
               className="report-verify-check"
-              disabled={!activeSession || isLocalSessionId(activeSession.id) || verifying || isGenerating}
+              disabled={!activeSession || isLocalSessionId(activeSession.id) || verifying || isUpdatingReport}
               onClick={() => {
                 if (!activeSession) return;
                 setVerifying(true);
@@ -284,7 +256,7 @@ export function CaptureScreen({
               type="button"
             >
               <span aria-hidden="true" />
-              {activeSession?.status === "verified" ? "Verified" : verifying ? "Verifying" : "Verify structured report"}
+              {activeSession?.status === "verified" ? "Verified" : verifying ? "Verifying" : "Verify report"}
             </button>
           ) : null}
         </div>
@@ -363,41 +335,6 @@ function SearchIcon() {
   );
 }
 
-function CalendarIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M7 3.8v3.4M17 3.8v3.4M4.5 9.2h15" />
-      <rect x="4.5" y="5.6" width="15" height="14.2" rx="2.2" />
-    </svg>
-  );
-}
-
-function CameraSummaryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M8.3 7.4 9.8 5.5h4.4l1.5 1.9h2.1a2 2 0 0 1 2 2v7.2a2 2 0 0 1-2 2H6.2a2 2 0 0 1-2-2V9.4a2 2 0 0 1 2-2h2.1Z" />
-      <circle cx="12" cy="13" r="3" />
-    </svg>
-  );
-}
-
-function ClinicianIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <circle cx="12" cy="7.8" r="3.2" />
-      <path d="M6.4 20.2v-2.4c0-3 2.5-5.4 5.6-5.4s5.6 2.4 5.6 5.4v2.4" />
-    </svg>
-  );
-}
-
-function ClinicIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M5.4 20V7.3h6.1V20M11.5 20V4.6h7.1V20M3.8 20h16.4M8.5 10.3h.1M8.5 13.5h.1M8.5 16.7h.1M14.7 8h.1M14.7 11.2h.1M14.7 14.4h.1M14.7 17.6h.1" />
-    </svg>
-  );
-}
-
 function IdCardIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
@@ -421,15 +358,17 @@ export function PatientAssignmentSheet({
   session,
   onAssign,
   onCancel,
+  onFetchPatient,
   onSearchPatients,
 }: {
   session: CaptureSession;
   onAssign: (draft: PatientAssignmentDraft) => Promise<void>;
   onCancel?: () => void;
+  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
 }) {
   const [query, setQuery] = React.useState("");
-  const [newPatientNationalId, setNewPatientNationalId] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
   const [apiMatches, setApiMatches] = React.useState<PatientSummary[]>([]);
   const [searching, setSearching] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -437,9 +376,16 @@ export function PatientAssignmentSheet({
   const currentPatient = React.useMemo(() => currentSessionPatient(session), [session]);
   const currentAssignedPatient = currentPatient[0] || null;
   const localMatches = React.useMemo(() => filterPatientMatches(currentPatient, trimmedQuery), [currentPatient, trimmedQuery]);
-  const matches = mergePatientMatches(localMatches, apiMatches).slice(0, 3);
-  const canCreate = Boolean(trimmedQuery) && !saving;
-  const summaryItems = assignmentSessionSummary(session);
+  // Smart suggestions: patients already detected in this session's captures come first.
+  const detected = React.useMemo(() => detectedSessionPatients(session, currentAssignedPatient?.id), [session, currentAssignedPatient]);
+  const detectedIds = React.useMemo(() => new Set(detected.map((patient) => patient.id)), [detected]);
+  const detectedMatches = React.useMemo(() => filterPatientMatches(detected, trimmedQuery), [detected, trimmedQuery]);
+  const matches = mergePatientMatches([...detectedMatches, ...localMatches], apiMatches).slice(0, 4);
+  // Prefer the DB patient info the report carries; otherwise fetch it (covers sessions without
+  // a report model — e.g. Basic, or before the first Pro report job runs).
+  const [fetchedPatient, setFetchedPatient] = React.useState<StructuredPatientInformation | null>(null);
+  const reportDetails = patientDetailRows(session.report?.patientInformation);
+  const assignedDetails = reportDetails.length ? reportDetails : patientDetailRows(fetchedPatient);
 
   React.useEffect(() => {
     if (!onSearchPatients) {
@@ -464,6 +410,22 @@ export function PatientAssignmentSheet({
     };
   }, [onSearchPatients, trimmedQuery]);
 
+  React.useEffect(() => {
+    const patientId = currentAssignedPatient?.id;
+    // Only fetch when the report didn't already carry the patient's details.
+    if (!onFetchPatient || !patientId || reportDetails.length) {
+      setFetchedPatient(null);
+      return;
+    }
+    let cancelled = false;
+    void onFetchPatient(patientId).then((info) => {
+      if (!cancelled) setFetchedPatient(info);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [onFetchPatient, currentAssignedPatient?.id, reportDetails.length]);
+
   const assignDraft = (draft: PatientAssignmentDraft) => {
     if (saving) return;
     setSaving(true);
@@ -482,28 +444,26 @@ export function PatientAssignmentSheet({
             </Button>
           ) : null}
         </div>
-        <div className="assignment-session-summary" aria-label="Current session summary">
-          {summaryItems.map((item) => (
-            <div className="assignment-summary-item" key={item.label}>
-              <span className="assignment-summary-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <span>
-                <strong>{item.value}</strong>
-                <small>{item.label}</small>
-              </span>
-            </div>
-          ))}
-        </div>
         {currentAssignedPatient ? (
           <section className="assignment-current-patient" aria-label="Currently assigned patient">
             <span className="assignment-patient-avatar" aria-hidden="true">
               <PatientIcon />
             </span>
             <div className="assignment-patient-copy">
-              <small>Currently assigned</small>
+              <small>Currently assigned{session.assignmentSource ? ` · ${assignmentSourceLabel(session.assignmentSource)}` : ""}</small>
               <strong>{currentAssignedPatient.displayName}</strong>
-              <span>{patientIdentifierLabel(currentAssignedPatient)}</span>
+              {assignedDetails.length ? (
+                <dl className="assignment-patient-details">
+                  {assignedDetails.map(([label, value]) => (
+                    <div className="assignment-patient-detail" key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <span>{patientIdentifierLabel(currentAssignedPatient)}</span>
+              )}
             </div>
             <button
               className="assignment-unassign"
@@ -514,7 +474,9 @@ export function PatientAssignmentSheet({
               Unassign
             </button>
           </section>
-        ) : null}
+        ) : (
+          <p className="assignment-no-patient">No patient assigned yet — search below or create a new patient.</p>
+        )}
         <label className="assignment-search-field">
           <span aria-hidden="true">
             <SearchIcon />
@@ -544,7 +506,13 @@ export function PatientAssignmentSheet({
                 <div className="assignment-patient-copy">
                   <strong>{patient.displayName}</strong>
                   <span>{patientIdentifierLabel(patient)}</span>
-                  <small>{alreadyAssigned ? "Currently assigned to this visit" : `Last visit: ${formatLastVisit(patient.lastVisit)}`}</small>
+                  <small>
+                    {alreadyAssigned
+                      ? "Currently assigned to this visit"
+                      : detectedIds.has(patient.id)
+                        ? "Detected in this session"
+                        : `Last visit: ${formatLastVisit(patient.lastVisit)}`}
+                  </small>
                 </div>
                 <Button
                   disabled={saving || alreadyAssigned}
@@ -571,58 +539,75 @@ export function PatientAssignmentSheet({
         <div className="assignment-divider"><span>or</span></div>
         <section className="assignment-create-panel" aria-label="Create a new patient">
           <h3>Create a new patient</h3>
-          <label className="assignment-national-id-field">
-            <span aria-hidden="true">
-              <IdCardIcon />
-            </span>
-            <Input
-              aria-label="New patient national ID"
-              onChange={(event) => setNewPatientNationalId(event.target.value)}
-              placeholder="National ID (optional)"
-              value={newPatientNationalId}
+          {creating ? (
+            <PatientForm
+              busy={saving}
+              initial={{ displayName: trimmedQuery }}
+              onCancel={() => setCreating(false)}
+              onSubmit={(values) =>
+                assignDraft({
+                  displayName: values.displayName,
+                  nationalId: values.nationalId || undefined,
+                  phone: values.phone || undefined,
+                  dateOfBirth: values.dateOfBirth || undefined,
+                  sex: values.sex || undefined,
+                  notes: values.notes || undefined,
+                })
+              }
+              submitLabel="Create new patient"
             />
-          </label>
-          <Button
-            className="assignment-create-button"
-            disabled={!canCreate}
-            onClick={() => assignDraft({ displayName: trimmedQuery, nationalId: newPatientNationalId.trim() || undefined })}
-            type="button"
-          >
-            <AddPatientIcon />
-            {saving ? "Creating patient" : "Create new patient"}
-          </Button>
+          ) : (
+            <Button className="assignment-create-button" onClick={() => setCreating(true)} type="button">
+              <AddPatientIcon />
+              Create new patient{trimmedQuery ? ` “${trimmedQuery}”` : ""}
+            </Button>
+          )}
         </section>
       </section>
     </div>
   );
 }
 
-function assignmentSessionSummary(session: CaptureSession) {
-  const metadata = metadataRecord(session.extractedMetadata);
-  const clinical = metadataRecord(metadata.clinical_metadata);
-  const sessionDate = formatAssignmentDate(session);
-  return [
-    { icon: <CalendarIcon />, value: sessionDate.date, label: sessionDate.time },
-    { icon: <CameraSummaryIcon />, value: `${session.items.length}`, label: `capture${session.items.length === 1 ? "" : "s"}` },
-    {
-      icon: <ClinicianIcon />,
-      value: metadataDisplay(clinical.clinician || metadata.clinician || metadata.doctor) || "AesMem clinician",
-      label: "Clinician",
-    },
-    { icon: <ClinicIcon />, value: session.report?.template?.clinic?.name || "Clinic", label: "Clinic" },
-  ];
+function patientDetailRows(info?: StructuredPatientInformation | null): Array<[string, string]> {
+  if (!info || info.status !== "assigned") return [];
+  return ([
+    ["National ID", info.nationalId],
+    ["Phone", info.phone],
+    ["Date of birth", info.dateOfBirth],
+  ] as Array<[string, string | null | undefined]>).filter((row): row is [string, string] => Boolean(row[1]));
 }
 
-function formatAssignmentDate(session: CaptureSession) {
-  const source = session.report?.updatedAt || session.processingStatus?.updatedAt || session.time;
-  const parsed = source ? new Date(source) : null;
-  if (parsed && !Number.isNaN(parsed.getTime())) {
-    return {
-      date: new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(parsed),
-      time: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(parsed),
-    };
+function detectedSessionPatients(session: CaptureSession, excludeId?: string): PatientSummary[] {
+  // Patients that surfaced in this session (assigned, matched, suggested, or candidate) — the
+  // "smart" suggestions to show first, instead of an arbitrary search list.
+  const out: PatientSummary[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, displayName: string, nationalId?: string) => {
+    if (!id || !displayName || id === excludeId || seen.has(id)) return;
+    seen.add(id);
+    out.push({ id, displayName, nationalId: nationalId || null, lastVisit: null });
+  };
+  const timeline = metadataRecord(session.extractedMetadata).patient_assignment_timeline;
+  if (Array.isArray(timeline)) {
+    for (const raw of timeline) {
+      const event = metadataRecord(raw);
+      push(metadataDisplay(event.patientId), metadataDisplay(event.displayName));
+    }
   }
-  return { date: session.dateLabel || "Current session", time: session.time || "Now" };
+  for (const item of session.items || []) {
+    const meta = metadataRecord(item.metadata);
+    const candidate = metadataRecord(meta.patient_match_candidate);
+    push(metadataDisplay(candidate.patientId), metadataDisplay(candidate.displayName) || suggestionNameFromInformation(candidate), suggestionNationalId(candidate));
+    if (Array.isArray(candidate.candidateSet)) {
+      for (const raw of candidate.candidateSet) {
+        const entry = metadataRecord(raw);
+        push(metadataDisplay(entry.patientId), metadataDisplay(entry.displayName));
+      }
+    }
+    const action = metadataRecord(meta.ai_patient_action);
+    push(metadataDisplay(action.patientId), metadataDisplay(action.displayName));
+  }
+  return out;
 }
 
 function currentSessionPatient(session: CaptureSession) {
@@ -688,22 +673,33 @@ function formatLastVisit(value?: string | null) {
 }
 
 function LiveDraftReport({
+  isPro,
   session,
+  onApplyRelevant,
   onAssignPatient,
   onDeleteCapture,
   onOpenCapture,
+  onOpenResolver,
   onRenameCapture,
   onResolveFile,
+  onUpdateCaptureCaption,
+  onUpdateCaptureTranscript,
 }: {
+  isPro: boolean;
   session: CaptureSession | null;
+  onApplyRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   onOpenCapture: (item: CaptureItem) => void;
+  onOpenResolver?: () => void;
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
+  onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
+  onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
 }) {
   const [openMenuId, setOpenMenuId] = React.useState("");
   const activePatientAction = activePatientAssignmentActionForSession(session);
+  const candidates = sessionAssignmentCandidates(session);
 
   React.useEffect(() => {
     setOpenMenuId("");
@@ -723,12 +719,18 @@ function LiveDraftReport({
       {session.items.map((item, index) => (
         <LiveDraftCaptureItem
           activePatientAction={activePatientAction}
+          alternateCandidate={alternateCandidateForCapture(candidates, item.id)}
+          isPro={isPro}
           item={item}
           key={item.sourceUrl || item.id}
           menuOpen={openMenuId === item.id}
           onApplyReassignment={onAssignPatient ? (draft) => onAssignPatient(session.id, draft) : undefined}
+          onApplyRelevant={onApplyRelevant ? () => onApplyRelevant(session.id, item.id) : undefined}
+          onChooseAnother={onOpenResolver}
           onCloseMenu={() => setOpenMenuId("")}
           onDeleteCapture={onDeleteCapture ? () => onDeleteCapture(session.id, item.id) : undefined}
+          onEditCaption={onUpdateCaptureCaption ? (text) => onUpdateCaptureCaption(session.id, item.id, text).then(() => undefined) : undefined}
+          onEditTranscript={onUpdateCaptureTranscript ? (text) => onUpdateCaptureTranscript(session.id, item.id, text).then(() => undefined) : undefined}
           onOpenCapture={() => onOpenCapture(item)}
           onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
           onResolveFile={onResolveFile}
@@ -736,8 +738,8 @@ function LiveDraftReport({
           sequence={index + 1}
         />
       ))}
-      {session.processingStatus?.state === "processing" ? (
-        <div className="live-draft-processing">AesMem is preparing the structured report. The live draft remains reviewable while you wait.</div>
+      {isPro && session.processingStatus?.state === "processing" ? (
+        <div className="live-draft-processing">AesMem is refining the live report. Your captures stay reviewable while it updates.</div>
       ) : null}
     </div>
   );
@@ -745,11 +747,17 @@ function LiveDraftReport({
 
 function LiveDraftCaptureItem({
   activePatientAction,
+  alternateCandidate,
+  isPro,
   item,
   menuOpen,
   onApplyReassignment,
+  onApplyRelevant,
+  onChooseAnother,
   onCloseMenu,
   onDeleteCapture,
+  onEditCaption,
+  onEditTranscript,
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
@@ -757,11 +765,17 @@ function LiveDraftCaptureItem({
   sequence,
 }: {
   activePatientAction: Record<string, unknown> | null;
+  alternateCandidate: AssignmentCandidate | null;
+  isPro: boolean;
   item: CaptureItem;
   menuOpen: boolean;
   onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
+  onApplyRelevant?: () => Promise<void>;
+  onChooseAnother?: () => void;
   onCloseMenu: () => void;
   onDeleteCapture?: () => Promise<void>;
+  onEditCaption?: (text: string) => Promise<void>;
+  onEditTranscript?: (text: string) => Promise<void>;
   onOpenCapture: () => void;
   onRenameCapture?: (title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
@@ -778,6 +792,13 @@ function LiveDraftCaptureItem({
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
   const outOfContext = captureOutOfContext(item) && !markedRelevant;
+  const assignmentInfo = captureAssignmentInfo(item, activePatientAction);
+  // Persist "Mark relevant" (clears the AI out-of-context marker + re-folds into the report),
+  // optimistically clearing the chip while the session refreshes.
+  const markRelevant = () => {
+    setMarkedRelevant(true);
+    if (onApplyRelevant) void onApplyRelevant();
+  };
 
   const rename = () => {
     if (!onRenameCapture || busy) return;
@@ -792,7 +813,7 @@ function LiveDraftCaptureItem({
 
   const remove = () => {
     if (!onDeleteCapture || busy) return;
-    if (!window.confirm(`Delete ${title}? The structured report will move back to draft.`)) return;
+    if (!window.confirm(`Delete ${title}? The live report will update.`)) return;
     setBusy(true);
     void onDeleteCapture().finally(() => {
       setBusy(false);
@@ -802,7 +823,7 @@ function LiveDraftCaptureItem({
 
   return (
     <article
-      className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}`}
+      className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}${assignmentInfo ? " is-assignment-source" : ""}`}
       onClick={(event) => {
         if ((event.target as HTMLElement).closest("audio, button, input, textarea, summary, details, .capture-item-menu")) return;
         onOpenCapture();
@@ -823,16 +844,22 @@ function LiveDraftCaptureItem({
         <header className="live-draft-capture-header">
           <div className="live-draft-capture-meta">
             <div className="live-draft-title-row">
-              <h3>{title}</h3>
+              <span className="live-draft-title-main">
+                <h3>{title}</h3>
+                <CaptureAssignmentBadge info={assignmentInfo} />
+                <CaptureReportBadge isPro={isPro} item={item} outOfContext={outOfContext} />
+              </span>
               <time>{item.time}</time>
             </div>
             <CaptureInlineStatus status={item.status} />
             <CapturePatientBadges
               activePatientAction={activePatientAction}
+              alternateCandidate={alternateCandidate}
               item={item}
               onApplyReassignment={onApplyReassignment}
+              onChooseAnother={onChooseAnother}
               outOfContext={outOfContext}
-              onMarkRelevant={() => setMarkedRelevant(true)}
+              onMarkRelevant={markRelevant}
             />
           </div>
           <button
@@ -864,11 +891,13 @@ function LiveDraftCaptureItem({
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
             <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
-              <CaptureGeneratedHeading label="Transcript" attribution={generatedText ? textAttribution : pendingGeneratedAttribution(item)} />
               {generatedText ? (
-                <p className="live-draft-preview">{generatedText}</p>
+                <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
               ) : (
-                <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                <>
+                  <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
+                  <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                </>
               )}
             </section>
           </>
@@ -880,8 +909,14 @@ function LiveDraftCaptureItem({
             </div>
             <div className="live-draft-photo-copy">
               <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
-                <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
-                {generatedText ? <p>{generatedText}</p> : <CaptureWorkingPlaceholder label="Reading image" />}
+                {generatedText ? (
+                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
+                ) : (
+                  <>
+                    <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
+                    <CaptureWorkingPlaceholder label="Reading image" />
+                  </>
+                )}
               </section>
             </div>
           </div>
@@ -890,7 +925,7 @@ function LiveDraftCaptureItem({
           <>
             <section className="capture-generated-section ready">
               <h4>Decorated text</h4>
-              <p className="live-draft-preview">{decoratedNoteText}</p>
+              <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
             </section>
             <details className="capture-raw-note">
               <summary>Raw note</summary>
@@ -905,67 +940,136 @@ function LiveDraftCaptureItem({
 
 function CapturePatientBadges({
   activePatientAction,
+  alternateCandidate,
   item,
   onApplyReassignment,
+  onChooseAnother,
   outOfContext,
   onMarkRelevant,
 }: {
   activePatientAction: Record<string, unknown> | null;
+  alternateCandidate?: AssignmentCandidate | null;
   item: CaptureItem;
   onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
+  onChooseAnother?: () => void;
   outOfContext?: boolean;
   onMarkRelevant?: () => void;
 }) {
   const [dismissed, setDismissed] = React.useState(false);
   const [applying, setApplying] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [editNationalId, setEditNationalId] = React.useState("");
 
-  // Active assignment / creation effect, shown on the capture that produced it.
-  const action = metadataRecord(activePatientAction);
-  const actionMetadata = metadataRecord(action.actionMetadata);
-  const actionCaptureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMetadata.basisCaptureId);
-  const isActionCapture = Boolean(actionCaptureId) && actionCaptureId === item.id;
-  const assigned = isActionCapture && action.assigned !== false && Boolean(action.patientId || actionMetadata.patientId);
-  const created =
-    isActionCapture &&
-    (action.created === true || actionMetadata.created === true || action.action === "created_and_assigned" || actionMetadata.action === "created_and_assigned");
+  // The active assignment/creation effect renders as a badge beside the title
+  // (CaptureAssignmentBadge); here we only need to know whether this capture is the source so we
+  // don't also show a reassignment suggestion on it.
+  const isSource = captureAssignmentInfo(item, activePatientAction) !== null;
 
-  // Suggested reassignment: an implicit mention on an already-assigned visit (not applied).
+  // A "Suggested: reassign" surface on a NON-source capture, from a partial (fuzzy) match or an
+  // implicit mention (`patient_match_candidate`), or a prior assignment basis still in the
+  // timeline (the alternate candidate) — so staff can resolve the partial match in place.
   const candidate = metadataRecord(metadataRecord(item.metadata).patient_match_candidate);
   const candidateStatus = metadataDisplay(candidate.status || candidate.decision);
-  const suggestionName = metadataDisplay(candidate.displayName) || suggestionNameFromInformation(candidate);
-  const showSuggestion = candidateStatus === "suggested_reassignment" && !dismissed;
+  const isSuggestion = candidateStatus === "suggested_reassignment";
+  const suggestedMatchedName = isSuggestion ? metadataDisplay(candidate.matchedName || candidate.displayName) || suggestionNameFromInformation(candidate) : "";
+  const suggestedSpokenName = isSuggestion ? metadataDisplay(candidate.spokenName) : "";
+  const suggestion: { name: string; patientId?: string; nationalId?: string; spokenName?: string } | null =
+    isSuggestion && (suggestedMatchedName || suggestedSpokenName)
+      ? {
+          name: suggestedMatchedName || suggestedSpokenName,
+          patientId: metadataDisplay(candidate.patientId) || undefined,
+          nationalId: suggestionNationalId(candidate),
+          spokenName: suggestedSpokenName || undefined,
+        }
+      : alternateCandidate
+        ? { name: alternateCandidate.displayName, patientId: alternateCandidate.patientId }
+        : null;
+  const showSuggestion = Boolean(suggestion) && !isSource && !dismissed;
+  // "Matched X · you said Y" — only for a real match (a patient to keep) whose names differ.
+  const showMatchedVsSpoken = Boolean(suggestion?.patientId && suggestion?.spokenName && suggestion.spokenName !== suggestion.name);
 
-  if (!assigned && !created && !showSuggestion && !outOfContext) return null;
+  if (!showSuggestion && !outOfContext) return null;
 
-  const applySuggestion = () => {
-    if (!onApplyReassignment || applying || !suggestionName) return;
-    const patientId = metadataDisplay(candidate.patientId);
-    const draft: PatientAssignmentDraft = patientId
-      ? { patientId, displayName: suggestionName }
-      : { displayName: suggestionName, nationalId: suggestionNationalId(candidate) };
+  // Attribute the (re)assignment to this capture so it becomes the source and its chip clears.
+  const applyDraft = (draft: PatientAssignmentDraft) => {
+    if (!onApplyReassignment || applying) return;
     setApplying(true);
     void onApplyReassignment(draft).finally(() => setApplying(false));
+  };
+  const keepMatch = () => {
+    if (!suggestion?.patientId) return;
+    applyDraft({ patientId: suggestion.patientId, displayName: suggestion.name, basisCaptureId: item.id });
+  };
+  const createNew = (name: string, nationalId?: string) => {
+    // Seed a NEW patient from the spoken identity (never rename the matched record).
+    const display = name.trim();
+    if (!display) return;
+    applyDraft({ displayName: display, nationalId: nationalId?.trim() || undefined, basisCaptureId: item.id });
+  };
+  const openEditor = () => {
+    setEditName(suggestion?.spokenName || suggestion?.name || "");
+    setEditNationalId(suggestion?.nationalId || "");
+    setEditing(true);
   };
 
   return (
     <div className="capture-effect-chips" aria-label="Capture effects">
-      {created ? (
-        <span className="effect-chip is-created">New patient + assigned</span>
-      ) : assigned ? (
-        <span className="effect-chip is-assign">Patient assigned</span>
-      ) : null}
-      {showSuggestion ? (
-        <span className="effect-chip is-suggested">
-          <span className="effect-chip-label">Suggested: reassign{suggestionName ? ` to ${suggestionName}` : ""}</span>
-          {onApplyReassignment ? (
-            <button className="effect-chip-action" disabled={applying} onClick={applySuggestion} type="button">
-              {applying ? "Applying…" : "Apply"}
+      {showSuggestion && suggestion ? (
+        <div className="partial-match-row">
+        <div className="effect-chip is-suggested partial-match">
+          <div className="partial-match-head">
+            <span className="effect-chip-label">
+              {suggestion.patientId ? (
+                <>Suggested: reassign to <strong>{suggestion.name}</strong></>
+              ) : (
+                <>New patient: <strong>{suggestion.name}</strong></>
+              )}
+            </span>
+            <button aria-label="Dismiss suggestion" className="partial-match-close" onClick={() => setDismissed(true)} type="button">
+              ×
             </button>
+          </div>
+          {showMatchedVsSpoken ? (
+            <span className="partial-match-identity">
+              Matched <strong>{suggestion.name}</strong> · you said <strong>{suggestion.spokenName}</strong>
+            </span>
           ) : null}
-          <button className="effect-chip-dismiss" onClick={() => setDismissed(true)} type="button">
-            Dismiss
-          </button>
-        </span>
+          {editing ? (
+            <div className="partial-match-edit">
+              <span className="partial-match-edit-title">New patient details</span>
+              <input aria-label="Patient name" onChange={(event) => setEditName(event.target.value)} placeholder="Patient name" value={editName} />
+              <input aria-label="National ID (optional)" onChange={(event) => setEditNationalId(event.target.value)} placeholder="National ID (optional)" value={editNationalId} />
+              <div className="partial-match-edit-actions">
+                <button className="effect-chip-action" disabled={applying || !editName.trim()} onClick={() => createNew(editName, editNationalId)} type="button">
+                  {applying ? "Creating…" : "Create patient"}
+                </button>
+                <button className="effect-chip-ghost" onClick={() => setEditing(false)} type="button">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="partial-match-actions">
+              {suggestion.patientId && onApplyReassignment ? (
+                <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
+                  {applying ? "Applying…" : "Keep match"}
+                </button>
+              ) : null}
+              {onApplyReassignment ? (
+                <button className="effect-chip-secondary" disabled={applying} onClick={openEditor} type="button">
+                  {suggestion.patientId ? "Create new instead" : "Create patient"}
+                </button>
+              ) : null}
+              {onChooseAnother ? (
+                <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">
+                  Choose another
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+        </div>
       ) : null}
       {outOfContext ? (
         <span className="effect-chip is-context">
@@ -981,9 +1085,53 @@ function CapturePatientBadges({
   );
 }
 
+/** Report-contribution status (Pro), shown as a quiet badge beside the capture title. */
+function CaptureReportBadge({ isPro, item, outOfContext }: { isPro?: boolean; item: CaptureItem; outOfContext?: boolean }) {
+  const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
+  if (!isPro || outOfContext || !["added", "updating", "pending"].includes(status)) return null;
+  return (
+    <span className={`capture-title-badge effect-chip is-report ${status === "added" ? "added" : "pending"}`}>
+      {status === "added" ? "✓ Added to report" : "Adding to report…"}
+    </span>
+  );
+}
+
+type CaptureAssignmentInfo = { kind: "assigned" | "created"; name: string; closeMatch: boolean; spokenName: string };
+
+/** Whether this capture is the active assignment source, and the patient it (re)assigned. */
+function captureAssignmentInfo(item: CaptureItem, activePatientAction: Record<string, unknown> | null): CaptureAssignmentInfo | null {
+  const action = metadataRecord(activePatientAction);
+  const actionMetadata = metadataRecord(action.actionMetadata);
+  const actionCaptureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMetadata.basisCaptureId);
+  if (!actionCaptureId || actionCaptureId !== item.id) return null;
+  if (action.assigned === false || !(action.patientId || actionMetadata.patientId)) return null;
+  const created =
+    action.created === true || actionMetadata.created === true || action.action === "created_and_assigned" || actionMetadata.action === "created_and_assigned";
+  const matchedName = metadataDisplay(action.matchedName || actionMetadata.matchedName);
+  const spokenName = metadataDisplay(action.spokenName || actionMetadata.spokenName);
+  const closeMatch = (action.closeMatch === true || actionMetadata.closeMatch === true) && matchedName !== "" && spokenName !== "" && matchedName !== spokenName;
+  return { kind: created ? "created" : "assigned", name: metadataDisplay(action.displayName || actionMetadata.displayName), closeMatch, spokenName };
+}
+
+/** Assignment-source badge, shown beside the capture title (the patient this capture (re)assigned). */
+function CaptureAssignmentBadge({ info }: { info: CaptureAssignmentInfo | null }) {
+  if (!info) return null;
+  return (
+    <span className={`capture-title-badge effect-chip ${info.kind === "created" ? "is-created" : "is-assign"}`}>
+      {info.kind === "created" ? "New patient + assigned" : "Patient assigned"}
+      {info.name ? ` → ${info.name}` : ""}
+      {info.closeMatch ? <span className="effect-chip-note"> · close match · you said {info.spokenName}</span> : null}
+    </span>
+  );
+}
+
 function captureOutOfContext(item: CaptureItem): boolean {
   const meta = metadataRecord(item.metadata);
-  if (metadataRecord(meta.out_of_context).present === true) return true;
+  const marker = metadataRecord(meta.out_of_context);
+  // A staff "Mark relevant" override clears the AI marker (see backend update_capture).
+  if (marker.overridden_by_staff === true) return false;
+  if (marker.present === true) return true;
+  if ("present" in marker) return false;
   const intents = metadataRecord(metadataRecord(meta.ai_processing).intents);
   return metadataRecord(intents.out_of_context).present === true;
 }
@@ -1008,65 +1156,45 @@ function AiCreatedPatientPanel({
   onComplete: (
     sessionId: string,
     patientId: string,
-    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string },
+    draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
     action: Record<string, unknown>,
   ) => Promise<void>;
 }) {
   const patientInfo = metadataRecord(action.patientInformation);
   const patientId = metadataDisplay(action.patientId || session.patientId);
-  const [displayName, setDisplayName] = React.useState(metadataDisplay(action.displayName || session.patientName || patientInfo.raw_mentioned_name));
-  const [nationalId, setNationalId] = React.useState(metadataDisplay(patientInfo.national_id));
-  const [phone, setPhone] = React.useState(metadataDisplay(patientInfo.phone));
-  const [dateOfBirth, setDateOfBirth] = React.useState(metadataDisplay(patientInfo.date_of_birth));
   const [saving, setSaving] = React.useState(false);
   const status = metadataDisplay(action.status);
   const needsVerification = action.needsVerification !== false && status !== "verified";
   if (!patientId || action.action !== "created_and_assigned" || !needsVerification) return null;
+  // Seed the unified create/edit form from the AI-extracted identity.
+  const initial = {
+    displayName: metadataDisplay(action.displayName || session.patientName || patientInfo.raw_mentioned_name),
+    nationalId: metadataDisplay(patientInfo.national_id),
+    phone: metadataDisplay(patientInfo.phone),
+    dateOfBirth: metadataDisplay(patientInfo.date_of_birth),
+    sex: metadataDisplay(patientInfo.sex),
+    notes: "",
+  };
   return (
     <Card className="ai-patient-review-card">
       <div className="ai-patient-review-copy">
         <strong>AI created this patient from audio</strong>
         <p>Complete the details now and verify the patient record while staying in this visit.</p>
       </div>
-      <div className="ai-patient-review-grid">
-        <label>
-          <span>Name</span>
-          <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
-        </label>
-        <label>
-          <span>National ID</span>
-          <Input value={nationalId} onChange={(event) => setNationalId(event.target.value)} />
-        </label>
-        <label>
-          <span>Phone</span>
-          <Input value={phone} onChange={(event) => setPhone(event.target.value)} />
-        </label>
-        <label>
-          <span>Date of birth</span>
-          <Input placeholder="YYYY-MM-DD" value={dateOfBirth} onChange={(event) => setDateOfBirth(event.target.value)} />
-        </label>
-      </div>
-      <Button
-        disabled={saving || !displayName.trim()}
-        onClick={() => {
+      <PatientForm
+        busy={saving}
+        initial={initial}
+        onSubmit={(values) => {
           setSaving(true);
           void onComplete(
             session.id,
             patientId,
-            {
-              displayName: displayName.trim(),
-              nationalId: nationalId.trim(),
-              phone: phone.trim(),
-              dateOfBirth: dateOfBirth.trim(),
-            },
+            { displayName: values.displayName, nationalId: values.nationalId, phone: values.phone, dateOfBirth: values.dateOfBirth, sex: values.sex, notes: values.notes },
             action,
           ).finally(() => setSaving(false));
         }}
-        size="sm"
-        type="button"
-      >
-        {saving ? "Saving" : "Save & verify patient"}
-      </Button>
+        submitLabel="Save & verify patient"
+      />
     </Card>
   );
 }
@@ -1139,6 +1267,67 @@ function CaptureGeneratedHeading({ attribution, label }: { attribution: string; 
   );
 }
 
+/** A generated text block (transcript/caption) with an inline Edit affordance (A4). Saved edits
+ * carry edited-vs-AI attribution and feed the live report via the same handlers as the source sheet. */
+function CaptureGeneratedText({
+  label,
+  text,
+  attribution,
+  dir,
+  onSave,
+}: {
+  label: string;
+  text: string;
+  attribution: string;
+  dir?: "rtl" | "ltr";
+  onSave?: (text: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(text);
+  const [saving, setSaving] = React.useState(false);
+  const start = () => {
+    setDraft(text);
+    setEditing(true);
+  };
+  const save = () => {
+    if (!onSave || saving || !draft.trim()) return;
+    setSaving(true);
+    void onSave(draft.trim())
+      .then(() => setEditing(false))
+      .finally(() => setSaving(false));
+  };
+  return (
+    <>
+      <div className="capture-generated-heading">
+        <h4>{label}</h4>
+        <div className="capture-generated-heading-meta">
+          <span>{attribution}</span>
+          {onSave && !editing ? (
+            <button className="capture-generated-edit" onClick={start} type="button">
+              Edit
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {editing ? (
+        <div className="capture-generated-editor">
+          <textarea aria-label={`Edit ${label.toLowerCase()}`} dir={dir} onChange={(event) => setDraft(event.target.value)} rows={Math.min(8, Math.max(3, Math.ceil(draft.length / 56)))} value={draft} />
+          <div className="capture-generated-editor-actions">
+            <button className="capture-generated-cancel" onClick={() => setEditing(false)} type="button">
+              Cancel
+            </button>
+            <button className="capture-generated-save" disabled={saving || !draft.trim()} onClick={save} type="button">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="live-draft-preview" dir={dir}>{text}</p>
+      )}
+    </>
+  );
+}
+
 function captureTextAttribution(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
   const value = item.type === "photo" ? metadata.caption : metadata.transcript;
@@ -1178,18 +1367,29 @@ function CaptureTimelineIcon({ type }: { type: CaptureItem["type"] }) {
   );
 }
 
-function StructuredReportView({
+function LiveReportView({
+  isPro,
   session,
   onResolveFile,
 }: {
+  isPro: boolean;
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
+  // template-driven report; Basic is a clean chronological body with transcripts + images.
+  return isPro ? (
+    <ProLiveReport session={session} onResolveFile={onResolveFile} />
+  ) : (
+    <BasicLiveReport session={session} onResolveFile={onResolveFile} />
+  );
+}
+
+function ReportDocHeader({ session }: { session: CaptureSession | null }) {
   const clinic = session?.report?.template?.clinic;
   const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session);
-  const bodyParagraphs = workspaceStructuredReportCopy(session);
   return (
-    <div className="structured-report-view">
+    <>
       <section className="structured-report-section">
         <h3>Clinic Information</h3>
         <p>Clinic: {clinic?.name || "Clinic"}</p>
@@ -1201,28 +1401,114 @@ function StructuredReportView({
         <h3>Patient Information</h3>
         <PatientInformationRows patientInformation={patientInformation} />
       </section>
+    </>
+  );
+}
+
+function ProLiveReport({
+  session,
+  onResolveFile,
+}: {
+  session: CaptureSession | null;
+  onResolveFile: (endpoint: string) => Promise<string>;
+}) {
+  const bodyParagraphs = workspaceStructuredReportCopy(session);
+  const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
+  const summary = reportContributionSummary(session);
+  const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
+  return (
+    <div className="structured-report-view">
+      <ReportDocHeader session={session} />
+      <div className="report-meta-strip">
+        <span className="report-meta-template">{templateLabel}</span>
+        {summary ? <span className="report-meta-counts">{summary}</span> : null}
+      </div>
       <section className="structured-report-section structured-report-body">
-        <h3>Body</h3>
-        {session?.processingStatus?.state === "processing" || session?.report?.status === "generating" ? (
-          <>
-            <h3>Generating structured report</h3>
-            <p>Please wait while AesMem prepares the full report from the latest captures.</p>
-          </>
+        {isUpdating && !bodyParagraphs.length ? (
+          <p className="report-doc-status">Preparing the report from your captures…</p>
         ) : bodyParagraphs.length ? (
           bodyParagraphs.map((paragraph, index) => (
             <section className="workspace-report-section" key={`${index}-${paragraph.slice(0, 24)}`}>
               {formatReportParagraph(paragraph, onResolveFile)}
             </section>
           ))
+        ) : session?.items.length ? (
+          <p className="report-doc-status">Preparing the report from your captures…</p>
         ) : (
-          <>
-            <h3>Structured report not generated yet</h3>
-            <p>The live draft is available now. Generate a structured report when the session has enough source material.</p>
-          </>
+          <p className="report-doc-status">The report builds here automatically as captures land.</p>
         )}
       </section>
     </div>
   );
+}
+
+function BasicLiveReport({
+  session,
+  onResolveFile,
+}: {
+  session: CaptureSession | null;
+  onResolveFile: (endpoint: string) => Promise<string>;
+}) {
+  const items = session?.items || [];
+  return (
+    <div className="structured-report-view basic-live-report">
+      <ReportDocHeader session={session} />
+      <section className="structured-report-section structured-report-body">
+        {items.length ? (
+          items.map((item) => <BasicReportEntry item={item} key={item.sourceUrl || item.id} onResolveFile={onResolveFile} />)
+        ) : (
+          <p className="report-doc-status">Captures will appear here, in order, as the session develops.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function BasicReportEntry({
+  item,
+  onResolveFile,
+}: {
+  item: CaptureItem;
+  onResolveFile: (endpoint: string) => Promise<string>;
+}) {
+  const text = generatedTextForReport(item) || (item.type === "note" ? item.detail : "");
+  const isPhoto = item.type === "photo";
+  return (
+    <div className={`basic-report-entry ${item.type}`}>
+      <span className="basic-report-entry-node" aria-hidden="true">
+        <CaptureTimelineIcon type={item.type} />
+      </span>
+      <div className="basic-report-entry-body">
+        <div className="basic-report-entry-time">{item.time}</div>
+        {text ? <p>{text}</p> : null}
+        {isPhoto ? (
+          <div className="basic-report-entry-photo">
+            <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function reportContributionSummary(session: CaptureSession | null): string {
+  const summary = metadataRecord(metadataRecord(session?.extractedMetadata).report_contribution_summary);
+  const included = Number(summary.included);
+  const setAside = Number(summary.set_aside);
+  if (!Number.isFinite(included) || included <= 0) return "";
+  const base = `Generated from ${included} capture${included === 1 ? "" : "s"}`;
+  return Number.isFinite(setAside) && setAside > 0 ? `${base} · ${setAside} set aside` : base;
+}
+
+function reportUpdatingLabel(session: CaptureSession | null): string {
+  const pending = (session?.items || []).filter((item) => {
+    const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
+    return status === "pending" || status === "updating" || item.status === "processing" || item.status === "uploaded";
+  });
+  if (!pending.length) return "Updating the report…";
+  const labels = pending.slice(0, 2).map((item, index) => captureDraftLabel(item, index + 1));
+  const suffix = pending.length > 2 ? ` +${pending.length - 2}` : "";
+  return `Updating for ${labels.join(", ")}${suffix}…`;
 }
 
 function PatientInformationRows({ patientInformation }: { patientInformation: StructuredPatientInformation | null }) {
@@ -1360,6 +1646,14 @@ function generatedTextForReport(item: CaptureItem) {
   return "";
 }
 
+/** Display direction for transcript/caption/note text: RTL when it's predominantly
+ * Persian/Arabic script (covers farsi and mixed-farsi), otherwise LTR. */
+function textDirection(text: string): "rtl" | "ltr" {
+  const rtl = (text.match(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
+  const ltr = (text.match(/[A-Za-z]/g) || []).length;
+  return rtl > ltr ? "rtl" : "ltr";
+}
+
 function noteDecoratedText(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
   const decorated = metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
@@ -1446,6 +1740,43 @@ function activePatientAssignmentActionForSession(session: CaptureSession | null)
   if (!session?.extractedMetadata) return null;
   const action = metadataRecord(session.extractedMetadata.active_patient_assignment_action || session.extractedMetadata.ai_patient_action);
   return Object.keys(action).length ? action : null;
+}
+
+type AssignmentCandidate = { patientId: string; displayName: string };
+
+/** Derive each capture's assignment candidate from the session's assignment timeline. */
+function sessionAssignmentCandidates(session: CaptureSession | null): {
+  activeCaptureId: string;
+  activePatientId: string;
+  byCapture: Record<string, AssignmentCandidate>;
+} {
+  const action = metadataRecord(activePatientAssignmentActionForSession(session));
+  const actionMeta = metadataRecord(action.actionMetadata);
+  const activeCaptureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMeta.basisCaptureId);
+  const activePatientId = metadataDisplay(action.patientId || actionMeta.patientId);
+  const byCapture: Record<string, AssignmentCandidate> = {};
+  const timeline = metadataRecord(session?.extractedMetadata).patient_assignment_timeline;
+  if (Array.isArray(timeline)) {
+    for (const raw of timeline) {
+      const event = metadataRecord(raw);
+      const captureId = metadataDisplay(event.captureId);
+      const patientId = metadataDisplay(event.patientId);
+      if (captureId && patientId) byCapture[captureId] = { patientId, displayName: metadataDisplay(event.displayName) };
+    }
+  }
+  return { activeCaptureId, activePatientId, byCapture };
+}
+
+/** The reassignment a capture offers when it is not the current source (a switchable alternate). */
+function alternateCandidateForCapture(
+  candidates: ReturnType<typeof sessionAssignmentCandidates>,
+  captureId: string,
+): AssignmentCandidate | null {
+  const candidate = candidates.byCapture[captureId];
+  if (!candidate) return null;
+  if (captureId === candidates.activeCaptureId) return null;
+  if (candidate.patientId === candidates.activePatientId) return null;
+  return candidate;
 }
 
 function sessionSummaryCreatedLabel(session: CaptureSession | null) {

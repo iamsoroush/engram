@@ -293,10 +293,13 @@ export function AudioDialog({
   open,
   onClose,
   onSave,
+  storageWarning,
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
+  /** Set when durable storage is low (~85%+): a long recording may not fit (Epic G). */
+  storageWarning?: { usageRatio: number } | null;
 }) {
   const [seconds, setSeconds] = React.useState(0);
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
@@ -491,6 +494,12 @@ export function AudioDialog({
           <h2 id="recording-audio-title">Recording audio</h2>
           <p>You can continue using the session while recording.</p>
         </div>
+
+        {storageWarning ? (
+          <p className="recording-storage-warning" role="status">
+            Device storage is {Math.round((storageWarning.usageRatio || 0) * 100)}% full — a long recording may not fit. Consider exporting queued captures or freeing space first.
+          </p>
+        ) : null}
 
         <div className="recording-meter" aria-live="polite">
           <div className={`record-dot ${isPaused ? "paused" : ""}`} aria-hidden="true" />
