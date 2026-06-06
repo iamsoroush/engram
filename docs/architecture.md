@@ -123,6 +123,26 @@ When previewing a capture, the frontend resolves the source in this order:
 
 This keeps review fast while still allowing cache eviction after backend sync.
 
+## Entity Model (verticals)
+
+`Patient` is **universal** across verticals and stays the assignment target. What varies by
+vertical is the **report-required work-unit** — a clinic **Session**, a radiology **Study**, a
+pathology **Case** — modeled as one generic **Encounter** (`Patient 1—* Encounter 1—* Capture`,
+one `Report` per Encounter). v1 ships clinics only, so the Encounter **is** today's `Session`
+(no `Session → Encounter` rename yet).
+
+- `tenant.vertical` (`clinic` | `radiology` | `pathology`; default `clinic`) types the workspace.
+- The work-unit **presentation label** is derived from the vertical via
+  [`services/verticals.encounter_label`](../apps/backend/app/services/verticals.py)
+  (clinic→"Session", radiology→"Study", pathology→"Case") and surfaced on the `TenantProfile`
+  (`vertical`, `encounterLabel`) — it must not be hardcoded in core/apply logic.
+- `session.attributes` (JSONB) is a reserved per-vertical extension point (radiology:
+  accession/modality/body_part; pathology: specimen_id/stain), kept separate from
+  `extracted_metadata` (AI/processing output). Empty for clinics.
+
+The literal `Session → Encounter` rename and per-vertical `attributes` fields land with the second
+vertical. See [intelligence-layer.md §2](intelligence-layer.md) for the full rationale.
+
 ## Storage Model
 
 Browser storage has two roles:

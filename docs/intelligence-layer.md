@@ -1,8 +1,10 @@
 # Intelligence Layer — v1 Design Contract
 
-Status: **design** (not yet implemented). This is the single source of truth for how the
-AI engine, backend, and frontend agree on capture *intelligence*: what the model emits,
-how the backend applies it, and how the frontend renders the effect. It replaces today's
+Status: **design + largely implemented** (assignment/reassignment, out-of-context, near-match,
+tiering, and the Pro live report have shipped — see the DONE markers in
+[intelligence-layer-stories.md](intelligence-layer-stories.md)). This is the single source of
+truth for how the AI engine, backend, and frontend agree on capture *intelligence*: what the
+model emits, how the backend applies it, and how the frontend renders the effect. It replaces today's
 implicit coupling, where the AI emitted extracted identity and the backend silently chose
 whether to apply it (the root of the "audio said reassign but nothing changed" bug — see
 [ai_engine/processing.md](ai_engine/processing.md) "If a session already has a DB-owned
@@ -55,6 +57,23 @@ the backend applies.
 `append` is the default chronological behavior in Basic (no signal needed); the explicit
 `append` intent is only consumed by Pro report refinement.
 
+**Language preferences (tenant-level).** `tenant.transcription_language` (default `auto`) and
+`tenant.report_language` (NULL = follow the report template's default) are settable by staff
+(`PATCH /tenant/settings`, surfaced on the `TenantProfile`). Transcription is told to transcribe
+**verbatim in the spoken language and original script — never translate or romanize** (auto), or
+in the chosen language's native script; this is critical because a romanized Persian transcript
+(e.g. "Bimar ro avaz kon…") breaks name matching, so an explicit reassignment silently fails.
+The preference rides on `transcriptionContext.preferredLanguage`; report language rides on the
+session-processing context (`reportLanguage`).
+
+**Match strictness (tenant-level).** `tenant.match_strictness` (`strict` | `balanced` | `lenient`,
+default `strict`) moves the single-candidate auto-apply line for **fuzzy** name matches only
+(§5.4). `strict` = deterministic matches only (preserves prior behavior); `balanced`/`lenient` =
+also auto-apply a single high-confidence fuzzy match with an **explicit** reassignment instruction,
+at a high/lower threshold. The national-ID conflict guard and ambiguous-multi-candidate routing
+apply at every level. Settable via `PATCH /tenant/settings` (`matchStrictness`), surfaced on the
+`TenantProfile`. Lives on the B4 Settings page (temporarily in the Shell menu).
+
 ## 4. AI output schema — `2026-06-03.capture-intelligence.v1`
 
 Extends the current structured-transcription output. **`transcript` is required;
@@ -104,9 +123,15 @@ capture was deleted** (this *is* undo). The fix is to stop suppressing the appen
    **not added**; the backend runs matching and stores an **actionable suggestion**
    (`status: "suggested_reassignment"`) surfaced as a capture chip + Needs-input item that
    the user can apply in one tap. Nothing reassigns silently.
-4. Auto-apply **only on deterministic `matched`/`no_match`**; `possible_match`/ambiguous
-   always routes to the human resolver, even in Pro. **Precedence (D1):** a staff assignment
-   is overridden only by another staff action or an explicit-basis AI capture.
+4. Auto-apply **only on deterministic `matched`/`no_match`** by default; `possible_match`/ambiguous
+   routes to the human resolver, even in Pro. **Exception (H3/H4):** a single high-confidence
+   **fuzzy** `possible_match` auto-applies (reversible, with notify) when `tenant.match_strictness`
+   is `balanced`/`lenient` **and** the assignment basis is `explicit` — never on an implicit
+   mention, a tie, or a national-ID conflict. Otherwise it surfaces as a partial-match
+   **suggestion** on the capture card (the H4 quick-action surface: Keep match / Create new
+   instead (editable form) / Choose another — see
+   [redesign-capture-surface.md](ux/redesign-capture-surface.md)). **Precedence (D1):** a staff
+   assignment is overridden only by another staff action or an explicit-basis AI capture.
 
 Matching reuses the unchanged ladder (national_id → phone/email → exact alias → fuzzy →
 LLM-rank); the timeline (`patient_assignment_timeline.py`) already does latest-valid-wins +
@@ -132,7 +157,9 @@ metadata; the frontend renders chips from it:
   { "type": "assignment", "action": "matched|created|reassigned", "subjectId": "…",
     "displayName": "…", "basis": "explicit|implicit", "undoable": true },
   { "type": "suggested_assignment", "action": "reassign|create", "subjectId": "…",
-    "displayName": "…", "appliedAutomatically": false },   // implicit mention on assigned visit
+    "displayName": "…", "matchedName": "…", "spokenName": "…",
+    "appliedAutomatically": false },   // partial match, or implicit mention on assigned visit;
+                                       // matchedName vs spokenName drives "Matched X · you said Y"
   { "type": "out_of_context", "confidence": 0.0, "reason": "…" },
   { "type": "report_contribution", "status": "added|updating|pending" }   // Pro
 ]

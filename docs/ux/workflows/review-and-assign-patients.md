@@ -33,6 +33,26 @@ Keep capturing with almost no friction while AesMem quietly saves, organizes, su
 - `Review storage` opens storage guidance or review.
 - Session card selection opens the visit when the user needs broader context.
 
+## Partial-match resolution (on the capture card)
+
+A *partial* (fuzzy) patient match is resolved **in place on the capture**, not only in the
+resolver. Apply semantics: [intelligence-layer §5](../../intelligence-layer.md); the surface and
+the basis × match-quality × visit-state decision matrix:
+[redesign-capture-surface.md](../redesign-capture-surface.md) "Partial-match resolution".
+
+- A partial match is **never silently applied** (CLAUDE.md: never mis-assign). It shows the
+  **matched-vs-spoken identity** ("Matched *معاصد* · you said *معاضد*") and one-tap actions:
+  - **Keep match** — assign the visit to the matched patient (attributed to this capture; reversible).
+  - **Create new patient instead** — opens an inline **New patient details** form (name +
+    national ID, prefilled from the *spoken* identity, editable) → create + assign, flagged
+    **verify**. The form is also the "edit details" surface and converges with the no-match create
+    flow. A matched **existing** record is never silently renamed from a fuzzy capture.
+  - **Choose another** — open the assignment resolver (search / detected-in-session / create).
+- A close match **auto-applies** (reversible, with a `· close match` note + Undo) only under the
+  per-tenant **match strictness** setting (`balanced`/`lenient`) with a single high-confidence
+  candidate and an explicit reassignment instruction. The national-ID **conflict guard** and
+  ambiguous-multi-candidate routing win at every strictness level.
+
 ## Involved Screens
 
 - [Clinical Memory](../screens/patients.md)

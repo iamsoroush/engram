@@ -9,7 +9,7 @@
 
 Primary working screen for building and reviewing a session from audio, photo, and text captures. The same workspace structure is reused for historical session review from Clinical Memory and Search.
 
-> **Redesign in progress.** The `Live draft`/`Structured report` tabs become `Captures`/`Live report`, with per-capture effect chips and a template-driven live report (no Generate button). Target design: [redesign-capture-surface.md](../redesign-capture-surface.md). This doc describes current behavior until Epics C/E of the [intelligence layer](../../intelligence-layer.md) land.
+> **Report surface redesigned (Epics C/E shipped).** The tabs are now `Captures`/`Live report` with per-capture effect chips and a **template-driven live report that regenerates by an AI job as each capture lands — there is no Generate button** (Pro = synthesized, Basic = chronological; out-of-context captures are excluded). [redesign-capture-surface.md](../redesign-capture-surface.md) is **authoritative for the report surface**; the report-tab sections below (`Generate Structured Report`, the `Live draft`/`Structured report` tabs, and the manual generate/draft-state flow) are retained as historical context and superseded by that doc. The capture/photo/note, assignment, and source-preview behavior here remains current.
 
 ## Primary Actions
 
@@ -46,6 +46,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - Captures that are the active patient action source show action badges such as `Patient assigned` and, when applicable, `Patient created`. Older AI source captures lose the active action badge when a later patient action supersedes them.
 - When AI creates and assigns a patient from audio identity, the patient context stays in the Active Session and shows an inline completion/verification panel for name, national ID, phone, and date of birth.
 - When AI deterministically matches an existing patient, the Active Session updates the patient context and notifies staff that the match was made by AI.
+- When AI lands on a **partial (fuzzy)** match (e.g. spoke `معاصد`, transcribed `معاضد`), the capture is **not silently assigned**: it shows the matched-vs-spoken identity and one-tap **Keep match / Create new instead / Choose another / Edit details** quick actions. A close match auto-applies (reversible) only under the `balanced`/`lenient` match-strictness setting. See [redesign-capture-surface.md](../redesign-capture-surface.md) "Partial-match resolution" (authoritative) and the [review-and-assign-patients workflow](../workflows/review-and-assign-patients.md).
 - Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
 - Note captures show full decorated text inline plus an expandable raw note section.
 - Capture item overflow controls open per-capture settings for rename and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.

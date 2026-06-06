@@ -39,3 +39,21 @@ The backend stores generated report body content in `sessions.report_model`, a J
 The singleton `default` report template is centralized in backend reporting code and currently exposes clinic context and body rendering rules. Patient information is injected from the assigned database patient and identifiers at render time; AI-generated body text must not be treated as the source of truth for patient demographics.
 
 TODO: Add tenant-aware multi-template selection when AesMem supports more than the default clinic report layout.
+
+## Entity Model: Patient Universal, Encounter Generalizes By Vertical (A0)
+
+`Patient` is first-class and **universal** across verticals and stays the assignment target — it
+is **not** abstracted. The entity that generalizes is the report-required **Encounter**
+(`Session` for clinics; `Study`/`Case` for radiology/pathology), one per `Report`. v1 implements
+the Encounter as today's `Session` and does **not** rename it.
+
+Implemented scaffolding (A0): `tenant.vertical` (default `clinic`) plus a reserved
+`session.attributes` JSONB extension point for per-vertical fields (kept separate from
+`extracted_metadata`). The work-unit presentation label is derived from the vertical via
+`services/verticals.encounter_label` (clinic→"Session", radiology→"Study", pathology→"Case") and
+surfaced on the `TenantProfile` (`vertical`, `encounterLabel`) — it must not be hardcoded in
+core/apply logic. The literal `Session → Encounter` rename and the per-type `attributes` fields
+land with the second vertical.
+
+See [architecture.md](architecture.md) "Entity Model (verticals)" and
+[intelligence-layer.md §2](intelligence-layer.md).

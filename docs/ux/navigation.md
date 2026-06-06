@@ -8,6 +8,8 @@
 | `/#active-session` | Active Session | Current session feed and capture dialogs. |
 | `/#patients` | Clinical Memory | Today, Patients, and Needs input tabs. Patient rows open patient detail/timeline; the main view does not nest sessions under patients. |
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
+| `/#settings` | Settings | Tenant preferences: transcription/report language, patient-match strictness, and plan/tier (read-only). Reached from the account menu; has a Back action. |
+| `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |
 
 ## Entry Points
 
@@ -29,6 +31,7 @@
 - Clinical Memory session cards to Active Session: select a Today, Needs input, or patient timeline session card. Active Session shows a `Back` action that returns to the originating Clinical Memory tab or patient timeline.
 - Clinical Memory Needs input tab to focused decision surface: primary actions open resolvers such as assign patient, choose patient, review summary, or review storage. They do not primarily redirect to the active session page.
 - Search to session review: select a session row; the review opens inline using the Active Session Workspace structure.
+- Any screen to Settings or Profile: the **account menu** (top-right avatar) offers two actions — **Settings** and **Profile** — that navigate to dedicated pages (not inline controls). Each page has a **Back** action returning to the previous staff screen. Logout also lives in the account menu.
 
 ## Protected Behavior
 
