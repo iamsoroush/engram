@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     transcription_model: str = "gemini-3.1-flash-lite"
     transcription_prompt: str = "Transcribe this audio."
     transcription_timeout_seconds: float = 120.0
+    # Per-task model/gateway overrides. Each AI task (transcription, photo caption, note
+    # decoration) can run on a different model — e.g. a fast multimodal model for transcription
+    # and a different one for captioning. A blank value falls back to the transcription_* gateway,
+    # so a single OpenAI-compatible gateway that routes by model name only needs the *_model vars;
+    # a separate provider per task can also override its base_url/api_key.
+    caption_model: str = ""
+    caption_base_url: str = ""
+    caption_api_key: str = ""
+    note_decoration_model: str = ""
+    note_decoration_base_url: str = ""
+    note_decoration_api_key: str = ""
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

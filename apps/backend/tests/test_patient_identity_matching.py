@@ -40,6 +40,39 @@ class PatientIdentityNormalizationTests(unittest.TestCase):
         self.assertTrue(patient_information_has_explicit_identity({"national_id": "0012345678"}))
 
 
+class PersianConfusableFoldingTests(unittest.TestCase):
+    """H1: common Persian/Arabic spelling variance must collapse to an exact alias match, while
+    genuinely different sounds (cross-group /s/↔/z/) must stay distinct (fuzzy, H2/H3 territory)."""
+
+    def _shares_alias(self, a: str, b: str) -> bool:
+        return bool(set(normalized_aliases_for_value(a)) & set(normalized_aliases_for_value(b)))
+
+    def test_within_group_confusables_fold_to_exact_match(self):
+        for a, b in (
+            ("فاطمة", "فاطمه"),       # ة vs ه (teh marbuta)
+            ("ملك", "ملک"),           # Arabic kaf vs Persian kaf
+            ("علي", "علی"),           # Arabic yeh vs Persian yeh
+            ("مصطفى", "مصطفی"),       # alef maqsura vs Persian yeh
+            ("آرش", "ارش"),           # alef madda vs bare alef
+            ("أمير", "امير"),         # alef hamza vs bare alef
+            ("مؤمن", "مومن"),         # waw hamza vs waw
+            ("رئیس", "رییس"),         # yeh hamza vs yeh
+            ("صالهی", "صالحی"),       # ه vs ح (both /h/ in transliteration)
+            ("قاصمی", "قاسمی"),       # within /s/ group: ص vs س
+        ):
+            self.assertTrue(self._shares_alias(a, b), f"{a!r} should fold onto {b!r}")
+
+    def test_presentation_forms_fold_after_nfkd(self):
+        # Arabic presentation forms (OCR/legacy/mixed input) only become base Arabic letters after
+        # NFKD; the post-NFKD re-fold collapses them onto their Persian forms.
+        self.assertTrue(self._shares_alias("علﻲ", "علی"))   # yeh final presentation form
+        self.assertTrue(self._shares_alias("ملﻚ", "ملک"))   # kaf presentation form
+
+    def test_cross_group_s_z_stays_fuzzy(self):
+        # معاصد (ص, /s/) vs معاضد (ض, /z/) are different sounds — never an exact fold.
+        self.assertFalse(self._shares_alias("معاصد", "معاضد"))
+
+
 class PatientMatchingOrderTests(unittest.TestCase):
     def test_exact_national_id_wins_before_contact_or_alias_candidates(self):
         tenant_id = uuid.uuid4()

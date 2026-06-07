@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from app.models import CaptureStatus, CaptureType, SessionStatus
-from app.services.ai_jobs import transcription_context_from_inputs
+from app.services.ai_jobs import (
+    capture_enrichment_context_from_inputs,
+    transcription_context_from_inputs,
+)
 
 
 def capture(**overrides):
@@ -59,6 +62,33 @@ class TranscriptionContextTests(unittest.TestCase):
         self.assertEqual(context["previousTranscripts"][0]["text"], "Patient mentioned mild left cheek asymmetry.")
         self.assertEqual(context["textNotes"][0]["text"], "Prefers conservative correction.")
         self.assertNotIn("Do not include me.", str(context))
+
+
+class CaptureEnrichmentContextTests(unittest.TestCase):
+    def test_context_carries_clinic_patient_language_and_type(self):
+        context = capture_enrichment_context_from_inputs(
+            clinic={"name": "AesMem Clinic", "assumptions": ["Aesthetics clinic context."]},
+            assigned_patient={"status": "assigned", "displayName": "Sara N."},
+            preferred_language="fa",
+            capture_type="photo",
+        )
+
+        self.assertEqual(context["schemaVersion"], "2026-06-06.capture-enrichment-context.v1")
+        self.assertEqual(context["clinic"]["name"], "AesMem Clinic")
+        self.assertEqual(context["assignedPatient"]["displayName"], "Sara N.")
+        self.assertEqual(context["preferredLanguage"], "fa")
+        self.assertEqual(context["captureType"], "photo")
+
+    def test_unassigned_visit_carries_none_patient(self):
+        context = capture_enrichment_context_from_inputs(
+            clinic={"name": "AesMem Clinic"},
+            assigned_patient=None,
+            preferred_language="auto",
+            capture_type="note",
+        )
+
+        self.assertIsNone(context["assignedPatient"])
+        self.assertEqual(context["captureType"], "note")
 
 
 if __name__ == "__main__":

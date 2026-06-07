@@ -29,7 +29,6 @@ import {
   loginWithPersona,
   logoutSession,
   markCaptureRelevant,
-  reopenSession,
   refreshAuthToken,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
@@ -44,7 +43,6 @@ import {
   updateTenantSettings,
   uploadCapture,
   verifyAiPatientCreation,
-  verifySession,
 } from "../services/api/client";
 import { standardizeCaptureDraft } from "../features/capture/audio";
 import { clearStoredAuthProfile, loadStoredAuthProfile, persistAuthProfile } from "../services/storage/authStorage";
@@ -1262,36 +1260,20 @@ export function App() {
     [apiFetch],
   );
 
-  const verifySelectedSession = React.useCallback(
-    async (sessionId: string, verified = true) => {
-      if (isLocalSessionId(sessionId)) {
-        setToast("Sync before verifying.");
-        return;
-      }
-      try {
-        const updated = verified ? await verifySession(apiFetch, sessionId) : await reopenSession(apiFetch, sessionId);
-        applySessionUpdate(sessionId, updated);
-        setToast(verified ? "Session verified." : "Verification removed.");
-      } catch {
-        setToast(verified ? "Could not verify session." : "Could not remove verification.");
-      }
-    },
-    [apiFetch, applySessionUpdate],
-  );
-
   const confirmSessionSummary = React.useCallback(
     async (sessionId: string, summary: string) => {
+      // Completion is now auto-derived (captures processed + patient assigned + report current),
+      // so confirming a summary just records the edited summary locally — there is no manual verify.
       const applyConfirmedSummary = (session: CaptureSession): CaptureSession => {
         const now = new Date().toISOString();
         return {
           ...session,
           summary,
-          status: "verified",
           reviewReason: "",
           updatedAt: now,
           summaries: {
             schemaVersion: session.summaries?.schemaVersion,
-            status: "verified",
+            status: session.summaries?.status || "processed",
             short: summary,
             clinical: session.summaries?.clinical || null,
             patientHistory: session.summaries?.patientHistory || summary,
@@ -1299,33 +1281,13 @@ export function App() {
             generatedAt: session.summaries?.generatedAt || now,
             updatedAt: now,
           },
-          report: session.report
-            ? {
-                ...session.report,
-                status: "verified",
-                updatedAt: now,
-              }
-            : session.report,
         };
       };
-      const applyLocalConfirmation = () => {
-        setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
-        setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
-      };
-
-      if (!isLocalSessionId(sessionId)) {
-        try {
-          const updated = await verifySession(apiFetch, sessionId);
-          applySessionUpdate(sessionId, applyConfirmedSummary(updated));
-        } catch {
-          applyLocalConfirmation();
-        }
-      } else {
-        applyLocalConfirmation();
-      }
+      setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
+      setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
       setToast("Summary added to patient memory");
     },
-    [apiFetch, applySessionUpdate],
+    [],
   );
 
   const loadCapturesForSession = React.useCallback(
@@ -1519,7 +1481,6 @@ export function App() {
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
-          onVerifySession={verifySelectedSession}
           tier={auth?.tenant.tier}
         />
       );
@@ -1557,7 +1518,6 @@ export function App() {
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
-          onVerifySession={verifySelectedSession}
           tier={auth?.tenant.tier}
         />
       );
@@ -1581,7 +1541,6 @@ export function App() {
         onCreatePatient={createNewPatient}
         onExportCaptures={exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
-        onVerifySession={(sessionId) => void verifySelectedSession(sessionId)}
         sessions={sessions}
         syncHealth={syncHealth}
       />

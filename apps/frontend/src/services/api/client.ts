@@ -315,18 +315,6 @@ export async function unassignSessionPatient(apiFetch: ApiFetch, sessionId: stri
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
-export async function verifySession(apiFetch: ApiFetch, sessionId: string) {
-  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/verify`, { method: "POST" });
-  if (!response.ok) throw new Error("Could not verify session");
-  return normalizeApiSession((await response.json()) as Record<string, unknown>);
-}
-
-export async function reopenSession(apiFetch: ApiFetch, sessionId: string) {
-  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/reopen`, { method: "POST" });
-  if (!response.ok) throw new Error("Could not reopen session");
-  return normalizeApiSession((await response.json()) as Record<string, unknown>);
-}
-
 export async function updateSessionTitle(apiFetch: ApiFetch, sessionId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`, {
     method: "PATCH",
@@ -447,7 +435,7 @@ function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryR
     activeSessionId: typeof raw.activeSessionId === "string" ? raw.activeSessionId : null,
     activeSessionCount: numberValue(raw.activeSessionCount, 0),
     sessionCount: numberValue(raw.sessionCount, 0),
-    verified: Boolean(raw.verified),
+    complete: Boolean(raw.complete),
     needsInput: Boolean(raw.needsInput),
     needsInputItems: rawNeedsInputItems
       .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
@@ -472,7 +460,7 @@ function normalizePatientMemoryTimelineSession(raw: Record<string, unknown>): Pa
     generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
     ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,
     captureCount: numberValue(raw.captureCount, 0),
-    verified: Boolean(raw.verified),
+    complete: Boolean(raw.complete),
     needsInput: Boolean(raw.needsInput),
     groupLabel: String(raw.groupLabel || "Older"),
     sortDate: typeof raw.sortDate === "string" ? raw.sortDate : null,

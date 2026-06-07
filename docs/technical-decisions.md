@@ -1,5 +1,31 @@
 # Technical Decisions
 
+## Intelligence-Layer Simplification (2026-06-07)
+
+A product-direction simplification of the intelligence layer:
+
+- **Patient matching is tier-neutral.** Intelligent matching (match/suggest/reassign/create) runs
+  for **both** Basic and Pro — it is the core memory-accuracy feature. Tier now gates only
+  **enrichment** (image captions + note decoration, Pro only) and the **report layout**.
+- **Report generation is deterministic — no LLM, no async job.** The `session_organize` Celery
+  dispatch was replaced by a synchronous `regenerate_session_report` built from the session's
+  processed, in-context captures (Basic = one chronological section; Pro = grouped-by-type:
+  Audio notes / Written notes / Photos). Always current for the latest capture; no "updating" churn.
+  The legacy worker session path is retained only to drain in-flight jobs.
+- **Completion is auto-derived, not manually verified.** The manual *Verify report* gate
+  (`/sessions/{id}/verify` + `/reopen`, the report button, `SessionStatus.verified`) is removed. A
+  session's **`complete`** flag is computed (`session_is_complete`: captures processed + patient
+  assigned + report current/not-stale) and surfaced on the session payload + the patient-memory
+  `complete` indicator. The `verified` enum value is retained only for historical rows.
+- **Basic photos carry no AI caption.** Un-enriched photos write a blank caption; the UI offers a
+  manual "Add caption" instead of a placeholder.
+- **Per-task models.** Transcription / caption / note-decoration each take an env-configured model
+  (`AI_ENGINE_{TRANSCRIPTION,CAPTION,NOTE_DECORATION}_MODEL`, optional `*_BASE_URL`/`*_API_KEY`;
+  blank = fall back to the transcription gateway).
+
+See [intelligence-layer.md](intelligence-layer.md) (contract), [ai_engine/processing.md](ai_engine/processing.md),
+and the "Simplification pass" entry in [intelligence-layer-stories.md](intelligence-layer-stories.md).
+
 ## UX Docs Are The Current User-Facing Behavior Map
 
 The compact docs under `docs/ux/` describe the currently implemented user-facing behavior. Future changes that alter screens, navigation, visible states, or workflows should update the relevant UX docs without duplicating backend API schemas.
@@ -12,7 +38,7 @@ The backend is the producer and sends named Celery tasks. `apps/ai_engine` is th
 
 ## Continuously Evolving Session Contracts
 
-Sessions are created as `draft` when the first capture reaches the backend, but the explicit save action is no longer the boundary for reviewability. A session can receive captures, be reviewed, be edited, and be verified across all states.
+Sessions are created as `draft` when the first capture reaches the backend, but the explicit save action is no longer the boundary for reviewability. A session can receive captures, be reviewed, and be edited across all states; completion is auto-derived (see "Intelligence-Layer Simplification").
 
 Every backend session payload exposes stable frontend contracts for `report`, `summaries`, `findings`, and `processingStatus`. Phase 2.1 writes deterministic mocked outputs into those contracts so the real AI pipeline can later replace the mock writer without changing frontend object shape.
 

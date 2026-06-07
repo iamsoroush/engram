@@ -18,6 +18,26 @@ truth), then the `DONE`/`Implemented` markers in this file, then
 [ux/redesign-capture-surface.md](ux/redesign-capture-surface.md) (visual design). Key decisions
 in [technical-decisions.md](technical-decisions.md).
 
+### Simplification pass — DONE (2026-06-07)
+
+A product-direction simplification of the intelligence layer (all live-verified; backend 64 +
+ai-engine 36 tests green, tsc clean):
+
+1. **Per-task models.** Transcription / photo caption / note decoration each take their own
+   env-configured model (`AI_ENGINE_{TRANSCRIPTION,CAPTION,NOTE_DECORATION}_MODEL`, optional
+   `*_BASE_URL`/`*_API_KEY`; blank = fall back to the transcription gateway). `gateway_settings_for`.
+2. **Basic photos have no caption.** Un-enriched (Basic / no gateway / empty response) photos write a
+   **blank** caption; the capture card shows an **Add caption** affordance instead of a placeholder.
+3. **Intelligent patient matching now runs for both tiers** (the Pro-only assignment gate is gone);
+   tier gates only enrichment (captions/decoration) + report layout.
+4. **Report generation is deterministic — no LLM, no async job.** The `session_organize` dispatch is
+   replaced by a synchronous `regenerate_session_report` (Basic chronological; Pro grouped-by-type:
+   Audio notes / Written notes / Photos). No "updating" churn; always current for the latest capture.
+5. **No manual "Verify report".** Replaced by an **auto-derived `complete`** state (captures
+   processed + patient assigned + report current), surfaced on the session payload + patient-memory
+   `complete` indicator; the `/verify` + `/reopen` routes and the report verify button are removed.
+   `session_is_complete` (session_contracts.py).
+
 **Done & verified (all green):**
 
 - **C1–C4 reassignment** — AI emits `intents` (transcript required, intents nullable); the gate
@@ -66,10 +86,34 @@ in [technical-decisions.md](technical-decisions.md).
    hard-stop** (`StorageGuardDialog`), a **long-recording warning** banner in the audio recorder,
    and an **export escape hatch** (dependency-free ZIP of queued captures), on top of the existing
    `persist()` + 85% warning + silent self-healing AI-out. See Epic G below.
-7. **Basic-tier polish** — Basic is now API-verified (transcribe-only, no report job / no AI
-   assignment) and toggle-testable via dev-login `tier: basic`; remaining: a live screenshot of
-   the Basic chronological Live-report UI, and real captioning/text-decoration enrichment (Pro)
-   to replace the mock placeholders.
+7. ~~**Basic-tier polish + real Pro enrichment**~~ — **DONE (2026-06-07).** (a) Live screenshot of
+   the Basic chronological Live-report UI captured (`test-results/redesign/basic-live-report{,-doc}.png`:
+   BASIC badge, clinic + patient header, chronological transcript→photo→note body, no synthesis/chips).
+   (b) **Real Pro enrichment** replaces the mock passthrough: the AI engine now produces real image
+   captions (vision via the gateway's OpenAI-compatible `image_url`) and note decoration, **tier-gated
+   at the worker-payload boundary** — the backend attaches an `enrichmentContext`
+   (`2026-06-06.capture-enrichment-context.v1`) to a photo/note job **only for Pro** (reusing
+   `tenant_tier`), so Basic/gateway-less/fixture captures keep the deterministic placeholder. Worker
+   contract unchanged (`caption`/`decorated_text` keys; transcript required, intents nullable; gateway
+   error retryable, empty response falls back). Verified: 36 ai-engine tests (+16), 61 backend tests
+   (+2), tsc clean; live gating check (Pro photo/note → context PRESENT, Pro audio → transcription
+   context, Basic → neither); **live gateway round-trip** — a real photo captioned in native Persian
+   script, a shorthand note decorated into clinical phrasing preserving all detail. See the E1 marker
+   and `docs/ai_engine/processing.md` "Pro enrichment gating".
+8. ~~**H1 (audit/extend)**~~ — **DONE (2026-06-07).** Audited the confusable-folding; the full
+   handoff set already collapses to exact matches and the cross-group /s/↔/z/ correctly stays fuzzy.
+   Extended one real gap: Arabic **presentation forms** now re-fold to Persian after NFKD. See the H1
+   story below.
+9. ~~**Real-Persian-name matching validation**~~ — **DONE (2026-06-07).** Validated the H3/H4 fuzzy
+   auto-apply against the **real seeded Persian patients** in the dev DB (`match_patient_from_patient_information`
+   → `fuzzy_auto_apply_candidate`): a cross-group ASR variant (spoke `ثریا قاسمی`, ASR `ثریا قازمی`)
+   yields a single dominant `possible_match` at conf **0.84** — **strict suggests, balanced/lenient
+   auto-apply, implicit never auto-applies**; the **national-ID conflict guard** routes to review and
+   blocks auto-apply at every level (correct national_id → deterministic `matched` 1.0); `near_match_suggestion`
+   carries the matched-vs-spoken pair. Native-script (no romanization) confirmed via the same gateway
+   (live Persian captions/decoration). **Remaining gateway+fixture-dependent gap:** real Persian
+   *audio* transcription can't be validated locally (the only local audio fixtures are English); the
+   ambiguous-tie guard is unit-tested rather than driven on real data. No fixes surfaced.
 
 **Dev environment (docker-compose):** frontend `localhost:5183` (Vite; proxies `/api/v1` → the
 backend container); backend host **8010** → container 8000 (uvicorn `--reload` picks up backend
@@ -381,12 +425,18 @@ ASR transcribes names imperfectly (e.g. spoke معاصد, transcribed معاضد
 assignment silently does nothing. Keep **apply-then-notify**: auto-apply only safe matches,
 make everything uncertain a one-tap fix — never silently reassign to the wrong patient.
 
-### H1 — Orthographic name normalization (`impl`; backend) — *mostly already done*
-**Largely covered:** `PERSIAN_LATIN_TRANSLITERATION` already folds within-group letters in the
-transliterated match key (ث/ص→s, ذ/ض/ظ→z, ط→t, …), so e.g. قاصمی≡قاسمی already match. Remaining
-work is an **audit/extend** pass for any unfolded confusions (ه/ح, alef/ی/و variants) — low
-priority. *(Cross-group cases like معاصد↔معاضد (/s/↔/z/) are genuinely different sounds and stay
-fuzzy — handled by H2.)*
+### H1 — Orthographic name normalization (`impl`; backend) — **DONE (audit + extend, 2026-06-07)**
+**Audited & extended.** `PERSIAN_LATIN_TRANSLITERATION` folds within-group letters in the
+transliterated match key (ث/ص/س→s, ذ/ض/ظ/ز→z, ط/ت→t, ق/غ→gh, ه/ح→h, ا/ع→a …) and
+`ARABIC_PERSIAN_TRANSLATION` folds Arabic↔Persian variants (ك→ک, ي/ى/ئ→ی, ة/ۀ→ه, آ/أ/إ/ٱ→ا, ؤ→و).
+An empirical audit of the full handoff confusable set (ة/ه, ک/ك, ي/ی, ى/ی, آ/أ/إ/ؤ/ئ, ه/ح,
+within-group ص/س & ض/ز, ZWNJ) confirmed **every case collapses to an exact alias match**, while the
+cross-group **/s/↔/z/** case (معاصد↔معاضد, ص vs ض — genuinely different sounds) correctly **stays
+fuzzy** (H2/H3 territory). **Extend:** found and fixed one real gap — Arabic **presentation forms**
+(U+FB50–FEFF, from OCR/legacy/mixed input) only decompose to base Arabic letters *after* NFKD, so
+the pre-NFKD fold missed them (e.g. `علﻲ`≠`علی`); `normalize_text_key` now **re-applies the
+Arabic→Persian fold after NFKD** (idempotent; never touches Persian letters). Locked in by
+`PersianConfusableFoldingTests` (3 tests) in `test_patient_identity_matching.py`. 64 backend tests green.
 - **Deps:** none.
 
 ### H2 — Near-match → actionable suggestion (`impl`; backend + frontend) — **DONE**

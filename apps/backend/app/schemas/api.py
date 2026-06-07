@@ -66,7 +66,7 @@ class PatientMemoryRow(BaseModel):
     active_session_id: str | None = Field(default=None, alias="activeSessionId")
     active_session_count: int = Field(alias="activeSessionCount")
     session_count: int = Field(alias="sessionCount")
-    verified: bool
+    complete: bool
     needs_input: bool = Field(alias="needsInput")
     latest_visit_at: str | None = Field(default=None, alias="latestVisitAt")
     updated_at: str | None = Field(default=None, alias="updatedAt")
@@ -89,7 +89,7 @@ class PatientMemorySession(BaseModel):
     generated_summary: str | None = Field(default=None, alias="generatedSummary")
     rule_based_summary: str | None = Field(default=None, alias="ruleBasedSummary")
     capture_count: int = Field(alias="captureCount")
-    verified: bool
+    complete: bool
     needs_input: bool = Field(alias="needsInput")
     group_label: str = Field(alias="groupLabel")
     sort_date: str | None = Field(default=None, alias="sortDate")

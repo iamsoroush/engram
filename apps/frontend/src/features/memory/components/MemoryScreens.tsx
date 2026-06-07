@@ -33,7 +33,6 @@ export function PatientsHome({
   onListPatientMemory,
   onSearchPatients,
   onConfirmSummary,
-  onVerifySession,
   onAssignPatient,
   onExportCaptures,
 }: {
@@ -51,7 +50,6 @@ export function PatientsHome({
   onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
-  onVerifySession?: (sessionId: string) => void;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
 }) {
@@ -270,11 +268,7 @@ export function PatientsHome({
             setSummaryReviewSessionId("");
           }}
           onConfirm={async (summary) => {
-            if (onConfirmSummary) {
-              await onConfirmSummary(summaryReviewSession.id, summary);
-            } else {
-              onVerifySession?.(summaryReviewSession.id);
-            }
+            await onConfirmSummary?.(summaryReviewSession.id, summary);
             setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(summaryReviewSession)));
             setSummaryReviewSessionId("");
           }}
@@ -840,7 +834,7 @@ function buildPatientRows({
         .map(patientNeedsInputItem)
         .filter((item): item is PatientNeedsInputItem => Boolean(item));
       const needsInput = needsInputItems.length > 0;
-      const verified = sortedSessions.some((session) => session.status === "verified");
+      const complete = sortedSessions.some((session) => Boolean(session.complete));
       const primary = patientPrimaryAction({ activeCount, needsInputItems });
       return {
         id,
@@ -848,7 +842,7 @@ function buildPatientRows({
         summary: patientCardSummary(sortedSessions),
         badges: [
           activeCount ? activePatientBadge(activeCount) : visitCountLabel(sortedSessions.length),
-          verified ? "Verified" : undefined,
+          complete ? "Complete" : undefined,
           needsInputBadgeLabel(needsInputItems),
         ].filter((badge): badge is string => Boolean(badge)),
         action: primary.action,
@@ -875,7 +869,7 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     summary: row.summary || "No memory summary yet.",
     badges: [
       isActive ? activePatientBadge(row.activeSessionCount) : visitCountLabel(row.sessionCount),
-      row.verified ? "Verified" : undefined,
+      row.complete ? "Complete" : undefined,
       needsInputBadgeLabel(needsInputItems),
     ].filter((badge): badge is string => Boolean(badge)),
     action: primary.action,
@@ -1019,6 +1013,8 @@ function decisionActionForSession(session: CaptureSession): PatientNeedsInputIte
   const matchStatus =
     patientMatch && typeof patientMatch === "object" && "status" in patientMatch ? String((patientMatch as Record<string, unknown>).status) : "";
   if (isTechnicalNeedsInputText(reason)) return null;
+  // An auto-complete session (captures processed + patient assigned + report current) needs no input.
+  if (session.complete) return null;
   if (reason.includes("conflict")) return "resolve-conflict";
   if (matchStatus === "possible_match" || reason.includes("possible_match") || reason.includes("choose patient") || reason.includes("match")) {
     return "choose-patient";
@@ -1549,7 +1545,7 @@ function PatientTimelineCard({
 }) {
   const status = timelineSessionStatus(session, localSession);
   const action = timelineSessionAction(session, localSession);
-  const tone = status.startsWith("Needs input") ? "amber" : status === "Verified" ? "blue" : "green";
+  const tone = status.startsWith("Needs input") ? "amber" : status === "Complete" ? "blue" : "green";
   const title = session.title || (localSession ? sessionVisitTitle(localSession) : "Visit");
   const summary = session.generatedSummary || session.summary || (localSession ? naturalSessionSummary(localSession) : "") || "This visit is saved in patient memory.";
   const updatedLabel = timelineUpdatedLabel(session, localSession);
@@ -1637,7 +1633,7 @@ function PatientRow({
         <p>{summary}</p>
         <div className="patient-memory-badges" aria-label="Patient memory status">
           {badges.map((badge) => (
-            <span className={`patient-memory-badge ${badge.startsWith("Needs input") || badge.includes("need your input") ? "needs-input" : badge === "Verified" ? "verified" : ""}`} key={badge}>
+            <span className={`patient-memory-badge ${badge.startsWith("Needs input") || badge.includes("need your input") ? "needs-input" : badge === "Complete" ? "verified" : ""}`} key={badge}>
               {badge}
             </span>
           ))}
@@ -2707,7 +2703,7 @@ function timelineSessionFromLocal(session: CaptureSession): TimelineSessionModel
     generatedSummary: session.summaries?.short || null,
     ruleBasedSummary: null,
     captureCount: session.items.length,
-    verified: session.status === "verified" || session.report?.status === "verified",
+    complete: Boolean(session.complete),
     needsInput: needsHumanInput(session),
     groupLabel: timelineGroupLabel(visitTime),
     sortDate: visitTime ? new Date(visitTime).toISOString() : null,
@@ -2758,7 +2754,7 @@ function timelineSessionStatus(session: TimelineSessionModel, localSession?: Cap
   if (action) return needsInputLabelForAction(action);
   if (localSession && isActiveVisit(localSession)) return "In progress";
   if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return "In progress";
-  if (session.verified || localSession?.status === "verified" || localSession?.report?.status === "verified") return "Verified";
+  if (session.complete || localSession?.complete) return "Complete";
   if (localSession?.id.startsWith("local-session-")) return "Saved on this device";
   return "Saved on this device";
 }
@@ -2769,7 +2765,7 @@ function timelineSessionAction(session: TimelineSessionModel, localSession?: Cap
   if (action === "review-summary" || action === "resolve-conflict") return { kind: "review", label: labelForDecisionAction(action) };
   if (localSession && isActiveVisit(localSession)) return { kind: "continue", label: "Continue visit" };
   if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { kind: "continue", label: "Continue visit" };
-  if (session.verified || localSession?.status === "verified") return { kind: "review", label: "Review summary" };
+  if (session.complete || localSession?.complete) return { kind: "open", label: "Open visit" };
   return { kind: "open", label: "Open visit" };
 }
 

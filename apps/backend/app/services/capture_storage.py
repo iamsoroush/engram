@@ -23,7 +23,7 @@ from app.models import (
     SessionStatus,
 )
 from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
-from app.services.session_contracts import build_session_contracts, evolve_session_after_capture
+from app.services.session_contracts import build_session_contracts, evolve_session_after_capture, session_is_complete
 from app.storage import ObjectStore
 
 
@@ -112,6 +112,7 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
         "patientName": patient_name,
         "assignmentSource": assignment_source if isinstance(assignment_source, str) else None,
         "status": session.status.value,
+        "complete": session_is_complete(session),
         "title": session.title,
         "summary": session.summary,
         "generatedSummary": session.generated_summary,

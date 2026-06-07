@@ -50,12 +50,31 @@ the backend applies.
 | Audio transcription | ✅ | ✅ |
 | Out-of-context flag | ✅ | ✅ |
 | Manual/assisted subject assignment | ✅ | ✅ |
-| **AI auto-assignment / reassignment / match / create** | ❌ (manual only) | ✅ |
-| Image captions, text decoration | ❌ | ✅ |
-| Live report | chronological captures + transcripts (Apple-Notes feel) | synthesized, refined per capture |
+| **AI patient matching / auto-assignment / reassignment / create** | ✅ | ✅ |
+| Image captions, note decoration | ❌ | ✅ |
+| Live report (deterministic, no LLM) | chronological body | grouped-by-type sections |
 
-`append` is the default chronological behavior in Basic (no signal needed); the explicit
-`append` intent is only consumed by Pro report refinement.
+Intelligent **patient matching** runs for **both tiers** — it is the core memory-accuracy feature
+(match / suggest / reassign / create, all governed by §5 + the strictness gate). Tier now gates only
+**enrichment** (image captions + note decoration, Pro only) and the **report layout** (Basic
+chronological vs Pro grouped-by-type). `append` is the default chronological behavior in Basic.
+
+**Report generation is deterministic (no LLM, no async job).** The live report is rebuilt
+synchronously from the session's processed, in-context captures whenever the capture chain is idle —
+Basic = one chronological section; Pro = fixed by-type sections (Audio notes / Written notes /
+Photos). There is no `session_organize`/synthesis job and no "updating" churn; the report is always
+current for the latest capture. (See [ai_engine/processing.md](ai_engine/processing.md).)
+
+**Per-task models.** Each AI task can run on its own model, configured via env: transcription
+(`AI_ENGINE_TRANSCRIPTION_MODEL`), photo caption (`AI_ENGINE_CAPTION_MODEL`), and note decoration
+(`AI_ENGINE_NOTE_DECORATION_MODEL`), each with optional `*_BASE_URL` / `*_API_KEY` overrides
+(blank = fall back to the transcription gateway).
+
+**Completion is auto-derived (no manual "verify").** A session is **complete** when its captures are
+processed, a patient is assigned, and the report is current (not stale) for the latest capture. This
+replaces the manual *Verify report* gate: `complete` is computed and surfaced on the session payload
+(and as the patient-memory `complete` indicator); editing/adding a capture marks the report stale and
+flips the session back to incomplete until it regenerates.
 
 **Language preferences (tenant-level).** `tenant.transcription_language` (default `auto`) and
 `tenant.report_language` (NULL = follow the report template's default) are settable by staff
@@ -103,7 +122,7 @@ partial, especially with audio input).
 
 ## 5. Backend apply semantics (per intent, tier-gated)
 
-### Assignment (Pro; Basic = manual resolver only)
+### Assignment (both tiers)
 Reuses the existing event-sourced timeline (`patient_assignment_timeline.py`):
 `append_patient_assignment_event` → `apply_active_patient_assignment` already does
 **latest-valid-event-wins**, recomputes `session.patient_id`, and **drops events whose
@@ -116,7 +135,7 @@ capture was deleted** (this *is* undo). The fix is to stop suppressing the appen
 2. **Once assigned, only an explicit instruction overrides.** When a patient is already
    assigned (by staff or matching), a later capture changes it **only if
    `intents.assignment.basis == "explicit"`** (a clear re/assignment or correction
-   instruction) — regardless of `verified` status — appended as a timeline event
+   instruction) — regardless of prior confirmation — appended as a timeline event
    (latest-wins) with an **Undo** chip. Replaces the hard gate in `complete_worker_job`.
 3. **Implicit mention on an assigned visit → suggest, don't apply.** If a later capture only
    *mentions* a patient (`basis == "implicit"`, or no explicit intent), the assignment is
@@ -141,6 +160,16 @@ undo.
 ### Append
 Basic: no-op (chronological default). Pro: the capture is folded into the Live-report
 refinement job; recorded as a `report_contribution` effect on the capture.
+
+### Captions & note decoration (Pro)
+Image captions (photo) and note decoration (note) are real Pro enrichment produced by the AI engine
+through the configured multimodal gateway, then written to the capture's `caption` / `decorated_text`
+metadata. The gate lives at the worker-payload boundary: the backend attaches an `enrichmentContext`
+to a photo/note job **only for Pro tenants** (reusing `tenant_tier`), so Basic — and any gateway-less
+or QA-fixture capture — keeps the deterministic placeholder/passthrough. Captions describe only what
+is clinically visible; decoration preserves every detail and adds nothing; both stay in the source
+language/native script (no romanization). See
+[ai_engine/processing.md](ai_engine/processing.md) "Pro enrichment gating".
 
 ### Out-of-context (both tiers)
 Store an `out_of_context` effect on the capture. The capture is **kept**, **excluded from
@@ -186,13 +215,14 @@ spec; the contract-level points:
   Needs-input item) the user can act on in one tap.
 - **Live report is a document, both tiers:** a clinic + patient header from template/DB
   (not AI). **Basic** = chronological captures + transcripts + images. **Pro** = a
-  **template-driven, synthesized** report (no per-line timestamps), **regenerated by an AI
-  job as each capture lands**. The report **template** is the fixed aesthetic default today
-  and **user-uploadable later** (radiology/pathology); its name lives in the report meta
-  strip, not the patient block.
+  **template-driven, grouped-by-type** report (Audio notes / Written notes / Photos, no per-line
+  timestamps), **rebuilt deterministically (no LLM, no async job) as each capture lands**. The
+  report **template** is the fixed aesthetic default today and **user-uploadable later**
+  (radiology/pathology); its name lives in the report meta strip, not the patient block.
 - **Undo** = remove the capture's contribution and recompute (assignment: drop its timeline
   event; reuse capture-deletion-removes-event). Never destructive to the raw capture.
-- "Verify" becomes a calm confirm on the live report, not a post-generate gate.
+- **No manual "Verify report"** — a session shows a calm, auto-derived **Complete** state
+  (captures processed + patient assigned + report current) instead of a verify gate.
 
 ## 8. Offline, AI-out, storage durability
 

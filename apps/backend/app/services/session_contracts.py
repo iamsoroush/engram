@@ -11,6 +11,22 @@ from app.services.reporting import (
 SESSION_CONTRACT_VERSION = "2026-05-19.phase2.1"
 
 
+def session_is_complete(session: Session) -> bool:
+    """Whether a session is auto-"complete" (replaces the manual "verified" gate).
+
+    Complete = captures processed (not mid-processing), a patient is assigned, a report has been
+    generated, and that report is current (not stale) for the latest capture. Adding/editing a
+    capture marks the report stale and flips the session back to processing, so it naturally drops
+    to incomplete until the deterministic report regenerates.
+    """
+    if session.patient_id is None or not session.generated_report:
+        return False
+    if session.status == SessionStatus.processing:
+        return False
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    return not metadata.get("generated_output_stale")
+
+
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
@@ -47,8 +63,6 @@ def _report_status(session: Session, metadata: dict[str, Any]) -> str:
     progressive_report = metadata.get("progressive_report")
     if isinstance(progressive_report, dict) and isinstance(progressive_report.get("status"), str):
         return progressive_report["status"]
-    if session.status == SessionStatus.verified:
-        return "verified"
     if session.generated_report:
         return "processed"
     if session.status == SessionStatus.processing:
@@ -126,7 +140,7 @@ def build_session_contracts(session: Session) -> dict[str, Any]:
     processing_state = "failed" if session.status == SessionStatus.failed else "idle"
     if session.status == SessionStatus.processing:
         processing_state = "processing"
-    elif report_status in {"processed", "verified"} and not is_stale:
+    elif report_status == "processed" and not is_stale:
         processing_state = "complete"
     elif report_status in {"partial", "generating"} or is_stale:
         processing_state = "queued" if count else "idle"
@@ -253,7 +267,5 @@ def evolve_session_after_capture(
         "stale_reason": "A capture was added after the last processed session output.",
         "stale_at": captured_at.isoformat(),
     }
-    if session.status == SessionStatus.verified:
-        session.status = SessionStatus.needs_review
-    elif session.status in {SessionStatus.failed, SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
+    if session.status in {SessionStatus.failed, SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
         session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned

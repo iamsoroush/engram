@@ -298,6 +298,7 @@ export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string
     duration: raw.duration || "saved",
     summary: summaries.short || summary,
     status,
+    complete: Boolean(raw.complete),
     items,
     patientId: typeof raw.patientId === "string" ? raw.patientId : raw.patientId ?? undefined,
     patientName: typeof raw.patientName === "string" ? raw.patientName : undefined,

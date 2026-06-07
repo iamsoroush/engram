@@ -123,7 +123,7 @@ export type PatientMemoryRow = {
   activeSessionId?: string | null;
   activeSessionCount: number;
   sessionCount: number;
-  verified: boolean;
+  complete: boolean;
   needsInput: boolean;
   needsInputItems?: Array<{
     id: string;
@@ -151,7 +151,7 @@ export type PatientMemoryTimelineSession = {
   generatedSummary?: string | null;
   ruleBasedSummary?: string | null;
   captureCount: number;
-  verified: boolean;
+  complete: boolean;
   needsInput: boolean;
   groupLabel: string;
   sortDate?: string | null;

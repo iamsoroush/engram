@@ -152,6 +152,8 @@ export type CaptureSession = {
   duration: string;
   summary: string;
   status: SessionStatus;
+  /** Auto-derived: captures processed + patient assigned + report current (replaces manual verify). */
+  complete?: boolean;
   items: CaptureItem[];
   patientName?: string;
   reviewReason?: string;

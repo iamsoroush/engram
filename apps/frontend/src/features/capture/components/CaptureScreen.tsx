@@ -5,6 +5,7 @@ import type {
   CaptureSession,
   SessionProcessingStatus,
   StructuredPatientInformation,
+  StructuredReportBlock,
 } from "../../../domain/types";
 import { isLocalSessionId } from "../captureModel";
 import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } from "../metadata";
@@ -31,7 +32,6 @@ export function CaptureScreen({
   onOpenResolver,
   onSearchPatients,
   onCompleteAiCreatedPatient,
-  onVerifySession,
   onStartNewSession,
   onMarkRelevant,
   onFetchPatient,
@@ -62,7 +62,6 @@ export function CaptureScreen({
     draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
     action: Record<string, unknown>,
   ) => Promise<void>;
-  onVerifySession?: (sessionId: string, verified?: boolean) => Promise<void>;
   onStartNewSession?: () => void;
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
@@ -70,7 +69,6 @@ export function CaptureScreen({
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
-  const [verifying, setVerifying] = React.useState(false);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
@@ -240,25 +238,12 @@ export function CaptureScreen({
         </div>
         <div className="workspace-report-footer">
           <div className="workspace-report-footer-copy">
-            {isUpdatingReport ? <span>{reportUpdatingLabel(activeSession)}</span> : null}
+            {isUpdatingReport ? (
+              <span>{reportUpdatingLabel(activeSession)}</span>
+            ) : activeSession?.complete ? (
+              <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
+            ) : null}
           </div>
-          {onVerifySession ? (
-            <button
-              aria-checked={activeSession?.status === "verified"}
-              className="report-verify-check"
-              disabled={!activeSession || isLocalSessionId(activeSession.id) || verifying || isUpdatingReport}
-              onClick={() => {
-                if (!activeSession) return;
-                setVerifying(true);
-                void onVerifySession(activeSession.id, activeSession.status !== "verified").finally(() => setVerifying(false));
-              }}
-              role="checkbox"
-              type="button"
-            >
-              <span aria-hidden="true" />
-              {activeSession?.status === "verified" ? "Verified" : verifying ? "Verifying" : "Verify report"}
-            </button>
-          ) : null}
         </div>
       </Card>
       <SourcePreviewDialog
@@ -705,6 +690,21 @@ function LiveDraftReport({
     setOpenMenuId("");
   }, [session?.id]);
 
+  // Smoothly bring a newly added capture into view (handy in a long timeline) — only when a capture
+  // is appended to the *same* session, not on session switch / refresh / edit.
+  const newestCaptureRef = React.useRef<HTMLElement | null>(null);
+  const captureCountRef = React.useRef(0);
+  const feedSessionIdRef = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    const count = session?.items.length || 0;
+    const sameSession = session?.id === feedSessionIdRef.current;
+    if (sameSession && count > captureCountRef.current) {
+      newestCaptureRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    captureCountRef.current = count;
+    feedSessionIdRef.current = session?.id;
+  }, [session?.id, session?.items.length]);
+
   if (!session?.items.length) {
     return (
       <div className="live-draft-empty">
@@ -735,6 +735,7 @@ function LiveDraftReport({
           onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
           onResolveFile={onResolveFile}
           onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
+          rootRef={index === session.items.length - 1 ? newestCaptureRef : undefined}
           sequence={index + 1}
         />
       ))}
@@ -762,6 +763,7 @@ function LiveDraftCaptureItem({
   onRenameCapture,
   onResolveFile,
   onToggleMenu,
+  rootRef,
   sequence,
 }: {
   activePatientAction: Record<string, unknown> | null;
@@ -780,12 +782,17 @@ function LiveDraftCaptureItem({
   onRenameCapture?: (title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
   onToggleMenu: () => void;
+  rootRef?: React.Ref<HTMLElement>;
   sequence: number;
 }) {
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
   const title = captureDraftLabel(item, sequence);
   const generatedText = generatedTextForReport(item);
+  // Only Pro photos are AI-captioned, so only they show the "Reading image" cue while processing.
+  // Basic photos are never captioned → go straight to a manual "Add caption" (no AI badge/spinner).
+  const captionStillProcessing =
+    isPro && item.status !== "processed" && item.status !== "ready" && item.status !== "needsReview";
   const fallbackText = draftCaptureText(item);
   const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
   const textAttribution = captureTextAttribution(item);
@@ -823,6 +830,7 @@ function LiveDraftCaptureItem({
 
   return (
     <article
+      ref={rootRef}
       className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}${assignmentInfo ? " is-assignment-source" : ""}`}
       onClick={(event) => {
         if ((event.target as HTMLElement).closest("audio, button, input, textarea, summary, details, .capture-item-menu")) return;
@@ -908,14 +916,17 @@ function LiveDraftCaptureItem({
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
             <div className="live-draft-photo-copy">
-              <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
+              <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
                 {generatedText ? (
                   <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
-                ) : (
+                ) : captionStillProcessing ? (
                   <>
                     <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
                     <CaptureWorkingPlaceholder label="Reading image" />
                   </>
+                ) : (
+                  // Processed with no AI caption (Basic, or captioning unavailable) → manual add.
+                  <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
                 )}
               </section>
             </div>
@@ -1275,16 +1286,20 @@ function CaptureGeneratedText({
   attribution,
   dir,
   onSave,
+  addLabel = "Add",
 }: {
   label: string;
   text: string;
   attribution: string;
   dir?: "rtl" | "ltr";
   onSave?: (text: string) => Promise<void>;
+  addLabel?: string;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(text);
   const [saving, setSaving] = React.useState(false);
+  // No text yet (e.g. an un-captioned Basic photo) → offer a manual "Add" instead of a placeholder.
+  const hasText = !!text.trim();
   const start = () => {
     setDraft(text);
     setEditing(true);
@@ -1301,10 +1316,10 @@ function CaptureGeneratedText({
       <div className="capture-generated-heading">
         <h4>{label}</h4>
         <div className="capture-generated-heading-meta">
-          <span>{attribution}</span>
+          {hasText ? <span>{attribution}</span> : null}
           {onSave && !editing ? (
             <button className="capture-generated-edit" onClick={start} type="button">
-              Edit
+              {hasText ? "Edit" : addLabel}
             </button>
           ) : null}
         </div>
@@ -1321,9 +1336,9 @@ function CaptureGeneratedText({
             </button>
           </div>
         </div>
-      ) : (
+      ) : hasText ? (
         <p className="live-draft-preview" dir={dir}>{text}</p>
-      )}
+      ) : null}
     </>
   );
 }
@@ -1413,6 +1428,9 @@ function ProLiveReport({
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
+  // Pro is a deterministic, grouped-by-type document (Audio notes / Written notes / Photos) built
+  // without an LLM — render the structured sections (with their headers) so the grouping is visible.
+  const sections = (session?.reportModel?.sections || []).filter((section) => section.blocks?.length);
   const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
   const summary = reportContributionSummary(session);
   const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
@@ -1424,15 +1442,22 @@ function ProLiveReport({
         {summary ? <span className="report-meta-counts">{summary}</span> : null}
       </div>
       <section className="structured-report-section structured-report-body">
-        {isUpdating && !bodyParagraphs.length ? (
-          <p className="report-doc-status">Preparing the report from your captures…</p>
+        {sections.length ? (
+          sections.map((section) => (
+            <section className="workspace-report-section" key={section.id}>
+              {section.title ? <h3>{section.title}</h3> : null}
+              {section.blocks.map((block, index) => (
+                <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
+              ))}
+            </section>
+          ))
         ) : bodyParagraphs.length ? (
           bodyParagraphs.map((paragraph, index) => (
             <section className="workspace-report-section" key={`${index}-${paragraph.slice(0, 24)}`}>
               {formatReportParagraph(paragraph, onResolveFile)}
             </section>
           ))
-        ) : session?.items.length ? (
+        ) : isUpdating || session?.items.length ? (
           <p className="report-doc-status">Preparing the report from your captures…</p>
         ) : (
           <p className="report-doc-status">The report builds here automatically as captures land.</p>
@@ -1440,6 +1465,15 @@ function ProLiveReport({
       </section>
     </div>
   );
+}
+
+/** Render one structured report block (paragraph or image) for the Pro live report. */
+function formatReportBlock(block: StructuredReportBlock, onResolveFile?: (endpoint: string) => Promise<string>) {
+  if (block.type === "image" && block.captureId) {
+    return formatReportParagraph(`![${block.caption || "Source image"}](/api/v1/captures/${block.captureId}/file-content)`, onResolveFile);
+  }
+  if (block.text) return formatReportParagraph(block.text, onResolveFile);
+  return null;
 }
 
 function BasicLiveReport({
@@ -1568,8 +1602,8 @@ function workspaceReportState(
   if (session.report?.status === "generating" || session.processingStatus?.state === "processing") {
     return { badge: "Updating", detail: stageLabel, kind: "partial", label: "Report updating", tone: "blue" };
   }
-  if (session.report?.status === "verified" || session.status === "verified") {
-    return { badge: "Verified", detail: "Reviewed and accepted for this session.", kind: "verified", label: "Verified report", tone: "green" };
+  if (session.complete) {
+    return { badge: "Complete", detail: "Captures processed, patient assigned, and the report is up to date.", kind: "verified", label: "Complete report", tone: "green" };
   }
   if (session.report?.status === "processed") {
     return {
@@ -1638,11 +1672,8 @@ function generatedTextForReport(item: CaptureItem) {
     metadataText(generatedRecord.normalizedNote);
   if (text) return text;
   if (item.type === "note") return item.detail;
-  if (item.status === "processed" || item.status === "ready") {
-    if (item.type === "photo") {
-      return `Mock photo analysis: clinical photo captured at ${item.time}. Review the image above with this generated caption.`;
-    }
-  }
+  // Photos carry no AI caption in Basic (or when captioning is unavailable) — return nothing so the
+  // UI offers a manual "Add caption" instead of a placeholder.
   return "";
 }
 
@@ -1679,20 +1710,20 @@ function nonTechnicalStageLabel(status?: SessionProcessingStatus) {
 
 function workspaceReportMilestones(session: CaptureSession | null, state: ReturnType<typeof workspaceReportState>) {
   if (state.kind === "verified") {
-    return ["Draft", "Structured", "Verified"].map((label) => ({
+    return ["Draft", "Structured", "Complete"].map((label) => ({
       label,
       state: "done",
-      className: label === "Verified" ? "done verified" : "done",
+      className: label === "Complete" ? "done verified" : "done",
     }));
   }
   if (state.kind === "structured") {
     return [
       { label: "Draft", state: "done", className: "done" },
       { label: "Structured", state: "done", className: "done" },
-      { label: "Verified", state: "current", className: "current" },
+      { label: "Complete", state: "current", className: "current" },
     ];
   }
-  return ["Draft", "Structured", "Verified"].map((label, index) => ({
+  return ["Draft", "Structured", "Complete"].map((label, index) => ({
     label,
     state: index === 0 ? "current" : "next",
     className: index === 0 ? "current" : "next",
@@ -1707,8 +1738,8 @@ function workspaceReportUpdatedLabel(value?: string | null) {
 }
 
 function sessionSummaryStatusChip(session: CaptureSession | null) {
-  if (session?.status === "verified" || session?.report?.status === "verified") {
-    return { checked: true, label: "Verified", tone: "success" };
+  if (session?.complete) {
+    return { checked: true, label: "Complete", tone: "success" };
   }
   if (session?.report?.status === "processed" && !session.report.isStale) {
     return { checked: false, label: "Generated", tone: "success" };

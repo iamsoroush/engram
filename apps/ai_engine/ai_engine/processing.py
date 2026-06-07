@@ -151,15 +151,7 @@ def capture_detected_patient(capture: dict[str, Any], text: str) -> DetectedPati
 def completed_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CaptureProcessingOutput:
     """Return metadata for a completed placeholder capture processor."""
     text = placeholder_text_for_capture(capture)
-    output: CaptureProcessingOutput = {
-        "status": "completed",
-        "text": text,
-        "generated_by": "ai-engine",
-        "job_id": job["id"],
-        "job_type": job["jobType"],
-        "generated_at": utc_now().isoformat(),
-        "source_artifact_ids": job.get("inputArtifactIds") or [],
-    }
+    output = capture_processing_output(job, text)
     detected_patient = capture_detected_patient(capture, text)
     if detected_patient is not None:
         output["detected_patient"] = detected_patient
@@ -382,13 +374,9 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
 def transcribe_audio_content(content: bytes, transcription_context: dict[str, Any] | None = None) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
-    client = OpenAI(
-        base_url=settings.transcription_base_url.strip(),
-        api_key=settings.transcription_api_key,
-        timeout=settings.transcription_timeout_seconds,
-    )
+    client = gateway_client("transcription")
     response = client.chat.completions.create(
-        model=settings.transcription_model,
+        model=gateway_settings_for("transcription")[2],
         messages=[
             {
                 "role": "user",
@@ -403,6 +391,164 @@ def transcribe_audio_content(content: bytes, transcription_context: dict[str, An
     if not text or not text.strip():
         raise RuntimeError("Audio transcription returned empty text")
     return parse_structured_transcription_output(text)
+
+
+# --- Pro enrichment: real image captions + note decoration -------------------------------------
+#
+# Photo captioning and note decoration are Pro-tier capabilities (see the tier table in
+# docs/intelligence-layer.md §3). The backend gates them: it attaches an `enrichmentContext` to a
+# photo/note worker payload only for Pro tenants (reusing the existing `tenant_tier` gate), so a
+# Basic tenant never incurs a gateway call and keeps the deterministic passthrough placeholder.
+# The worker stays a pure function of its payload — it enriches iff an `enrichmentContext` is
+# present and a gateway is configured, and falls back to the placeholder otherwise. The output key
+# is unchanged (`caption` / `decorated_text`), so the worker contract stays stable.
+
+
+def enrichment_language_directive(enrichment_context: dict[str, Any] | None) -> str:
+    """Instruct the model on enrichment output language/script (mirrors transcription)."""
+    context = enrichment_context if isinstance(enrichment_context, dict) else {}
+    preferred = str(context.get("preferredLanguage") or "auto").strip().lower()
+    if preferred and preferred not in {"auto", "unknown", "mixed"}:
+        name = TRANSCRIPTION_LANGUAGE_NAMES.get(preferred, preferred)
+        return f"Write the output in {name} using its native script. Do not translate into another language and do not romanize."
+    return (
+        "Write the output in the same language and script as the source material; never translate it "
+        "and never romanize Persian/Farsi into Latin."
+    )
+
+
+def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
+    """Build the instruction prompt for clinical photo captioning."""
+    context = enrichment_context if isinstance(enrichment_context, dict) else {}
+    return "\n\n".join(
+        (
+            "You are a clinical photo captioner for AesMem, an aesthetics clinic memory system.",
+            (
+                "Describe only what is clinically visible in the image in one or two sentences: the anatomical "
+                "area, observable findings (e.g. asymmetry, swelling, bruising, erythema, filler/Botox effect, "
+                "pre- vs post-correction state), and relevant aesthetic-procedure context. Do NOT invent patient "
+                "identity, measurements, dates, or anything not visible in the image. "
+                f"{enrichment_language_directive(context)} "
+                "Return only the caption text, with no preamble, labels, or markdown."
+            ),
+            f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def note_decoration_prompt(enrichment_context: dict[str, Any] | None) -> str:
+    """Build the instruction prompt for clinical note decoration."""
+    context = enrichment_context if isinstance(enrichment_context, dict) else {}
+    return "\n\n".join(
+        (
+            "You are cleaning up a clinician's quick free-text note for AesMem, an aesthetics clinic memory system.",
+            (
+                "Lightly decorate the note for readability: fix obvious typos, expand clinical shorthand, and "
+                "organize it into clear clinical phrasing. Preserve EVERY clinical detail, number, product, dose, "
+                "and instruction exactly — do NOT add facts, diagnoses, or patient identity that are not already "
+                "in the note, and do not drop anything. "
+                f"{enrichment_language_directive(context)} "
+                "Return only the decorated note text, with no preamble, labels, or markdown."
+            ),
+            f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def gateway_settings_for(task: str) -> tuple[str, str, str]:
+    """Resolve (base_url, api_key, model) for an AI task, falling back to the transcription gateway.
+
+    `task` is one of `transcription`, `caption`, `note_decoration`. A blank per-task override falls
+    back to the shared `transcription_*` setting, so a single OpenAI-compatible gateway only needs
+    the per-task `*_model` set, while a separate provider per task can also override base_url/api_key.
+    """
+    base_url = (getattr(settings, f"{task}_base_url", "") or settings.transcription_base_url).strip()
+    api_key = getattr(settings, f"{task}_api_key", "") or settings.transcription_api_key
+    model = getattr(settings, f"{task}_model", "") or settings.transcription_model
+    return base_url, api_key, model
+
+
+def gateway_client(task: str) -> OpenAI:
+    """Return an OpenAI-compatible client for an AI task's resolved gateway."""
+    base_url, api_key, _ = gateway_settings_for(task)
+    return OpenAI(base_url=base_url, api_key=api_key, timeout=settings.transcription_timeout_seconds)
+
+
+def image_to_data_url(content: bytes, media_type: str | None) -> str:
+    """Base64-encode image bytes into an OpenAI-compatible data URL."""
+    mime = media_type if isinstance(media_type, str) and media_type.startswith("image/") else "image/jpeg"
+    return f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"
+
+
+def caption_image_content(
+    content: bytes,
+    media_type: str | None,
+    enrichment_context: dict[str, Any] | None = None,
+) -> str | None:
+    """Caption a clinical image through the configured gateway; None when the model returns empty."""
+    client = gateway_client("caption")
+    response = client.chat.completions.create(
+        model=gateway_settings_for("caption")[2],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": caption_prompt(enrichment_context)},
+                    {"type": "image_url", "image_url": {"url": image_to_data_url(content, media_type)}},
+                ],
+            }
+        ],
+    )
+    text = response.choices[0].message.content
+    return text.strip() if text and text.strip() else None
+
+
+def decorate_note_content(raw_text: str, enrichment_context: dict[str, Any] | None = None) -> str | None:
+    """Decorate a clinical note through the configured gateway; None when the model returns empty."""
+    client = gateway_client("note_decoration")
+    response = client.chat.completions.create(
+        model=gateway_settings_for("note_decoration")[2],
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"{note_decoration_prompt(enrichment_context)}\n\nNote:\n{raw_text}"},
+                ],
+            }
+        ],
+    )
+    text = response.choices[0].message.content
+    return text.strip() if text and text.strip() else None
+
+
+def capture_processing_output(job: dict[str, Any], text: str) -> CaptureProcessingOutput:
+    """Build the stable completed-capture output envelope for a given generated text."""
+    return {
+        "status": "completed",
+        "text": text,
+        "generated_by": "ai-engine",
+        "job_id": job["id"],
+        "job_type": job["jobType"],
+        "generated_at": utc_now().isoformat(),
+        "source_artifact_ids": job.get("inputArtifactIds") or [],
+    }
+
+
+def is_fixture_capture(capture: dict[str, Any]) -> bool:
+    """Return whether a capture maps to a deterministic QA fixture (skip real enrichment)."""
+    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
+    filename = str(metadata.get("original_filename") or "").strip()
+    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
+        return True
+    detail = " ".join(str(metadata.get("detail") or "").split())
+    return "Patient prefers subtle correction" in detail and "follow-up photo in 2 weeks" in detail
+
+
+def raw_note_text_for_decoration(capture: dict[str, Any]) -> str | None:
+    """Return the captured note text to decorate, or None when there's nothing meaningful."""
+    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
+    detail = str(metadata.get("detail") or "").strip()
+    return detail or None
 
 
 def completed_audio_metadata(
@@ -949,6 +1095,16 @@ class BackendClient:
         response.raise_for_status()
         return response.content
 
+    def get_file(self, path: str) -> tuple[bytes, str]:
+        """GET binary content plus its content type from an internal backend endpoint."""
+        response = httpx.get(
+            f"{self.base_url}{path}",
+            headers=self.headers,
+            timeout=settings.http_timeout_seconds,
+        )
+        response.raise_for_status()
+        return response.content, response.headers.get("content-type", "")
+
     def start_job(self, job_id: str, *, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
         """Mark a job running and fetch its input payload."""
         return self.post(
@@ -1025,7 +1181,8 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         return
 
     output_key = output_key_for_capture(capture["type"])
-    # TODO(ai-integration): Replace the remaining photo/text placeholders with real processors.
+    # Audio transcription and Pro photo/note enrichment are real (gateway-backed); Basic, gateway-less,
+    # and QA-fixture captures fall back to the deterministic placeholder below.
     client.progress_job(job_id, output_key=output_key, output=partial_metadata(job, capture), stage="transcript")
     if capture.get("type") == "audio":
         source_content = None
@@ -1038,6 +1195,32 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
             output_key=output_key,
             output=completed_audio_metadata(job, capture, source_content, payload.get("transcriptionContext")),
         )
+        return
+
+    # Pro enrichment (real image captions / note decoration). The backend attaches an
+    # `enrichmentContext` only for Pro tenants; Basic and gateway-less/fixture captures keep the
+    # deterministic placeholder. A gateway failure propagates as a retryable worker error; an empty
+    # gateway response falls back to the placeholder so the capture still completes.
+    enrichment_context = payload.get("enrichmentContext") if isinstance(payload.get("enrichmentContext"), dict) else None
+    enriched_text: str | None = None
+    if enrichment_context is not None and transcription_is_configured() and not is_fixture_capture(capture):
+        capture_type = capture.get("type")
+        if capture_type == "photo" and capture.get("sourceArtifactId"):
+            content, media_type = client.get_file(f"/internal/captures/{capture['id']}/file-content")
+            enriched_text = caption_image_content(content, media_type, enrichment_context)
+        elif capture_type == "note":
+            raw_note = raw_note_text_for_decoration(capture)
+            if raw_note:
+                enriched_text = decorate_note_content(raw_note, enrichment_context)
+    if enriched_text:
+        client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, enriched_text))
+        return
+
+    # Un-enriched photos (Basic tenants, or no gateway) get NO AI caption — leave it blank so the UI
+    # offers a manual "Add caption" instead of a meaningless placeholder. Fixtures keep their
+    # deterministic caption for QA; notes keep the captured text as a passthrough.
+    if capture.get("type") == "photo" and not is_fixture_capture(capture):
+        client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, ""))
         return
 
     sleep(settings.mock_stage_delay_seconds)

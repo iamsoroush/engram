@@ -96,10 +96,10 @@ time.
 
 The explicit session processing endpoint remains available as a report refresh
 hook, but it is no longer the workflow gate that makes a session reviewable or
-editable. When placeholder session processing succeeds, the backend stores
-generated outputs and moves the session to `needs_review` if a patient is
-assigned, otherwise `unassigned`. Generated output is still not clinically
-verified until staff verifies the session.
+editable. The live report is now rebuilt **deterministically and synchronously** (no LLM, no
+`session_organize` job) once a session's capture chain is idle; the backend stores the report and
+moves the session to `needs_review` if a patient is assigned, otherwise `unassigned`. Completion is
+auto-derived (`complete`) — there is no manual verify step.
 
 Structured report content is stored in `sessions.report_model` as the backend
 source of truth. Markdown remains a rendered/export format in the session
@@ -181,14 +181,16 @@ Backend v2 separates organization from human verification:
 - `needs_review`: staff attention is needed.
 - `processing`: AI processing is running.
 - `organized`: deprecated backend/AI organized state; new processing should route to `unassigned` or `needs_review`.
-- `reviewing`: staff opened it for verification.
-- `verified`: doctor or assistant reviewed and accepted it.
+- `reviewing`: staff opened it for review.
+- `verified`: **deprecated** — manual verification was removed. Completion is now auto-derived
+  (`complete` = captures processed + patient assigned + report current); the enum value is retained
+  only for historical rows and is no longer set.
 - `reopened`: session was sent back for changes.
 - `failed`: processing failed; sources remain durable.
 
-The frontend must not imply that generated content is clinically verified before `verified`.
 Sessions remain editable and reviewable in every state; states describe attention
-or confidence rather than access.
+or confidence rather than access. A session's **complete** flag (auto-derived, surfaced on the
+session payload) replaces the old manual "verify" gate.
 
 ## Design Decisions
 

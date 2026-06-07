@@ -25,6 +25,7 @@ from app.services.patient_matching import (
 from app.services.patients import create_patient_from_patient_information, patient_information_has_explicit_identity
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
+    empty_report_model,
     get_report_template,
     patient_information_from_assignment,
     render_report_body_markdown,
@@ -906,6 +907,46 @@ def build_transcription_context(db: DbSession, *, session: Session, capture: Cap
     )
 
 
+def capture_enrichment_context_from_inputs(
+    *,
+    clinic: dict[str, Any],
+    assigned_patient: dict[str, Any] | None,
+    preferred_language: str,
+    capture_type: str,
+) -> dict[str, Any]:
+    """Build the Pro-only context for photo captioning / note decoration."""
+    return {
+        "schemaVersion": "2026-06-06.capture-enrichment-context.v1",
+        "clinic": clinic,
+        "assignedPatient": assigned_patient,
+        "preferredLanguage": preferred_language,
+        "captureType": capture_type,
+    }
+
+
+def build_capture_enrichment_context(db: DbSession, *, session: Session, capture: Capture) -> dict[str, Any]:
+    """Build the Pro-only enrichment context for the worker.
+
+    Mirrors the audio transcription context but lighter: it carries clinic and assigned-patient
+    context plus the preferred language so a real captioner/decorator can stay on-script. Attaching
+    this context is the tier gate — the backend only builds it for Pro tenants (see
+    `worker_job_payload`), so a Basic tenant's worker never enriches and never calls the gateway.
+    """
+    template = get_report_template(session.report_template_key)
+    patient_information = patient_information_from_assignment(db, session)
+    assigned_patient = patient_information if patient_information.get("status") == "assigned" else None
+    return capture_enrichment_context_from_inputs(
+        clinic={
+            "name": template.clinic_name,
+            "information": list(template.clinic_information),
+            "assumptions": ["Aesthetics clinic context."],
+        },
+        assigned_patient=assigned_patient,
+        preferred_language=tenant_transcription_language(db, session.tenant_id),
+        capture_type=capture.capture_type.value,
+    )
+
+
 def create_session_report_job(
     db: DbSession,
     *,
@@ -1078,48 +1119,120 @@ def session_has_uncontributed_capture(db: DbSession, *, tenant_id: uuid.UUID, se
     return False
 
 
-def maybe_dispatch_session_report_job(
+def _capture_report_text(capture: Capture) -> str | None:
+    """Return a capture's generated text for the report (transcript / decorated note / caption)."""
+    metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+    if capture.capture_type == CaptureType.audio:
+        return generated_capture_text(metadata.get("transcript"))
+    if capture.capture_type == CaptureType.note:
+        return (
+            generated_capture_text(metadata.get("decorated_text"))
+            or generated_capture_text(metadata.get("normalized_note"))
+            or generated_capture_text(metadata.get("detail"))
+        )
+    if capture.capture_type == CaptureType.photo:
+        return generated_capture_text(metadata.get("caption"))
+    return None
+
+
+def build_session_report_model(session: Session, captures: list[Capture], *, grouped: bool) -> dict[str, Any]:
+    """Build a deterministic (no-LLM) report model from a session's captures.
+
+    `grouped` (Pro) groups blocks into fixed by-type sections (Audio notes / Written notes /
+    Photos); otherwise (Basic) the body is a single chronological section. Photos render as image
+    blocks (the markdown renderer resolves the source URL); transcripts/notes render as paragraphs.
+    """
+    model = empty_report_model(title=session.title or "Session report", template_key=session.report_template_key)
+    audio_blocks: list[dict[str, Any]] = []
+    note_blocks: list[dict[str, Any]] = []
+    photo_blocks: list[dict[str, Any]] = []
+    chronological_blocks: list[dict[str, Any]] = []
+    source_references: list[dict[str, Any]] = []
+    for capture in captures:
+        capture_id = str(capture.id)
+        source_references.append({"type": "capture", "captureId": capture_id})
+        text = _capture_report_text(capture)
+        if capture.capture_type == CaptureType.photo:
+            block = {"type": "image", "captureId": capture_id, "caption": text or "Source image"}
+            photo_blocks.append(block)
+            chronological_blocks.append(block)
+        elif text:
+            block = {"type": "paragraph", "text": text}
+            (audio_blocks if capture.capture_type == CaptureType.audio else note_blocks).append(block)
+            chronological_blocks.append(block)
+    if grouped:
+        sections = [
+            {"id": section_id, "title": title, "blocks": blocks}
+            for section_id, title, blocks in (
+                ("audio-notes", "Audio notes", audio_blocks),
+                ("written-notes", "Written notes", note_blocks),
+                ("photos", "Photos", photo_blocks),
+            )
+            if blocks
+        ]
+    else:
+        sections = [{"id": "clinical-report", "title": "Clinical report", "blocks": chronological_blocks}] if chronological_blocks else []
+    model["sections"] = sections
+    model["sourceReferences"] = source_references
+    model["generatedAt"] = utc_now().isoformat()
+    return model
+
+
+def regenerate_session_report(db: DbSession, *, session: Session) -> None:
+    """Rebuild a session's live report deterministically (no AI job, no LLM).
+
+    Pro reports group captures by type; Basic reports are chronological. Either way the report is a
+    pure function of the session's processed, in-context captures, rebuilt synchronously whenever
+    the capture chain is idle — so it is always current for the latest capture. Pro additionally
+    records each folded-in capture's `report_contribution` and the included/set-aside meta counts.
+    """
+    is_pro = tenant_tier(db, session.tenant_id) == "pro"
+    captures = sorted(
+        _reportable_captures(db, tenant_id=session.tenant_id, session_id=session.id),
+        key=lambda capture: (capture.captured_at or capture.created_at or utc_now()),
+    )
+    generated_at = utc_now()
+    model = build_session_report_model(session, captures, grouped=is_pro)
+    session.report_model = model
+    session.generated_report = render_report_body_markdown(model, db=db, session=session)
+    session.organization_source = OrganizationSource.ai_engine
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    metadata = {**metadata, "generated_output_stale": False, "generated_at": generated_at.isoformat()}
+    if is_pro:
+        # The "Added to report" chip + meta strip are a Pro affordance; Basic is a plain chronological render.
+        metadata["report_contribution_summary"] = mark_session_report_contributions(
+            db, session=session, generated_at=generated_at.isoformat()
+        )
+    session.extracted_metadata = metadata
+    # A processed session settles to needs_review (assigned) / unassigned (no patient); completeness
+    # is then derived (is_session_complete) rather than set by a manual verify.
+    session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
+    session.updated_at = generated_at
+
+
+def regenerate_session_report_if_idle(
     db: DbSession,
     *,
     tenant_id: uuid.UUID,
     session_id: uuid.UUID,
-    created_by_user_id: uuid.UUID | None,
+    created_by_user_id: uuid.UUID | None = None,
     force: bool = False,
 ) -> None:
-    """Auto-regenerate the Pro live report once a session's capture chain is idle.
+    """Regenerate a session's live report once its capture chain is idle (no AI job).
 
-    The live report is regenerated by an AI job as each capture lands (E2) — a calm background
-    job that never blocks capture. Pro only (Basic = chronological render, no synthesis job).
-    No-op while captures are still processing or a report job is already in flight. `force=True`
-    (capture deleted / marked relevant) regenerates whenever any reportable capture remains;
-    otherwise it only fires when a capture isn't yet folded in, so it converges and doesn't loop.
+    No-op while captures are still processing (the report would be incomplete). Replaces the old
+    async `session_organize` job: the report is now built deterministically and synchronously, so
+    there is no "updating" churn and the report is always current once captures settle.
     """
-    if tenant_tier(db, tenant_id) != "pro":
-        return
     if session_has_pending_capture_jobs(db, tenant_id=tenant_id, session_id=session_id):
-        return
-    if session_has_active_report_job(db, tenant_id=tenant_id, session_id=session_id):
-        return
-    if force:
-        if not session_has_reportable_capture(db, tenant_id=tenant_id, session_id=session_id):
-            return
-    elif not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
         return
     session = db.execute(
         select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
     ).scalar_one_or_none()
     if session is None:
         return
-    job = create_session_report_job(
-        db,
-        tenant_id=tenant_id,
-        created_by_user_id=created_by_user_id,
-        session=session,
-        trigger="auto_live_report",
-    )
+    regenerate_session_report(db, session=session)
     db.commit()
-    db.refresh(job)
-    dispatch_session_processing_job(db, job)
 
 
 def dispatch_capture_processing_job(db: DbSession, job: AiJob) -> None:
@@ -1264,12 +1377,17 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         ).scalar_one_or_none()
     if capture is not None:
         transcription_context = None
-        if capture.capture_type == CaptureType.audio:
+        enrichment_context = None
+        if capture.capture_type in (CaptureType.audio, CaptureType.photo, CaptureType.note):
             session = db.execute(
                 select(Session).where(Session.id == capture.session_id, Session.tenant_id == job.tenant_id)
             ).scalar_one_or_none()
             if session is not None:
-                transcription_context = build_transcription_context(db, session=session, capture=capture)
+                if capture.capture_type == CaptureType.audio:
+                    transcription_context = build_transcription_context(db, session=session, capture=capture)
+                # Image captions and note decoration are Pro-only; the gate is attaching the context.
+                elif tenant_tier(db, job.tenant_id) == "pro":
+                    enrichment_context = build_capture_enrichment_context(db, session=session, capture=capture)
         return {
             "job": ai_job_payload(job),
             "capture": {
@@ -1282,6 +1400,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
                 "sourceArtifactId": str(capture.source_artifact_id) if capture.source_artifact_id else None,
             },
             "transcriptionContext": transcription_context,
+            "enrichmentContext": enrichment_context,
         }
     if job.session_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
@@ -1413,11 +1532,11 @@ def complete_worker_job(
     ai_patient_action = None
     patient_information = output.get("patient_information")
     tier = tenant_tier(db, job.tenant_id)
-    # AI auto-assignment (match/create/reassign/suggest) is a Pro capability; Basic tenants
-    # assign patients manually. Out-of-context flagging below still runs for both tiers.
+    # Intelligent patient matching (match/create/reassign/suggest) runs for both tiers — it is the
+    # core memory-accuracy feature. Tier only gates enrichment (captions/decoration) and the Pro
+    # synthesized report below.
     if (
-        tier == "pro"
-        and isinstance(patient_information, dict)
+        isinstance(patient_information, dict)
         and patient_information_has_explicit_identity(patient_information)
     ):
         assignment_basis = assignment_intent_basis(output)
@@ -1583,9 +1702,9 @@ def complete_worker_job(
     # capture's assignment has been applied to the session.
     if capture.session_id is not None:
         dispatch_next_session_capture(db, tenant_id=job.tenant_id, session_id=capture.session_id)
-        # Once the chain has drained, regenerate the Pro live report from the cumulative
-        # session state (no-op while more captures are still in flight).
-        maybe_dispatch_session_report_job(
+        # Once the chain has drained, rebuild the live report from the cumulative session state
+        # deterministically (no-op while more captures are still in flight).
+        regenerate_session_report_if_idle(
             db,
             tenant_id=job.tenant_id,
             session_id=capture.session_id,
@@ -1842,10 +1961,9 @@ def complete_session_worker_job(
     )
     db.commit()
     db.refresh(job)
-    # Self-heal: if a capture landed while this report was being built, it's still uncontributed —
-    # regenerate now that the job slot is free (converges once everything is folded in).
-    if is_pro and job.session_id is not None:
-        maybe_dispatch_session_report_job(
+    # Deterministic regen is the source of truth now; if a capture is idle, rebuild from cumulative state.
+    if job.session_id is not None:
+        regenerate_session_report_if_idle(
             db,
             tenant_id=job.tenant_id,
             session_id=job.session_id,

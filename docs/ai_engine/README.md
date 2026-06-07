@@ -4,8 +4,10 @@ AI engine docs describe the Celery worker boundary, placeholder processors, job 
 
 ## Documents
 
-- [Processing](processing.md): current AI engine placeholder capture and session processors.
-- [Transcription, retry, and patient identity](transcription-retry-patient-identity.md): planned durable retry, context-rich transcription, patient extraction, aliases, and matching boundaries.
+- [Processing](processing.md): the AI engine's capture/session processors — real transcription,
+  Pro enrichment (captions/decoration), deterministic report generation, durable retry, and the
+  patient-identity/matching boundary (the now-implemented durable-retry + context-rich transcription
+  + patient-extraction direction lives here and in [intelligence-layer.md](../intelligence-layer.md)).
 
 ## Direction
 

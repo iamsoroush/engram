@@ -3477,14 +3477,16 @@ small {
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
   width: min(100%, 760px);
   margin: 0 auto;
-  border: 1px solid #dbe3ef;
-  border-radius: 8px;
-  background: rgb(255 255 255 / 95%);
-  padding: 8px;
-  backdrop-filter: blur(10px);
+  /* Floating items, not a boxed dock: no container border/background/shadow — each pill/button
+     carries its own surface so they float over the page. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  backdrop-filter: none;
 }
 
 .capture-pills .btn {
@@ -5244,11 +5246,12 @@ small {
   left: 50%;
   width: min(calc(100% - 36px), 820px);
   grid-template-columns: 1fr;
-  gap: 8px;
-  border-color: #dce6f2;
-  border-radius: 8px;
-  padding: 8px;
-  box-shadow: 0 16px 38px rgb(15 23 42 / 15%);
+  gap: 10px;
+  /* Floating dock: no container chrome (see base rule). */
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
   transform: translateX(-50%);
 }
 
@@ -5262,11 +5265,13 @@ small {
   border-radius: 999px;
   background: #ffffff;
   color: #334155;
-  padding: 0 14px;
+  padding: 4px 14px;
   font-size: 0.78rem;
   font-weight: 850;
   overflow-wrap: anywhere;
   text-align: center;
+  /* Floating pill: own shadow now that there is no container box. */
+  box-shadow: 0 8px 20px rgb(15 23 42 / 12%);
 }
 
 .capture-pills-context::before {
@@ -5287,11 +5292,13 @@ small {
   justify-content: center;
   gap: 8px;
   border: 1px solid #cbd9ee;
-  border-radius: 7px;
+  border-radius: 12px;
   background: #ffffff;
   color: #080d2d;
   padding: 8px 10px;
   text-align: left;
+  /* Floating button: carries its own soft shadow now that there is no container box. */
+  box-shadow: 0 10px 26px rgb(15 23 42 / 14%);
   transition:
     border-color 140ms ease,
     box-shadow 140ms ease,
@@ -7879,11 +7886,12 @@ small {
 .capture-pills {
   bottom: max(12px, env(safe-area-inset-bottom));
   width: min(calc(100% - 36px), 800px);
-  border-color: var(--color-border);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
-  padding: var(--space-2);
-  box-shadow: var(--shadow-float);
+  /* Floating items, not a boxed dock — container stays transparent; each button/pill floats. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
 }
 
 .capture-pills-context {

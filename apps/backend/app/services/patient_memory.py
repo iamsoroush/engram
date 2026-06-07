@@ -18,6 +18,7 @@ from app.models import (
 )
 from app.services.patient_identity import normalize_identifier, search_keys_for_query
 from app.services.patients import get_patient, patient_payload
+from app.services.session_contracts import session_is_complete
 from app.services.sessions import parse_uuid
 
 ACTIVE_SESSION_STATUSES = {
@@ -149,7 +150,7 @@ def _row_payload(
     session_count: int,
     active_session_count: int,
     latest_capture_count: int,
-    all_verified: bool,
+    all_complete: bool,
     needs_input: bool,
 ) -> dict[str, Any]:
     latest_visit_at = _session_sort_date(latest_session) if latest_session else None
@@ -184,7 +185,7 @@ def _row_payload(
         "activeSessionId": str(active_session.id) if active_session else None,
         "activeSessionCount": active_session_count,
         "sessionCount": session_count,
-        "verified": all_verified,
+        "complete": all_complete,
         "needsInput": needs_input,
         "latestVisitAt": _iso(latest_visit_at),
         "updatedAt": _iso(updated_at),
@@ -325,9 +326,12 @@ def list_patient_memory(
                     if latest_session
                     else 0
                 ),
-                all_verified=bool(patient_sessions)
-                and all(session.status == SessionStatus.verified for session in patient_sessions),
-                needs_input=any(session.status in NEEDS_INPUT_STATUSES for session in patient_sessions),
+                all_complete=bool(patient_sessions)
+                and all(session_is_complete(session) for session in patient_sessions),
+                needs_input=any(
+                    session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session)
+                    for session in patient_sessions
+                ),
             )
         )
     return {"items": items, "limit": limit, "offset": offset, "total": total}
@@ -368,8 +372,10 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
             if latest_session
             else 0
         ),
-        all_verified=bool(sessions) and all(session.status == SessionStatus.verified for session in sessions),
-        needs_input=any(session.status in NEEDS_INPUT_STATUSES for session in sessions),
+        all_complete=bool(sessions) and all(session_is_complete(session) for session in sessions),
+        needs_input=any(
+            session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session) for session in sessions
+        ),
     )
     timeline_sessions = []
     for session in sessions:
@@ -385,8 +391,8 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
                 "generatedSummary": summary["generated_summary"],
                 "ruleBasedSummary": summary["rule_based_summary"],
                 "captureCount": capture_count,
-                "verified": session.status == SessionStatus.verified,
-                "needsInput": session.status in NEEDS_INPUT_STATUSES,
+                "complete": session_is_complete(session),
+                "needsInput": session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session),
                 "groupLabel": _timeline_group_label(sort_date),
                 "sortDate": _iso(sort_date),
                 "capturedAt": _iso(session.captured_at),

@@ -53,11 +53,9 @@ from app.services.sessions import (
     list_session_captures,
     list_session_ai_jobs,
     list_sessions,
-    reopen_session,
     save_session,
     start_review,
     update_session,
-    verify_session,
 )
 from app.storage import ObjectStore, get_object_store
 from sqlalchemy.orm import Session
@@ -432,26 +430,6 @@ def start_review_route(
 ) -> dict[str, Any]:
     """Move an organized session into human review."""
     return start_review(db, principal, session_id)
-
-
-@api_v1.post("/sessions/{session_id}/verify")
-def verify_session_route(
-    session_id: str,
-    principal: CurrentPrincipal = Depends(staff_required),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Mark a reviewed or organized session as clinically verified."""
-    return verify_session(db, principal, session_id)
-
-
-@api_v1.post("/sessions/{session_id}/reopen")
-def reopen_session_route(
-    session_id: str,
-    principal: CurrentPrincipal = Depends(staff_required),
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Reopen a verified session so it can be corrected or processed again."""
-    return reopen_session(db, principal, session_id)
 
 
 @api_v1.get("/sessions/{session_id}/captures")

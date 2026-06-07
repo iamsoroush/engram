@@ -101,28 +101,19 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
         db.refresh(session)
         return {"session": session_payload(session, db), "processingJob": None}
 
-    from app.services.ai_jobs import create_session_processing_job, dispatch_session_processing_job, ai_job_payload, tenant_tier
+    from app.services.ai_jobs import regenerate_session_report_if_idle
 
     session.report_template_key = request.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY
-    # The Pro live report regenerates automatically as captures land (Epic E), so the manual
-    # Generate button is gone; this endpoint now only backs explicit retries. Basic live reports
-    # are a chronological render with no synthesis job, so there is nothing to (re)generate.
-    if tenant_tier(db, principal.tenant_id) != "pro":
-        audit(
-            db,
-            tenant_id=principal.tenant_id,
-            actor_user_id=principal.user_id,
-            action="session.process.request_basic_noop",
-            target_type="session",
-            target_id=session.id,
-            details={"report_template_key": session.report_template_key},
-        )
-        db.commit()
-        db.refresh(session)
-        return {"session": session_payload(session, db), "processingJob": None}
-
-    # TODO(ai-integration): Keep this placeholder queue boundary; replace worker output with real progressive AI jobs later.
-    job = create_session_processing_job(db, principal=principal, session=session)
+    # The live report regenerates automatically and deterministically as captures land (no AI job,
+    # no LLM), so the manual Generate button is gone; this endpoint now just rebuilds on demand
+    # (e.g. an explicit retry). No-op while the capture chain is still processing.
+    regenerate_session_report_if_idle(
+        db,
+        tenant_id=principal.tenant_id,
+        session_id=session.id,
+        created_by_user_id=principal.user_id,
+        force=True,
+    )
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -130,14 +121,11 @@ def save_session(db: DbSession, principal: CurrentPrincipal, session_id: str, re
         action="session.save",
         target_type="session",
         target_id=session.id,
-        details={"job_id": str(job.id), "report_template_key": session.report_template_key},
+        details={"report_template_key": session.report_template_key},
     )
     db.commit()
     db.refresh(session)
-    db.refresh(job)
-    dispatch_session_processing_job(db, job)
-    db.refresh(job)
-    return {"session": session_payload(session, db), "processingJob": ai_job_payload(job)}
+    return {"session": session_payload(session, db), "processingJob": None}
 
 
 def list_sessions(
@@ -287,26 +275,6 @@ def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) ->
     session.review_started_by_user_id = principal.user_id
     session.review_started_at = datetime.now(timezone.utc)
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.review_start", target_type="session", target_id=session.id)
-    db.commit()
-    db.refresh(session)
-    return session_payload(session, db)
-
-
-def verify_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    session.status = SessionStatus.verified
-    session.verified_by_user_id = principal.user_id
-    session.verified_at = datetime.now(timezone.utc)
-    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.verify", target_type="session", target_id=session.id)
-    db.commit()
-    db.refresh(session)
-    return session_payload(session, db)
-
-
-def reopen_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
-    session.status = SessionStatus.reopened
-    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.reopen", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
     return session_payload(session, db)

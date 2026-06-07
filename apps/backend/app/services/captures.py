@@ -66,12 +66,12 @@ def update_capture(
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="capture.update", target_type="capture", target_id=capture.id)
     db.commit()
     db.refresh(capture)
-    # A capture moving in/out of the report changes its contents, so regenerate the Pro live
-    # report (no-op for Basic / mid-chain / nothing reportable).
+    # A capture moving in/out of the report changes its contents, so regenerate the live report
+    # (no-op while the capture chain is still processing).
     if relevance_marked and capture.session_id is not None:
-        from app.services.ai_jobs import maybe_dispatch_session_report_job
+        from app.services.ai_jobs import regenerate_session_report_if_idle
 
-        maybe_dispatch_session_report_job(
+        regenerate_session_report_if_idle(
             db,
             tenant_id=principal.tenant_id,
             session_id=capture.session_id,
@@ -137,9 +137,7 @@ def mark_session_stale_after_source_text_update(
             "updated_at": changed_at.isoformat(),
         },
     }
-    if session.status == SessionStatus.verified:
-        session.status = SessionStatus.needs_review
-    elif session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
+    if session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
         session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
 
 
@@ -177,11 +175,11 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     )
     db.commit()
     db.refresh(session)
-    # Removing a capture changes what the report should contain, so regenerate the Pro live
-    # report from the remaining captures (no-op for Basic / when nothing reportable remains).
-    from app.services.ai_jobs import maybe_dispatch_session_report_job
+    # Removing a capture changes what the report should contain, so regenerate the live report
+    # from the remaining captures (no-op while the capture chain is still processing).
+    from app.services.ai_jobs import regenerate_session_report_if_idle
 
-    maybe_dispatch_session_report_job(
+    regenerate_session_report_if_idle(
         db,
         tenant_id=principal.tenant_id,
         session_id=session.id,
@@ -238,9 +236,7 @@ def mark_session_draft_after_capture_delete(session: Session, capture_id: str, c
         "stale_reason": "A capture was deleted after the last processed session output.",
         "stale_at": changed_at.isoformat(),
     }
-    if session.status == SessionStatus.verified:
-        session.status = SessionStatus.needs_review
-    elif session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
+    if session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
         session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
 
 

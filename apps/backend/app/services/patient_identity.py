@@ -103,7 +103,12 @@ def normalize_text_key(value: Any) -> str | None:
     text = text.replace("\u0640", "").replace("\u200c", " ")
     decomposed = unicodedata.normalize("NFKD", text)
     without_marks = "".join(character for character in decomposed if unicodedata.category(character) != "Mn")
-    lowered = without_marks.casefold().replace("_", " ")
+    # Re-fold Arabic\u2192Persian after NFKD: compatibility decomposition turns Arabic presentation
+    # forms (e.g. \ufef2 U+FEF2) and pre-decomposed input into base Arabic letters (\u064a/\u0643 \u2026) that the
+    # pre-NFKD fold above could not reach, so without this they would never collapse onto their
+    # Persian forms (\u06cc/\u06a9 \u2026). The map is idempotent and never touches Persian letters.
+    folded = without_marks.translate(ARABIC_PERSIAN_TRANSLATION)
+    lowered = folded.casefold().replace("_", " ")
     tokens = re.sub(r"[^\w\u0600-\u06ff]+", " ", lowered, flags=re.UNICODE)
     normalized = " ".join(tokens.split())
     return normalized or None
