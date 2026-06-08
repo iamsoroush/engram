@@ -102,11 +102,19 @@ export type PatientSummary = {
 
 export type PatientMemoryFilter = "recent" | "active" | "all";
 
+// Live per-task AI model selection (Settings → AI models). Blank model = worker env default.
+export type AiModelTask = { task: string; label: string; model: string };
+export type AiModelConfig = { tasks: AiModelTask[] };
+
 export type PatientMemoryRow = {
   patientId: string;
   displayName: string;
   summary: string;
   summarySource: string;
+  // Mock patient-memory lifecycle: "ready" once the (tier-aware) summary is generated,
+  // "updating" while a recent change is being processed.
+  memoryStatus?: "ready" | "updating" | string;
+  memoryUpdatedAt?: string | null;
   generatedSummary?: string | null;
   ruleBasedSummary?: string | null;
   metadataSentence?: string | null;
@@ -164,10 +172,28 @@ export type PatientMemorySessionGroup = {
   sessions: PatientMemoryTimelineSession[];
 };
 
+export type PatientMemoryHistorySection = {
+  label: string;
+  body: string;
+};
+
+// The richer "patient history" brief shown atop the timeline. Pro fills `sections`
+// (Story so far / Worth remembering / Right now); Basic fills `visits` (a structural recap).
+export type PatientMemoryHistory = {
+  mode: "pro" | "basic" | string;
+  status: "ready" | "updating" | string;
+  snapshot: string;
+  sections: PatientMemoryHistorySection[];
+  visits: string[];
+  source: string;
+  updatedAt?: string | null;
+};
+
 export type PatientMemoryDetailResponse = {
   patient: PatientMemoryRow;
   sessions: PatientMemoryTimelineSession[];
   groups: PatientMemorySessionGroup[];
+  history?: PatientMemoryHistory | null;
 };
 
 export type PatientAssignmentDraft = {

@@ -6,7 +6,12 @@ import httpx
 
 from ai_engine.celery_app import celery_app
 from ai_engine.config import settings
-from ai_engine.processing import BackendClient, run_capture_processing_job, run_session_processing_job
+from ai_engine.processing import (
+    BackendClient,
+    run_capture_processing_job,
+    run_patient_memory_job,
+    run_session_processing_job,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,3 +121,9 @@ def process_image_capture_task(self, job_id: str) -> None:
 def process_session_task(self, job_id: str) -> None:
     """Run a session processing job."""
     run_task_with_retries(self, job_id, run_session_processing_job, "Session")
+
+
+@celery_app.task(bind=True, name="ai_engine.process_patient_memory")
+def process_patient_memory_task(self, job_id: str) -> None:
+    """Run a combined patient summary + history job."""
+    run_task_with_retries(self, job_id, run_patient_memory_job, "Patient memory")

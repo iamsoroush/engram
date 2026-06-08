@@ -19,6 +19,7 @@ import {
   unassignSessionPatient,
   createPatient,
   deleteCapture,
+  fetchAiModels,
   getPatient,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
@@ -39,6 +40,7 @@ import {
   updateCaptureTranscript,
   updatePatient,
   type PatientEditDraft,
+  updateAiModels,
   updateSessionTitle,
   updateTenantSettings,
   uploadCapture,
@@ -90,6 +92,12 @@ import {
   PROCESSING_REFRESH_DELAYS,
   resolveRestoredSession,
 } from "./sessionState";
+
+function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
+  if (!session) return false;
+  if (session.processingStatus?.state === "processing" || session.report?.status === "generating") return true;
+  return session.items.some((item) => item.status === "uploaded" || item.status === "processing" || item.status === "uploading");
+}
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
@@ -433,38 +441,59 @@ export function App() {
     ]);
   };
 
+  const refreshVisibleSession = React.useCallback(
+    async (sessionId: string) => {
+      const [captures, updatedSession] = await Promise.all([fetchSessionCaptures(apiFetch, sessionId), fetchSession(apiFetch, sessionId)]);
+      setSessions((current) =>
+        current.map((session) => {
+          if (session.id !== sessionId) return session;
+          const items = mergeCaptureItemsPreservingPreview(session.items, captures);
+          const merged = mergeSessionUpdate(session, updatedSession, items);
+          notifyAiPatientAction(merged);
+          return merged;
+        }),
+      );
+      setActiveSession((current) =>
+        current?.id === sessionId
+          ? (() => {
+              const items = mergeCaptureItemsPreservingPreview(current.items, captures);
+              const merged = mergeSessionUpdate(current, updatedSession, items);
+              notifyAiPatientAction(merged);
+              return merged;
+            })()
+          : current,
+      );
+    },
+    [apiFetch, notifyAiPatientAction],
+  );
+
   const scheduleCaptureProcessingRefresh = React.useCallback(
     (sessionId: string) => {
       PROCESSING_REFRESH_DELAYS.forEach((delay) => {
         window.setTimeout(() => {
-          void Promise.all([fetchSessionCaptures(apiFetch, sessionId), fetchSession(apiFetch, sessionId)])
-            .then(([captures, updatedSession]) => {
-              setSessions((current) =>
-                current.map((session) => {
-                  if (session.id !== sessionId) return session;
-                  const items = mergeCaptureItemsPreservingPreview(session.items, captures);
-                  const merged = mergeSessionUpdate(session, updatedSession, items);
-                  notifyAiPatientAction(merged);
-                  return merged;
-                }),
-              );
-              setActiveSession((current) =>
-                current?.id === sessionId
-                  ? (() => {
-                      const items = mergeCaptureItemsPreservingPreview(current.items, captures);
-                      const merged = mergeSessionUpdate(current, updatedSession, items);
-                      notifyAiPatientAction(merged);
-                      return merged;
-                    })()
-                  : current,
-              );
-            })
-            .catch(() => undefined);
+          void refreshVisibleSession(sessionId).catch(() => undefined);
         }, delay);
       });
     },
-    [apiFetch, notifyAiPatientAction],
+    [refreshVisibleSession],
   );
+
+  // Patient summary/history regenerate (mock AI job) after a capture/assignment; bump a signal over
+  // the same delay ladder so Clinical Memory re-fetches and animates the updating→ready transition.
+  const [memoryRefreshSignal, setMemoryRefreshSignal] = React.useState(0);
+  const scheduleMemoryRefresh = React.useCallback(() => {
+    PROCESSING_REFRESH_DELAYS.forEach((delay) => {
+      window.setTimeout(() => setMemoryRefreshSignal((value) => value + 1), delay);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!activeSession?.id || isLocalSessionId(activeSession.id) || !sessionNeedsProcessingRefresh(activeSession)) return;
+    const refreshTimer = window.setTimeout(() => {
+      void refreshVisibleSession(activeSession.id).catch(() => undefined);
+    }, 15000);
+    return () => window.clearTimeout(refreshTimer);
+  }, [activeSession, refreshVisibleSession]);
 
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
@@ -636,6 +665,7 @@ export function App() {
           setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
           setToast("Capture safely transferred.");
           if (result.item.status === "uploaded" || result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
+          scheduleMemoryRefresh();
           try {
             await updatePendingCapture(capture.id, (current) => ({
               ...normalizePendingCapture(current),
@@ -1439,7 +1469,15 @@ export function App() {
 
   const renderCurrentScreen = () => {
     if (screen === "settings" && auth) {
-      return <SettingsScreen auth={auth} onBack={() => navigateScreen(accountReturnRef.current)} onUpdateSettings={handleUpdateTenantSettings} />;
+      return (
+        <SettingsScreen
+          auth={auth}
+          onBack={() => navigateScreen(accountReturnRef.current)}
+          onUpdateSettings={handleUpdateTenantSettings}
+          onListAiModels={() => fetchAiModels(apiFetch)}
+          onUpdateAiModels={(models) => updateAiModels(apiFetch, models)}
+        />
+      );
     }
     if (screen === "profile" && auth) {
       return (
@@ -1543,6 +1581,8 @@ export function App() {
         onSearchPatients={searchPatientsForAssignment}
         sessions={sessions}
         syncHealth={syncHealth}
+        tier={auth?.tenant.tier}
+        memoryRefreshSignal={memoryRefreshSignal}
       />
     );
   };

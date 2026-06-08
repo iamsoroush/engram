@@ -17,6 +17,17 @@ from app.models import (
     SessionStatus,
 )
 from app.services.patient_identity import normalize_identifier, search_keys_for_query
+from app.services.patient_memory_intelligence import (
+    can_finalize_on_read,
+    finalize_patient_memory_if_due,
+    generate_patient_memory,
+    memory_source,
+    memory_status,
+    memory_updated_at,
+    persisted_summary,
+    stored_history,
+    tenant_tier,
+)
 from app.services.patients import get_patient, patient_payload
 from app.services.session_contracts import session_is_complete
 from app.services.sessions import parse_uuid
@@ -160,6 +171,10 @@ def _row_payload(
         if value is not None
     )
     summary = _summary_parts(latest_session, session_count, latest_capture_count)
+    # Prefer the persisted (mock) tier-aware memory summary; fall back to the rule-based chain
+    # whenever no memory has been generated yet, so the card is never empty.
+    stored_summary = persisted_summary(patient)
+    stored_source = memory_source(patient)
     latest_metadata = None
     if latest_session is not None:
         latest_metadata = {
@@ -175,11 +190,13 @@ def _row_payload(
         "patientId": str(patient.id),
         "displayName": patient.display_name,
         "identifyingContext": _identifying_context(patient),
-        "summary": summary["summary"],
-        "summarySource": summary["summary_source"],
+        "summary": stored_summary or summary["summary"],
+        "summarySource": stored_source or summary["summary_source"],
         "generatedSummary": summary["generated_summary"],
         "ruleBasedSummary": summary["rule_based_summary"],
         "metadataSentence": summary["metadata_sentence"],
+        "memoryStatus": memory_status(patient),
+        "memoryUpdatedAt": memory_updated_at(patient),
         "latestSessionMetadata": latest_metadata,
         "latestSessionId": str(latest_session.id) if latest_session else None,
         "activeSessionId": str(active_session.id) if active_session else None,
@@ -307,9 +324,18 @@ def list_patient_memory(
         sessions_by_patient.setdefault(session.patient_id, []).append(session)
     capture_counts = _capture_counts(db, principal.tenant_id, [session.id for session in sessions])
 
+    tier = tenant_tier(db, principal.tenant_id)
+    memory_changed = False
     items = []
     for patient in patients:
         patient_sessions = sessions_by_patient.get(patient.id, [])
+        # Basic memory is deterministic — finalized lazily once its imitated latency passes. Pro
+        # memory is written by the async patient_memory AI job; a read only finalizes Pro as a
+        # safety net when nothing is in flight (see can_finalize_on_read).
+        if can_finalize_on_read(db, tenant_id=principal.tenant_id, patient=patient, tier=tier) and finalize_patient_memory_if_due(
+            db, patient, patient_sessions, tier
+        ):
+            memory_changed = True
         latest_session = patient_sessions[0] if patient_sessions else None
         active_sessions = [session for session in patient_sessions if session.status in ACTIVE_SESSION_STATUSES]
         active_session = active_sessions[0] if active_sessions else None
@@ -334,6 +360,8 @@ def list_patient_memory(
                 ),
             )
         )
+    if memory_changed:
+        db.commit()
     return {"items": items, "limit": limit, "offset": offset, "total": total}
 
 
@@ -359,6 +387,11 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
     ).scalars().all()
     capture_counts = _capture_counts(db, principal.tenant_id, [session.id for session in sessions])
+    tier = tenant_tier(db, principal.tenant_id)
+    if can_finalize_on_read(db, tenant_id=principal.tenant_id, patient=patient, tier=tier) and finalize_patient_memory_if_due(
+        db, patient, list(sessions), tier
+    ):
+        db.commit()
     latest_session = sessions[0] if sessions else None
     active_sessions = [session for session in sessions if session.status in ACTIVE_SESSION_STATUSES]
     patient_row = _row_payload(
@@ -407,8 +440,16 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         for label in ("Today", "Earlier this week", "Earlier")
         if label in group_map
     ]
+    # The "patient history" brief: prefer the persisted one (Pro AI job output, or a finalized Basic
+    # brief); fall back to generating it on read when none is stored yet. Status mirrors the memory
+    # lifecycle so the frontend can animate updating→ready.
+    stored = stored_history(patient)
+    history = dict(stored) if stored is not None else generate_patient_memory(patient, list(sessions), tier)["history"]
+    history["status"] = memory_status(patient)
+    history["updatedAt"] = memory_updated_at(patient)
     return {
         "patient": patient_row,
         "sessions": timeline_sessions,
         "groups": groups,
+        "history": history,
     }

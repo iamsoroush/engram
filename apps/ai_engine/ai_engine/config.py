@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     note_decoration_model: str = ""
     note_decoration_base_url: str = ""
     note_decoration_api_key: str = ""
+    # Combined patient summary + history (Pro). Falls back to the transcription gateway/model.
+    patient_memory_model: str = ""
+    patient_memory_base_url: str = ""
+    patient_memory_api_key: str = ""
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

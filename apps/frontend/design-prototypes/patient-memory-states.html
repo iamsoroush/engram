@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AesMem — Patient summary & history: tiers + refresh states</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --green-avatar:#0a9d6e; --green-avatar-soft:#dcf3e9;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%);
+    --shadow-float:0 16px 38px rgb(15 23 42 / 14%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:#eef2f8;color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:0 0 60px}
+  h1,h2,h3,h4,p{margin:0}
+
+  /* ---------- control bar ---------- */
+  .controls{position:sticky;top:0;z-index:30;background:rgba(247,249,253,.92);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--color-border);padding:14px 20px}
+  .controls-inner{max-width:1040px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px}
+  .controls h1{font-size:.95rem;font-weight:800;letter-spacing:-.01em;margin-right:6px}
+  .ctl{display:flex;align-items:center;gap:8px}
+  .ctl > label{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-muted)}
+  .seg{display:inline-flex;background:#e7edf6;border-radius:var(--radius-pill);padding:3px}
+  .seg button{border:0;background:transparent;border-radius:var(--radius-pill);font-size:.78rem;font-weight:700;
+    color:var(--color-muted);padding:6px 12px;cursor:pointer;white-space:nowrap}
+  .seg button.on{background:#fff;color:var(--color-primary);box-shadow:0 1px 3px rgb(8 13 45 / 10%)}
+  .seg button:disabled{opacity:.4;cursor:not-allowed}
+  .primary-btn{border:0;background:var(--color-primary);color:#fff;border-radius:var(--radius-md);
+    font-size:.82rem;font-weight:800;padding:10px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;
+    box-shadow:0 6px 16px rgb(7 94 255 / 24%)}
+  .primary-btn:active{transform:translateY(1px)}
+  .ghost-btn{border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-md);
+    font-size:.8rem;font-weight:700;color:var(--color-text-soft);padding:9px 14px;cursor:pointer}
+  .case-note{max-width:1040px;margin:10px auto 0;font-size:.78rem;color:var(--color-muted);line-height:1.5;
+    display:flex;gap:8px;align-items:flex-start}
+  .case-note b{color:var(--color-text-soft)}
+  .case-note .k{flex:0 0 auto;font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--color-primary);background:var(--color-primary-soft);border:1px solid #cfe0ff;border-radius:var(--radius-pill);
+    padding:3px 9px;margin-top:1px}
+
+  /* ---------- phone frame ---------- */
+  .stage{max-width:440px;margin:26px auto 0;padding:0 16px}
+  .phone{background:var(--color-page);border:1px solid var(--color-border);border-radius:26px;
+    box-shadow:var(--shadow-float);overflow:hidden}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;
+    border-bottom:1px solid var(--color-border);background:#fff}
+  .nav-pill{display:inline-flex;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:3px}
+  .nav-pill span{font-size:.74rem;font-weight:700;color:var(--color-muted);padding:5px 11px;border-radius:var(--radius-pill);
+    display:inline-flex;align-items:center;gap:6px}
+  .nav-pill span.on{background:var(--color-primary-soft);color:var(--color-primary)}
+  .brand{font-size:.95rem;font-weight:800}
+  .avatar-dd{width:30px;height:30px;border-radius:50%;background:#d7e4fb;color:var(--color-primary);
+    display:flex;align-items:center;justify-content:center;font-size:.66rem;font-weight:800}
+  .screen{padding:16px}
+  .section-label{font-size:.66rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--color-muted-2);
+    margin:4px 2px 10px}
+
+  /* ---------- shared: avatar + spark + pills ---------- */
+  .av{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:800;flex:0 0 auto;background:var(--green-avatar-soft);color:#0c6f50;font-size:.9rem}
+  .av.lg{width:58px;height:58px;font-size:1.05rem}
+  .spark{display:inline-flex;align-items:center;justify-content:center;color:var(--violet);flex:0 0 auto}
+  .spark svg{width:15px;height:15px;fill:currentColor;display:block}
+  .spark.sm svg{width:13px;height:13px}
+  .spark.working{animation:spark-pulse 1.15s ease-in-out infinite}
+  .spark.waiting{color:var(--color-warning)}
+  @keyframes spark-pulse{0%,100%{transform:scale(1);opacity:.82}50%{transform:scale(1.22);opacity:1}}
+  /* inline provenance ✨ — leads the Pro summary text (calm at rest, pulses while organizing) */
+  .spark.inline{vertical-align:-2px;margin-inline-end:5px}
+  .spark.inline svg{width:15px;height:15px}
+  .mem.updating .mem-content .spark.inline{animation:spark-pulse 1.15s ease-in-out infinite}
+
+  .pill{display:inline-flex;align-items:center;gap:7px;border-radius:var(--radius-pill);font-size:.72rem;font-weight:700;
+    padding:4px 10px;border:1px solid transparent;white-space:nowrap;transition:opacity .25s}
+  .pill.hide{display:none}
+  .pill.work{background:#eef2f9;color:var(--color-muted);border-color:var(--color-border)}
+  .pill.done{background:var(--color-success-soft);color:var(--color-success);border-color:#cdeede}
+  .pill.wait{background:var(--color-warning-soft);color:var(--color-warning);border-color:#f3e3bf}
+  .dots{display:inline-flex;gap:3px}
+  .dots i{width:4px;height:4px;border-radius:50%;background:currentColor;opacity:.4;animation:dot 1.1s ease-in-out infinite}
+  .dots i:nth-child(2){animation-delay:.18s}
+  .dots i:nth-child(3){animation-delay:.36s}
+  @keyframes dot{0%,100%{opacity:.25;transform:translateY(0)}50%{opacity:.9;transform:translateY(-1px)}}
+  .tick svg{width:13px;height:13px;stroke:currentColor;stroke-width:2.4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .resting-tag{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:700;color:var(--violet)}
+
+  /* ---------- the animated memory text block ---------- */
+  .mem{position:relative;border-radius:var(--radius-md);transition:opacity .28s ease;overflow:hidden}
+  .mem.swapping{opacity:0}
+  /* settle wash: a faint green→blue glow that sweeps the freshly-swapped text, then fades (~1.2s) */
+  .mem.flash{animation:wash 1.2s ease-out 1}
+  @keyframes wash{0%{background:rgba(22,131,74,.15)}45%{background:rgba(7,94,255,.10)}100%{background:transparent}}
+  .sweep{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:linear-gradient(100deg,transparent 30%,rgba(7,94,255,.13) 50%,transparent 70%);
+    background-size:220% 100%}
+  .mem.updating .sweep{opacity:1;animation:sweep 1.5s ease-in-out infinite}
+  .mem.updating .mem-content{opacity:.72;transition:opacity .2s}
+  @keyframes sweep{0%{background-position:140% 0}100%{background-position:-40% 0}}
+
+  .skel{display:block;height:11px;border-radius:6px;margin:8px 0;
+    background:linear-gradient(90deg,#e7edf5,#f2f6fb,#e7edf5);background-size:200% 100%;animation:shimmer 1.3s ease-in-out infinite}
+  @keyframes shimmer{0%,100%{background-position:200% 0}50%{background-position:-200% 0}}
+
+  /* ---------- patient card (Patients tab) ---------- */
+  .pcard{display:flex;gap:13px;background:#fff;border:1px solid var(--color-border);border-radius:14px;padding:15px;
+    box-shadow:var(--shadow-card)}
+  .pcard .body{flex:1;min-width:0}
+  .pcard .name{font-size:1.02rem;font-weight:800}
+  .pcard .latest{font-size:.74rem;font-weight:700;color:var(--color-muted);margin-top:2px}
+  .pcard .sum-head{display:flex;align-items:center;gap:8px;margin:9px 0 0;min-height:0}
+  .pcard .mem{margin-top:6px;padding:2px 4px;margin-left:-4px;margin-right:-4px}
+  .pcard .mem p{font-size:.86rem;line-height:1.5;color:var(--color-text-soft)}
+  .uline{height:2px;border-radius:2px;margin:9px 4px 2px;background:var(--color-border);overflow:hidden;display:none}
+  .pcard.updating .uline{display:block}
+  .uline::after{content:"";display:block;height:100%;width:40%;border-radius:2px;background:var(--color-primary);
+    animation:uline 1.25s ease-in-out infinite}
+  @keyframes uline{0%{transform:translateX(-110%)}100%{transform:translateX(310%)}}
+  .badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}
+  .badge{font-size:.7rem;font-weight:700;padding:4px 10px;border-radius:var(--radius-pill);
+    background:#eef2f9;color:var(--color-muted);border:1px solid var(--color-border)}
+  .badge.green{background:var(--color-success-soft);color:var(--color-success);border-color:#cdeede}
+  .badge.today{background:var(--color-primary-soft);color:var(--color-primary);border-color:#cfe0ff}
+  .cta{align-self:flex-start;margin-top:2px;border:0;background:var(--color-primary);color:#fff;font-weight:800;font-size:.82rem;
+    border-radius:var(--radius-md);padding:10px 16px;cursor:pointer;display:flex;align-items:center;gap:6px;flex:0 0 auto}
+
+  /* ---------- patient history (detail page) ---------- */
+  .detail-head{display:flex;gap:14px;align-items:center;margin-bottom:14px}
+  .detail-head .name{font-size:1.2rem;font-weight:800}
+  .detail-head .meta{font-size:.74rem;font-weight:700;color:var(--color-muted);margin-top:4px}
+  .hist-card{background:#fff;border:1px solid var(--color-border);border-radius:14px;box-shadow:var(--shadow-card);
+    padding:14px 16px 16px;margin-bottom:18px}
+  .hist-top{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+  .hist-top h3{font-size:.72rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-soft)}
+  .hist-top .pill{margin-left:auto}
+  .hist-top .resting-tag{margin-left:auto}
+  .hist-note{font-size:.74rem;color:var(--color-warning);background:var(--color-warning-soft);border:1px solid #f3e3bf;
+    border-radius:var(--radius-sm);padding:7px 10px;margin-top:10px;display:none;align-items:center;gap:7px}
+  .hist-note.show{display:flex}
+  .hist-note.info{color:var(--color-info);background:var(--color-info-soft);border-color:#d6e4ff}
+  .sec{padding:11px 0 0}
+  .sec h4{font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--color-muted-2);margin-bottom:3px}
+  .sec p{font-size:.88rem;line-height:1.55;color:var(--color-text-soft)}
+  .vlist{list-style:none;padding:0;margin:6px 0 0;display:flex;flex-direction:column;gap:0}
+  .vlist li{font-size:.85rem;line-height:1.5;color:var(--color-text-soft);padding:9px 0;border-top:1px solid var(--color-border);
+    display:flex;gap:9px}
+  .vlist li:first-child{border-top:0}
+  .vlist li .vn{width:7px;height:7px;border-radius:50%;background:var(--color-primary);flex:0 0 auto;margin-top:6px;opacity:.5}
+
+  /* mini timeline below history */
+  .tl-card{display:flex;gap:12px;background:#fff;border:1px solid var(--color-border);border-radius:12px;padding:13px;margin-bottom:11px}
+  .tl-ic{width:38px;height:38px;border-radius:10px;background:var(--color-primary-soft);color:var(--color-primary);
+    display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .tl-ic svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+  .tl-card .t{font-size:.92rem;font-weight:800}
+  .tl-card .s{font-size:.72rem;font-weight:700;color:var(--color-muted);margin-top:3px}
+  .tl-card .open{margin-left:auto;align-self:center;border:1px solid var(--color-border-strong);background:#fff;
+    border-radius:var(--radius-md);font-size:.76rem;font-weight:700;color:var(--color-text-soft);padding:7px 12px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px;flex:0 0 auto}
+  .tl-badge{font-size:.68rem;font-weight:700;color:var(--color-info);background:var(--color-info-soft);
+    border:1px solid #d6e4ff;border-radius:var(--radius-pill);padding:3px 9px}
+
+  /* capture bar */
+  .capbar{display:flex;flex-direction:column;gap:9px;padding:14px 16px 18px;border-top:1px solid var(--color-border);background:#fff}
+  .capfor{align-self:center;font-size:.74rem;font-weight:700;color:var(--color-text-soft);background:var(--color-surface-soft);
+    border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:6px 13px;display:inline-flex;align-items:center;gap:8px}
+  .capfor .live{width:8px;height:8px;border-radius:50%;background:var(--color-success);box-shadow:0 0 0 3px var(--color-success-soft)}
+  .capbtns{display:flex;gap:9px}
+  .capbtns button{flex:1;border:1px solid var(--color-border);background:#fff;border-radius:var(--radius-md);padding:11px 8px;
+    display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer}
+  .capbtns button.primary{background:var(--color-primary);border-color:var(--color-primary)}
+  .capbtns .ct{font-size:.82rem;font-weight:800;color:var(--color-text-soft)}
+  .capbtns .cs{font-size:.66rem;color:var(--color-muted)}
+  .capbtns button.primary .ct,.capbtns button.primary .cs{color:#fff}
+  .rtl{direction:rtl;text-align:right}
+  .rtl .pcard .latest,.rtl .detail-head .meta{direction:rtl}
+
+  /* Accessibility: honor reduced-motion — keep the state changes, drop the looping/sweeping motion. */
+  @media (prefers-reduced-motion: reduce){
+    .spark.working,.sweep,.dots i,.skel,.mem.flash,.uline::after{animation:none}
+    .mem.updating .sweep{opacity:0}
+    .mem,.pill{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <div class="controls-inner">
+    <h1>Patient memory — states</h1>
+    <div class="ctl"><label>Tier</label>
+      <div class="seg" id="seg-tier">
+        <button data-v="pro" class="on">Pro</button>
+        <button data-v="basic">Basic</button>
+      </div>
+    </div>
+    <div class="ctl"><label>AI engine</label>
+      <div class="seg" id="seg-ai">
+        <button data-v="up" class="on">Up</button>
+        <button data-v="down">Down</button>
+      </div>
+    </div>
+    <div class="ctl"><label>Starting state</label>
+      <div class="seg" id="seg-start">
+        <button data-v="prior" class="on">Has prior memory</button>
+        <button data-v="first">First-time</button>
+      </div>
+    </div>
+    <div class="ctl"><label>Assistant language</label>
+      <div class="seg" id="seg-lang">
+        <button data-v="en" class="on">English</button>
+        <button data-v="fa">فارسی</button>
+      </div>
+    </div>
+    <button class="primary-btn" id="add-capture">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add a capture
+    </button>
+    <button class="ghost-btn" id="reset">Reset</button>
+  </div>
+  <div class="case-note"><span class="k">Case</span><div id="case-text"></div></div>
+</div>
+
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="topbar">
+      <div class="nav-pill">
+        <span>Session</span>
+        <span class="on">▦ Memory</span>
+      </div>
+      <div class="brand">AesMem</div>
+      <div class="avatar-dd">DD</div>
+    </div>
+
+    <div class="screen">
+      <!-- SURFACE A: patient card -->
+      <div class="section-label">Patients tab · patient card</div>
+      <div class="pcard" id="pcard">
+        <div class="av">سن</div>
+        <div class="body">
+          <div class="name">سارا نظری</div>
+          <div class="latest" id="card-latest">Latest visit: Jun 7 · 5:35 PM</div>
+          <div class="sum-head">
+            <span class="spark sm" id="card-spark" hidden></span>
+            <span class="pill work hide" id="card-pill"></span>
+            <span class="resting-tag" id="card-rest" hidden></span>
+          </div>
+          <div class="mem" id="card-mem"><div class="sweep"></div><div class="mem-content"><p id="card-sum"></p></div></div>
+          <div class="uline"></div>
+          <div class="badges" id="card-badges"></div>
+        </div>
+        <button class="cta">Continue
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+
+      <!-- SURFACE B: patient history -->
+      <div class="section-label" style="margin-top:22px">Patient timeline · patient history</div>
+      <div class="detail-head">
+        <div class="av lg">سن</div>
+        <div>
+          <div class="name">سارا نظری</div>
+          <div class="meta">3 visits · First seen Jun 4, 2026</div>
+        </div>
+      </div>
+
+      <div class="hist-card">
+        <div class="hist-top">
+          <span class="spark" id="hist-spark" hidden></span>
+          <h3 id="hist-title">Patient history</h3>
+          <span class="pill work hide" id="hist-pill"></span>
+          <span class="resting-tag" id="hist-rest" hidden></span>
+        </div>
+        <div class="mem" id="hist-mem"><div class="sweep"></div><div class="mem-content" id="hist-body"></div></div>
+        <div class="hist-note" id="hist-note"></div>
+      </div>
+
+      <div class="section-label">Earlier this week</div>
+      <div class="tl-card">
+        <div class="tl-ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+        <div>
+          <div class="t">Session 2026-06-07 14:02 UTC</div>
+          <div class="s">Session: Jun 7 · 17:35 · Updated: 5:35 PM</div>
+        </div>
+        <button class="open">Open visit
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <div class="tl-card">
+        <div class="tl-ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg></div>
+        <div>
+          <div class="t">Session 2026-06-04 13:23 UTC</div>
+          <div class="s">Session: Jun 4 · 16:53</div>
+        </div>
+        <button class="open">Open visit
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="capbar">
+      <span class="capfor"><span class="live"></span> Capturing for: سارا نظری · Today's visit</span>
+      <div class="capbtns">
+        <button class="primary cap-trigger"><span class="ct">Audio</span><span class="cs">Tap to record</span></button>
+        <button class="cap-trigger"><span class="ct">Take photo</span><span class="cs">Capture assessment</span></button>
+        <button class="cap-trigger"><span class="ct">Write note</span><span class="cs">Add clinical note</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SLEEP = 2200; // faked AI-job latency
+
+const SPARK_SVG = '<svg viewBox="0 0 24 24"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z"/><path d="M19 13.2c.27 2 .9 2.6 2.9 2.9-2 .27-2.6.9-2.9 2.9-.27-2-.9-2.6-2.9-2.9 2-.27 2.6-.9 2.9-2.9Z" opacity=".65"/></svg>';
+const TICK_SVG = '<span class="tick"><svg viewBox="0 0 24 24"><path d="M5 12l4.5 4.5L19 7"/></svg></span>';
+const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
+
+const T = {
+  en:{
+    histTitle:"Patient history", restTag:"AesMem memory",
+    organizing:"Organizing memory", preparing:"Preparing memory", updated:"Memory updated",
+    waitPrior:"Refreshing when ready", waitNoPrior:"Organizing when available",
+    capMany:l=>" · captures "+l.join(", "),
+    notePrior:"The new audio note isn't reflected here yet.",
+    noteNoPrior:"Preparing the full memory from new information…",
+    labels:{snap:"Snapshot",story:"Story so far",remember:"Worth remembering",now:"Right now",visits:"Recent visits"}
+  },
+  fa:{
+    histTitle:"حافظه‌ی بیمار", restTag:"حافظه‌ی AesMem",
+    organizing:"در حال سازمان‌دهی حافظه", preparing:"در حال آماده‌سازی حافظه", updated:"حافظه به‌روز شد",
+    waitPrior:"به‌روزرسانی هنگام آماده‌شدن", waitNoPrior:"سازمان‌دهی هنگام دسترس‌پذیری",
+    capMany:l=>" · ضبط‌های "+l.map(faNum).join("، "),
+    notePrior:"یادداشت صوتی جدید هنوز اینجا اعمال نشده است.",
+    noteNoPrior:"در حال آماده‌سازی حافظه‌ی کامل از اطلاعات جدید…",
+    labels:{snap:"نمای کلی",story:"تا اینجای کار",remember:"خوب است به‌خاطر بسپارید",now:"همین حالا",visits:"ویزیت‌های اخیر"}
+  }
+};
+
+const CONTENT = {
+  en:{
+    pro:[
+      {card:"Cheek‑filler follow‑up; we're tracking mild asymmetry on the left and keeping the plan conservative.",
+       h:{snap:"Sara Nazari · returning for cheek‑filler care.",
+          story:"Sara came in on Jun 4 after cheek filler, reporting mild asymmetry on the left side. We chose a deliberately conservative approach rather than over‑correcting.",
+          remember:"She prefers subtle, natural results and is cautious about doing too much at once. The concern has consistently been the left cheek.",
+          now:"Settling in — she's deciding whether she wants any further refinement."}},
+      {card:"Cheek‑filler maintenance. Last visit we softened the mild left‑cheek asymmetry conservatively — she's happy so far and may want a small touch‑up next time.",
+       h:{snap:"Sara Nazari · cheek‑filler maintenance, on a conservative plan.",
+          story:"Across two early‑June visits we addressed mild left‑cheek asymmetry after her filler, staying deliberately conservative. By Jun 7 it had settled well and she was pleased with the result.",
+          remember:"She values subtle, natural results and is wary of over‑correction. Left‑cheek symmetry has been her main concern throughout.",
+          now:"Weighing a small touch‑up — pending your assessment at the next visit."}},
+      {card:"Cheek‑filler maintenance; happy with a conservative correction. Today she also raised faint lip dryness, noted for your review.",
+       h:{snap:"Sara Nazari · cheek‑filler maintenance; a new lip concern today.",
+          story:"Two early‑June visits addressed mild left‑cheek asymmetry conservatively, and by Jun 7 she was happy with how it settled. Today's visit adds a new, unrelated note.",
+          remember:"Consistent preference for subtle, conservative results; left‑cheek symmetry has been the running theme. New today: she mentioned lip dryness.",
+          now:"Two open threads — a possible small cheek touch‑up, and faint lip dryness she raised today for you to look at."}}
+    ],
+    basic:[
+      {card:"One visit so far, from Jun 4 — a cheek‑filler follow‑up. The typed note records mild left‑cheek asymmetry and a conservative plan.",
+       h:{snap:"Sara Nazari · 1 visit on record, since Jun 4.",
+          visits:["Jun 4 · a cheek‑filler follow‑up. Typed note: “Mild left‑cheek asymmetry, wants a conservative correction — recheck in 2 weeks.”"]}},
+      {card:"3 visits since Jun 4. The cheek‑filler follow‑up noted mild left‑cheek asymmetry. Last seen Jun 7.",
+       h:{snap:"Sara Nazari · 3 visits on record, since Jun 4. Last seen Jun 7.",
+          visits:["Jun 7 · a follow‑up with a voice note on file — transcript saved, open the visit to read it.",
+                  "Jun 4 · a cheek‑filler review, with a voice note and a photo on file.",
+                  "Jun 4 · a cheek‑filler follow‑up. Typed note: “Mild left‑cheek asymmetry, wants a conservative correction — recheck in 2 weeks.”"]}},
+      {card:"3 visits since Jun 4, updated today. The latest visit now has a fresh voice note and a photo on file.",
+       h:{snap:"Sara Nazari · 3 visits on record, since Jun 4. Updated today.",
+          visits:["Jun 8 · today — a new voice note and a photo added to the record. Transcript saved, open to read.",
+                  "Jun 7 · a follow‑up with a voice note on file — transcript saved, open to read.",
+                  "Jun 4 · a cheek‑filler review, with a voice note and a photo on file."]}}
+    ]
+  },
+  fa:{
+    pro:[
+      {card:"پیگیری فیلر گونه؛ عدم‌تقارن خفیف سمت چپ را دنبال می‌کنیم و برنامه را محافظه‌کارانه نگه داشته‌ایم.",
+       h:{snap:"سارا نظری · مراجعه برای مراقبت فیلر گونه.",
+          story:"سارا در ۴ ژوئن بعد از فیلر گونه مراجعه کرد و از عدم‌تقارن خفیف سمت چپ گفت. به‌جای اصلاح بیش از حد، رویکرد محافظه‌کارانه را انتخاب کردیم.",
+          remember:"نتایج ظریف و طبیعی را ترجیح می‌دهد و محتاط است که زیاده‌روی نشود. نگرانی همیشگی، گونه‌ی چپ بوده است.",
+          now:"در حال جا افتادن است — تصمیم می‌گیرد که آیا اصلاح بیشتری می‌خواهد یا نه."}},
+      {card:"مراقبت نگه‌دارنده‌ی فیلر گونه. ویزیت قبل عدم‌تقارن خفیف گونه‌ی چپ را محافظه‌کارانه اصلاح کردیم — تا اینجا راضی است و شاید ویزیت بعد یک اصلاح کوچک بخواهد.",
+       h:{snap:"سارا نظری · مراقبت نگه‌دارنده‌ی فیلر، با برنامه‌ی محافظه‌کارانه.",
+          story:"در دو ویزیت اوایل ژوئن، عدم‌تقارن خفیف گونه‌ی چپ بعد از فیلر را محافظه‌کارانه پیگیری کردیم. تا ۷ ژوئن خوب جا افتاده بود و از نتیجه راضی بود.",
+          remember:"نتایج ظریف و طبیعی برایش مهم است و از اصلاح بیش از حد پرهیز می‌کند. تقارن گونه‌ی چپ موضوع اصلی او بوده است.",
+          now:"در حال سنجیدن یک اصلاح کوچک — منتظر ارزیابی شما در ویزیت بعد."}},
+      {card:"مراقبت نگه‌دارنده‌ی فیلر؛ از اصلاح محافظه‌کارانه راضی است. امروز خشکی خفیف لب را هم مطرح کرد که برای بررسی شما ثبت شد.",
+       h:{snap:"سارا نظری · مراقبت نگه‌دارنده‌ی فیلر؛ یک نگرانی جدید لب در امروز.",
+          story:"دو ویزیت اوایل ژوئن عدم‌تقارن خفیف گونه‌ی چپ را محافظه‌کارانه اصلاح کرد و تا ۷ ژوئن راضی بود. ویزیت امروز یک نکته‌ی جدید و نامرتبط اضافه می‌کند.",
+          remember:"ترجیح ثابت برای نتایج ظریف و محافظه‌کارانه؛ تقارن گونه‌ی چپ موضوع تکرارشونده بوده. جدید در امروز: خشکی لب را مطرح کرد.",
+          now:"دو موضوع باز — احتمال یک اصلاح کوچک گونه، و خشکی خفیف لب که امروز برای بررسی شما مطرح شد."}}
+    ],
+    basic:[
+      {card:"تنها یک ویزیت تا کنون، از ۴ ژوئن — یک پیگیری فیلر گونه. یادداشت متنی، عدم‌تقارن خفیف گونه‌ی چپ و برنامه‌ی محافظه‌کارانه را ثبت کرده است.",
+       h:{snap:"سارا نظری · ۱ ویزیت ثبت‌شده، از ۴ ژوئن.",
+          visits:["۴ ژوئن · یک پیگیری فیلر گونه. یادداشت متنی: «عدم‌تقارن خفیف گونه‌ی چپ، خواهان اصلاح محافظه‌کارانه — بررسی مجدد تا ۲ هفته.»"]}},
+      {card:"۳ ویزیت از ۴ ژوئن. پیگیری فیلر گونه، عدم‌تقارن خفیف گونه‌ی چپ را ثبت کرد. آخرین مراجعه ۷ ژوئن.",
+       h:{snap:"سارا نظری · ۳ ویزیت ثبت‌شده، از ۴ ژوئن. آخرین مراجعه ۷ ژوئن.",
+          visits:["۷ ژوئن · یک پیگیری با یک یادداشت صوتی روی پرونده — متن پیاده‌شده ذخیره شد، برای خواندن ویزیت را باز کنید.",
+                  "۴ ژوئن · بازبینی فیلر گونه، با یک یادداشت صوتی و یک عکس روی پرونده.",
+                  "۴ ژوئن · یک پیگیری فیلر گونه. یادداشت متنی: «عدم‌تقارن خفیف گونه‌ی چپ، خواهان اصلاح محافظه‌کارانه — بررسی مجدد تا ۲ هفته.»"]}},
+      {card:"۳ ویزیت از ۴ ژوئن، امروز به‌روز شد. آخرین ویزیت اکنون یک یادداشت صوتی و یک عکس تازه روی پرونده دارد.",
+       h:{snap:"سارا نظری · ۳ ویزیت ثبت‌شده، از ۴ ژوئن. امروز به‌روز شد.",
+          visits:["۸ ژوئن · امروز — یک یادداشت صوتی و یک عکس تازه به پرونده اضافه شد. متن پیاده‌شده ذخیره شد، برای خواندن باز کنید.",
+                  "۷ ژوئن · یک پیگیری با یک یادداشت صوتی روی پرونده — متن پیاده‌شده ذخیره شد، برای خواندن باز کنید.",
+                  "۴ ژوئن · بازبینی فیلر گونه، با یک یادداشت صوتی و یک عکس روی پرونده."]}}
+    ]
+  }
+};
+
+// ---------- state ----------
+// `organizing` = the pre-swap window where new captures can still fold into the in-flight refresh
+// (vs. the brief settle window, where extra taps are ignored). captureCount = running capture number;
+// pending = the capture numbers being folded right now (drives the "captures 4, 5" multi-capture pill).
+let S = {tier:"pro", ai:"up", start:"prior", lang:"en", received:0, shown:0, busy:false, organizing:false};
+let captureCount = 0, pending = [], activeBase = "";
+
+const $ = id => document.getElementById(id);
+const cardMem=$("card-mem"), cardSum=$("card-sum"), cardSpark=$("card-spark"), cardPill=$("card-pill"),
+      cardRest=$("card-rest"), cardBadges=$("card-badges"), pcard=$("pcard"),
+      histMem=$("hist-mem"), histBody=$("hist-body"), histSpark=$("hist-spark"), histPill=$("hist-pill"),
+      histRest=$("hist-rest"), histNote=$("hist-note"), histTitle=$("hist-title"), phone=$("phone");
+
+function L(){ return T[S.lang]; }
+function faNum(n){ return String(n).replace(/[0-9]/g, d => "۰۱۲۳۴۵۶۷۸۹"[+d]); }
+// One capture → the calm "Organizing memory" cue alone; two or more folded at once → name them ("· captures 4, 5").
+function lbl(base){ return pending.length > 1 ? base + L().capMany(pending) : base; }
+function foldPending(){ pending = []; }
+function idx(){ return Math.max(0, Math.min(S.received, 2)); }
+function proAt(i){ return CONTENT[S.lang].pro[Math.max(0,Math.min(i,2))]; }
+function basicAt(i){ return CONTENT[S.lang].basic[Math.max(0,Math.min(i,2))]; }
+
+function setSpark(el,mode){ // mode: hide | static | working | waiting
+  if(mode==="hide"){ el.hidden=true; return; }
+  el.hidden=false; el.innerHTML=SPARK_SVG;
+  el.className="spark"+(el===histSpark?"":" sm")+(mode==="working"?" working":mode==="waiting"?" waiting":"");
+}
+function setPill(el,kind,text){ // kind: hide | work | done | wait
+  if(kind==="hide"){ el.className="pill work hide"; el.innerHTML=""; return; }
+  el.className="pill "+kind;
+  const lead = kind==="done"?TICK_SVG : kind==="wait"?"" : "";
+  const trail = kind==="work"?DOTS : "";
+  el.innerHTML = lead+"<span>"+text+"</span>"+trail;
+}
+// Provenance lives in the always-present header spark; the separate resting tag is a no-op to avoid a double sparkle.
+function showRest(el,on){ el.hidden=true; }
+
+function proSecHTML(h){
+  const lb=L().labels;
+  return `<div class="sec"><h4>${lb.snap}</h4><p>${h.snap}</p></div>
+          <div class="sec"><h4>${lb.story}</h4><p>${h.story}</p></div>
+          <div class="sec"><h4>${lb.remember}</h4><p>${h.remember}</p></div>
+          <div class="sec"><h4>${lb.now}</h4><p>${h.now}</p></div>`;
+}
+function basicHistHTML(h){
+  const lb=L().labels;
+  return `<div class="sec"><h4>${lb.snap}</h4><p>${h.snap}</p></div>
+          <div class="sec"><h4>${lb.visits}</h4><ul class="vlist">${h.visits.map(v=>`<li><span class="vn"></span><span>${v}</span></li>`).join("")}</ul>`;
+}
+function skeletonHTML(lines){ let s=""; for(let i=0;i<lines;i++) s+=`<span class="skel" style="width:${[92,80,88,60][i%4]}%"></span>`; return s; }
+
+function setMemContent(memEl, html){ memEl.querySelector(".mem-content").innerHTML = html; }
+// withSpark prepends the inline ✨ provenance mark (Pro synthesized memory only; Basic + structural fallbacks pass nothing).
+function setCardSummary(text, withSpark){
+  const mark = withSpark ? `<span class="spark inline">${SPARK_SVG}</span>` : "";
+  cardMem.querySelector(".mem-content").innerHTML = `<p>${mark}${text}</p>`;
+}
+
+function applyRtl(){ phone.classList.toggle("rtl", S.lang==="fa"); }
+
+// cross-fade swap with highlight wash
+function fadeSwap(memEl, renderFn, done){
+  memEl.classList.add("swapping");
+  setTimeout(()=>{
+    renderFn();
+    memEl.classList.remove("swapping");
+    memEl.classList.add("flash");
+    setTimeout(()=>memEl.classList.remove("flash"), 1250);
+    if(done) done();
+  }, 280);
+}
+
+function startUpdating(text){
+  cardMem.classList.add("updating"); pcard.classList.add("updating");
+  histMem.classList.add("updating");
+  setSpark(cardSpark,"hide"); setSpark(histSpark,"working");
+  cardRest.hidden=true; histRest.hidden=true;
+  setPill(cardPill,"work",text); setPill(histPill,"work",text);
+}
+function stopUpdating(){
+  cardMem.classList.remove("updating"); pcard.classList.remove("updating");
+  histMem.classList.remove("updating");
+}
+function settleUpdated(){
+  setPill(cardPill,"done",L().updated); setPill(histPill,"done",L().updated);
+  setTimeout(()=>{ if(S.busy) return; setPill(cardPill,"hide"); setPill(histPill,"hide");
+    setSpark(cardSpark,"hide"); setSpark(histSpark,"static");
+    showRest(cardRest,false); showRest(histRest,true); }, 1900);
+}
+
+// ---------- full (non-animated) render for current resting state ----------
+function renderResting(){
+  applyRtl();
+  histTitle.textContent = L().histTitle;
+  histNote.className="hist-note"; setPill(cardPill,"hide"); setPill(histPill,"hide");
+  cardBadges.innerHTML = badgesHTML();
+
+  if(S.tier==="basic"){
+    setSpark(cardSpark,"hide"); setSpark(histSpark,"hide");
+    cardRest.hidden=true; histRest.hidden=true;
+    setCardSummary(basicAt(idx()).card);
+    setMemContent(histMem, basicHistHTML(basicAt(idx()).h));
+    return;
+  }
+  // pro
+  setSpark(cardSpark,"hide"); setSpark(histSpark,"static");
+  showRest(histRest,true); cardRest.hidden=true;
+  if(S.shown<0){ // no AI memory yet
+    if(S.ai==="down"){ // structural fallback persistent
+      setCardSummary(basicAt(idx()).card);
+      setMemContent(histMem, basicHistHTML(basicAt(idx()).h));
+      setSpark(cardSpark,"hide"); setSpark(histSpark,"waiting");
+      setPill(histPill,"wait",L().waitNoPrior);
+      showNote(L().noteNoPrior,"info"); showRest(histRest,false);
+    } else {
+      setMemContent(histMem, skeletonHTML(4));
+      setCardSummary(""); cardMem.querySelector(".mem-content").innerHTML=skeletonHTML(2);
+    }
+    return;
+  }
+  setCardSummary(proAt(S.shown).card, true);
+  setMemContent(histMem, proSecHTML(proAt(S.shown).h));
+  // behind-but-AI-down note if a capture arrived we couldn't fold
+  if(S.received>S.shown && S.ai==="down"){
+    setSpark(cardSpark,"hide"); setSpark(histSpark,"waiting");
+    setPill(histPill,"wait",L().waitPrior); showNote(L().notePrior,"warn"); showRest(histRest,false);
+  } else { hideNote(); }
+}
+
+function badgesHTML(){
+  let b = `<span class="badge">3 visits</span><span class="badge green">Active session</span>`;
+  if(S.received>=1) b += `<span class="badge today">Updated today</span>`;
+  return b;
+}
+function showNote(text,kind){ histNote.className="hist-note show"+(kind==="info"?" info":""); histNote.innerHTML=text; }
+function hideNote(){ histNote.className="hist-note"; }
+
+// ---------- the capture → refresh lifecycle ----------
+function addCapture(){
+  // Mid-settle taps (cycle finishing its green wash) are ignored, keeping the calm one-thing-at-a-time feel.
+  if(S.busy && !S.organizing) return;
+  const isPro = S.tier==="pro";
+  captureCount += 1; pending.push(captureCount);
+  S.received = Math.min(S.received+1, 2);
+
+  // A refresh is already organizing → fold this capture in and relabel the live pill (e.g. "· captures 4, 5").
+  if(S.busy){
+    setPill(cardPill,"work",lbl(activeBase)); setPill(histPill,"work",lbl(activeBase));
+    return;
+  }
+
+  if(!isPro){ // Basic: deterministic, but still play the calm transition (no ✨)
+    S.busy=true; S.organizing=true; activeBase=L().organizing;
+    cardMem.classList.add("updating"); histMem.classList.add("updating"); pcard.classList.add("updating");
+    setPill(cardPill,"work",lbl(activeBase)); setPill(histPill,"work",lbl(activeBase));
+    setTimeout(()=>{
+      S.organizing=false; foldPending(); stopUpdating();
+      fadeSwap(cardMem, ()=>setCardSummary(basicAt(idx()).card));
+      fadeSwap(histMem, ()=>setMemContent(histMem, basicHistHTML(basicAt(idx()).h)), ()=>{
+        cardBadges.innerHTML=badgesHTML(); setPill(cardPill,"done",L().updated); setPill(histPill,"done",L().updated);
+        setTimeout(()=>{ setPill(cardPill,"hide"); setPill(histPill,"hide"); S.busy=false; }, 1700);
+      });
+    }, SLEEP);
+    return;
+  }
+
+  // PRO
+  if(S.ai==="up"){
+    if(S.shown<0){ // first-time: structural fallback instantly, then upgrade
+      S.busy=true; S.organizing=true; activeBase=L().preparing;
+      // 1) instant structural fallback
+      setCardSummary(basicAt(idx()).card);
+      setMemContent(histMem, basicHistHTML(basicAt(idx()).h));
+      setSpark(cardSpark,"hide"); setSpark(histSpark,"working"); showRest(histRest,false);
+      setPill(histPill,"work",lbl(activeBase)); setPill(cardPill,"work",lbl(activeBase));
+      cardMem.classList.add("updating"); histMem.classList.add("updating"); pcard.classList.add("updating");
+      showNote(L().noteNoPrior,"info");
+      setTimeout(()=>{ // 2) upgrade to synthesized
+        S.organizing=false; foldPending(); S.shown = idx(); stopUpdating(); hideNote();
+        fadeSwap(cardMem, ()=>setCardSummary(proAt(S.shown).card, true));
+        fadeSwap(histMem, ()=>setMemContent(histMem, proSecHTML(proAt(S.shown).h)), finishPro);
+      }, SLEEP);
+    } else { // refresh in place
+      S.busy=true; S.organizing=true; activeBase=L().organizing;
+      startUpdating(lbl(activeBase)); hideNote();
+      setTimeout(()=>{
+        S.organizing=false; foldPending(); S.shown = idx(); stopUpdating();
+        fadeSwap(cardMem, ()=>setCardSummary(proAt(S.shown).card, true));
+        fadeSwap(histMem, ()=>setMemContent(histMem, proSecHTML(proAt(S.shown).h)), finishPro);
+      }, SLEEP);
+    }
+  } else { // AI down
+    if(S.shown<0){ renderResting(); } // no prior → structural fallback persistent (handled in resting)
+    else { // prior AI exists → keep it, flag behind, never downgrade
+      setSpark(cardSpark,"hide"); setSpark(histSpark,"waiting"); showRest(histRest,false);
+      setPill(histPill,"wait",L().waitPrior); setPill(cardPill,"wait",L().waitPrior);
+      showNote(L().notePrior,"warn");
+    }
+  }
+}
+function finishPro(){
+  cardBadges.innerHTML=badgesHTML();
+  setPill(cardPill,"done",L().updated); setPill(histPill,"done",L().updated);
+  setSpark(cardSpark,"hide"); setSpark(histSpark,"static");
+  setTimeout(()=>{ setPill(cardPill,"hide"); setPill(histPill,"hide"); showRest(histRest,true); S.busy=false; }, 1900);
+}
+
+// when AI comes back up while work is pending (behind, or never generated) → self-heal
+function onAiBackUp(){
+  if(S.tier==="pro" && S.ai==="up" && S.received>=1 && (S.shown<0 || S.received>S.shown) && !S.busy){
+    S.busy=true; S.organizing=true; activeBase=L().organizing;
+    if(S.shown<0){ // was showing skeleton/fallback → shimmer over the structural fallback before upgrading
+      setCardSummary(basicAt(idx()).card); setMemContent(histMem, basicHistHTML(basicAt(idx()).h));
+    }
+    startUpdating(lbl(activeBase)); hideNote();
+    setTimeout(()=>{ S.organizing=false; foldPending(); S.shown=idx(); stopUpdating();
+      fadeSwap(cardMem, ()=>setCardSummary(proAt(S.shown).card, true));
+      fadeSwap(histMem, ()=>setMemContent(histMem, proSecHTML(proAt(S.shown).h)), finishPro);
+    }, SLEEP);
+    return true;
+  }
+  return false;
+}
+
+// ---------- case explainer ----------
+function caseText(){
+  if(S.tier==="basic") return "<b>Basic · deterministic memory.</b> Structural facts + verbatim typed notes, never a topic guessed from audio. No ✨. Still plays the calm refresh so it feels alive.";
+  if(S.ai==="up" && S.shown>=0) return "<b>Pro · AI available, memory already exists.</b> Keep the current summary on screen and refresh it in place — shimmer over the live text, then a cross-fade swap. Tap <b>Add a capture</b> twice quickly to watch two batch into one pass — “Organizing memory · captures 4, 5.”";
+  if(S.ai==="up" && S.shown<0) return "<b>Pro · first generation.</b> Show the structural fallback instantly (never empty), then upgrade to the synthesized memory when the job returns.";
+  if(S.ai==="down" && S.shown>=0) return "<b>Pro · AI unavailable, memory already exists.</b> Keep the rich summary, flag that the new capture isn't reflected yet — never downgrade to metadata. Switch AI to <b>Up</b> to watch it self-heal.";
+  return "<b>Pro · AI unavailable, no memory yet.</b> Show the structural fallback persistently with “Organizing when available.” No error, ever.";
+}
+function refreshCase(){ $("case-text").innerHTML=caseText(); }
+
+// ---------- wiring ----------
+function seg(id,key,after){
+  const wrap=$(id);
+  wrap.addEventListener("click",e=>{
+    const b=e.target.closest("button"); if(!b||b.disabled) return;
+    [...wrap.children].forEach(c=>c.classList.toggle("on",c===b));
+    S[key]=b.dataset.v; after&&after();
+  });
+}
+seg("seg-tier","tier",()=>{ $("seg-ai").querySelectorAll("button").forEach(b=>b.disabled=(S.tier!=="pro"));
+  $("seg-start").querySelectorAll("button").forEach(b=>b.disabled=(S.tier!=="pro")); reset(); });
+seg("seg-ai","ai",()=>{ if(!onAiBackUp()) renderResting(); refreshCase(); });
+seg("seg-start","start",reset);
+seg("seg-lang","lang",()=>{ if(!S.busy) renderResting(); refreshCase(); });
+$("add-capture").addEventListener("click",addCapture);
+document.querySelectorAll(".cap-trigger").forEach(b=>b.addEventListener("click",addCapture));
+$("reset").addEventListener("click",reset);
+
+function reset(){
+  S.busy=false; S.organizing=false; stopUpdating(); hideNote();
+  S.received = 0; pending = [];
+  // Seed the running capture number: a patient with prior memory is already on capture 4+ (so a batch reads
+  // "captures 4, 5"); a brand-new patient starts at capture 1.
+  captureCount = (S.tier==="pro" && S.start==="first") ? 0 : 3;
+  // First-time (Pro only): no AI memory yet → shown=-1 (skeleton). Otherwise memory already exists at index 0.
+  S.shown = (S.tier==="pro" && S.start==="first") ? -1 : 0;
+  renderResting(); refreshCase();
+}
+
+reset();
+</script>
+</body>
+</html>

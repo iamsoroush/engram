@@ -371,12 +371,17 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
     return base64.b64encode(result.stdout).decode("ascii")
 
 
-def transcribe_audio_content(content: bytes, transcription_context: dict[str, Any] | None = None) -> dict[str, Any]:
+def transcribe_audio_content(
+    content: bytes,
+    transcription_context: dict[str, Any] | None = None,
+    *,
+    model: str | None = None,
+) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
     client = gateway_client("transcription")
     response = client.chat.completions.create(
-        model=gateway_settings_for("transcription")[2],
+        model=model or gateway_settings_for("transcription")[2],
         messages=[
             {
                 "role": "user",
@@ -474,6 +479,21 @@ def gateway_client(task: str) -> OpenAI:
     return OpenAI(base_url=base_url, api_key=api_key, timeout=settings.transcription_timeout_seconds)
 
 
+def resolve_model(task: str, ai_models: dict[str, Any] | None, *, override: str | None = None) -> str:
+    """Resolve the model id for a task: explicit override → live `aiModels` payload → env default.
+
+    The backend resolves the live per-task selection and passes it in the job payload's `aiModels`,
+    so a model change applies to the next request; a blank/absent value falls back to the worker env.
+    """
+    if isinstance(override, str) and override.strip():
+        return override.strip()
+    if isinstance(ai_models, dict):
+        selected = ai_models.get(task)
+        if isinstance(selected, str) and selected.strip():
+            return selected.strip()
+    return gateway_settings_for(task)[2]
+
+
 def image_to_data_url(content: bytes, media_type: str | None) -> str:
     """Base64-encode image bytes into an OpenAI-compatible data URL."""
     mime = media_type if isinstance(media_type, str) and media_type.startswith("image/") else "image/jpeg"
@@ -484,11 +504,13 @@ def caption_image_content(
     content: bytes,
     media_type: str | None,
     enrichment_context: dict[str, Any] | None = None,
+    *,
+    model: str | None = None,
 ) -> str | None:
     """Caption a clinical image through the configured gateway; None when the model returns empty."""
     client = gateway_client("caption")
     response = client.chat.completions.create(
-        model=gateway_settings_for("caption")[2],
+        model=model or gateway_settings_for("caption")[2],
         messages=[
             {
                 "role": "user",
@@ -503,11 +525,16 @@ def caption_image_content(
     return text.strip() if text and text.strip() else None
 
 
-def decorate_note_content(raw_text: str, enrichment_context: dict[str, Any] | None = None) -> str | None:
+def decorate_note_content(
+    raw_text: str,
+    enrichment_context: dict[str, Any] | None = None,
+    *,
+    model: str | None = None,
+) -> str | None:
     """Decorate a clinical note through the configured gateway; None when the model returns empty."""
     client = gateway_client("note_decoration")
     response = client.chat.completions.create(
-        model=gateway_settings_for("note_decoration")[2],
+        model=model or gateway_settings_for("note_decoration")[2],
         messages=[
             {
                 "role": "user",
@@ -556,6 +583,8 @@ def completed_audio_metadata(
     capture: dict[str, Any],
     content: bytes | None,
     transcription_context: dict[str, Any] | None = None,
+    *,
+    model: str | None = None,
 ) -> CaptureProcessingOutput:
     """Return completed audio metadata using real transcription."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
@@ -565,7 +594,7 @@ def completed_audio_metadata(
     elif transcription_is_configured():
         if content is None:
             raise RuntimeError("Audio capture source file is missing")
-        structured = transcribe_audio_content(content, transcription_context)
+        structured = transcribe_audio_content(content, transcription_context, model=model)
     else:
         raise RuntimeError("Audio transcription gateway is not configured")
     text = structured["transcript"]
@@ -1181,6 +1210,7 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         return
 
     output_key = output_key_for_capture(capture["type"])
+    ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
     # Audio transcription and Pro photo/note enrichment are real (gateway-backed); Basic, gateway-less,
     # and QA-fixture captures fall back to the deterministic placeholder below.
     client.progress_job(job_id, output_key=output_key, output=partial_metadata(job, capture), stage="transcript")
@@ -1193,7 +1223,13 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         client.complete_job(
             job_id,
             output_key=output_key,
-            output=completed_audio_metadata(job, capture, source_content, payload.get("transcriptionContext")),
+            output=completed_audio_metadata(
+                job,
+                capture,
+                source_content,
+                payload.get("transcriptionContext"),
+                model=resolve_model("transcription", ai_models),
+            ),
         )
         return
 
@@ -1207,11 +1243,15 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         capture_type = capture.get("type")
         if capture_type == "photo" and capture.get("sourceArtifactId"):
             content, media_type = client.get_file(f"/internal/captures/{capture['id']}/file-content")
-            enriched_text = caption_image_content(content, media_type, enrichment_context)
+            enriched_text = caption_image_content(
+                content, media_type, enrichment_context, model=resolve_model("caption", ai_models)
+            )
         elif capture_type == "note":
             raw_note = raw_note_text_for_decoration(capture)
             if raw_note:
-                enriched_text = decorate_note_content(raw_note, enrichment_context)
+                enriched_text = decorate_note_content(
+                    raw_note, enrichment_context, model=resolve_model("note_decoration", ai_models)
+                )
     if enriched_text:
         client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, enriched_text))
         return
@@ -1241,3 +1281,124 @@ def run_session_processing_job(job_id: str, *, celery_task_id: str | None, retry
         sleep(settings.mock_stage_delay_seconds)
 
     client.complete_job(job_id, output_key="session_outputs", output=completed_session_output(payload))
+
+
+# --- Combined patient memory (Pro): summary + history in one call ------------------------------
+
+
+def patient_memory_prompt(payload: dict[str, Any]) -> str:
+    """Build the prompt for the combined patient summary + history (incremental, grounded)."""
+    patient = payload.get("patient") if isinstance(payload.get("patient"), dict) else {}
+    language = payload.get("language")
+    language_directive = (
+        f"Write all text in {language}."
+        if isinstance(language, str) and language.strip()
+        else "Write all text in the language the visit notes use (default English)."
+    )
+    return "\n\n".join(
+        (
+            "You are AesMem, a calm clinical assistant that maintains a patient's longitudinal memory "
+            "for an aesthetics clinic.",
+            (
+                "Update this patient's memory from the prior memory and the new visit briefs below. "
+                "Produce a warm, assistant-voiced brief — natural sentences, never a form or bullet dump. "
+                "Synthesize across visits, but do NOT invent clinical facts, names, products, or doses "
+                "that are not present in the briefs. Keep the card summary to 1-2 sentences. "
+                f"{language_directive}"
+            ),
+            (
+                "Return ONLY strict JSON (no markdown, no code fences) with EXACTLY this shape:\n"
+                '{"summary": "<1-2 sentence card summary>", '
+                '"history": {"snapshot": "<one line: patient + current focus>", '
+                '"sections": [{"label": "Story so far", "body": "<2-4 sentences>"}, '
+                '{"label": "Worth remembering", "body": "<preferences, cautions, recurring themes>"}, '
+                '{"label": "Right now", "body": "<open threads / next visit>"}], "visits": []}}'
+            ),
+            f"Patient context:\n{json.dumps(patient, ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def parse_patient_memory_output(text: str) -> dict[str, Any] | None:
+    """Parse the model's patient-memory JSON; return None if unusable so the caller can fall back."""
+    if not text or not text.strip():
+        return None
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        cleaned = parts[1] if len(parts) >= 2 else cleaned.strip("`")
+        if cleaned.lstrip().lower().startswith("json"):
+            cleaned = cleaned.lstrip()[4:]
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        data = json.loads(cleaned[start : end + 1])
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    summary = data.get("summary")
+    history = data.get("history")
+    if not isinstance(summary, str) or not summary.strip() or not isinstance(history, dict):
+        return None
+    if not isinstance(history.get("snapshot"), str):
+        return None
+    sections = history.get("sections")
+    if not isinstance(sections, list) or not sections:
+        return None
+    return {"summary": summary.strip(), "history": history}
+
+
+def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the combined patient summary+history output, via the gateway when configured.
+
+    Falls back to the backend-provided deterministic content when no gateway is configured or when
+    the model returns something unusable, so the job always completes with valid memory.
+    """
+    fallback = payload.get("deterministicFallback") if isinstance(payload.get("deterministicFallback"), dict) else {}
+
+    def _fallback_output() -> dict[str, Any]:
+        return {
+            "summary": fallback.get("summary"),
+            "history": fallback.get("history"),
+            "source": fallback.get("source") or "mock-deterministic",
+            "generated_by": "ai-engine",
+            "generated_at": utc_now().isoformat(),
+        }
+
+    if not transcription_is_configured():
+        return _fallback_output()
+
+    ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
+    model = resolve_model("patient_memory", ai_models)
+    client = gateway_client("patient_memory")
+    # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": patient_memory_prompt(payload)}],
+    )
+    parsed = parse_patient_memory_output(response.choices[0].message.content or "")
+    if parsed is None:
+        return _fallback_output()
+    history = parsed["history"]
+    history["source"] = f"ai:{model}"
+    return {
+        "summary": parsed["summary"],
+        "history": history,
+        "source": f"ai:{model}",
+        "model": model,
+        "generated_by": "ai-engine",
+        "generated_at": utc_now().isoformat(),
+    }
+
+
+def run_patient_memory_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:
+    """Run a combined patient summary+history job through the backend API contract."""
+    client = BackendClient()
+    payload = client.start_job(job_id, celery_task_id=celery_task_id, retry_count=retry_count)
+    job = payload["job"]
+    if job.get("status") == "succeeded":
+        return
+    client.complete_job(job_id, output_key="patient_memory", output=completed_patient_memory_output(payload))

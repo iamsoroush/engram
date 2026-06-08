@@ -4,6 +4,7 @@ import type {
   PatientAssignmentDraft,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
+  PatientMemoryHistory,
   PatientMemoryListResponse,
   PatientMemoryTimelineSession,
   PatientMemoryRow as ApiPatientMemoryRow,
@@ -35,12 +36,17 @@ export function PatientsHome({
   onConfirmSummary,
   onAssignPatient,
   onExportCaptures,
+  tier,
+  memoryRefreshSignal = 0,
 }: {
   activeSession: CaptureSession | null;
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
+  tier?: string | null;
+  // Bumped by App on the post-capture refresh ladder so patient memory re-fetches (updating→ready).
+  memoryRefreshSignal?: number;
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onContinueSession: (sessionId: string) => void;
   onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
@@ -73,6 +79,8 @@ export function PatientsHome({
   const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
   const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
   const [resolvedDecisionIds, setResolvedDecisionIds] = React.useState<Set<string>>(() => new Set());
+  // Pro tenants get AI-maintained memory artifacts (the ✨ surfaces); Basic gets deterministic text.
+  const isPro = tier !== "basic";
   const today = React.useMemo(
     () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds }),
     [activeSession, resolvedDecisionIds, sessions, syncHealth],
@@ -174,8 +182,11 @@ export function PatientsHome({
   const selectedPatient = selectedPatientId ? patientRows.find((patient) => patient.id === selectedPatientId) : null;
   const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
 
+  // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
+  // updating→ready). Cached content keeps showing during a background re-fetch (no skeleton flash);
+  // the skeleton only appears on the very first load when there is nothing cached yet.
   React.useEffect(() => {
-    if (!selectedPatientId || !onGetPatientMemory || patientDetailCache[selectedPatientId]) return;
+    if (!selectedPatientId || !onGetPatientMemory) return;
     let cancelled = false;
     setPatientDetailLoading(true);
     setPatientDetailError(false);
@@ -193,7 +204,13 @@ export function PatientsHome({
     return () => {
       cancelled = true;
     };
-  }, [onGetPatientMemory, patientDetailCache, selectedPatientId]);
+  }, [onGetPatientMemory, selectedPatientId, memoryRefreshSignal]);
+
+  // A capture/assignment refresh also re-fetches the patient list (fresh memoryStatus + summary).
+  React.useEffect(() => {
+    if (!memoryRefreshSignal) return;
+    setPatientListVersion((version) => version + 1);
+  }, [memoryRefreshSignal]);
 
   const handlePatientAction = (patient: PatientRowModel) => {
     if (patient.action === "continue" && patient.activeSessionId) {
@@ -315,6 +332,7 @@ export function PatientsHome({
           loading={patientDetailLoading}
           loadError={patientDetailError}
           patient={selectedPatient}
+          isPro={isPro}
           sessions={sessions}
           activeSession={activeSession}
           onBack={() => setSelectedPatientId("")}
@@ -500,6 +518,8 @@ export function PatientsHome({
                   key={patient.id}
                   patientName={patient.name}
                   summary={patient.summary}
+                  summaryStatus={patient.memoryStatus}
+                  isPro={isPro}
                   tone={patient.needsInput ? "amber" : "green"}
                   onAction={() => handlePatientAction(patient)}
                   onSelect={() => setSelectedPatientId(patient.id)}
@@ -592,6 +612,7 @@ type PatientRowModel = {
   id: string;
   name: string;
   summary: string;
+  memoryStatus: "ready" | "updating" | string;
   badges: string[];
   action: PatientPrimaryAction;
   actionLabel: "Continue" | "View history" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Review items";
@@ -840,6 +861,7 @@ function buildPatientRows({
         id,
         name,
         summary: patientCardSummary(sortedSessions),
+        memoryStatus: "ready" as const, // local fallback rows are deterministic, never "updating"
         badges: [
           activeCount ? activePatientBadge(activeCount) : visitCountLabel(sortedSessions.length),
           complete ? "Complete" : undefined,
@@ -867,6 +889,7 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     id: row.patientId,
     name: row.displayName,
     summary: row.summary || "No memory summary yet.",
+    memoryStatus: row.memoryStatus === "updating" ? "updating" : "ready",
     badges: [
       isActive ? activePatientBadge(row.activeSessionCount) : visitCountLabel(row.sessionCount),
       row.complete ? "Complete" : undefined,
@@ -1438,6 +1461,7 @@ function PatientTimelineDetail({
   loading,
   loadError,
   patient,
+  isPro,
   sessions,
   onAssignPatient,
   onBack,
@@ -1452,6 +1476,7 @@ function PatientTimelineDetail({
   loading: boolean;
   loadError: boolean;
   patient: PatientRowModel;
+  isPro: boolean;
   sessions: CaptureSession[];
   onAssignPatient: (sessionId: string) => void;
   onBack: () => void;
@@ -1477,13 +1502,19 @@ function PatientTimelineDetail({
         <Avatar label={patient.name} tone={patient.needsInput ? "amber" : "green"} />
         <div className="patient-detail-heading">
           <h1>{patient.name}</h1>
-          <p>AesMem assistant summary: {detail?.patient.summary || patient.summary}</p>
           <div className="patient-detail-meta" aria-label="Patient metadata">
             <span>{visitCountLabel(sessionCount)}</span>
             {firstSeen ? <span>First seen {firstSeen}</span> : null}
           </div>
         </div>
       </section>
+
+      <PatientHistoryBlock
+        history={detail?.history}
+        isPro={isPro}
+        loading={loading}
+        fallbackSnapshot={detail?.patient.summary || patient.summary}
+      />
 
       <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
 
@@ -1611,6 +1642,8 @@ function PatientRow({
   latestVisitLabel,
   patientName,
   summary,
+  summaryStatus,
+  isPro = false,
   tone = "green",
   onAction,
   onSelect,
@@ -1620,6 +1653,8 @@ function PatientRow({
   latestVisitLabel: string | null;
   patientName: string;
   summary: string;
+  summaryStatus?: string;
+  isPro?: boolean;
   tone?: ClinicalTone;
   onAction: () => void;
   onSelect: () => void;
@@ -1630,7 +1665,7 @@ function PatientRow({
       <div className="clinical-row-copy">
         <h3>{patientName}</h3>
         {latestVisitLabel ? <span className="patient-latest-visit">{latestVisitLabel}</span> : null}
-        <p>{summary}</p>
+        <MemorySummary text={summary} status={summaryStatus} isPro={isPro} />
         <div className="patient-memory-badges" aria-label="Patient memory status">
           {badges.map((badge) => (
             <span className={`patient-memory-badge ${badge.startsWith("Needs input") || badge.includes("need your input") ? "needs-input" : badge === "Complete" ? "verified" : ""}`} key={badge}>
@@ -1640,6 +1675,132 @@ function PatientRow({
         </div>
       </div>
     </ClinicalMemoryCard>
+  );
+}
+
+// Pick the base direction per text so a mostly-English line keeps an LTR base (an embedded RTL
+// name stays a coherent isolated run) while predominantly-Persian/Arabic content reads RTL.
+function memoryTextDirection(text: string): "rtl" | "ltr" {
+  const rtl = (text.match(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
+  const ltr = (text.match(/[A-Za-z]/g) || []).length;
+  return rtl > ltr ? "rtl" : "ltr";
+}
+
+// ✨ provenance mark: present whenever an AI-maintained (Pro) memory artifact is shown; it pulses
+// while the artifact is refreshing. Basic memory is deterministic and carries no spark.
+function MemorySpark({ working }: { working?: boolean }) {
+  return (
+    <span className={`memory-spark${working ? " working" : ""}`} aria-hidden="true">
+      <SparkleIcon />
+    </span>
+  );
+}
+
+function MemoryUpdatingPill({ label = "Organizing memory" }: { label?: string }) {
+  return (
+    <span className="memory-updating-pill">
+      <span className="memory-updating-dots" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      {label}…
+    </span>
+  );
+}
+
+// The patient summary line on a card. Keeps the current text legible while a refresh is in flight
+// (a shimmer sweep + "Organizing memory" cue), then fades the new text in when it settles. The
+// `key={text}` remounts on a content swap so the fade-in plays.
+function MemorySummary({ text, status, isPro }: { text: string; status?: string; isPro: boolean }) {
+  const updating = status === "updating";
+  return (
+    <div className={`patient-memory-summary${updating ? " updating" : ""}`}>
+      <p className="patient-memory-summary-text" dir={memoryTextDirection(text)} key={text}>
+        {isPro ? <MemorySpark working={updating} /> : null}
+        <span className="memory-text">{text}</span>
+        <span className="memory-sweep" aria-hidden="true" />
+      </p>
+      {updating ? <MemoryUpdatingPill /> : null}
+    </div>
+  );
+}
+
+// The richer "patient history" brief atop the timeline. Pro renders titled prose sections; Basic
+// renders a structural recent-visits recap. Same updating→ready treatment as the card summary.
+function PatientHistoryBlock({
+  history,
+  isPro,
+  loading,
+  fallbackSnapshot,
+}: {
+  history?: PatientMemoryHistory | null;
+  isPro: boolean;
+  loading: boolean;
+  fallbackSnapshot?: string | null;
+}) {
+  const updating = history?.status === "updating";
+  const heading = (
+    <div className="patient-history-head">
+      {isPro ? <MemorySpark working={updating} /> : null}
+      <h2>Patient history</h2>
+      {updating ? <MemoryUpdatingPill /> : null}
+    </div>
+  );
+
+  if (!history) {
+    if (loading) {
+      return (
+        <section className="patient-history-card">
+          <div className="patient-history-head">
+            {isPro ? <MemorySpark working /> : null}
+            <h2>Patient history</h2>
+          </div>
+          <div className="patient-history-skeleton" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </section>
+      );
+    }
+    if (!fallbackSnapshot) return null;
+    return (
+      <section className="patient-history-card">
+        {heading}
+        <p className="patient-history-snapshot" dir={memoryTextDirection(fallbackSnapshot)}>{fallbackSnapshot}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className={`patient-history-card${updating ? " updating" : ""}`}>
+      {heading}
+      <div className="patient-history-body" key={`${history.snapshot}|${history.sections.length}|${history.visits.length}`}>
+        <p className="patient-history-snapshot" dir={memoryTextDirection(history.snapshot)}>{history.snapshot}</p>
+        {history.mode === "pro"
+          ? history.sections.map((section) => (
+              <div className="patient-history-section" key={section.label}>
+                <h3>{section.label}</h3>
+                <p dir={memoryTextDirection(section.body)}>{section.body}</p>
+              </div>
+            ))
+          : (
+              <div className="patient-history-section">
+                <h3>Recent visits</h3>
+                <ul className="patient-history-visits">
+                  {history.visits.map((visit, index) => (
+                    <li key={index}>
+                      <span className="patient-history-visit-dot" aria-hidden="true" />
+                      <span dir={memoryTextDirection(visit)}>{visit}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+        <span className="memory-sweep" aria-hidden="true" />
+      </div>
+    </section>
   );
 }
 

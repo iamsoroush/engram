@@ -23,6 +23,7 @@ from app.models import (
     SessionStatus,
 )
 from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
+from app.services.patient_memory_intelligence import mark_patient_memory_updating
 from app.services.session_contracts import build_session_contracts, evolve_session_after_capture, session_is_complete
 from app.storage import ObjectStore
 
@@ -317,6 +318,8 @@ async def upload_source_capture(
             session.patient_id = patient_uuid
         evolve_session_after_capture(session, capture_type=capture_type, captured_at=captured_at, capture_id=capture.id)
         session.updated_at = utc_now()
+        # A new capture changes the patient's memory — flag it refreshing (mock AI-job latency).
+        mark_patient_memory_updating(db, session.patient_id)
 
         audit(
             db,

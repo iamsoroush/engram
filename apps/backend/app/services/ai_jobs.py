@@ -4,14 +4,23 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Header, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.config import settings
 from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, Session, SessionStatus, Tenant
+from app.services.ai_model_config import get_ai_model_overrides
 from app.services.capture_storage import get_capture_for_tenant
+from app.services.patient_memory_intelligence import (
+    apply_patient_memory_output,
+    build_patient_memory_job_input,
+    mark_patient_memory_updating,
+    patient_has_active_memory_job,
+    patient_has_pending_capture_jobs,
+)
+from app.services.session_contracts import session_is_complete
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -47,6 +56,7 @@ TASK_NAME_BY_JOB_TYPE = {
     AiJobType.text_capture_process: "ai_engine.process_text_capture",
     AiJobType.image_capture_process: "ai_engine.process_image_capture",
     AiJobType.session_organize: "ai_engine.process_session",
+    AiJobType.patient_memory: "ai_engine.process_patient_memory",
 }
 
 def utc_now() -> datetime:
@@ -581,6 +591,8 @@ def recover_ai_jobs(db: DbSession, principal: CurrentPrincipal, limit: int = 50)
                 dispatch_capture_processing_job(db, job)
         elif job.session_id:
             dispatch_session_processing_job(db, job)
+        elif job.patient_id:
+            dispatch_patient_memory_job(db, job)
 
     return {"recovered": recovered, "skipped": skipped}
 
@@ -632,6 +644,8 @@ def recover_all_ai_jobs(db: DbSession, limit: int = 100) -> dict[str, Any]:
                 dispatch_capture_processing_job(db, job)
         elif job.session_id:
             dispatch_session_processing_job(db, job)
+        elif job.patient_id:
+            dispatch_patient_memory_job(db, job)
 
     return {"recovered": recovered, "skipped": skipped}
 
@@ -1329,6 +1343,127 @@ def dispatch_session_processing_job(db: DbSession, job: AiJob) -> None:
         db.commit()
 
 
+def dispatch_patient_memory_job(db: DbSession, job: AiJob) -> None:
+    """Send a committed patient-memory job to Celery, marking broker failures."""
+    from app.celery_app import celery_app
+
+    task_name = TASK_NAME_BY_JOB_TYPE.get(job.job_type)
+    if task_name is None:
+        raise ValueError(f"Unsupported patient memory job type: {job.job_type.value}")
+    now = utc_now()
+    job.last_dispatched_at = now
+    job.result_metadata = {
+        **(job.result_metadata or {}),
+        "last_dispatched_at": now.isoformat(),
+        "queue": "ai_jobs",
+    }
+    try:
+        celery_app.send_task(task_name, args=[str(job.id)], task_id=str(job.id), queue="ai_jobs")
+        logger.info("Queued patient memory job", extra={"job_id": str(job.id), "patient_id": str(job.patient_id)})
+        db.commit()
+    except Exception as exc:
+        logger.exception("Failed to queue patient memory job", extra={"job_id": str(job.id)})
+        schedule_retry(job, now=utc_now(), error_message=str(exc), retry_reason="broker_unavailable")
+        job.result_metadata = {**(job.result_metadata or {}), "queue_error": str(exc)}
+        db.commit()
+
+
+def maybe_dispatch_patient_memory_job(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID | None,
+    created_by_user_id: uuid.UUID | None = None,
+    trigger_session: Session | None = None,
+) -> None:
+    """Dispatch the combined patient summary+history job (Pro only) once the data has settled.
+
+    Gated on "report complete": the triggering session (if any) must be complete — captures
+    processed, a patient assigned, and the report current — and no capture job may still be in
+    flight for the patient. Coalesces bursts via a per-patient dedup. Marks the patient `updating`
+    only when it will actually dispatch, so Pro memory is never left stuck.
+    """
+    if patient_id is None:
+        return
+    if tenant_tier(db, tenant_id) != "pro":
+        return
+    if trigger_session is not None and not session_is_complete(trigger_session):
+        return
+    if patient_has_pending_capture_jobs(db, tenant_id=tenant_id, patient_id=patient_id):
+        return
+    if patient_has_active_memory_job(db, tenant_id=tenant_id, patient_id=patient_id):
+        return
+    patient = db.execute(
+        select(Patient).where(Patient.id == patient_id, Patient.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if patient is None:
+        return
+    mark_patient_memory_updating(db, patient_id)
+    job = AiJob(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        job_type=AiJobType.patient_memory,
+        status=AiJobStatus.queued,
+        created_by_user_id=created_by_user_id,
+        result_metadata={"queue": "ai_jobs"},
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    dispatch_patient_memory_job(db, job)
+
+
+def patient_memory_job_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]) -> dict[str, Any]:
+    """Build the worker payload for a patient-memory job (patient context + deterministic fallback)."""
+    patient = db.execute(
+        select(Patient).where(Patient.id == job.patient_id, Patient.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target patient is missing")
+    sessions = list(
+        db.execute(
+            select(Session)
+            .where(Session.tenant_id == job.tenant_id, Session.patient_id == patient.id)
+            .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
+        ).scalars()
+    )
+    tier = tenant_tier(db, job.tenant_id)
+    job_input = build_patient_memory_job_input(
+        patient, sessions, tier, language=tenant_report_language(db, job.tenant_id)
+    )
+    return {"job": ai_job_payload(job), "aiModels": ai_models, **job_input}
+
+
+def complete_patient_memory_worker_job(db: DbSession, *, job: AiJob, output: dict[str, Any]) -> dict[str, Any]:
+    """Persist a completed patient-memory job: write the patient's summary+history (status → ready)."""
+    completed_at = utc_now()
+    patient = db.execute(
+        select(Patient).where(Patient.id == job.patient_id, Patient.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    if patient is not None:
+        apply_patient_memory_output(patient, output, tenant_tier(db, job.tenant_id), now=completed_at)
+    job.status = AiJobStatus.succeeded
+    job.completed_at = completed_at
+    job.error_message = None
+    job.result_metadata = {
+        **(job.result_metadata or {}),
+        "completed_at": completed_at.isoformat(),
+        "source": output.get("source"),
+    }
+    audit(
+        db,
+        tenant_id=job.tenant_id,
+        actor_user_id=job.created_by_user_id,
+        action="ai_processing.complete",
+        target_type="patient",
+        target_id=job.patient_id,
+        details={"job_id": str(job.id), "job_type": job.job_type.value},
+    )
+    db.commit()
+    db.refresh(job)
+    return {"job": ai_job_payload(job)}
+
+
 def enqueue_capture_processing_job(db: DbSession, *, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
     """Create and dispatch a capture processing job from an API route."""
     capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
@@ -1370,6 +1505,10 @@ def get_job_for_worker(db: DbSession, job_id: str) -> AiJob:
 
 def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     """Serialize job input needed by the AI engine worker."""
+    # Live per-task model selection, resolved per request so a change applies to the next job.
+    ai_models = get_ai_model_overrides(db)
+    if job.job_type == AiJobType.patient_memory:
+        return patient_memory_job_payload(db, job, ai_models)
     capture = None
     if job.capture_id:
         capture = db.execute(
@@ -1401,6 +1540,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
             },
             "transcriptionContext": transcription_context,
             "enrichmentContext": enrichment_context,
+            "aiModels": ai_models,
         }
     if job.session_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
@@ -1454,6 +1594,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         ],
         "reportTemplate": load_report_template(session.report_template_key),
         "sessionProcessingContext": processing_context,
+        "aiModels": ai_models,
     }
 
 
@@ -1516,6 +1657,8 @@ def complete_worker_job(
 ) -> dict[str, Any]:
     """Persist successful AI engine output."""
     job = get_job_for_worker(db, job_id)
+    if job.job_type == AiJobType.patient_memory:
+        return complete_patient_memory_worker_job(db, job=job, output=output)
     if job.capture_id is None:
         return complete_session_worker_job(db, job=job, output_key=output_key, output=output)
     capture = db.execute(
@@ -1709,6 +1852,15 @@ def complete_worker_job(
             tenant_id=job.tenant_id,
             session_id=capture.session_id,
             created_by_user_id=job.created_by_user_id,
+        )
+        # With the report now current, refresh the patient's AI memory (Pro). Gated on the session
+        # being complete (captures processed, patient assigned, report up to date) + dedup.
+        maybe_dispatch_patient_memory_job(
+            db,
+            tenant_id=job.tenant_id,
+            patient_id=session.patient_id if session is not None else None,
+            created_by_user_id=job.created_by_user_id,
+            trigger_session=session,
         )
     return {"job": ai_job_payload(job)}
 

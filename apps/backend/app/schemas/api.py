@@ -61,6 +61,10 @@ class PatientMemoryRow(BaseModel):
     generated_summary: str | None = Field(default=None, alias="generatedSummary")
     rule_based_summary: str | None = Field(default=None, alias="ruleBasedSummary")
     metadata_sentence: str | None = Field(default=None, alias="metadataSentence")
+    # Mock patient-memory lifecycle: "ready" once the canned summary is generated, "updating" while
+    # a recent change is being (mock-)processed. `summary` carries the tier-aware memory text.
+    memory_status: str = Field(default="ready", alias="memoryStatus")
+    memory_updated_at: str | None = Field(default=None, alias="memoryUpdatedAt")
     latest_session_metadata: PatientLatestSessionMetadata | None = Field(default=None, alias="latestSessionMetadata")
     latest_session_id: str | None = Field(default=None, alias="latestSessionId")
     active_session_id: str | None = Field(default=None, alias="activeSessionId")
@@ -104,10 +108,37 @@ class PatientMemorySessionGroup(BaseModel):
     sessions: list[PatientMemorySession]
 
 
+class PatientMemoryHistorySection(BaseModel):
+    label: str
+    body: str
+
+
+class PatientMemoryHistory(BaseModel):
+    """The richer patient-history brief shown atop the timeline. Pro fills `sections`
+    (Story so far / Worth remembering / Right now); Basic fills `visits` (a structural recap)."""
+
+    mode: str  # "pro" | "basic"
+    status: str = "ready"  # "ready" | "updating" (mirrors PatientMemoryRow.memoryStatus)
+    snapshot: str
+    sections: list[PatientMemoryHistorySection] = Field(default_factory=list)
+    visits: list[str] = Field(default_factory=list)
+    source: str
+    updated_at: str | None = Field(default=None, alias="updatedAt")
+
+    model_config = {"populate_by_name": True}
+
+
 class PatientMemoryDetailResponse(BaseModel):
     patient: PatientMemoryRow
     sessions: list[PatientMemorySession]
     groups: list[PatientMemorySessionGroup]
+    history: PatientMemoryHistory | None = None
+
+
+class AiModelConfigUpdate(BaseModel):
+    """Live per-task model overrides. `{task: model_id}`; an empty value clears the override."""
+
+    models: dict[str, str] = Field(default_factory=dict)
 
 
 class SessionCreate(BaseModel):

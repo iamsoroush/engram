@@ -23,6 +23,8 @@ Included:
 - Real audio transcription through a configured OpenAI-compatible gateway.
 - Real Pro image captions and note decoration through the same gateway (tier-gated; Basic and
   gateway-less/fixture captures keep the deterministic placeholders).
+- Real combined patient **summary + history** synthesis (Pro) via the `patient_memory` job
+  (gateway-backed, with a deterministic fallback). Live per-task model selection.
 - Capture-level detected-patient schema and deterministic patient assignment provenance.
 - Generated session summaries.
 - Generated session extracted metadata, including patient full name and national ID.
@@ -41,10 +43,11 @@ Excluded:
 
 - `id`
 - `tenant_id`
-- `job_type`: `audio_capture_process`, `text_capture_process`, `image_capture_process`, `capture_process`, `session_organize`
+- `job_type`: `audio_capture_process`, `text_capture_process`, `image_capture_process`, `capture_process`, `session_organize`, `patient_memory`
 - `status`: `queued`, `running`, `succeeded`, `failed`
 - `capture_id`, nullable
 - `session_id`, nullable
+- `patient_id`, nullable (used by patient-scoped `patient_memory` jobs)
 - `started_at`, `completed_at`
 - `error_message`, nullable
 - durable retry schedule fields:
@@ -139,13 +142,18 @@ Note output:
   fixtures:** decorated text preserves the captured note verbatim (passthrough placeholder).
 - Extraction status becomes `completed`.
 
-Per-task models:
+Per-task models (live-selectable):
 
-- Each AI task can run on its own model/gateway, configured via env: `AI_ENGINE_TRANSCRIPTION_MODEL`,
-  `AI_ENGINE_CAPTION_MODEL`, `AI_ENGINE_NOTE_DECORATION_MODEL`, each with optional `*_BASE_URL` /
-  `*_API_KEY` overrides. A blank per-task value falls back to the shared `transcription_*` gateway, so
-  a single OpenAI-compatible gateway that routes by model name only needs the `*_MODEL` vars, while a
-  separate provider per task can override its base URL/key. Resolved by `gateway_settings_for(task)`.
+- Each AI task (`transcription`, `caption`, `note_decoration`, `patient_memory`) can run on its own
+  model. The model id is **live-configurable at runtime, globally**: the backend stores a per-task
+  override in the `app_config` table (key `ai_models`), editable via `GET`/`PUT
+  /api/v1/ai-config/models` (Settings → AI models) and surfaced to the worker in every job payload as
+  `aiModels`. The worker resolves the model as: payload `aiModels[task]` → env `AI_ENGINE_<TASK>_MODEL`
+  → env `AI_ENGINE_TRANSCRIPTION_MODEL` (`resolve_model` / `gateway_settings_for`). Because the
+  backend reads the override when it builds the payload at job `/start`, a change takes effect on the
+  **next request** with no restart.
+- Gateway URL/key stay in env only (`AI_ENGINE_<TASK>_BASE_URL` / `_API_KEY`, blank → the shared
+  `transcription_*` gateway). Only the model id is live; secrets are not stored in the DB.
 
 Pro enrichment gating (photo captions + note decoration):
 
@@ -192,6 +200,33 @@ marks the report stale and flips the session back to incomplete until it regener
 > The legacy `session_organize` worker path (`run_session_processing_job` /
 > `complete_session_worker_job`) is retained only to gracefully drain any in-flight jobs; nothing
 > creates new ones.
+
+## Patient Memory (combined summary + history, Pro)
+
+The patient-level **summary** (card) and **history** (timeline brief) are produced by a single
+real AI job, `patient_memory` (patient-scoped via `ai_jobs.patient_id`). One model call returns
+both — shared context (≈half the input cost) and a card summary guaranteed consistent with the
+history.
+
+- **Incremental input.** The payload (`build_patient_memory_job_input`) carries the patient's
+  *prior* memory plus compact per-visit briefs (each session's distilled summary + capture
+  counts/types), not raw transcripts — so cost stays ~flat as visits grow. It also includes a
+  `deterministicFallback` (the backend's deterministic generator output).
+- **Worker** (`completed_patient_memory_output`): when a gateway is configured it asks the model for
+  strict JSON (`summary` + `history{snapshot, sections, visits}`) and validates it; if the gateway is
+  absent or the response is unusable it returns the `deterministicFallback`, so the job always
+  completes with valid memory. Output `source` is `ai:<model>` or `mock-deterministic`.
+- **Dispatch gate (report-complete).** `maybe_dispatch_patient_memory_job` is **Pro-only** and runs
+  only once the triggering session is *complete* — captures processed, a patient assigned (manual or
+  auto-matched), report current — and no capture job is still in flight for the patient. It coalesces
+  bursts per patient (dedup on an in-flight `patient_memory` job). Triggers: capture-chain settle
+  (`complete_worker_job`) and patient (re)assignment (both sides). Recovery re-dispatches it like
+  other jobs.
+- **Completion** (`complete_patient_memory_worker_job`) writes `patients.memory`
+  (`status:"ready", summary, history, source, updated_at`); the read path serves the stored brief.
+- **Basic** never runs this job — its summary/history are deterministic, finalized lazily on read. A
+  Pro read only finalizes deterministically as a safety net when nothing is in flight, so Pro memory
+  is never permanently stuck in `updating`.
 
 Capture upload behavior:
 

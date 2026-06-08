@@ -1,5 +1,5 @@
 import React from "react";
-import type { AuthSession } from "../../domain/appTypes";
+import type { AiModelConfig, AuthSession } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
 
 type TenantSettingsUpdate = { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string };
@@ -29,14 +29,87 @@ function SettingRow({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
+function AiModelsSettings({
+  onListAiModels,
+  onUpdateAiModels,
+}: {
+  onListAiModels: () => Promise<AiModelConfig>;
+  onUpdateAiModels: (models: Record<string, string>) => Promise<AiModelConfig>;
+}) {
+  const [tasks, setTasks] = React.useState<AiModelConfig["tasks"]>([]);
+  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [loaded, setLoaded] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [savedAt, setSavedAt] = React.useState(0);
+  React.useEffect(() => {
+    let cancelled = false;
+    void onListAiModels()
+      .then((config) => {
+        if (cancelled) return;
+        setTasks(config.tasks);
+        setDrafts(Object.fromEntries(config.tasks.map((task) => [task.task, task.model])));
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onListAiModels]);
+  const dirty = tasks.some((task) => (drafts[task.task] || "") !== (task.model || ""));
+  const save = () => {
+    setSaving(true);
+    void onUpdateAiModels(drafts)
+      .then((config) => {
+        setTasks(config.tasks);
+        setDrafts(Object.fromEntries(config.tasks.map((task) => [task.task, task.model])));
+        setSavedAt(Date.now());
+      })
+      .catch(() => undefined)
+      .finally(() => setSaving(false));
+  };
+  return (
+    <Card className="settings-group">
+      <div className="settings-group-head">
+        <h2>AI models</h2>
+        <p>Pick the model for each AI task. Changes apply to the next request — no restart. Blank = the worker's default.</p>
+      </div>
+      {tasks.map((task) => (
+        <SettingRow key={task.task} label={task.label}>
+          <input
+            aria-label={`${task.label} model`}
+            className="setting-text-input"
+            disabled={saving || !loaded}
+            onChange={(event) => setDrafts((current) => ({ ...current, [task.task]: event.target.value }))}
+            placeholder="Worker default"
+            spellCheck={false}
+            value={drafts[task.task] ?? ""}
+          />
+        </SettingRow>
+      ))}
+      <div className="settings-group-actions">
+        <Button disabled={!dirty || saving} onClick={save} size="sm" type="button">
+          {saving ? "Saving…" : "Save AI models"}
+        </Button>
+        {savedAt && !dirty ? <span className="setting-saved-note">Saved</span> : null}
+      </div>
+    </Card>
+  );
+}
+
 export function SettingsScreen({
   auth,
   onBack,
   onUpdateSettings,
+  onListAiModels,
+  onUpdateAiModels,
 }: {
   auth: AuthSession;
   onBack: () => void;
   onUpdateSettings: (settings: TenantSettingsUpdate) => Promise<void> | void;
+  onListAiModels?: () => Promise<AiModelConfig>;
+  onUpdateAiModels?: (models: Record<string, string>) => Promise<AiModelConfig>;
 }) {
   const [saving, setSaving] = React.useState(false);
   const save = (settings: TenantSettingsUpdate) => {
@@ -99,6 +172,10 @@ export function SettingsScreen({
           <span className="profile-value">{capitalize(auth.tenant.vertical || "clinic")}</span>
         </SettingRow>
       </Card>
+
+      {onListAiModels && onUpdateAiModels ? (
+        <AiModelsSettings onListAiModels={onListAiModels} onUpdateAiModels={onUpdateAiModels} />
+      ) : null}
     </div>
   );
 }

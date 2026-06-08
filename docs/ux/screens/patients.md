@@ -213,13 +213,39 @@ response.
 
 It includes:
 
-- assistant-generated or assistant-style patient summary
+- a **patient history** brief at the top (see [Patient memory: summary and history](#patient-memory-summary-and-history))
 - sessions grouped by actual session time: `Today`, `Earlier this week`, `Older`
 - each session summarized in human language
 - one primary action per session, such as `Open visit`
 - persistent capture context, such as `Capturing for: Soroush · Today's visit`, so the user understands where new captures will go
 
 Timeline cards label times explicitly. The session time is primary, for example `Session: Today · 4:23 PM`. Updated time appears only when it adds useful context, for example `Updated: 4:31 PM` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
+
+## Patient Memory: Summary and History
+
+Two patient-level memory artifacts are generated from the patient's visits and surfaced together:
+
+- **Patient summary** — one to two sentences on the **patient card** (Patients tab).
+- **Patient history** — a richer brief atop the **patient timeline/detail** page. Replaces the older single "AesMem assistant summary:" line.
+
+Both are tier-aware. The tone reads like a calm assistant in either tier; only the depth differs:
+
+- **Pro** (`tenant.tier = pro`) is AI-maintained: a synthesized brief with titled prose sections — `Snapshot`, `Story so far`, `Worth remembering`, `Right now` — and a warm one-line card summary. A ✨ provenance mark accompanies these artifacts (and only these), pulsing while they refresh.
+- **Basic** is deterministic and carries **no ✨**: a structural recap built from capture facts (visit counts, dates, capture types) plus any verbatim typed notes. It never paraphrases or guesses a topic from audio — Basic has transcription but no summarization, so audio visits read as e.g. `1 audio note (2m 14s). Transcript saved — open the visit to read it.`
+
+Backend source: `GET /api/v1/patients/{patientId}/memory` returns `history` (`mode`, `status`, `snapshot`, `sections`, `visits`, `source`); the flat list and detail rows carry `summary` + `memoryStatus`.
+
+Language: Pro AI copy is written in the tenant's report language (a future dedicated assistant-language axis is planned, separate from transcription/report). Names embedded in the copy are bidi-isolated so mixed-direction lines render cleanly; the UI also picks per-line direction so Persian/Arabic content reads RTL.
+
+> **Pro** runs a real combined AI job (`patient_memory`): one model call produces the summary *and* history together (cheaper, mutually consistent), fed the prior memory plus compact per-visit briefs (incremental — not raw transcripts). It runs **only once the session is complete** — captures processed, a patient assigned (manually or auto-matched), and the report up to date — and is coalesced per patient. The model for this task (and transcription/caption/note) is live-selectable in **Settings → AI models** (takes effect on the next request). If the gateway is unavailable, the job falls back to deterministic content so memory is never empty. **Basic** stays fully deterministic (no model call).
+
+### Updating → ready state
+
+A new capture (or an assignment change) marks the patient's memory `updating`; it returns to `ready` once the (mock) job settles. The surfaces never blank out:
+
+- Existing summary/history stays legible while a soft shimmer sweeps the text, an `Organizing memory` cue shows, and the ✨ pulses (Pro).
+- When it settles, the refreshed text fades in. Pro keeps the prior AI text visible during the refresh (never downgraded to the structural fallback); a patient with no memory yet shows the structural fallback first, then upgrades.
+- Copy stays timeless and never exposes job/AI failure language, per [states](../states.md#assistant-state-language). A stale refresh never becomes a Needs-input item.
 
 Timeline sessions may expose source captures and review details after the user opens them, but the Clinical Memory main view stays compact.
 
@@ -229,12 +255,12 @@ Selecting a timeline session opens the visit in Active Session. `Back` returns t
 
 Patient cards should use the most natural available summary:
 
-1. Assistant-generated patient memory sentence.
+1. The persisted tier-aware [patient summary](#patient-memory-summary-and-history) (`memoryStatus`-tracked), once generated.
 2. Rule-based natural summary from recent session summaries, visit dates, and capture types.
 3. Metadata sentence, for example `Last updated today. 4 captures in the latest visit.`
 4. Minimal saved-state sentence: `No memory summary yet.`
 
-If AI output is unavailable, do not call that out as a failure. Use the next fallback.
+Before the first memory is generated (or if it is unavailable), fall through to the next item. Do not call that out as a failure.
 
 ## Screen-Specific Offline Behavior
 

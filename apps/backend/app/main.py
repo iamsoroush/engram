@@ -13,6 +13,7 @@ from app.schemas.api import (
     AiJobErrorRequest,
     AiJobProgressRequest,
     AiJobStartRequest,
+    AiModelConfigUpdate,
     AssignPatientRequest,
     CaptureUpdate,
     PatientPatch,
@@ -24,6 +25,7 @@ from app.schemas.api import (
     SessionUpdate,
 )
 from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest, TenantSettingsUpdate
+from app.services.ai_model_config import ai_model_settings_payload, set_ai_model_overrides
 from app.services.ai_jobs import (
     complete_worker_job,
     enqueue_capture_processing_job,
@@ -271,6 +273,26 @@ def update_tenant_settings_route(
 ) -> Any:
     """Update tenant language preferences (transcription / report)."""
     return update_tenant_settings(db, principal, provided=request.model_dump(exclude_unset=True))
+
+
+@api_v1.get("/ai-config/models")
+def get_ai_models_route(
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the live per-task AI model selection (blank model = worker env default)."""
+    return ai_model_settings_payload(db)
+
+
+@api_v1.put("/ai-config/models")
+def update_ai_models_route(
+    request: AiModelConfigUpdate,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Set per-task AI model overrides. Takes effect on the next AI request (no restart)."""
+    set_ai_model_overrides(db, request.models, user_id=principal.user_id)
+    return ai_model_settings_payload(db)
 
 
 @api_v1.get("/patients")

@@ -3,8 +3,10 @@ import type {
   AuthSession,
   CaptureDraft,
   PatientAssignmentDraft,
+  AiModelConfig,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
+  PatientMemoryHistory,
   PatientMemoryListResponse,
   PatientMemoryRow,
   PatientMemoryTimelineSession,
@@ -187,6 +189,26 @@ export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: st
           .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
           .map(normalizePatientMemoryTimelineSession),
       })),
+    history:
+      payload.history && typeof payload.history === "object"
+        ? normalizePatientMemoryHistory(payload.history as Record<string, unknown>)
+        : null,
+  };
+}
+
+function normalizePatientMemoryHistory(raw: Record<string, unknown>): PatientMemoryHistory {
+  const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
+  const rawVisits = Array.isArray(raw.visits) ? raw.visits : [];
+  return {
+    mode: raw.mode === "basic" ? "basic" : "pro",
+    status: raw.status === "updating" ? "updating" : "ready",
+    snapshot: String(raw.snapshot || ""),
+    sections: rawSections
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item) => ({ label: String(item.label || ""), body: String(item.body || "") })),
+    visits: rawVisits.filter((item): item is string => typeof item === "string"),
+    source: String(raw.source || ""),
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : null,
   };
 }
 
@@ -208,6 +230,35 @@ export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignment
   });
   if (!response.ok) throw new Error("Could not create patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
+}
+
+function mapAiModelConfig(payload: Record<string, unknown>): AiModelConfig {
+  const tasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+  return {
+    tasks: tasks
+      .filter((task): task is Record<string, unknown> => Boolean(task && typeof task === "object"))
+      .map((task) => ({
+        task: String(task.task || ""),
+        label: String(task.label || task.task || ""),
+        model: typeof task.model === "string" ? task.model : "",
+      })),
+  };
+}
+
+export async function fetchAiModels(apiFetch: ApiFetch): Promise<AiModelConfig> {
+  const response = await apiFetch(`${API_BASE}/ai-config/models`);
+  if (!response.ok) throw new Error("Could not load AI model config");
+  return mapAiModelConfig((await response.json()) as Record<string, unknown>);
+}
+
+export async function updateAiModels(apiFetch: ApiFetch, models: Record<string, string>): Promise<AiModelConfig> {
+  const response = await apiFetch(`${API_BASE}/ai-config/models`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ models }),
+  });
+  if (!response.ok) throw new Error("Could not update AI model config");
+  return mapAiModelConfig((await response.json()) as Record<string, unknown>);
 }
 
 export async function updateTenantSettings(
@@ -417,6 +468,8 @@ function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryR
     displayName: String(raw.displayName || "Unnamed patient"),
     summary: String(raw.summary || "No memory summary yet."),
     summarySource: String(raw.summarySource || "fallback"),
+    memoryStatus: raw.memoryStatus === "updating" ? "updating" : "ready",
+    memoryUpdatedAt: typeof raw.memoryUpdatedAt === "string" ? raw.memoryUpdatedAt : null,
     generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
     ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,
     metadataSentence: typeof raw.metadataSentence === "string" ? raw.metadataSentence : null,

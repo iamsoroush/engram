@@ -117,6 +117,8 @@ class AiJobType(str, enum.Enum):
     text_capture_process = "text_capture_process"
     image_capture_process = "image_capture_process"
     session_organize = "session_organize"
+    # Combined patient summary + history (Pro). Patient-scoped (uses `patient_id`, not capture/session).
+    patient_memory = "patient_memory"
 
 
 class Tenant(Base):
@@ -210,6 +212,12 @@ class Patient(Base):
     phone: Mapped[str | None] = mapped_column(String(80))
     email: Mapped[str | None] = mapped_column(String(320))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Mock patient-memory intelligence (placeholder for a future AI job): the tier-aware card
+    # `summary` + its refresh lifecycle. JSONB blob shaped like
+    # {status: "ready"|"updating", mode: "pro"|"basic", summary, source, updated_at,
+    # updating_since, ready_at}. NULL = never generated yet (read paths fall back to the
+    # deterministic rule-based summary). The richer `history` is generated on read, not stored.
+    memory: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[PatientStatus] = mapped_column(
         pg_enum(PatientStatus, "patient_status"), nullable=False, default=PatientStatus.active
     )
@@ -304,6 +312,24 @@ class Session(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AppConfig(Base):
+    """Global (non-tenant) operational key/value config, editable at runtime.
+
+    Powers live per-task AI model selection (key ``ai_models`` → ``{task: model_id}``). The backend
+    reads it when it builds each worker job payload, so changing a model takes effect on the next AI
+    request without a restart. Gateway URL/keys stay in the worker's env; only the model id is live.
+    """
+
+    __tablename__ = "app_config"
+
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    updated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+
+
 class Capture(Base):
     __tablename__ = "captures"
     __table_args__ = (
@@ -348,6 +374,8 @@ class AiJob(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"))
     capture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("captures.id", ondelete="CASCADE"))
+    # Patient-scoped jobs (patient_memory) reference the patient instead of a capture/session.
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"))
     job_type: Mapped[AiJobType] = mapped_column(pg_enum(AiJobType, "ai_job_type"), nullable=False)
     status: Mapped[AiJobStatus] = mapped_column(
         pg_enum(AiJobStatus, "ai_job_status"), nullable=False, default=AiJobStatus.queued
