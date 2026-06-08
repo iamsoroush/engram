@@ -118,11 +118,13 @@ export function Dialog({
 export function Sheet({
   open,
   title,
+  leading,
   children,
   onClose,
 }: {
   open: boolean;
   title: string;
+  leading?: ReactNode;
   children: ReactNode;
   onClose: () => void;
 }) {
@@ -132,10 +134,19 @@ export function Sheet({
     <div className="overlay sheet-overlay" role="presentation">
       <aside aria-modal="true" className="sheet" role="dialog">
         <div className="dialog-header">
-          <h2>{title}</h2>
-          <Button aria-label="Close source preview" onClick={onClose} size="sm" variant="ghost">
-            x
-          </Button>
+          <div className="sheet-title">
+            {leading ? (
+              <span className="sheet-title-icon" aria-hidden="true">
+                {leading}
+              </span>
+            ) : null}
+            <h2>{title}</h2>
+          </div>
+          <button aria-label="Close" className="sheet-close" onClick={onClose} type="button">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
         {children}
       </aside>

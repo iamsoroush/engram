@@ -19,16 +19,17 @@ export function TextCaptureSheet({
   }, [open]);
 
   return (
-    <Sheet onClose={onClose} open={open} title="Write note">
+    <Sheet leading={<NoteLeadingIcon />} onClose={onClose} open={open} title="Write note">
       <div className="sheet-stack">
         <Textarea
           autoFocus
           onChange={(event) => setValue(event.target.value)}
           placeholder="Type the note now. Patient matching can wait."
-          rows={7}
+          rows={6}
           value={value}
         />
         <Button
+          className="note-primary"
           disabled={!value.trim()}
           onClick={() =>
             void onSave({
@@ -39,27 +40,44 @@ export function TextCaptureSheet({
             })
           }
         >
-          Save to current session
+          Save to session
         </Button>
-        <Button
-          disabled={!value.trim()}
-          onClick={() =>
-            void onSave(
-              {
-                kind: "note",
-                detail: value.trim(),
-                file: new Blob([value.trim()], { type: "text/plain" }),
-                filename: `note-${Date.now()}.txt`,
-              },
-              true,
-            )
-          }
-          variant="secondary"
-        >
-          Save into new session
-        </Button>
+        <div className="note-links">
+          <button
+            className="note-link"
+            disabled={!value.trim()}
+            onClick={() =>
+              void onSave(
+                {
+                  kind: "note",
+                  detail: value.trim(),
+                  file: new Blob([value.trim()], { type: "text/plain" }),
+                  filename: `note-${Date.now()}.txt`,
+                },
+                true,
+              )
+            }
+            type="button"
+          >
+            <PhotoNewSessionIcon />
+            Save to new session
+          </button>
+        </div>
+        <p className="note-trust">
+          <PhotoSecurityIcon />
+          <span>Encrypted</span>
+        </p>
       </div>
     </Sheet>
+  );
+}
+
+function NoteLeadingIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5 19h14" />
+      <path d="M7 15l9-9 2 2-9 9H7z" />
+    </svg>
   );
 }
 
@@ -130,7 +148,12 @@ export function AddPhotoSheet({
         <button aria-label="Close add photo" className="add-photo-close" onClick={onClose} type="button">
           <PhotoCloseIcon />
         </button>
-        <h2 id="add-photo-title">Add photo</h2>
+        <div className="add-photo-header">
+          <span className="add-photo-chip" aria-hidden="true">
+            <PhotoCameraIcon />
+          </span>
+          <h2 id="add-photo-title">Add photo</h2>
+        </div>
         <div className="add-photo-segments" aria-label="Photo source">
           <button
             className={source === "camera" ? "active" : ""}
@@ -152,7 +175,7 @@ export function AddPhotoSheet({
             type="button"
           >
             <PhotoLibraryIcon />
-            <span>Choose a photo</span>
+            <span>Choose</span>
           </button>
         </div>
         <input
@@ -180,46 +203,66 @@ export function AddPhotoSheet({
           ref={libraryInputRef}
           type="file"
         />
-        <div className="add-photo-preview">
-          {previewUrl ? (
+        {previewUrl ? (
+          <div className="add-photo-preview">
             <img alt="Selected capture" className="photo-image-preview" src={previewUrl} />
-          ) : (
-            <div className="add-photo-empty">
-              <PhotoEmptyIcon />
-              <strong>No photo selected</strong>
-              <p>Take a new photo or choose from your device to add it to this session.</p>
-            </div>
-          )}
-        </div>
+            <button
+              aria-label="Remove selected photo"
+              className="add-photo-remove"
+              onClick={() => {
+                setFile(null);
+                setSource(null);
+                setError("");
+              }}
+              type="button"
+            >
+              <PhotoCloseIcon />
+            </button>
+          </div>
+        ) : (
+          <div className="add-photo-empty">
+            <span className="add-photo-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M12 16V7M8.5 10.5 12 7l3.5 3.5M5 19h14" />
+              </svg>
+            </span>
+            <span className="add-photo-empty-copy">
+              <strong>No photo yet</strong>
+              <small>Take a new photo or pick one from your device.</small>
+            </span>
+          </div>
+        )}
         {error ? <p className="error-copy">{error}</p> : null}
-        <div className="add-photo-actions">
-          <Button
-            className="add-photo-primary"
-            disabled={!file}
-            onClick={() => {
-              const draft = makeDraft();
-              if (draft) void onSave(draft);
-            }}
-          >
-            <PhotoCameraIcon />
-            Use photo
-          </Button>
-          <Button
-            className="add-photo-secondary"
-            disabled={!file}
-            onClick={() => {
-              const draft = makeDraft();
-              if (draft) void onSave(draft, true);
-            }}
-            variant="secondary"
-          >
-            <PhotoNewSessionIcon />
-            Save to new session
-          </Button>
-        </div>
+        {file ? (
+          <>
+            <Button
+              className="add-photo-primary"
+              onClick={() => {
+                const draft = makeDraft();
+                if (draft) void onSave(draft);
+              }}
+            >
+              <PhotoCameraIcon />
+              Use photo
+            </Button>
+            <div className="add-photo-links">
+              <button
+                className="add-photo-link"
+                onClick={() => {
+                  const draft = makeDraft();
+                  if (draft) void onSave(draft, true);
+                }}
+                type="button"
+              >
+                <PhotoNewSessionIcon />
+                Save to new session
+              </button>
+            </div>
+          </>
+        ) : null}
         <p className="add-photo-security">
           <PhotoSecurityIcon />
-          <span>Photos are stored securely and encrypted.</span>
+          <span>Encrypted · stored securely</span>
         </p>
       </aside>
     </div>
@@ -270,17 +313,6 @@ function PhotoSecurityIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M12 3.5 19 6v5.4c0 4.2-2.8 7.4-7 9.1-4.2-1.7-7-4.9-7-9.1V6l7-2.5Z" />
       <path d="m9 12.1 2 2 4.2-4.5" />
-    </svg>
-  );
-}
-
-function PhotoEmptyIcon() {
-  return (
-    <svg viewBox="0 0 96 72" focusable="false" aria-hidden="true">
-      <path d="M25 25h11l5-8h14l5 8h11a8 8 0 0 1 8 8v23a8 8 0 0 1-8 8H25a8 8 0 0 1-8-8V33a8 8 0 0 1 8-8Z" />
-      <path d="M48 55a14 14 0 1 0 0-28 14 14 0 0 0 0 28Z" />
-      <path d="M48 47a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" />
-      <path d="M14 18v8M10 22h8M79 16v8M75 20h8M84 39v8M80 43h8" />
     </svg>
   );
 }

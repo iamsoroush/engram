@@ -12,13 +12,12 @@ export function CaptureActions({
   const actions: Array<{
     kind: CaptureDraft["kind"];
     label: string;
-    subtitle: string;
     tone: "primary" | "secondary";
     icon: "audio" | "photo" | "note";
   }> = [
-    { kind: "audio", label: "Audio", subtitle: "Tap to record", tone: "primary", icon: "audio" },
-    { kind: "photo", label: "Take photo", subtitle: "Capture assessment", tone: "secondary", icon: "photo" },
-    { kind: "note", label: "Write note", subtitle: "Add clinical note", tone: "secondary", icon: "note" },
+    { kind: "audio", label: "Record", tone: "primary", icon: "audio" },
+    { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
+    { kind: "note", label: "Note", tone: "secondary", icon: "note" },
   ];
 
   const actionButtons = actions.map((action) => (
@@ -33,7 +32,6 @@ export function CaptureActions({
       </span>
       <span className="capture-action-copy">
         <strong>{action.label}</strong>
-        <small>{action.subtitle}</small>
       </span>
     </button>
   ));

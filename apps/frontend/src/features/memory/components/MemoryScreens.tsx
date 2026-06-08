@@ -1293,7 +1293,7 @@ function VisitCard({
           : undefined
       }
     >
-      <Avatar label={title} tone={tone} />
+      <Avatar label={session.patientName || title} tone={tone} />
       <div className="clinical-row-copy">
         <div className="visit-card-title-row">
           <h3>{title}</h3>

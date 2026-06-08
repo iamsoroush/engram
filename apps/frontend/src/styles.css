@@ -3580,6 +3580,167 @@ small {
   gap: 12px;
 }
 
+/* Write-note sheet — aligned with the capture-dialog family (icon header, circular close, link + trust). */
+.sheet-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.sheet-title-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.sheet-title-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
+.sheet .dialog-header h2 {
+  min-width: 0;
+  overflow: hidden;
+  color: #080d2d;
+  font-size: 1.18rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheet-close {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.sheet-close:hover,
+.sheet-close:focus-visible {
+  background: #eef2f8;
+  color: var(--color-text-soft);
+  outline: none;
+}
+
+.sheet-close svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2.4;
+}
+
+.note-primary {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2f7bff 0%, #075eff 100%);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 850;
+  box-shadow: 0 10px 20px rgb(7 94 255 / 22%);
+}
+
+.note-primary:disabled {
+  background: #c7d6f0;
+  color: #eef3fb;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.note-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.note-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: color 140ms ease;
+}
+
+.note-link svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.note-link:hover,
+.note-link:focus-visible {
+  color: #0747c4;
+  outline: none;
+  text-decoration: underline;
+}
+
+.note-link:disabled {
+  color: var(--color-muted-2);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
+.note-trust {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 0;
+  color: #52649d;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.note-trust svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .add-photo-overlay {
   z-index: 36;
   place-items: end center;
@@ -3591,9 +3752,9 @@ small {
 .add-photo-sheet {
   position: relative;
   display: grid;
-  width: min(100%, 520px);
+  width: min(100%, 480px);
   max-height: min(92dvh, 760px);
-  gap: 16px;
+  gap: 14px;
   overflow: auto;
   border: 1px solid #e3ebf8;
   border-radius: 22px 22px 0 0;
@@ -3610,12 +3771,40 @@ small {
   background: #d3d9e5;
 }
 
+.add-photo-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.add-photo-chip {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.add-photo-chip svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.9;
+}
+
 .add-photo-sheet h2 {
   color: #080d2d;
-  font-size: 1.48rem;
-  font-weight: 900;
+  font-size: 1.18rem;
+  font-weight: 850;
+  letter-spacing: -0.02em;
   line-height: 1.15;
-  text-align: center;
+  text-align: left;
 }
 
 .add-photo-close {
@@ -3657,12 +3846,12 @@ small {
 .add-photo-segments button {
   display: flex;
   min-width: 0;
-  min-height: 58px;
+  min-height: 54px;
   align-items: center;
   justify-content: center;
   gap: 10px;
   border: 1px solid #cfdced;
-  border-radius: 8px;
+  border-radius: 12px;
   background: #ffffff;
   color: #080d2d;
   padding: 10px;
@@ -3697,11 +3886,11 @@ small {
 }
 
 .add-photo-segments svg,
-.add-photo-actions svg,
-.add-photo-security svg {
-  width: 24px;
-  height: 24px;
-  flex: 0 0 24px;
+.add-photo-primary svg,
+.add-photo-link svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -3710,79 +3899,140 @@ small {
 }
 
 .add-photo-preview {
-  display: grid;
-  min-height: clamp(250px, 42dvh, 380px);
+  position: relative;
+  height: 220px;
   overflow: hidden;
-  border: 1px dashed #b8cced;
-  border-radius: 8px;
-  background: #f8fbff;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #eef3fb;
 }
 
 .add-photo-preview .photo-image-preview {
+  width: 100%;
   height: 100%;
   max-height: none;
   border: 0;
   border-radius: 0;
+  object-fit: cover;
+}
+
+.add-photo-remove {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(8 13 45 / 60%);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.add-photo-remove svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2.4;
 }
 
 .add-photo-empty {
-  display: grid;
-  place-items: center;
-  align-content: center;
+  display: flex;
+  align-items: center;
   gap: 12px;
-  padding: 28px;
-  text-align: center;
+  border: 1.5px dashed #c4d2e8;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 14px 15px;
+  text-align: left;
 }
 
-.add-photo-empty svg {
-  width: 118px;
-  height: 88px;
-  fill: #b9d0ff;
-  stroke: #075eff;
+.add-photo-empty-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border-radius: 10px;
+  background: #e9f1ff;
+  color: var(--color-primary);
+}
+
+.add-photo-empty-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 3;
+  stroke-width: 1.7;
+}
+
+.add-photo-empty-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
 .add-photo-empty strong {
   color: #080d2d;
-  font-size: 1.08rem;
-  font-weight: 900;
+  font-size: 0.9rem;
+  font-weight: 850;
   line-height: 1.2;
 }
 
-.add-photo-empty p {
-  max-width: 320px;
+.add-photo-empty small {
   color: #52649d;
-  font-size: 0.94rem;
-  line-height: 1.5;
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 
-.add-photo-actions {
-  display: grid;
-  gap: 10px;
-}
-
-.add-photo-actions .btn {
+.add-photo-primary {
   display: flex;
-  min-height: 58px;
+  min-height: 52px;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 900;
-}
-
-.add-photo-actions .add-photo-primary {
-  background: #075eff;
+  gap: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #2f7bff 0%, #075eff 100%);
   color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 850;
+  box-shadow: 0 10px 20px rgb(7 94 255 / 22%);
 }
 
-.add-photo-actions .add-photo-secondary {
-  border-color: #cfdced;
-  background: #ffffff;
-  color: #075eff;
+.add-photo-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.add-photo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: color 140ms ease;
+}
+
+.add-photo-link:hover,
+.add-photo-link:focus-visible {
+  color: #0747c4;
+  outline: none;
+  text-decoration: underline;
 }
 
 .add-photo-security {
@@ -3790,21 +4040,22 @@ small {
   min-width: 0;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 7px;
   color: #52649d;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   font-weight: 650;
   text-align: center;
 }
 
 .add-photo-security svg {
-  width: 28px;
-  height: 28px;
-  flex-basis: 28px;
-  border-radius: 999px;
-  background: #eaf2ff;
-  color: #075eff;
-  padding: 5px;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .photo-frame {
@@ -5308,38 +5559,39 @@ small {
   border-radius: 999px;
   background: #ffffff;
   color: #334155;
-  padding: 4px 14px;
+  padding: 3px 11px;
   font-size: 0.78rem;
   font-weight: 850;
   overflow-wrap: anywhere;
   text-align: center;
   /* Floating pill: own shadow now that there is no container box. */
-  box-shadow: 0 8px 20px rgb(15 23 42 / 12%);
+  box-shadow: 0 6px 16px rgb(15 23 42 / 10%);
 }
 
 .capture-pills-context::before {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   flex: 0 0 auto;
   border-radius: 999px;
   background: #2dbf67;
-  margin-right: 8px;
+  margin-right: 7px;
   content: "";
 }
 
 .capture-action-button {
   display: flex;
+  flex-direction: column;
   min-width: 0;
-  min-height: 64px;
+  min-height: 62px;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 5px;
   border: 1px solid #cbd9ee;
-  border-radius: 12px;
+  border-radius: 14px;
   background: #ffffff;
   color: #080d2d;
-  padding: 8px 10px;
-  text-align: left;
+  padding: 9px 6px;
+  text-align: center;
   /* Floating button: carries its own soft shadow now that there is no container box. */
   box-shadow: 0 10px 26px rgb(15 23 42 / 14%);
   transition:
@@ -5364,18 +5616,17 @@ small {
 }
 
 .capture-action-copy {
-  display: grid;
+  display: block;
   min-width: 0;
-  gap: 4px;
-  text-align: left;
+  text-align: center;
 }
 
 .capture-action-copy strong {
   color: currentColor;
-  font-size: 0.86rem;
-  font-weight: 900;
-  line-height: 1.05;
-  overflow-wrap: anywhere;
+  font-size: 0.74rem;
+  font-weight: 850;
+  line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 .capture-action-copy small {
@@ -5393,15 +5644,20 @@ small {
 
 .capture-action-icon {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
   place-items: center;
+  color: var(--color-primary);
+}
+
+.capture-action-button.primary .capture-action-icon {
+  color: #ffffff;
 }
 
 .capture-action-icon svg {
-  width: 34px;
-  height: 34px;
+  width: 24px;
+  height: 24px;
 }
 
 .capture-action-icon path {
@@ -5819,25 +6075,26 @@ small {
   align-items: stretch;
 }
 
-.visit-card .visit-card-title-row {
-  padding-right: 138px;
-}
-
-.visit-card .visit-card-title-row .badge {
-  position: absolute;
-  top: 16px;
-  right: 18px;
-}
-
 .visit-card-title-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+/* High specificity to beat the later `.clinical-row-copy h3 { white-space: normal }`
+   rule (used by patient rows) so visit titles truncate instead of stacking per character. */
+.visit-card .visit-card-title-row h3 {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .visit-card-title-row .badge {
-  align-self: start;
+  flex: 0 0 auto;
+  max-width: 100%;
   white-space: nowrap;
 }
 
@@ -5879,7 +6136,7 @@ small {
 
 .visit-card-actions {
   display: grid;
-  min-width: 132px;
+  min-width: 0;
   align-content: end;
   justify-items: end;
   gap: 8px;
@@ -7938,18 +8195,18 @@ small {
 }
 
 .capture-pills-context {
-  min-height: 30px;
+  min-height: 26px;
   border-color: var(--color-border);
   border-radius: var(--radius-pill);
-  color: var(--color-text-soft);
-  font-size: var(--text-sm);
-  font-weight: 850;
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
 }
 
 .capture-action-button {
-  min-height: 58px;
+  min-height: 62px;
   border-color: var(--color-border-strong);
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   background: var(--color-surface);
   color: var(--color-text);
 }
