@@ -47,7 +47,7 @@ test.beforeEach(async ({ page }) => {
         followUpVisit(),
         unassignedVisit(),
         uncertainMatchVisit(),
-        reviewSummaryVisit(),
+        aiVerifyVisit(),
         technicalFailureVisit(),
         updatedInitialConsultation(),
       ],
@@ -94,13 +94,14 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
-  await page.route("**/api/v1/sessions/session-review-summary/verify", async (route) => {
+  await page.route("**/api/v1/sessions/session-review-summary*", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       json: {
-        ...reviewSummaryVisit(),
+        ...aiVerifyVisit(),
         status: "verified",
         reviewReason: "",
+        extractedMetadata: { ai_patient_action: { needsVerification: false, status: "verified" } },
         updatedAt: now.toISOString(),
       },
     });
@@ -161,17 +162,14 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
 
   await expect(page.getByRole("heading", { name: "Soroush" })).toBeVisible();
   await expect(page.getByText(/Latest visit: Today ·/).first()).toBeVisible();
-  await expect(page.getByText("Needs input: review summary")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review summary", exact: true })).toBeVisible();
+  // The card badge reads the exact needs-input reason (here, an AI-created patient to verify).
+  await expect(page.getByText("Needs input: verify patient")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Verify patient", exact: true })).toBeVisible();
+  // "Active session" is no longer shown on patient cards — live work lives in the Today tab.
+  await expect(page.getByText(/active session/i)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sara" })).toBeVisible();
   await expect(page.getByText(new RegExp(`Latest visit: ${previousVisitDateLabel} ·`))).toBeVisible();
   await expect(page.getByRole("button", { name: /Open memory|View history/ })).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Review summary", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Review summary" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Confirm summary" })).toBeVisible();
-  await expect(page.getByText("Patient:")).toBeVisible();
-  await expect(page.getByText("Captures:")).toBeVisible();
 
   await page.screenshot({ path: "test-results/clinical-memory-patients-desktop.png", fullPage: true });
 });
@@ -198,8 +196,11 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
   await expect(page.getByText("Sara").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Summary ready for confirmation" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Review summary", exact: true })).toBeVisible();
+  // Routine summary confirmation is no longer a needs-input item; an AI-created patient awaiting
+  // verification is. Its focused action opens the visit (where the verify panel lives).
+  await expect(page.getByRole("heading", { name: "Verify AI-created patient" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Verify patient", exact: true })).toBeVisible();
+  await expect(page.getByText("Summary ready for confirmation")).toHaveCount(0);
   await expect(page.getByText("AI failed")).toHaveCount(0);
   await expect(page.getByText(/retry transcription/i)).toHaveCount(0);
 
@@ -208,26 +209,6 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
   await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
   await page.screenshot({ path: "test-results/clinical-memory-needs-input-mobile.png", fullPage: true });
-
-  await page.getByRole("button", { name: "Review summary", exact: true }).click();
-  const reviewDialog = page.getByRole("dialog", { name: "Review summary" });
-  await expect(reviewDialog).toBeVisible();
-  await expect(reviewDialog.getByText("Patient:")).toBeVisible();
-  await expect(reviewDialog.getByText("Soroush")).toBeVisible();
-  await expect(reviewDialog.getByText("Session:")).toBeVisible();
-  await expect(reviewDialog.getByText(`${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
-  await expect(reviewDialog.locator(".capture-chip", { hasText: "3 photos" })).toBeVisible();
-  await expect(reviewDialog.locator(".capture-chip", { hasText: "1 audio" })).toBeVisible();
-  await expect(reviewDialog.locator(".capture-chip", { hasText: "1 note" })).toBeVisible();
-  await expect(reviewDialog.getByText("Follow-up visit focused on headache patterns")).toBeVisible();
-
-  await reviewDialog.getByRole("button", { name: "Edit summary" }).click();
-  await reviewDialog.getByLabel("Edit summary").fill("Edited visit summary ready for memory.");
-  await reviewDialog.getByRole("button", { name: "Save edit" }).click();
-  await reviewDialog.getByRole("button", { name: "Confirm summary" }).click();
-  await expect(page.getByRole("dialog", { name: "Review summary" })).toHaveCount(0);
-  await expect(page.getByText("Summary added to patient memory")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Summary ready for confirmation" })).toHaveCount(0);
 });
 
 test("Assign patient opens a focused resolver and updates memory state", async ({ page }) => {
@@ -340,7 +321,9 @@ function uncertainMatchVisit() {
   };
 }
 
-function reviewSummaryVisit() {
+function aiVerifyVisit() {
+  // An AI-created patient awaiting staff verification: assigned (so the visit is processed) but the
+  // patient identity is unconfirmed → the `verify` needs-input category.
   return {
     id: "session-review-summary",
     label: "Follow-up visit",
@@ -350,12 +333,15 @@ function reviewSummaryVisit() {
     capturedAt: withTodayTime(16, 23),
     updatedAt: withTodayTime(16, 32),
     duration: "9 min",
-    summary: "Follow-up visit focused on headache patterns, sleep quality, and next steps. Photos and an audio note were captured. Education and follow-up plan are being prepared.",
+    summary: "Follow-up visit focused on headache patterns, sleep quality, and next steps. Photos and an audio note were captured.",
     status: "needs_review",
-    reviewReason: "Summary ready for confirmation",
+    reviewReason: "Verify AI-created patient",
     patientId: "patient-soroush",
     patientName: "Soroush",
-    assignmentSource: "staff",
+    assignmentSource: "ai_created",
+    extractedMetadata: {
+      ai_patient_action: { needsVerification: true, status: "needs_verification" },
+    },
     items: [
       capture("capture-review-photo-1", "photo", "Photo 1", 16, 24),
       capture("capture-review-photo-2", "photo", "Photo 2", 16, 25),

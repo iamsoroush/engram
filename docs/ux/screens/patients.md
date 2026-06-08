@@ -98,14 +98,22 @@ Each patient row/card includes:
 - patient name and compact identifying context when available
 - one assistant-style natural memory sentence
 - latest visit reference when useful
-- active session badge when a patient has an active visit
-- exact needs-input label when relevant, such as `Needs input: review summary`
+- exact needs-input label when relevant, such as `Needs input: verify patient`
 - selecting the row opens patient history
-- one focused action only when there is a current task, such as `Continue`, `Review summary`, or `Assign patient`
+- one focused action only when there is a current task, such as `Continue`, `Verify patient`, or `Assign patient`
+
+Patient cards do **not** show an "active session" badge. Live/in-progress work belongs to the
+[Today tab](#today-tab); the Patients list stays a calm long-term memory surface.
+
+The needs-input label and its focused action are driven by the same backend-computed decision set
+that powers the [Needs input tab](#needs-input-tab), so a patient's card badge and the tab always
+agree. The three needs-input categories are: `assign patient` (unassigned visit), `choose patient`
+(ambiguous/uncertain auto-match), and `verify patient` (an AI-created patient awaiting staff
+confirmation). A processed, assigned visit with a current report needs no input.
 
 Patient rows must not contain nested session cards, vague attention labels, upload states, AI job states, or sync controls.
 
-When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Review summary` or `Choose patient`. `View patient history` may be offered as a secondary action.
+When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Choose patient` or `Verify patient`. `View patient history` may be offered as a secondary action.
 
 Example patient memory sentences:
 
@@ -118,10 +126,9 @@ Example patient memory card:
 - Patient: `Sara M.`
 - Memory: `Last visit focused on cheek volume and follow-up photos are saved.`
 - Latest visit: `Session: Apr 18 · 11:30 AM`
-- Badge: `Active session`
-- Attention: `Needs input: review summary`
+- Attention: `Needs input: verify patient`
 - Row action: select row to view patient history
-- Focused task action: `Continue`, when relevant
+- Focused task action: `Verify patient`, when relevant
 
 Avoid vague labels such as `Needs input` or `Review` when the card needs the user to act.
 
@@ -157,11 +164,11 @@ Example copy:
   Patient: `Likely match: Sara Nazari`
   Why: `The visit mentions identity details that match an existing patient. Confirm before I update memory.`
   Primary action: `Choose patient`
-- Decision: `Summary ready for confirmation`
+- Decision: `Verify AI-created patient`
   Session: `Session: Today · 4:23 PM`
   Patient: `Soroush`
-  Why: `Review before it becomes part of patient memory.`
-  Primary action: `Review summary`
+  Why: `I created this patient from the visit. Confirm the details before it enters memory.`
+  Primary action: `Verify patient` (opens the visit in Active Session, where the verify panel lives)
 - Decision: `Storage warning`
   Since: `Needs input since: 2:20 PM`
   Why: `Device storage is almost full and new captures need room to stay safe.`
@@ -170,8 +177,8 @@ Example copy:
 Action routing:
 
 - `Assign patient` opens an assign-patient sheet, modal, or page.
-- `Choose patient` opens a patient-choice sheet, modal, or page.
-- `Review summary` opens the summary review flow.
+- `Choose patient` opens a patient-choice sheet, modal, or page (also used for a national-ID conflict).
+- `Verify patient` opens the visit in Active Session, where the AI-created-patient verify panel completes/confirms the record.
 - `Review storage` opens the storage guidance or review flow.
 
 Assign-patient resolver:
@@ -194,8 +201,11 @@ Choose-patient resolver:
 - Confirm with `Confirm patient`.
 - On success, close the resolver, remove the needs-input item from Clinical Memory, update related session/patient cards, and show `Patient confirmed`.
 
-Summary review resolver:
+Summary review resolver (available from a visit, **not** an unsolicited needs-input item):
 
+- A processed, assigned visit no longer generates a "review summary" needs-input item — routine
+  summary confirmation is not a critical decision. The resolver below is still reachable when a user
+  opens a visit and chooses to review its drafted summary.
 - Title: `Review summary`.
 - Show compact context: patient, session time, and capture counts.
 - Show the drafted visit summary in readable form, with compact source chips such as `3 photos`, `1 audio`, and `1 note`.

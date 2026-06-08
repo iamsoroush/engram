@@ -126,14 +126,18 @@ Do not put AI retry, transcription retry, or processing failure tasks in Needs i
 
 ## Needs Input Rules
 
-Needs input contains only human-decision items:
+Needs input contains only **critical** human-decision items, in three patient/AI categories plus one
+data-safety category. The categories are computed by the backend (the single source of truth shared
+by the patient-card needs-input badge and the Needs input tab, so they always agree):
 
-- unassigned visit
-- uncertain patient match
-- reviewable patient match proposal from structured capture identity
-- AI-created patient record needing staff completion/verification
-- summary ready for confirmation
-- critical storage or local-save warning
+- **assign patient** — an unassigned visit with no usable candidate.
+- **choose patient** — an ambiguous/uncertain auto-match (a possible match, a national-ID conflict,
+  or a tie) on an unassigned visit.
+- **verify patient** — an AI-created patient record awaiting staff verification before it enters memory.
+- **storage warning** — a critical storage or local-save data-safety warning (client-side).
+
+Routine summary confirmation is **not** a needs-input item: a processed, assigned visit with a current
+report needs no input. Summary review remains available when a user opens a visit.
 
 Needs input must not contain:
 
@@ -154,13 +158,13 @@ Needs-input cards must answer:
 - why input is needed
 - the focused action that resolves it
 
-Use exact labels such as `Needs input: review summary`, `Needs input: assign patient`, or `Needs input: choose patient`. Do not use vague labels such as `Needs input` or `Review` without explaining what kind of input is required.
+Use exact labels such as `Needs input: assign patient`, `Needs input: choose patient`, or `Needs input: verify patient`. Do not use vague labels such as `Needs input` or `Review` without explaining what kind of input is required.
 
 Resolver routing:
 
 - `Assign patient` opens patient assignment.
-- `Choose patient` opens patient choice.
-- `Review summary` opens summary review.
+- `Choose patient` opens patient choice (also used for a national-ID conflict).
+- `Verify patient` opens the visit in Active Session, where the AI-created-patient verify panel confirms the record.
 - `Review storage` opens storage guidance or review.
 - `Open visit` may be secondary.
 

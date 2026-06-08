@@ -52,6 +52,20 @@ class PatientLatestSessionMetadata(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class NeedsInputItem(BaseModel):
+    """One critical human-decision item attached to a patient (the source of truth for both the
+    patient-card needs-input badge and the Needs input tab). `kind` ∈ assign-patient |
+    choose-patient | resolve-conflict | verify."""
+
+    id: str
+    kind: str
+    session_id: str | None = Field(default=None, alias="sessionId")
+    reason: str | None = None
+    created_at: str | None = Field(default=None, alias="createdAt")
+
+    model_config = {"populate_by_name": True}
+
+
 class PatientMemoryRow(BaseModel):
     patient_id: str = Field(alias="patientId")
     display_name: str = Field(alias="displayName")
@@ -72,6 +86,7 @@ class PatientMemoryRow(BaseModel):
     session_count: int = Field(alias="sessionCount")
     complete: bool
     needs_input: bool = Field(alias="needsInput")
+    needs_input_items: list[NeedsInputItem] = Field(default_factory=list, alias="needsInputItems")
     latest_visit_at: str | None = Field(default=None, alias="latestVisitAt")
     updated_at: str | None = Field(default=None, alias="updatedAt")
 

@@ -100,7 +100,7 @@ export type PatientSummary = {
   lastVisit?: string | null;
 };
 
-export type PatientMemoryFilter = "recent" | "active" | "all";
+export type PatientMemoryFilter = "recent" | "active" | "all" | "needs-input";
 
 // Live per-task AI model selection (Settings → AI models). Blank model = worker env default.
 export type AiModelTask = { task: string; label: string; model: string };
@@ -138,6 +138,7 @@ export type PatientMemoryRow = {
     sessionId?: string | null;
     kind: string;
     label?: string | null;
+    reason?: string | null;
     createdAt?: string | null;
   }>;
   latestVisitAt?: string | null;

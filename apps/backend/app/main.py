@@ -309,7 +309,7 @@ def patients_search(
 @api_v1.get("/patient-memory", response_model=PatientMemoryListResponse)
 def patient_memory_list_route(
     query: str | None = Query(default=None),
-    filter: str = Query(default="recent", pattern="^(recent|active|all)$"),
+    filter: str = Query(default="recent", pattern="^(recent|active|all|needs-input)$"),
     clinician_id: str | None = Query(default=None, alias="clinicianId"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),

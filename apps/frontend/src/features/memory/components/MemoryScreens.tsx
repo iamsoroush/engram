@@ -79,6 +79,10 @@ export function PatientsHome({
   const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
   const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
   const [resolvedDecisionIds, setResolvedDecisionIds] = React.useState<Set<string>>(() => new Set());
+  // Backend-computed needs-input rows (the single source of truth shared with the patient-card
+  // badge). Fetched for the Needs input tab; the local derivation below is the offline fallback.
+  const [needsInputRows, setNeedsInputRows] = React.useState<ApiPatientMemoryRow[]>([]);
+  const [needsInputRowsLoaded, setNeedsInputRowsLoaded] = React.useState(false);
   // Pro tenants get AI-maintained memory artifacts (the ✨ surfaces); Basic gets deterministic text.
   const isPro = tier !== "basic";
   const today = React.useMemo(
@@ -89,10 +93,23 @@ export function PatientsHome({
     () => buildPatientRows({ activeSession, sessions, resolvedDecisionIds }),
     [activeSession, resolvedDecisionIds, sessions],
   );
-  const needsInputItems = React.useMemo(
+  const localNeedsInputItems = React.useMemo(
     () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds }),
     [activeSession, resolvedDecisionIds, sessions, storageWarning],
   );
+  // Prefer the backend-computed decisions (so the tab matches the patient-card badges exactly);
+  // keep the client-only storage warning plus any local-only sessions the backend has not seen.
+  const needsInputItems = React.useMemo(() => {
+    if (!needsInputRowsLoaded) return localNeedsInputItems;
+    const backendCards = needsInputRows.flatMap((row) =>
+      patientNeedsInputItemsFromApi(row).map((item) => needsInputCardFromApi(row, item)),
+    );
+    const backendSessionIds = new Set(backendCards.map((card) => card.sessionId).filter(Boolean));
+    const localExtras = localNeedsInputItems.filter(
+      (card) => card.kind === "review-storage" || (card.sessionId && !backendSessionIds.has(card.sessionId)),
+    );
+    return [...localExtras, ...backendCards].sort((a, b) => b.sortTime - a.sortTime);
+  }, [needsInputRowsLoaded, needsInputRows, localNeedsInputItems]);
   // First page: re-fetched from offset 0 whenever the tab, search query, filter, or a create
   // (patientListVersion) changes — keeping the list in sync with the shared search box.
   React.useEffect(() => {
@@ -117,6 +134,26 @@ export function PatientsHome({
       cancelled = true;
     };
   }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion]);
+
+  // Needs input tab: fetch every patient with a critical decision (a high limit — this inbox is
+  // small and not paginated). On failure we keep `needsInputRowsLoaded` false so the tab falls
+  // back to the local (offline) derivation.
+  React.useEffect(() => {
+    if (activeTab !== "needs-input" || !onListPatientMemory) return;
+    let cancelled = false;
+    void onListPatientMemory({ filter: "needs-input", limit: 100, offset: 0 })
+      .then((result) => {
+        if (cancelled) return;
+        setNeedsInputRows(result.items);
+        setNeedsInputRowsLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setNeedsInputRowsLoaded(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, onListPatientMemory, patientListVersion, memoryRefreshSignal]);
 
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
@@ -212,6 +249,29 @@ export function PatientsHome({
     setPatientListVersion((version) => version + 1);
   }, [memoryRefreshSignal]);
 
+  const localSessionById = (sessionId?: string | null) =>
+    sessionId ? sessions.find((session) => session.id === sessionId) || (activeSession?.id === sessionId ? activeSession : null) : null;
+
+  // Route a needs-input decision to its focused resolver. `verify` lives in Active Session (the
+  // AiCreatedPatientPanel), and any decision whose session is not in the local cache also falls
+  // back to opening the visit, since the inline resolvers need the local session.
+  const openNeedsInputDecision = (
+    action: PatientNeedsInputItem["action"],
+    sessionId?: string | null,
+    returnTab?: ClinicalMemoryTab,
+  ) => {
+    if (!sessionId) return;
+    if (action === "verify" || !localSessionById(sessionId)) {
+      onOpenSession(sessionId, returnTab ? { tab: returnTab } : undefined);
+      return;
+    }
+    if (action === "assign-patient" || action === "choose-patient" || action === "resolve-conflict") {
+      setAssignmentSessionId(sessionId);
+      return;
+    }
+    setSummaryReviewSessionId(sessionId);
+  };
+
   const handlePatientAction = (patient: PatientRowModel) => {
     if (patient.action === "continue" && patient.activeSessionId) {
       onContinueSession(patient.activeSessionId);
@@ -222,29 +282,15 @@ export function PatientsHome({
       return;
     }
     const targetItem = patient.needsInputItems[0];
-    if (targetItem?.action === "assign-patient" || targetItem?.action === "choose-patient") {
-      if (targetItem.sessionId) setAssignmentSessionId(targetItem.sessionId);
-      else if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
-      return;
-    }
-    if (targetItem?.action === "review-summary" || targetItem?.action === "resolve-conflict") {
-      if (targetItem.sessionId) setSummaryReviewSessionId(targetItem.sessionId);
-      else if (patient.latestSessionId) onOpenSession(patient.latestSessionId);
+    if (targetItem) {
+      openNeedsInputDecision(targetItem.action, targetItem.sessionId || patient.latestSessionId);
       return;
     }
     setSelectedPatientId(patient.id);
   };
 
   const handleDecisionAction = (item: PatientNeedsInputItem, patient?: PatientRowModel) => {
-    if (item.action === "assign-patient" || item.action === "choose-patient") {
-      if (item.sessionId) setAssignmentSessionId(item.sessionId);
-      else if (patient?.latestSessionId) onOpenSession(patient.latestSessionId);
-      return;
-    }
-    if (item.action === "review-summary" || item.action === "resolve-conflict") {
-      if (item.sessionId) setSummaryReviewSessionId(item.sessionId);
-      else if (patient?.latestSessionId) onOpenSession(patient.latestSessionId);
-    }
+    openNeedsInputDecision(item.action, item.sessionId || patient?.latestSessionId);
   };
 
   const handleNeedsInputAction = (item: NeedsInputCardItem) => {
@@ -252,12 +298,7 @@ export function PatientsHome({
       setStorageReviewOpen(true);
       return;
     }
-    if (!item.session) return;
-    if (item.action === "assign-patient" || item.action === "choose-patient") {
-      setAssignmentSessionId(item.session.id);
-      return;
-    }
-    setSummaryReviewSessionId(item.session.id);
+    openNeedsInputDecision(item.action, item.sessionId, "needs-input");
   };
 
   return (
@@ -293,7 +334,7 @@ export function PatientsHome({
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
       {assignmentSession && onAssignPatient ? (
-        decisionActionForSession(assignmentSession) === "choose-patient" ? (
+        decisionActionForSession(assignmentSession) === "choose-patient" || decisionActionForSession(assignmentSession) === "resolve-conflict" ? (
           <ChoosePatientResolver
             session={assignmentSession}
             onAssign={async (draft) => {
@@ -554,7 +595,7 @@ export function PatientsHome({
                 <NeedsInputDecisionCard
                   item={item}
                   key={item.id}
-                  onSelect={item.session ? () => onOpenSession(item.session!.id, { tab: "needs-input" }) : undefined}
+                  onSelect={item.sessionId ? () => onOpenSession(item.sessionId!, { tab: "needs-input" }) : undefined}
                   onPrimaryAction={() => handleNeedsInputAction(item)}
                 />
               ))
@@ -615,7 +656,7 @@ type PatientRowModel = {
   memoryStatus: "ready" | "updating" | string;
   badges: string[];
   action: PatientPrimaryAction;
-  actionLabel: "Continue" | "View history" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Review items";
+  actionLabel: "Continue" | "View history" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Verify patient" | "Review items";
   isActive: boolean;
   needsInput: boolean;
   needsInputItems: PatientNeedsInputItem[];
@@ -625,12 +666,12 @@ type PatientRowModel = {
   sessionCount: number;
 };
 
-type PatientPrimaryAction = "continue" | "open-memory" | "review-summary" | "assign-patient" | "choose-patient" | "resolve-conflict" | "review-items";
+type PatientPrimaryAction = "continue" | "open-memory" | "review-summary" | "assign-patient" | "choose-patient" | "resolve-conflict" | "verify" | "review-items";
 
 type PatientNeedsInputItem = {
   id: string;
   sessionId: string | null;
-  label: "Needs input: review summary" | "Needs input: assign patient" | "Needs input: choose patient" | "Needs input: resolve conflict";
+  label: "Needs input: review summary" | "Needs input: assign patient" | "Needs input: choose patient" | "Needs input: resolve conflict" | "Needs input: verify patient";
   action: Exclude<PatientPrimaryAction, "continue" | "open-memory" | "review-items">;
   title: string;
   detail: string;
@@ -640,7 +681,7 @@ type PatientNeedsInputItem = {
 };
 
 type NeedsInputAction = PatientNeedsInputItem["action"] | "review-storage";
-type NeedsInputKind = "assign-patient" | "choose-patient" | "review-summary" | "review-storage" | "resolve-conflict" | "missing-field";
+type NeedsInputKind = "assign-patient" | "choose-patient" | "verify" | "review-summary" | "review-storage" | "resolve-conflict" | "missing-field";
 
 type NeedsInputCardItem = {
   id: string;
@@ -648,6 +689,7 @@ type NeedsInputCardItem = {
   title: string;
   contextLabel?: string;
   session?: CaptureSession;
+  sessionId?: string | null;
   sessionLabel?: string;
   needsInputSinceLabel?: string;
   explanation: string;
@@ -706,10 +748,24 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
   const base = {
     id: `${session.id}-${action}`,
     session,
+    sessionId: session.id,
     sessionLabel: `Session: ${sessionTimeLabel(session)}`,
     needsInputSinceLabel: `Needs input since: ${formatSessionTime(sortTime)}`,
     sortTime,
   };
+  if (action === "verify") {
+    return {
+      ...base,
+      kind: "verify",
+      title: "Verify AI-created patient",
+      contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
+      explanation: "I created this patient from the visit. Confirm the details before it enters memory.",
+      action,
+      actionLabel: "Verify patient",
+      tone: "blue",
+      icon: "match",
+    };
+  }
   if (action === "assign-patient") {
     return {
       ...base,
@@ -751,19 +807,39 @@ function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem 
       icon: "conflict",
     };
   }
-  const missingField = hasMissingClinicalField(session);
+  return null;
+}
+
+function needsInputCardPresentation(action: PatientNeedsInputItem["action"]): {
+  kind: NeedsInputKind;
+  title: string;
+  tone: NeedsInputCardItem["tone"];
+  icon: NeedsInputCardItem["icon"];
+  actionLabel: string;
+} {
+  if (action === "assign-patient") return { kind: "assign-patient", title: "Unassigned visit", tone: "amber", icon: "assign", actionLabel: "Assign patient" };
+  if (action === "choose-patient") return { kind: "choose-patient", title: "Patient match uncertain", tone: "purple", icon: "match", actionLabel: "Choose patient" };
+  if (action === "resolve-conflict") return { kind: "resolve-conflict", title: "Conflicting patient information", tone: "amber", icon: "conflict", actionLabel: "Resolve conflict" };
+  if (action === "verify") return { kind: "verify", title: "Verify AI-created patient", tone: "blue", icon: "match", actionLabel: "Verify patient" };
+  return { kind: "review-summary", title: "Summary ready for confirmation", tone: "blue", icon: "summary", actionLabel: "Review summary" };
+}
+
+function needsInputCardFromApi(row: ApiPatientMemoryRow, item: PatientNeedsInputItem): NeedsInputCardItem {
+  const presentation = needsInputCardPresentation(item.action);
   return {
-    ...base,
-    kind: missingField ? "missing-field" : "review-summary",
-    title: missingField ? "Clinically important field missing" : "Summary ready for confirmation",
-    contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
-    explanation: missingField
-      ? "This visit is missing a clinically important detail before it becomes patient memory."
-      : "I drafted a summary of this visit before adding it to long-term memory.",
-    action,
-    actionLabel: "Review summary",
-    tone: "blue",
-    icon: "summary",
+    id: item.id,
+    kind: presentation.kind,
+    title: presentation.title,
+    contextLabel: row.displayName ? `Patient: ${row.displayName}` : undefined,
+    sessionId: item.sessionId,
+    sessionLabel: item.sessionLabel,
+    needsInputSinceLabel: item.sortTime ? `Needs input since: ${formatSessionTime(item.sortTime)}` : undefined,
+    explanation: item.reason,
+    action: item.action,
+    actionLabel: presentation.actionLabel,
+    tone: presentation.tone,
+    icon: presentation.icon,
+    sortTime: item.sortTime,
   };
 }
 
@@ -863,8 +939,9 @@ function buildPatientRows({
         summary: patientCardSummary(sortedSessions),
         memoryStatus: "ready" as const, // local fallback rows are deterministic, never "updating"
         badges: [
-          activeCount ? activePatientBadge(activeCount) : visitCountLabel(sortedSessions.length),
-          complete ? "Complete" : undefined,
+          // "Active session" is intentionally not shown on patient cards — live work lives in Today.
+          visitCountLabel(sortedSessions.length),
+          complete && !needsInput ? "Complete" : undefined,
           needsInputBadgeLabel(needsInputItems),
         ].filter((badge): badge is string => Boolean(badge)),
         action: primary.action,
@@ -891,8 +968,9 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     summary: row.summary || "No memory summary yet.",
     memoryStatus: row.memoryStatus === "updating" ? "updating" : "ready",
     badges: [
-      isActive ? activePatientBadge(row.activeSessionCount) : visitCountLabel(row.sessionCount),
-      row.complete ? "Complete" : undefined,
+      // "Active session" is intentionally not shown on patient cards — live work lives in Today.
+      visitCountLabel(row.sessionCount),
+      row.complete && needsInputItems.length === 0 ? "Complete" : undefined,
       needsInputBadgeLabel(needsInputItems),
     ].filter((badge): badge is string => Boolean(badge)),
     action: primary.action,
@@ -925,6 +1003,7 @@ function labelForDecisionAction(action: PatientNeedsInputItem["action"]): Patien
   if (action === "review-summary") return "Review summary";
   if (action === "assign-patient") return "Assign patient";
   if (action === "choose-patient") return "Choose patient";
+  if (action === "verify") return "Verify patient";
   return "Resolve conflict";
 }
 
@@ -938,47 +1017,29 @@ function activeSectionBadge(session: CaptureSession) {
   return action ? needsInputLabelForAction(action) : "In progress";
 }
 
-function activePatientBadge(activeCount: number) {
-  return activeCount === 1 ? "Active session" : `${activeCount} active sessions`;
-}
-
 function needsInputBadgeLabel(items: PatientNeedsInputItem[]) {
   if (items.length > 1) return `${items.length} decisions need input`;
   return items[0]?.label;
 }
 
 function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsInputItem[] {
-  const explicitItems = (row.needsInputItems || []).map((item, index) => {
+  // The backend is the single source of truth for typed needs-input items. No synthesized
+  // fallback: if there are no items, the patient needs nothing.
+  return (row.needsInputItems || []).map((item, index) => {
     const action = decisionActionFromKind(item.kind || item.label || "");
     if (!action) return null;
-    const label = needsInputLabelForAction(action);
     return {
       id: item.id || `${row.patientId}-needs-input-${index}`,
       sessionId: item.sessionId || row.latestSessionId || row.activeSessionId || null,
-      label,
+      label: needsInputLabelForAction(action),
       action,
       title: titleForDecisionAction(action),
-      detail: reasonForDecisionAction(action),
+      detail: item.reason || reasonForDecisionAction(action),
       sessionLabel: apiNeedsInputSessionLabel(row, item.createdAt),
-      reason: reasonForDecisionAction(action),
+      reason: item.reason || reasonForDecisionAction(action),
       sortTime: item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0,
     };
-  }).filter((item): item is PatientNeedsInputItem => Boolean(item));
-  if (explicitItems.length) return explicitItems.sort((a, b) => b.sortTime - a.sortTime);
-  if (!row.needsInput) return [];
-  return [
-    {
-      id: `${row.patientId}-review-summary`,
-      sessionId: row.latestSessionId || row.activeSessionId || null,
-      label: "Needs input: review summary",
-      action: "review-summary",
-      title: titleForDecisionAction("review-summary"),
-      detail: "Confirm the drafted summary before it updates patient memory.",
-      sessionLabel: apiNeedsInputSessionLabel(row),
-      reason: "Review before it becomes part of patient memory.",
-      sortTime: latestApiVisitTimestamp(row),
-    },
-  ];
+  }).filter((item): item is PatientNeedsInputItem => Boolean(item)).sort((a, b) => b.sortTime - a.sortTime);
 }
 
 function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem | null {
@@ -1007,6 +1068,7 @@ function titleForDecisionAction(action: PatientNeedsInputItem["action"]) {
   if (action === "assign-patient") return "Unassigned visit";
   if (action === "choose-patient") return "Patient match uncertain";
   if (action === "resolve-conflict") return "Conflicting patient information";
+  if (action === "verify") return "Verify AI-created patient";
   return "Summary ready for confirmation";
 }
 
@@ -1027,24 +1089,29 @@ function reasonForDecisionAction(action: PatientNeedsInputItem["action"]) {
   if (action === "assign-patient") return "This visit is saved, but I do not know which patient it belongs to.";
   if (action === "choose-patient") return "I found more than one possible patient match before updating memory.";
   if (action === "resolve-conflict") return "I found patient details that conflict with existing memory.";
+  if (action === "verify") return "I created this patient from the visit. Confirm the details before it enters memory.";
   return "Review before it becomes part of patient memory.";
 }
 
 function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] | null {
-  const reason = `${session.reviewReason || ""} ${JSON.stringify(session.extractedMetadata || {})}`.toLowerCase();
-  const patientMatch = session.extractedMetadata?.patient_match;
+  // Local (offline) fallback mirroring the backend's three critical needs-input categories:
+  // verify (AI-created patient awaiting confirmation), choose-patient / resolve-conflict
+  // (ambiguous auto-match on an unassigned visit), and assign-patient (unassigned, no candidate).
+  const metadata = session.extractedMetadata as Record<string, unknown> | undefined;
+  const aiAction = metadata?.ai_patient_action;
+  if (aiAction && typeof aiAction === "object" && (aiAction as Record<string, unknown>).needsVerification === true) {
+    return "verify";
+  }
+  if (session.patientId || session.patientName) return null; // assigned + confirmed → no input
+  const patientMatch = metadata?.patient_match;
   const matchStatus =
     patientMatch && typeof patientMatch === "object" && "status" in patientMatch ? String((patientMatch as Record<string, unknown>).status) : "";
-  if (isTechnicalNeedsInputText(reason)) return null;
-  // An auto-complete session (captures processed + patient assigned + report current) needs no input.
-  if (session.complete) return null;
-  if (reason.includes("conflict")) return "resolve-conflict";
-  if (matchStatus === "possible_match" || reason.includes("possible_match") || reason.includes("choose patient") || reason.includes("match")) {
-    return "choose-patient";
+  if (matchStatus === "possible_match") {
+    const risks = patientMatch && typeof patientMatch === "object" ? (patientMatch as Record<string, unknown>).risks : undefined;
+    const hasConflict = Array.isArray(risks) && risks.some((risk) => `${risk}`.toLowerCase().includes("conflict") || `${risk}`.toLowerCase().includes("national id"));
+    return hasConflict ? "resolve-conflict" : "choose-patient";
   }
   if (session.status === "unassigned") return "assign-patient";
-  if (reason.includes("missing") && (reason.includes("clinical") || reason.includes("field") || reason.includes("required"))) return "review-summary";
-  if ((session.status === "needs_review" || session.status === "reviewing") && (session.patientName || session.patientId)) return "review-summary";
   return null;
 }
 
@@ -1055,10 +1122,11 @@ function decisionIdForSession(session: CaptureSession) {
 function decisionActionFromKind(value: string): PatientNeedsInputItem["action"] | null {
   const normalized = value.toLowerCase();
   if (isTechnicalNeedsInputText(normalized)) return null;
+  if (normalized.includes("verify") || normalized.includes("verification")) return "verify";
+  if (normalized.includes("conflict")) return "resolve-conflict";
   if (normalized.includes("assign") || normalized.includes("unassigned")) return "assign-patient";
   if (normalized.includes("choose") || normalized.includes("uncertain") || normalized.includes("match")) return "choose-patient";
-  if (normalized.includes("conflict")) return "resolve-conflict";
-  if (normalized.includes("summary") || normalized.includes("confirm") || normalized.includes("review") || normalized.includes("missing")) return "review-summary";
+  // Routine summary confirmation / missing-field are no longer needs-input categories.
   return null;
 }
 
@@ -1066,6 +1134,7 @@ function needsInputLabelForAction(action: PatientNeedsInputItem["action"]): Pati
   if (action === "assign-patient") return "Needs input: assign patient";
   if (action === "choose-patient") return "Needs input: choose patient";
   if (action === "resolve-conflict") return "Needs input: resolve conflict";
+  if (action === "verify") return "Needs input: verify patient";
   return "Needs input: review summary";
 }
 
@@ -2921,8 +2990,8 @@ function timelineSessionStatus(session: TimelineSessionModel, localSession?: Cap
 
 function timelineSessionAction(session: TimelineSessionModel, localSession?: CaptureSession): { kind: "continue" | "open" | "review" | "assign"; label: string } {
   const action = timelineDecisionAction(session, localSession);
-  if (action === "assign-patient" || action === "choose-patient") return { kind: "assign", label: labelForDecisionAction(action) };
-  if (action === "review-summary" || action === "resolve-conflict") return { kind: "review", label: labelForDecisionAction(action) };
+  if (action === "assign-patient" || action === "choose-patient" || action === "resolve-conflict") return { kind: "assign", label: labelForDecisionAction(action) };
+  if (action === "verify") return { kind: "open", label: "Verify patient" };
   if (localSession && isActiveVisit(localSession)) return { kind: "continue", label: "Continue visit" };
   if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { kind: "continue", label: "Continue visit" };
   if (session.complete || localSession?.complete) return { kind: "open", label: "Open visit" };
@@ -2933,8 +3002,9 @@ function timelineDecisionAction(session: TimelineSessionModel, localSession?: Ca
   if (localSession) return decisionActionForSession(localSession);
   const status = session.status.toLowerCase();
   if (status === "unassigned") return "assign-patient";
-  if (status === "matched") return "choose-patient";
-  if (session.needsInput || status === "needs_review" || status === "reviewing") return "review-summary";
+  // The backend `needsInput` flag is the 3-category source of truth; on an assigned timeline
+  // session that still needs input, the only remaining category is verify.
+  if (session.needsInput) return "verify";
   return null;
 }
 

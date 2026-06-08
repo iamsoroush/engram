@@ -32,14 +32,18 @@ from app.services.patients import get_patient, patient_payload
 from app.services.session_contracts import session_is_complete
 from app.services.sessions import parse_uuid
 
+# "Active" means a visit that is genuinely live right now — being captured or processed. The
+# resting `needs_review`/`reviewing` states (where every processed visit settles) are NOT active.
 ACTIVE_SESSION_STATUSES = {
     SessionStatus.draft,
     SessionStatus.processing,
-    SessionStatus.needs_review,
-    SessionStatus.reviewing,
     SessionStatus.reopened,
 }
-NEEDS_INPUT_STATUSES = {
+# Superset of statuses that *may* carry a needs-input decision. Used only to pre-filter the SQL
+# query for the "needs-input" memory filter; the precise per-session test (which also reads JSON
+# metadata) is `_session_needs_input_item`.
+NEEDS_INPUT_CARRIER_STATUSES = {
+    SessionStatus.unassigned,
     SessionStatus.needs_review,
     SessionStatus.reopened,
 }
@@ -153,6 +157,59 @@ def _identifying_context(patient: Patient) -> dict[str, Any] | None:
     return context if any(context.values()) else None
 
 
+def _session_needs_input_item(session: Session) -> dict[str, Any] | None:
+    """Return the single critical human-decision a session needs, or None.
+
+    Exactly three categories (the source of truth for the badge and the Needs input tab):
+    `verify` (an AI-created patient awaiting staff confirmation), `choose-patient` /
+    `resolve-conflict` (an ambiguous auto-match on an unassigned visit), and `assign-patient`
+    (an unassigned visit with no usable candidate). Routine summary confirmation is NOT input.
+    """
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    # verify — an AI-created patient still awaiting verification (independent of completeness;
+    # the visit may be fully processed but the patient identity is unconfirmed).
+    action = metadata.get("ai_patient_action")
+    if isinstance(action, dict) and action.get("needsVerification") is True:
+        return {
+            "kind": "verify",
+            "session_id": str(session.id),
+            "reason": "An AI-created patient is awaiting your verification before it enters memory.",
+            "created_at": _iso(session.updated_at),
+        }
+    # choose-patient / resolve-conflict — an ambiguous auto-match on a still-unassigned visit.
+    match = metadata.get("patient_match")
+    match_status = match.get("status") if isinstance(match, dict) else None
+    if session.patient_id is None and match_status == "possible_match":
+        risks = match.get("risks") if isinstance(match.get("risks"), list) else []
+        has_conflict = any("conflict" in str(risk).lower() or "national id" in str(risk).lower() for risk in risks)
+        reason = match.get("reason") if isinstance(match.get("reason"), str) else None
+        return {
+            "kind": "resolve-conflict" if has_conflict else "choose-patient",
+            "session_id": str(session.id),
+            "reason": reason or "Confirm which patient this visit belongs to before I update memory.",
+            "created_at": _iso(session.updated_at),
+        }
+    # assign-patient — an unassigned visit with no usable candidate.
+    if session.patient_id is None and session.status == SessionStatus.unassigned:
+        return {
+            "kind": "assign-patient",
+            "session_id": str(session.id),
+            "reason": "This visit is saved, but I do not know which patient it belongs to.",
+            "created_at": _iso(session.updated_at),
+        }
+    return None
+
+
+def _needs_input_items(patient_id: str, sessions: list[Session]) -> list[dict[str, Any]]:
+    """Collect the typed needs-input items across a patient's sessions."""
+    items: list[dict[str, Any]] = []
+    for session in sessions:
+        item = _session_needs_input_item(session)
+        if item is not None:
+            items.append({"id": f"{patient_id}:{item['session_id']}:{item['kind']}", **item})
+    return items
+
+
 def _row_payload(
     *,
     patient: Patient,
@@ -162,7 +219,7 @@ def _row_payload(
     active_session_count: int,
     latest_capture_count: int,
     all_complete: bool,
-    needs_input: bool,
+    needs_input_items: list[dict[str, Any]],
 ) -> dict[str, Any]:
     latest_visit_at = _session_sort_date(latest_session) if latest_session else None
     updated_at = max(
@@ -203,7 +260,8 @@ def _row_payload(
         "activeSessionCount": active_session_count,
         "sessionCount": session_count,
         "complete": all_complete,
-        "needsInput": needs_input,
+        "needsInput": bool(needs_input_items),
+        "needsInputItems": needs_input_items,
         "latestVisitAt": _iso(latest_visit_at),
         "updatedAt": _iso(updated_at),
     }
@@ -285,7 +343,7 @@ def list_patient_memory(
     offset: int,
 ) -> dict[str, Any]:
     """Return flat, paginated patient-memory rows for Clinical Memory."""
-    if memory_filter not in {"recent", "active", "all"}:
+    if memory_filter not in {"recent", "active", "all", "needs-input"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filter")
     clinician_uuid = _coerce_clinician_id(clinician_id)
     base = _patient_base_statement(principal, query, clinician_uuid)
@@ -294,6 +352,11 @@ def list_patient_memory(
     if memory_filter == "active":
         active_count = func.count(Session.id).filter(Session.status.in_(ACTIVE_SESSION_STATUSES))
         base = base.having(active_count > 0)
+    if memory_filter == "needs-input":
+        # Coarse status pre-filter; the precise per-session check (which reads JSON metadata) runs
+        # in Python below and drops any patient whose superset rows turn out to need nothing.
+        carrier_count = func.count(Session.id).filter(Session.status.in_(NEEDS_INPUT_CARRIER_STATUSES))
+        base = base.having(carrier_count > 0)
 
     total = db.execute(select(func.count()).select_from(base.subquery())).scalar_one()
     rows = db.execute(
@@ -354,12 +417,14 @@ def list_patient_memory(
                 ),
                 all_complete=bool(patient_sessions)
                 and all(session_is_complete(session) for session in patient_sessions),
-                needs_input=any(
-                    session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session)
-                    for session in patient_sessions
-                ),
+                needs_input_items=_needs_input_items(str(patient.id), patient_sessions),
             )
         )
+    if memory_filter == "needs-input":
+        # The carrier-status pre-filter is a superset; keep only patients that actually have a
+        # typed decision. `total` stays the superset count (the tab fetches a high limit and does
+        # not paginate, so an approximate total is acceptable here).
+        items = [item for item in items if item["needsInputItems"]]
     if memory_changed:
         db.commit()
     return {"items": items, "limit": limit, "offset": offset, "total": total}
@@ -406,9 +471,7 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
             else 0
         ),
         all_complete=bool(sessions) and all(session_is_complete(session) for session in sessions),
-        needs_input=any(
-            session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session) for session in sessions
-        ),
+        needs_input_items=_needs_input_items(str(patient.id), list(sessions)),
     )
     timeline_sessions = []
     for session in sessions:
@@ -425,7 +488,7 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
                 "ruleBasedSummary": summary["rule_based_summary"],
                 "captureCount": capture_count,
                 "complete": session_is_complete(session),
-                "needsInput": session.status in NEEDS_INPUT_STATUSES and not session_is_complete(session),
+                "needsInput": _session_needs_input_item(session) is not None,
                 "groupLabel": _timeline_group_label(sort_date),
                 "sortDate": _iso(sort_date),
                 "capturedAt": _iso(session.captured_at),
