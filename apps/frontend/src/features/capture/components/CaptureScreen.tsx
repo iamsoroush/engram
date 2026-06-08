@@ -1539,7 +1539,7 @@ function BasicReportEntry({
       </span>
       <div className="basic-report-entry-body">
         <div className="basic-report-entry-time">{item.time}</div>
-        {text ? <p>{text}</p> : null}
+        {text ? <p dir={textDirection(text)}>{text}</p> : null}
         {isPhoto ? (
           <div className="basic-report-entry-photo">
             <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
@@ -1867,15 +1867,24 @@ function formatReportParagraph(paragraph: string, onResolveFile?: (endpoint: str
     return <MarkdownImage alt={image[1] || "Report image"} src={image[2]} onResolveFile={onResolveFile} />;
   }
   const italic = paragraph.match(/^\*(.*)\*$/);
-  if (italic) return <p><em>{italic[1]}</em></p>;
-  if (paragraph.startsWith("# ")) return <h3>{paragraph.replace(/^#\s+/, "")}</h3>;
-  if (paragraph.startsWith("## ")) return <h4>{paragraph.replace(/^##\s+/, "")}</h4>;
+  if (italic) return <p dir={textDirection(italic[1])}><em>{italic[1]}</em></p>;
+  if (paragraph.startsWith("# ")) {
+    const heading = paragraph.replace(/^#\s+/, "");
+    return <h3 dir={textDirection(heading)}>{heading}</h3>;
+  }
+  if (paragraph.startsWith("## ")) {
+    const heading = paragraph.replace(/^##\s+/, "");
+    return <h4 dir={textDirection(heading)}>{heading}</h4>;
+  }
   if (paragraph.startsWith("- ")) {
     return (
       <ul>
-        {paragraph.split(/\n-\s+/).map((item) => (
-          <li key={item}>{item.replace(/^-\s+/, "")}</li>
-        ))}
+        {paragraph.split(/\n-\s+/).map((item) => {
+          const text = item.replace(/^-\s+/, "");
+          return (
+            <li dir={textDirection(text)} key={item}>{text}</li>
+          );
+        })}
       </ul>
     );
   }
@@ -1883,16 +1892,16 @@ function formatReportParagraph(paragraph: string, onResolveFile?: (endpoint: str
     const [intro, ...items] = paragraph.split(/\n-\s+/);
     return (
       <>
-        {intro.trim() ? <p>{intro.trim()}</p> : null}
+        {intro.trim() ? <p dir={textDirection(intro.trim())}>{intro.trim()}</p> : null}
         <ul>
           {items.filter(Boolean).map((item) => (
-            <li key={item}>{item}</li>
+            <li dir={textDirection(item)} key={item}>{item}</li>
           ))}
         </ul>
       </>
     );
   }
-  return <p>{paragraph}</p>;
+  return <p dir={textDirection(paragraph)}>{paragraph}</p>;
 }
 
 function MarkdownImage({

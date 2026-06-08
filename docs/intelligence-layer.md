@@ -153,7 +153,10 @@ capture was deleted** (this *is* undo). The fix is to stop suppressing the appen
    assignment is overridden only by another staff action or an explicit-basis AI capture.
 
 Matching reuses the unchanged ladder (national_id → phone/email → exact alias → fuzzy →
-LLM-rank); the timeline (`patient_assignment_timeline.py`) already does latest-valid-wins +
+LLM-rank); **fuzzy is token-aware**, so a transcription that mentions only a first or last
+name still surfaces the full-named patient as a `possible_match` for review (and vice-versa,
+when the patient was stored under a partial name). The timeline
+(`patient_assignment_timeline.py`) already does latest-valid-wins +
 undo-by-capture-deletion. All applies are non-destructive timeline appends → capture chip +
 undo.
 

@@ -119,6 +119,9 @@ block, rendered from **template/DB, not AI**.
   a **Change** affordance live in the report **meta strip**, not the patient block. Out-of-context
   captures are excluded; the meta shows `Generated from N captures · M set aside`. Because regen is
   synchronous there is no "updating/refining" job state — the report is current once captures settle.
+- **Body text direction:** report lines (transcripts, notes, grouped sections) render
+  **right-to-left** when predominantly Persian/Arabic (farsi or mixed-farsi), LTR otherwise —
+  the same per-line rule as capture generated text (B1).
 - **No manual verify gate.** The report is always live; a session shows a calm, auto-derived
   **Complete** badge once captures are processed, a patient is assigned, and the report is current.
   (The separate "flagged **verify**" above is patient-record verification for an AI-created patient,

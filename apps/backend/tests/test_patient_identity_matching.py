@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from difflib import SequenceMatcher
 from unittest.mock import patch
 
 from app.services.patient_identity import (
@@ -9,7 +10,11 @@ from app.services.patient_identity import (
     normalize_text_key,
     normalized_aliases_for_value,
 )
-from app.services.patient_matching import MatchCandidate, match_patient_from_patient_information
+from app.services.patient_matching import (
+    MatchCandidate,
+    _name_similarity,
+    match_patient_from_patient_information,
+)
 from app.services.patients import patient_information_has_explicit_identity
 
 
@@ -188,6 +193,40 @@ class PatientMatchingConflictTests(unittest.TestCase):
 
         self.assertEqual(result["decision"], "matched")
         self.assertEqual(result["patientId"], str(candidate.patient_id))
+
+
+class PartialNameSimilarityTests(unittest.TestCase):
+    """A patient is often stored under a full name while the transcription mentions only the
+    first or last name (or vice versa). Token-aware similarity must let the partial mention
+    still surface the full-named patient as a fuzzy review candidate (threshold 0.68)."""
+
+    THRESHOLD = 0.68
+
+    def _sim(self, a: str, b: str) -> float:
+        return _name_similarity(normalize_text_key(a), normalize_text_key(b))
+
+    def test_last_name_only_matches_full_name(self):
+        # Long first name: whole-string ratio drops below threshold, token containment saves it.
+        full = normalize_text_key("Mohammadreza Nazari")
+        last = normalize_text_key("Nazari")
+        self.assertLess(SequenceMatcher(None, last, full).ratio(), self.THRESHOLD)
+        self.assertGreaterEqual(_name_similarity(last, full), self.THRESHOLD)
+
+    def test_first_name_only_matches_full_name(self):
+        self.assertGreaterEqual(self._sim("Sara", "Sara Nazari"), self.THRESHOLD)
+
+    def test_full_name_matches_stored_partial_name(self):
+        # Reverse direction: patient stored under last name only, transcription has the full name.
+        self.assertGreaterEqual(self._sim("Sara Nazari", "Nazari"), self.THRESHOLD)
+
+    def test_partial_match_in_persian_script(self):
+        self.assertGreaterEqual(self._sim("نظری", "محمدرضا نظری"), self.THRESHOLD)
+
+    def test_transliteration_drift_still_matches(self):
+        self.assertGreaterEqual(self._sim("Nazary", "Mohammadreza Nazari"), self.THRESHOLD)
+
+    def test_unrelated_name_stays_below_threshold(self):
+        self.assertLess(self._sim("Nazari", "Behrouz Javadi"), self.THRESHOLD)
 
 
 if __name__ == "__main__":

@@ -168,6 +168,28 @@ def _exact_alias_candidates(
     ]
 
 
+def _name_similarity(query: str, candidate: str) -> float:
+    """Token-aware similarity between two normalized name strings.
+
+    Returns the stronger of whole-string similarity and token-level containment. The token
+    score matches each token of the *smaller* name against its best counterpart in the larger
+    name and averages over the smaller set, so a last-name-only (or first-name-only) mention
+    still scores ~1.0 against the patient's full stored name — and the reverse holds when the
+    stored name is the partial one. This is what lets "نظری"/"Nazari" find "Mohammadreza
+    Nazari" even though whole-string ``SequenceMatcher`` drops below threshold on the length
+    gap. Per-token fuzzy matching also tolerates transliteration drift (e.g. "nazari" vs
+    "nazary").
+    """
+    full_ratio = SequenceMatcher(None, query, candidate).ratio()
+    query_tokens = alias_tokens([query])
+    candidate_tokens = alias_tokens([candidate])
+    if not query_tokens or not candidate_tokens:
+        return full_ratio
+    smaller, larger = sorted((query_tokens, candidate_tokens), key=len)
+    token_score = sum(max(SequenceMatcher(None, token, other).ratio() for other in larger) for token in smaller) / len(smaller)
+    return max(full_ratio, token_score)
+
+
 def _fuzzy_alias_candidates(
     db: DbSession,
     *,
@@ -193,7 +215,7 @@ def _fuzzy_alias_candidates(
     for identifier in identifiers:
         if not identifier.normalized_value:
             continue
-        score = max(SequenceMatcher(None, alias, identifier.normalized_value).ratio() for alias in aliases)
+        score = max(_name_similarity(alias, identifier.normalized_value) for alias in aliases)
         if score < 0.68:
             continue
         candidate = _candidate_from_identifier(
@@ -201,8 +223,8 @@ def _fuzzy_alias_candidates(
             identifier=identifier,
             confidence=min(0.84, max(0.45, score)),
             matched_on="fuzzy_alias",
-            reason="The extracted name is similar to a deterministic patient alias.",
-            risks=["Name-only fuzzy matches can confuse transliterations or relatives with similar names."],
+            reason="The extracted name overlaps a deterministic patient alias, including partial first/last-name matches.",
+            risks=["Name-only or partial-name matches can confuse transliterations, relatives, or people who share a first or last name."],
         )
         if candidate is None:
             continue
