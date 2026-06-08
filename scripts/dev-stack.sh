@@ -62,7 +62,12 @@ else
   SLUG="$(printf '%s' "$BRANCH" | tr '[:upper:]/' '[:lower:]_' | tr -cd 'a-z0-9_' | cut -c1-24)"
   [[ -n "$SLUG" ]] || SLUG="$(basename "$WT" | tr -cd 'a-z0-9_')"
   STACK_DB="aesmem_${SLUG}"
-  STACK_BUCKET="aesmem-captures-${SLUG}"
+  # MinIO/S3 bucket names forbid underscores and must end alphanumeric. The slug keeps
+  # underscores (valid for the DB name and Compose project), so hyphenate a copy for the
+  # bucket and trim any trailing hyphen. Otherwise branches like `feature/x` produce an
+  # invalid bucket name that `mc mb` silently rejects (data then has nowhere to go).
+  BUCKET_SLUG="$(printf '%s' "$SLUG" | tr '_' '-' | sed 's/-*$//')"
+  STACK_BUCKET="aesmem-captures-${BUCKET_SLUG}"
   PROJECT="aesmem_${SLUG}"
 fi
 
