@@ -491,8 +491,8 @@ export function AudioDialog({
           </svg>
         </button>
         <div className="recording-sheet-header">
+          <span className={`recording-live-dot ${isPaused ? "paused" : ""}`} aria-hidden="true" />
           <h2 id="recording-audio-title">Recording audio</h2>
-          <p>You can continue using the session while recording.</p>
         </div>
 
         {storageWarning ? (
@@ -501,42 +501,22 @@ export function AudioDialog({
           </p>
         ) : null}
 
-        <div className="recording-meter" aria-live="polite">
-          <div className={`record-dot ${isPaused ? "paused" : ""}`} aria-hidden="true" />
-          <strong>{displayTime}</strong>
-        </div>
-
-        <div className={`recording-waveform ${isPaused ? "paused" : ""}`} aria-hidden="true">
-          {waveHeights.map((height, index) => (
-            <span key={index} style={{ "--wave-index": index, "--wave-height": `${height}px` } as React.CSSProperties} />
-          ))}
-        </div>
-
-        <div className="recording-info-row">
-          <div>
-            <span className="recording-info-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M5 10.5a7 7 0 0 1 14 0M8.5 10.5a3.5 3.5 0 0 1 7 0M12 14v4" />
-              </svg>
-            </span>
-            <span>
-              <strong>Recording in background</strong>
-              <small>AesMem is listening</small>
-            </span>
-          </div>
-          <div>
-            <span className="recording-info-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M12 3.5 19 7v5.5c0 4-2.8 6.7-7 8-4.2-1.3-7-4-7-8V7l7-3.5Z" />
-                <path d="M9.5 12h5v4h-5zM10.5 12v-1.2a1.5 1.5 0 0 1 3 0V12" />
-              </svg>
-            </span>
-            <span>
-              <strong>Secure & private</strong>
-              <small>Audio is encrypted</small>
-            </span>
+        <div className="recording-capsule" aria-live="polite">
+          <strong className="recording-capsule-time">{displayTime}</strong>
+          <div className={`recording-waveform ${isPaused ? "paused" : ""}`} aria-hidden="true">
+            {waveHeights.map((height, index) => (
+              <span key={index} style={{ "--wave-index": index, "--wave-height": `${height}px` } as React.CSSProperties} />
+            ))}
           </div>
         </div>
+
+        <p className="recording-trust">
+          <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+            <path d="M12 3.5 19 7v5.5c0 4-2.8 6.7-7 8-4.2-1.3-7-4-7-8V7l7-3.5Z" />
+            <path d="M9.5 12h5v4h-5zM10.5 12v-1.2a1.5 1.5 0 0 1 3 0V12" />
+          </svg>
+          Encrypted · listening in background
+        </p>
 
         {error ? <p className="error-copy">{error}</p> : null}
         <input
@@ -562,9 +542,9 @@ export function AudioDialog({
             disabled={isSaving || (!isRecording && !isPaused)}
             onClick={isPaused ? resumeRecording : pauseRecording}
             type="button"
+            aria-label={primaryPauseLabel}
           >
             <span className={`recording-action-symbol ${isPaused ? "play" : "pause"}`} aria-hidden="true" />
-            {primaryPauseLabel}
           </button>
           <button
             className="recording-action stop"
@@ -575,26 +555,25 @@ export function AudioDialog({
             <span aria-hidden="true" />
             {isSaving ? "Saving..." : "Stop & save"}
           </button>
+        </div>
+
+        <div className="recording-links">
           <button
-            className="recording-action background"
+            className="recording-link"
             disabled={isSaving || (!isRecording && !isPaused)}
             onClick={() => setMinimized(true)}
             type="button"
           >
-            <span aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M8 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11A1.5 1.5 0 0 0 18 18.5V16M13 4h7v7M11 13 20 4" />
-              </svg>
-            </span>
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M8 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11A1.5 1.5 0 0 0 18 18.5V16M13 4h7v7M11 13 20 4" />
+            </svg>
             Continue in background
           </button>
-          <button className="recording-file-action" onClick={() => fileInputRef.current?.click()} type="button">
-            <span aria-hidden="true">
-              <svg viewBox="0 0 24 24" focusable="false">
-                <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
-              </svg>
-            </span>
-            Use audio file instead
+          <button className="recording-link muted" onClick={() => fileInputRef.current?.click()} type="button">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
+            </svg>
+            Use audio file
           </button>
         </div>
       </aside>
