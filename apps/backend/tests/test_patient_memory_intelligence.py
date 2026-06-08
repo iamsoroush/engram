@@ -54,7 +54,10 @@ class GeneratePatientMemoryTests(unittest.TestCase):
         labels = [section["label"] for section in history["sections"]]
         self.assertEqual(labels, ["Story so far", "Worth remembering", "Right now"])
         self.assertEqual(history["visits"], [])
-        self.assertIn("Sara Nazari", content["summary"])
+        # The copy never repeats the patient's name (shown beside it in the UI).
+        self.assertTrue(content["summary"])
+        self.assertNotIn("Sara Nazari", content["summary"])
+        self.assertNotIn("Sara Nazari", history["snapshot"])
 
     def test_basic_is_structural_recap_without_audio_topic(self) -> None:
         content = generate_patient_memory(self.patient, self.sessions, "basic")

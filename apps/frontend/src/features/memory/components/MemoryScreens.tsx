@@ -1506,6 +1506,7 @@ function PatientTimelineDetail({
             <span>{visitCountLabel(sessionCount)}</span>
             {firstSeen ? <span>First seen {firstSeen}</span> : null}
           </div>
+          <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
         </div>
       </section>
 
@@ -1515,8 +1516,6 @@ function PatientTimelineDetail({
         loading={loading}
         fallbackSnapshot={detail?.patient.summary || patient.summary}
       />
-
-      <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
 
       {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
       {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
@@ -1690,7 +1689,7 @@ function memoryTextDirection(text: string): "rtl" | "ltr" {
 // while the artifact is refreshing. Basic memory is deterministic and carries no spark.
 function MemorySpark({ working }: { working?: boolean }) {
   return (
-    <span className={`memory-spark${working ? " working" : ""}`} aria-hidden="true">
+    <span className={`ai-spark${working ? " working" : ""}`} aria-hidden="true">
       <SparkleIcon />
     </span>
   );

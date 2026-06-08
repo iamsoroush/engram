@@ -177,6 +177,21 @@ class SuggestedReassignmentTests(unittest.TestCase):
         self.assertEqual(candidate["matchedName"], "سروش معاصد")
         self.assertEqual(candidate["spokenName"], "سروش معاضد")
 
+    def test_suppresses_suggestion_when_match_is_already_assigned_patient(self):
+        # An implicit mention resolving to the patient already on the visit is a confirmation,
+        # not a reassignment — no "reassign to <current patient>" chip (the reported bug).
+        pid = uuid.uuid4()
+        session = SimpleNamespace(tenant_id=uuid.uuid4(), patient_id=pid)
+        fake_match = {"decision": "matched", "patientId": str(pid), "displayName": "ثریا قاسمی"}
+        with patch("app.services.ai_jobs.match_patient_from_patient_information", return_value=fake_match):
+            candidate = suggested_reassignment_candidate(
+                object(),
+                tenant_id=session.tenant_id,
+                session=session,
+                patient_information={"raw_mentioned_name": "ثریا قاسمی"},
+            )
+        self.assertIsNone(candidate)
+
 
 class NearMatchSuggestionTests(unittest.TestCase):
     def _possible_match(self, candidates):

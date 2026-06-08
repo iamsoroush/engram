@@ -243,11 +243,6 @@ def assign_session_patient(
     )
     session.extracted_metadata = append_patient_assignment_event(existing_metadata, event)
     apply_active_patient_assignment(db, session)
-    # Assignment changed which patient owns this visit — refresh both sides' memory (mock AI-job).
-    from app.services.patient_memory_intelligence import mark_patient_memory_updating
-
-    mark_patient_memory_updating(db, previous)
-    mark_patient_memory_updating(db, next_patient_id)
     if basis_capture is not None:
         # The suggestion on the now-applied capture is consumed — drop it so the chip clears.
         basis_capture.capture_metadata = {
@@ -271,16 +266,6 @@ def assign_session_patient(
     )
     db.commit()
     db.refresh(session)
-    # Refresh the AI patient memory (Pro) for both sides of the (re)assignment now that it's committed.
-    # Gated inside on report-complete + dedup; a no-op for Basic (deterministic memory).
-    from app.services.ai_jobs import maybe_dispatch_patient_memory_job
-
-    maybe_dispatch_patient_memory_job(
-        db, tenant_id=principal.tenant_id, patient_id=previous, created_by_user_id=principal.user_id, trigger_session=None
-    )
-    maybe_dispatch_patient_memory_job(
-        db, tenant_id=principal.tenant_id, patient_id=next_patient_id, created_by_user_id=principal.user_id, trigger_session=session
-    )
     return {**session_payload(session, db), "assignmentSource": request.source}
 
 
