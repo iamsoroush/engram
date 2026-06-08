@@ -70,6 +70,7 @@ scripts/dev-stack.sh up          # provision shared infra + DB/bucket, start thi
 scripts/dev-stack.sh status      # list running stacks + this stack's URLs
 scripts/dev-stack.sh down        # stop this stack's containers (keep its database + bucket)
 scripts/dev-stack.sh down --data # also DROP this worktree's database + bucket
+scripts/dev-stack.sh clean       # full teardown: containers + built images + volumes + DB + bucket (worktree only)
 scripts/dev-stack.sh refresh     # re-clone DB + re-mirror media from main, restart (worktree only)
 scripts/dev-stack.sh infra-up    # start shared Postgres + MinIO only
 scripts/dev-stack.sh infra-down  # stop shared infra (volumes/data preserved)
@@ -79,6 +80,31 @@ The script may be invoked by absolute path from anywhere
 (`"/Users/soroush/AIMed Project Base/AesMem/scripts/dev-stack.sh" up`); it finds the main
 repo from its own location and the target checkout from your current directory. The only
 file it writes into the worktree is `.env`.
+
+## Cleanup / finalizing a worktree
+
+When a worktree's work is done, remove everything it created so no stale
+containers/images/branches accumulate:
+
+```sh
+# 1. In the worktree: commit outstanding work.
+git add -A && git commit -m "…"
+
+# 2. Get the branch merged into main (PR, or merge from the primary checkout —
+#    you cannot check out main from inside the worktree).
+
+# 3. In the worktree: tear down all docker artifacts for this stack.
+scripts/dev-stack.sh clean       # containers + built images + volumes + database + bucket
+
+# 4. From the PRIMARY checkout: drop the worktree and its merged branch.
+#    (`clean` prints these exact lines for the current worktree.)
+git worktree remove <worktree-path>
+git branch -d <branch>           # -d refuses unless merged; -D only to discard unmerged work
+```
+
+`clean` only operates on worktree stacks — it refuses to touch the canonical `aesmem`
+database/bucket or the main stack. The shared `redis:7-alpine`, Postgres, and MinIO base
+images are pulled (not built), so `clean`'s image removal leaves them intact.
 
 ## One-time: seeding shared `aesmem` with your existing data
 

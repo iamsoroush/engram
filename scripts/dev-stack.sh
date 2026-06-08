@@ -12,6 +12,7 @@
 #   scripts/dev-stack.sh up            # provision + start this stack
 #   scripts/dev-stack.sh down          # stop this stack's containers (keep its data)
 #   scripts/dev-stack.sh down --data   # also drop this worktree's database + bucket
+#   scripts/dev-stack.sh clean         # full teardown: containers + built images + volumes + DB + bucket (worktree only)
 #   scripts/dev-stack.sh refresh       # re-clone DB + re-mirror media from main, restart
 #   scripts/dev-stack.sh status        # list running stacks + this stack's URLs
 #   scripts/dev-stack.sh infra-up      # start shared Postgres + MinIO only
@@ -228,6 +229,28 @@ cmd_down() {
   [[ "$data" == "1" ]] && drop_data || true
 }
 
+cmd_clean() {
+  [[ "$IS_WORKTREE" == "1" ]] || { echo "clean only applies to worktree stacks (refusing to clean the main stack)." >&2; exit 1; }
+  log "Removing containers and volumes for '$PROJECT'…"
+  app_compose down --volumes || true
+  # Remove this stack's built images explicitly. `down --rmi local` is unreliable here
+  # (compose tags built images with '_' but computes the removal name with '-'). Match any
+  # image whose repository starts with the project name; the pulled redis base is unaffected.
+  local imgs
+  imgs="$(docker images --format '{{.Repository}} {{.ID}}' | awk -v p="$PROJECT" '$1 ~ "^" p "[_-]" {print $2}' | sort -u)"
+  if [[ -n "$imgs" ]]; then
+    log "Removing built images for '$PROJECT'…"
+    docker rmi -f $imgs >/dev/null 2>&1 || true
+  fi
+  drop_data
+  log "Stack '$PROJECT' fully removed (containers, built images, volumes, database, bucket)."
+  echo
+  log "Finish the git cleanup from the MAIN checkout — a worktree can't be removed from inside itself:"
+  echo "    cd \"$MAIN_ROOT\""
+  echo "    git worktree remove \"$WT\""
+  echo "    git branch -d \"$BRANCH\"        # -d refuses unless merged; use -D only to discard unmerged work"
+}
+
 cmd_refresh() {
   [[ "$IS_WORKTREE" == "1" ]] || { echo "refresh only applies to worktree stacks." >&2; exit 1; }
   drop_data
@@ -252,6 +275,7 @@ cmd_status() {
 case "${1:-}" in
   up)         cmd_up ;;
   down)       cmd_down "${2:-}" ;;
+  clean)      cmd_clean ;;
   refresh)    cmd_refresh ;;
   status)     cmd_status ;;
   infra-up)   infra_up ;;

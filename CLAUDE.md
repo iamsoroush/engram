@@ -210,9 +210,20 @@ scripts/dev-stack.sh up      # provision + start; prints this stack's app/API UR
 This uses shared Postgres + MinIO but gives your worktree its **own database** (cloned
 from the canonical `aesmem` DB, so you inherit real data to test against) and its **own
 bucket**, on **unique host ports**. Your branch's new Alembic migrations apply on top of
-the cloned schema automatically. Tear down with `scripts/dev-stack.sh down`
-(add `--data` to also drop this worktree's database + bucket). Full details:
+the cloned schema automatically. Stop it with `scripts/dev-stack.sh down` (add `--data`
+to also drop this worktree's database + bucket). Full details:
 `docs/dev/worktree-stacks.md`.
+
+**When asked to clean up / finalize a worktree**, leave nothing stale behind:
+
+1. Commit any outstanding work on the branch.
+2. Get it merged into `main` — open/merge a PR, or merge from the primary checkout. You
+   cannot check out `main` from inside the worktree (it is checked out elsewhere).
+3. Run `scripts/dev-stack.sh clean` to remove this stack's containers, built images,
+   volumes, database, and bucket.
+4. From the **primary checkout**, remove the worktree and delete the merged branch:
+   `git worktree remove <path>` then `git branch -d <branch>`. The `clean` command prints
+   these exact commands for the current worktree.
 
 In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `aesmem`
 stack (the clone source); the plain root `docker compose up` also still works as a
