@@ -1,4 +1,4 @@
-# AGENTS.md
+# CLAUDE.md
 
 This repository is developed with AI coding agents.
 
@@ -187,3 +187,33 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 - Use typing for function inputs and outputs.
 - Use Google-style docstrings for public modules, classes, and functions unless they are small and self-explanatory.
 - Add comments only when logic is non-obvious.
+
+---
+
+## 8. Running the app in a git worktree (isolated dev stack)
+
+This rule applies **only if you are working inside a git worktree** (not the primary
+checkout). Check with:
+
+```sh
+[ "$(git rev-parse --absolute-git-dir)" != "$(git rev-parse --path-format=absolute --git-common-dir)" ] && echo "worktree"
+```
+
+If it prints `worktree`, then **do not run the root `docker compose up`** — it would
+collide with other stacks on host ports and share the same database/object storage.
+Instead launch an isolated stack:
+
+```sh
+scripts/dev-stack.sh up      # provision + start; prints this stack's app/API URLs
+```
+
+This uses shared Postgres + MinIO but gives your worktree its **own database** (cloned
+from the canonical `aesmem` DB, so you inherit real data to test against) and its **own
+bucket**, on **unique host ports**. Your branch's new Alembic migrations apply on top of
+the cloned schema automatically. Tear down with `scripts/dev-stack.sh down`
+(add `--data` to also drop this worktree's database + bucket). Full details:
+`docs/dev/worktree-stacks.md`.
+
+In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `aesmem`
+stack (the clone source); the plain root `docker compose up` also still works as a
+self-contained, non-shared environment.

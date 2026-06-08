@@ -1,0 +1,118 @@
+# Per-stack application services (backend + ai-engine + frontend + a local redis).
+#
+# Postgres and MinIO are NOT defined here — they live in docker-compose.shared-infra.yml
+# and are reached over the external `aesmem-shared` network. Only the backend needs that
+# network (it is the only service that talks to Postgres/MinIO directly); the ai-engine
+# reaches everything through the backend's internal HTTP API.
+#
+# Run via scripts/dev-stack.sh (recommended). It invokes this file with
+# `--project-directory <worktree>` so all ./apps/... paths resolve to that worktree's
+# source, and with an --env-file that pins this stack's ports / DB / bucket.
+
+networks:
+  default: {}
+  shared:
+    external: true
+    name: aesmem-shared
+
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks: [default]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    environment:
+      BACKEND_HOST: ${BACKEND_HOST:-0.0.0.0}
+      BACKEND_PORT: ${BACKEND_PORT:-8010}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:5183"]}
+      BACKEND_CAPTURE_ROOT: /data/captures
+      BACKEND_AUTH_MODE: ${BACKEND_AUTH_MODE:-dev}
+      BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-dev-only-change-me}
+      # Shared Postgres, per-stack database. Driven solely by STACK_DB (set by
+      # scripts/dev-stack.sh) so a stale BACKEND_DATABASE_URL in .env can't point a
+      # worktree at the wrong database. STACK_DB defaults to the canonical aesmem DB.
+      BACKEND_DATABASE_URL: postgresql+psycopg://aesmem:aesmem@postgres:5432/${STACK_DB:-aesmem}
+      # Shared MinIO, per-stack bucket (STACK_BUCKET defaults to the canonical bucket).
+      BACKEND_OBJECT_STORAGE_ENDPOINT: ${BACKEND_OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
+      BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT: ${BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT:-http://localhost:9010}
+      BACKEND_OBJECT_STORAGE_BUCKET: ${STACK_BUCKET:-aesmem-captures}
+      BACKEND_OBJECT_STORAGE_ACCESS_KEY: ${BACKEND_OBJECT_STORAGE_ACCESS_KEY:-aesmem-dev}
+      BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:-aesmem-dev-secret}
+      BACKEND_OBJECT_STORAGE_SECURE: ${BACKEND_OBJECT_STORAGE_SECURE:-false}
+      BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS: ${BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS:-300}
+      BACKEND_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
+      BACKEND_CELERY_RESULT_BACKEND: ${BACKEND_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      BACKEND_AI_JOB_MAX_RETRIES: ${BACKEND_AI_JOB_MAX_RETRIES:-3}
+      BACKEND_AI_JOB_RETRY_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_DELAY_SECONDS:-30}
+      BACKEND_AI_JOB_RETRY_MAX_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_MAX_DELAY_SECONDS:-900}
+      BACKEND_AI_JOB_DISPATCH_VISIBILITY_TIMEOUT_SECONDS: ${BACKEND_AI_JOB_DISPATCH_VISIBILITY_TIMEOUT_SECONDS:-300}
+      BACKEND_AI_JOB_RUNNING_STALE_SECONDS: ${BACKEND_AI_JOB_RUNNING_STALE_SECONDS:-900}
+      BACKEND_AI_ENGINE_INTERNAL_TOKEN: ${AI_ENGINE_INTERNAL_TOKEN:-dev-ai-engine-token}
+    ports:
+      - "${BACKEND_PORT:-8010}:8000"
+    volumes:
+      - ./apps/backend:/app
+      - ./captures:/data/captures
+    networks: [default, shared]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  ai-engine:
+    build:
+      context: ./apps
+      dockerfile: ai_engine/Dockerfile
+    environment:
+      AI_ENGINE_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
+      AI_ENGINE_CELERY_RESULT_BACKEND: ${BACKEND_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      AI_ENGINE_BACKEND_INTERNAL_URL: ${AI_ENGINE_BACKEND_INTERNAL_URL:-http://backend:8000}
+      AI_ENGINE_INTERNAL_TOKEN: ${AI_ENGINE_INTERNAL_TOKEN:-dev-ai-engine-token}
+      AI_ENGINE_JOB_MAX_RETRIES: ${BACKEND_AI_JOB_MAX_RETRIES:-3}
+      AI_ENGINE_JOB_RETRY_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_DELAY_SECONDS:-30}
+      AI_ENGINE_RECOVERY_INTERVAL_SECONDS: ${AI_ENGINE_RECOVERY_INTERVAL_SECONDS:-60}
+      AI_ENGINE_TRANSCRIPTION_BASE_URL: ${AI_ENGINE_TRANSCRIPTION_BASE_URL:-http://194.5.193.5:8081/v1}
+      AI_ENGINE_TRANSCRIPTION_API_KEY: ${AI_ENGINE_TRANSCRIPTION_API_KEY:-unused}
+      AI_ENGINE_TRANSCRIPTION_MODEL: ${AI_ENGINE_TRANSCRIPTION_MODEL:-gemini-3.1-flash-lite}
+    volumes:
+      - ./apps/ai_engine:/app
+    networks: [default]
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/aesmem-celerybeat-schedule
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-/api/v1}
+      VITE_PROXY_TARGET: ${VITE_PROXY_TARGET:-http://backend:8000}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
+    ports:
+      - "${FRONTEND_PORT:-5183}:5183"
+    volumes:
+      - ./apps/frontend:/app
+      - frontend_node_modules:/app/node_modules
+    networks: [default]
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0 --port 5183
+
+volumes:
+  frontend_node_modules:
+  redis_data:
