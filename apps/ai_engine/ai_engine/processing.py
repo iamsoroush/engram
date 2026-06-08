@@ -277,8 +277,8 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
                 "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
                 "Iranian national IDs and phone numbers may be spoken digit by digit in Persian, Arabic, or English numerals; normalize them to digit strings when explicitly present. "
                 "Aesthetics-clinic vocabulary may include filler, Botox, laser, injection, cannula, hyaluronic acid, aftercare, asymmetry, touch-up, swelling, bruising, and follow-up. "
-                "Use the context only to improve spelling and interpretation. Do not infer patient identity unless it is explicitly present in the audio or strongly supported by assigned-patient/session context. "
-                "Also classify intent in `intents`: set assignment.present=true whenever the audio indicates which patient this visit is about (a stated or mentioned name or identifier counts). Set basis='explicit' ONLY for a clear instruction to change or correct an existing assignment (for example 'change the patient to X', 'this is actually X not Y', or 'wrong patient, it's X'). Treat any statement of who the patient is as basis='implicit' — this includes a name simply stated or fronted and identity declarations (for example 'Ms. Ghasemi, forehead botox', 'the patient is X', 'this is X', or 'I am X'). When unsure, prefer 'implicit'. Set out_of_context.present=true when the audio has no clinical or visit content; set append.present=true when it only adds incremental detail to an ongoing note; use null for any intent you cannot determine. "
+                "Use the provided context ONLY to spell/transliterate a name that is actually spoken in THIS audio clip — never to introduce or confirm an identity. Set raw_mentioned_name and standardized_display_name ONLY to a patient name spoken in this clip; if no name or identifier is spoken here, both MUST be null with confidence 0, even when the assigned-patient/session context names someone. Never copy the patient's name from context, history, or a previous capture. "
+                "Also classify intent in `intents`: set assignment.present=true only when THIS audio clip itself states or mentions which patient the visit is about (a spoken name or identifier) — not based on the provided context. Set basis='explicit' ONLY for a clear instruction to change or correct an existing assignment (for example 'change the patient to X', 'this is actually X not Y', or 'wrong patient, it's X'). Treat any statement of who the patient is as basis='implicit' — this includes a name simply stated or fronted and identity declarations (for example 'Ms. Ghasemi, forehead botox', 'the patient is X', 'this is X', or 'I am X'). When unsure, prefer 'implicit'. Set out_of_context.present=true when the audio has no clinical or visit content; set append.present=true when it only adds incremental detail to an ongoing note; use null for any intent you cannot determine. "
                 "Return only strict JSON with no markdown."
             ),
             (
@@ -1303,7 +1303,9 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
                 "Produce a warm, assistant-voiced brief — natural sentences, never a form or bullet dump. "
                 "Synthesize across visits, but do NOT invent clinical facts, names, products, or doses "
-                "that are not present in the briefs. Keep the card summary to 1-2 sentences. "
+                "that are not present in the briefs. Do NOT include the patient's name in any field — it "
+                "is already shown beside this text in the UI; use pronouns or omit the subject. "
+                "Keep the card summary to 1-2 sentences. "
                 f"{language_directive}"
             ),
             (

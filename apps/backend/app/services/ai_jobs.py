@@ -304,12 +304,17 @@ def suggested_reassignment_candidate(
     tenant_id: uuid.UUID,
     session: Session,
     patient_information: dict[str, Any],
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Build an actionable but unapplied reassignment suggestion for an already-assigned visit.
 
-    Used when a later capture only implicitly mentions a patient: the assignment is not
+    Used when a later capture only implicitly mentions a *different* patient: the assignment is not
     changed, but staff can apply the suggestion in one tap. A dominant fuzzy candidate is
     promoted to `patientId` so Apply reassigns to the existing patient rather than creating one.
+
+    Returns None when the implicit mention resolves to the patient already assigned to this visit:
+    that is a confirmation/append, not a reassignment, so there is nothing to suggest. (This also
+    suppresses the spurious chip when the model echoes the assigned patient's name back from the
+    transcription context rather than from the spoken audio.)
     """
     match = match_patient_from_patient_information(db, tenant_id=tenant_id, patient_information=patient_information)
     match = match if isinstance(match, dict) else {}
@@ -320,6 +325,8 @@ def suggested_reassignment_candidate(
         if dominant is not None:
             patient_id = dominant.get("patientId")
             matched_name = dominant.get("displayName")
+    if patient_id is not None and session.patient_id is not None and str(patient_id) == str(session.patient_id):
+        return None
     return {
         **match,
         "schemaVersion": "2026-06-02.patient-match-candidate.v1",

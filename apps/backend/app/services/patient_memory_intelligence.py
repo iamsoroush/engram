@@ -112,17 +112,6 @@ def _ordered(sessions: list[Session]) -> list[Session]:
     return sorted(sessions, key=lambda s: _session_sort_date(s) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
 
-def _isolate(text: str) -> str:
-    """Wrap a name in Unicode directional isolates (FSI … PDI).
-
-    Memory copy is English with the patient's (often RTL) name embedded mid-sentence. Without
-    isolation, an RTL name reorders adjacent neutral punctuation/digits and the line renders
-    jumbled. Isolating the name keeps it a coherent run and lets the surrounding text follow the
-    element's base direction. The isolate code points are zero-width and safe to persist.
-    """
-    return f"⁨{text}⁩"
-
-
 # --------------------------------------------------------------------------- read helpers
 
 
@@ -228,17 +217,17 @@ def generate_patient_memory(
     """
     is_pro = tier == "pro"
     ordered = _ordered(sessions)
-    name = _isolate(patient.display_name)  # bidi-isolated so RTL names render cleanly in English copy
     count = len(ordered)
     latest = ordered[0] if ordered else None
     first = ordered[-1] if ordered else None
+    # The patient's name is shown next to the card/avatar, so the copy never repeats it (redundant).
     visits_word = f"{count} visit" if count == 1 else f"{count} visits"
 
     if is_pro:
-        content = _pro_content(name, count, visits_word, latest, first)
+        content = _pro_content(count, visits_word, latest, first)
         source = MOCK_AI_SOURCE
     else:
-        content = _basic_content(name, count, visits_word, latest, first, ordered)
+        content = _basic_content(count, visits_word, latest, first, ordered)
         source = MOCK_DETERMINISTIC_SOURCE
 
     return {
@@ -256,7 +245,6 @@ def generate_patient_memory(
 
 
 def _pro_content(
-    name: str,
     count: int,
     visits_word: str,
     latest: Session | None,
@@ -264,12 +252,12 @@ def _pro_content(
 ) -> dict[str, Any]:
     if latest is None or first is None:
         return {
-            "summary": f"{name} is saved to memory. No visits have been captured yet.",
-            "snapshot": f"{name} · no visits captured yet.",
+            "summary": "No visits have been captured yet.",
+            "snapshot": "No visits captured yet.",
             "sections": [
-                {"label": "Story so far", "body": f"{name} is in your patient memory, but no visit has been captured yet."},
+                {"label": "Story so far", "body": "No visit has been captured yet."},
                 {"label": "Worth remembering", "body": "Captures from the first visit will start building this history."},
-                {"label": "Right now", "body": "Start a visit to begin building this patient's memory."},
+                {"label": "Right now", "body": "Start a visit to begin building this memory."},
             ],
         }
     latest_date = _fmt_date(_session_sort_date(latest))
@@ -277,28 +265,25 @@ def _pro_content(
     latest_phrase = _latest_type_phrase(latest)
     span = f"since {first_date}" if count > 1 else f"on {first_date}"
     summary = (
-        f"{name} has {visits_word} on record, most recently {latest_phrase} on {latest_date} — "
-        "all captured and organized in their memory."
+        f"{visits_word.capitalize()} on record, most recently {latest_phrase} on {latest_date} — "
+        "all captured and organized."
     )
     if count > 1:
         story = (
-            f"I've been keeping {name}'s memory across {visits_word} {span}. The most recent visit, "
-            f"on {latest_date}, came in as {latest_phrase}; I've saved it and folded it into their history."
+            f"Memory spans {visits_word} {span}, each visit captured and folded in. The most recent, "
+            f"on {latest_date}, came in as {latest_phrase} and has been saved."
         )
         remember = (
-            f"{name} has returned regularly, so continuity matters here — each visit builds on the last. "
+            "Visits have been regular, so continuity matters here — each builds on the last. "
             "I'll keep surfacing anything that needs your attention."
         )
     else:
-        story = (
-            f"{name}'s memory starts with their visit on {first_date}, captured as {latest_phrase}. "
-            "I've saved it and it's ready in their history."
-        )
+        story = f"This memory starts with the visit on {first_date}, captured as {latest_phrase} and saved."
         remember = "This is an early record — the picture will fill in as more visits are captured."
     now_line = f"Everything from the {latest_date} visit is captured and organized for your review."
     return {
         "summary": summary,
-        "snapshot": f"{name} · {visits_word} on record, most recently on {latest_date}.",
+        "snapshot": f"{visits_word.capitalize()} on record, most recently on {latest_date}.",
         "sections": [
             {"label": "Story so far", "body": story},
             {"label": "Worth remembering", "body": remember},
@@ -308,7 +293,6 @@ def _pro_content(
 
 
 def _basic_content(
-    name: str,
     count: int,
     visits_word: str,
     latest: Session | None,
@@ -317,8 +301,8 @@ def _basic_content(
 ) -> dict[str, Any]:
     if latest is None or first is None:
         return {
-            "summary": f"{name} · no visits on record yet.",
-            "snapshot": f"{name} · no visits on record yet.",
+            "summary": "No visits on record yet.",
+            "snapshot": "No visits on record yet.",
             "visits": [],
         }
     latest_date = _fmt_date(_session_sort_date(latest))
@@ -328,12 +312,12 @@ def _basic_content(
     if latest_count:
         capture_word = "capture" if latest_count == 1 else "captures"
         summary = (
-            f"{visits_word} on record since {first_date}. Most recent on {latest_date}: "
+            f"{visits_word.capitalize()} on record since {first_date}. Most recent on {latest_date}: "
             f"{latest_count} {capture_word} saved ({latest_phrase} most recent)."
         )
     else:
-        summary = f"{visits_word} on record since {first_date}. Last seen {latest_date}."
-    snapshot = f"{name} · {visits_word} on record, since {first_date}. Last seen {latest_date}."
+        summary = f"{visits_word.capitalize()} on record since {first_date}. Last seen {latest_date}."
+    snapshot = f"{visits_word.capitalize()} on record, since {first_date}. Last seen {latest_date}."
     visits: list[str] = []
     for session in ordered[:6]:
         date_text = _fmt_date(_session_sort_date(session))
