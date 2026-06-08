@@ -94,7 +94,8 @@ git add -A && git commit -m "…"
 #    you cannot check out main from inside the worktree).
 
 # 3. In the worktree: tear down all docker artifacts for this stack.
-scripts/dev-stack.sh clean       # containers + built images + volumes + database + bucket
+scripts/dev-stack.sh clean       # containers + built images + volumes + database
+                                 # + MinIO bucket (and every object in it)
 
 # 4. From the PRIMARY checkout: drop the worktree and its merged branch.
 #    (`clean` prints these exact lines for the current worktree.)
@@ -102,9 +103,18 @@ git worktree remove <worktree-path>
 git branch -d <branch>           # -d refuses unless merged; -D only to discard unmerged work
 ```
 
+What `clean` removes, so nothing is left orphaned:
+
+- Containers + the stack's local volumes (redis data, node_modules).
+- The built `backend` / `ai-engine` / `frontend` images for this stack.
+- The Postgres database `aesmem_<slug>`.
+- The MinIO bucket `aesmem-captures-<slug>` **and all media objects in it**
+  (`mc rb --force`) — both the initial mirror and anything the stack uploaded.
+
+The local `./captures` directory (gitignored) is removed with the worktree in step 4.
 `clean` only operates on worktree stacks — it refuses to touch the canonical `aesmem`
-database/bucket or the main stack. The shared `redis:7-alpine`, Postgres, and MinIO base
-images are pulled (not built), so `clean`'s image removal leaves them intact.
+database/bucket or the main stack, and the shared `redis` / Postgres / MinIO base images
+are pulled (not built), so they are left intact.
 
 ## One-time: seeding shared `aesmem` with your existing data
 

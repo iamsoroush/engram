@@ -220,7 +220,7 @@ to also drop this worktree's database + bucket). Full details:
 2. Get it merged into `main` — open/merge a PR, or merge from the primary checkout. You
    cannot check out `main` from inside the worktree (it is checked out elsewhere).
 3. Run `scripts/dev-stack.sh clean` to remove this stack's containers, built images,
-   volumes, database, and bucket.
+   volumes, database, and its MinIO bucket (including every media object it stored).
 4. From the **primary checkout**, remove the worktree and delete the merged branch:
    `git worktree remove <path>` then `git branch -d <branch>`. The `clean` command prints
    these exact commands for the current worktree.
