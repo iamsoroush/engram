@@ -77,7 +77,7 @@ scripts/dev-stack.sh infra-down  # stop shared infra (volumes/data preserved)
 ```
 
 The script may be invoked by absolute path from anywhere
-(`"/Users/soroush/AIMed Project Base/AesMem/scripts/dev-stack.sh" up`); it finds the main
+(`"/Users/soroush/notari/scripts/dev-stack.sh" up`); it finds the main
 repo from its own location and the target checkout from your current directory. The only
 file it writes into the worktree is `.env`.
 
