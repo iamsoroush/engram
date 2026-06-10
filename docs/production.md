@@ -89,12 +89,12 @@ For local LAN testing over HTTP, audio capture may fall back to file input.
 Backend:
 
 ```sh
-BACKEND_APP_NAME=AesMem API
-BACKEND_CORS_ORIGINS=["https://aesmem.example.com"]
+BACKEND_APP_NAME=Notari API
+BACKEND_CORS_ORIGINS=["https://notari.example.com"]
 BACKEND_AUTH_MODE=production
 BACKEND_DATABASE_URL=postgresql+psycopg://...
 BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=aesmem-captures
+BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
 BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
 BACKEND_OBJECT_STORAGE_SECRET_KEY=...
 BACKEND_OBJECT_STORAGE_SECURE=true

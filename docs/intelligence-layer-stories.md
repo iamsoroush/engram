@@ -117,11 +117,11 @@ ai-engine 36 tests green, tsc clean):
 
 **Dev environment (docker-compose):** frontend `localhost:5183` (Vite; proxies `/api/v1` → the
 backend container); backend host **8010** → container 8000 (uvicorn `--reload` picks up backend
-edits); postgres `aesmem-postgres-1` (`aesmem/aesmem`, host 5442); minio `aesmem-minio-1`
-(`aesmem-dev`/`aesmem-dev-secret`, host 9010, bucket `aesmem-captures`); redis. **Gotchas:** the
-ai-engine Celery worker has **no autoreload** — `docker restart aesmem-ai-engine-1` after editing
+edits); postgres `notari-postgres-1` (`notari/notari`, host 5442); minio `notari-minio-1`
+(`notari-dev`/`notari-dev-secret`, host 9010, bucket `notari-captures`); redis. **Gotchas:** the
+ai-engine Celery worker has **no autoreload** — `docker restart notari-ai-engine-1` after editing
 `apps/ai_engine`; new alembic migrations only run on backend container start, so run
-`docker exec aesmem-backend-1 sh -c "cd /app && alembic upgrade head"` after adding one.
+`docker exec notari-backend-1 sh -c "cd /app && alembic upgrade head"` after adding one.
 Transcription gateway is configured (model `gemini-3.1-flash-lite`). Dev auth:
 `POST /api/v1/auth/dev-login {"persona":"doctor"}`.
 
@@ -576,7 +576,7 @@ Bugs/improvements surfaced while testing Epic E; not yet scheduled.
    with no report model (Basic, or before the first Pro report job).
 5. **Dev tooling — make both tiers testable side-by-side** (Epic A1) — **DONE (2026-06-04).**
    `ensure_dev_seed` now provisions two dev tenants — `DEV_TENANT_ID` (Pro) and
-   `DEV_TENANT_BASIC_ID` (Basic, "AesMem Demo Clinic (Basic)", own "Bita B." seed patient) — with
+   `DEV_TENANT_BASIC_ID` (Basic, "Memora Demo Clinic (Basic)", own "Bita B." seed patient) — with
    every persona a member of both. `POST /auth/dev-login` takes an optional `tier: pro|basic`
    (default `pro`); the login screen shows a **Tier · Pro / Basic** toggle. Log in to each in
    separate tabs to compare. Verified: Basic upload transcribes but dispatches **no report job**,

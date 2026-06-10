@@ -106,6 +106,6 @@ export async function exportPendingCaptures(pending: PendingCapture[], dateStamp
     });
   }
   entries.push({ name: "manifest.json", data: strBytes(JSON.stringify({ exportedAt: dateStamp, count: pending.length, captures: manifest }, null, 2)) });
-  downloadBlob(buildZip(entries), `aesmem-queued-captures-${dateStamp.slice(0, 10)}.zip`);
+  downloadBlob(buildZip(entries), `notari-queued-captures-${dateStamp.slice(0, 10)}.zip`);
   return pending.length;
 }

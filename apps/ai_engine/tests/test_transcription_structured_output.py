@@ -73,7 +73,7 @@ class StructuredTranscriptionTests(unittest.TestCase):
     def test_prompt_includes_context_and_iranian_clinic_guidance(self):
         prompt = transcription_prompt(
             {
-                "clinic": {"name": "AesMem Clinic"},
+                "clinic": {"name": "Memora Clinic"},
                 "assignedPatient": {"displayName": "Sara N."},
                 "previousTranscripts": [{"text": "Previous cheek filler note."}],
                 "textNotes": [{"text": "Prefers subtle correction."}],
@@ -82,7 +82,7 @@ class StructuredTranscriptionTests(unittest.TestCase):
 
         self.assertIn("Persian/Farsi", prompt)
         self.assertIn("Iranian national IDs", prompt)
-        self.assertIn("AesMem Clinic", prompt)
+        self.assertIn("Memora Clinic", prompt)
         self.assertIn("Previous cheek filler note.", prompt)
         self.assertIn("Prefers subtle correction.", prompt)
 

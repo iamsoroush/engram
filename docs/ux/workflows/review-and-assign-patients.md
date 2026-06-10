@@ -2,7 +2,7 @@
 
 ## User Goal
 
-Keep capturing with almost no friction while AesMem quietly saves, organizes, summarizes, and asks for help only when human judgment is required.
+Keep capturing with almost no friction while Memora quietly saves, organizes, summarizes, and asks for help only when human judgment is required.
 
 ## Entry Points
 

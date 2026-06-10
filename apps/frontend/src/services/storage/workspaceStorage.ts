@@ -1,7 +1,7 @@
 import type { CaptureItem, CaptureSession, Screen } from "../../domain/types";
 import type { CaptureDraft, StoredWorkspaceState } from "../../domain/appTypes";
 
-const WORKSPACE_STORAGE_KEY = "aesmem-active-workspace";
+const WORKSPACE_STORAGE_KEY = "notari-active-workspace";
 
 function stripVolatileCapturePreview(item: CaptureItem): CaptureItem {
   const { sourceUrl, url, ...rest } = item;

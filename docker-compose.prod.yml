@@ -2,8 +2,8 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-aesmem}
-      POSTGRES_USER: ${POSTGRES_USER:-aesmem}
+      POSTGRES_DB: ${POSTGRES_DB:-notari}
+      POSTGRES_USER: ${POSTGRES_USER:-notari}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -54,7 +54,7 @@ services:
       context: ./apps/backend
       dockerfile: Dockerfile.prod
     environment:
-      BACKEND_APP_NAME: ${BACKEND_APP_NAME:-AesMem API}
+      BACKEND_APP_NAME: ${BACKEND_APP_NAME:-Notari API}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost"]}
       BACKEND_CAPTURE_ROOT: /data/captures
       BACKEND_AUTH_MODE: ${BACKEND_AUTH_MODE:-production}
@@ -62,7 +62,7 @@ services:
       BACKEND_DATABASE_URL: ${BACKEND_DATABASE_URL:?BACKEND_DATABASE_URL is required}
       BACKEND_OBJECT_STORAGE_ENDPOINT: ${BACKEND_OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
       BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT: ${BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT:-}
-      BACKEND_OBJECT_STORAGE_BUCKET: ${BACKEND_OBJECT_STORAGE_BUCKET:-aesmem-captures}
+      BACKEND_OBJECT_STORAGE_BUCKET: ${BACKEND_OBJECT_STORAGE_BUCKET:-notari-captures}
       BACKEND_OBJECT_STORAGE_ACCESS_KEY: ${BACKEND_OBJECT_STORAGE_ACCESS_KEY:?BACKEND_OBJECT_STORAGE_ACCESS_KEY is required}
       BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:?BACKEND_OBJECT_STORAGE_SECRET_KEY is required}
       BACKEND_OBJECT_STORAGE_SECURE: ${BACKEND_OBJECT_STORAGE_SECURE:-false}
@@ -126,7 +126,7 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
-    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/aesmem-celerybeat-schedule
+    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/notari-celerybeat-schedule
 
   frontend:
     build:

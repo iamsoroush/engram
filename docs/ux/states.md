@@ -2,7 +2,7 @@
 
 ## Assistant-State Language
 
-AesMem should translate technical system work into calm assistant language.
+Memora should translate technical system work into calm assistant language.
 
 Preferred user-facing states:
 

@@ -1,6 +1,6 @@
-# AesMem
+# Notari
 
-Monorepo for AesMem, a memory layer for aesthetics clinics.
+Monorepo for Notari. Its first product, Memora, is a memory layer for aesthetics clinics.
 
 ## Apps
 
@@ -25,7 +25,7 @@ Recommended:
 
 ```sh
 git clone <repo-url>
-cd aesmem
+cd notari
 cp .env.example .env
 ```
 
@@ -107,11 +107,11 @@ cp .env.example .env
 Important production variables:
 
 ```sh
-BACKEND_APP_NAME=AesMem API
-BACKEND_CORS_ORIGINS=["https://aesmem.example.com"]
+BACKEND_APP_NAME=Notari API
+BACKEND_CORS_ORIGINS=["https://notari.example.com"]
 BACKEND_DATABASE_URL=postgresql+psycopg://...
 BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=aesmem-captures
+BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
 BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
 BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
 AI_ENGINE_INTERNAL_TOKEN=change-me

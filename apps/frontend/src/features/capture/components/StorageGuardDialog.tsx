@@ -33,7 +33,7 @@ export function StorageGuardDialog({
           </button>
         </div>
         <p className="storage-guard-copy">
-          This device is <strong>{percent}% full</strong> ({remaining} free), so AesMem paused capturing — a new capture
+          This device is <strong>{percent}% full</strong> ({remaining} free), so Memora paused capturing — a new capture
           can&rsquo;t be guaranteed to save. Export your queued captures to keep them safe, then free up space.
         </p>
         <div className="storage-guard-actions">

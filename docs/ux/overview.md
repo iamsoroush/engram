@@ -2,7 +2,7 @@
 
 ## Summary
 
-AesMem is a capture-first clinical assistant for aesthetics clinics. The UX lets authenticated clinic staff capture audio, photo, or text immediately, keep those captures safe on the device when needed, progressively evolve session report output, and review memory through the Active Session, Clinical Memory, and Search shell.
+Memora is a capture-first clinical assistant for aesthetics clinics. The UX lets authenticated clinic staff capture audio, photo, or text immediately, keep those captures safe on the device when needed, progressively evolve session report output, and review memory through the Active Session, Clinical Memory, and Search shell.
 
 The UX keeps capture first while moving long-term review toward Clinical Memory: a calm assistant surface that focuses on today's work, searchable patient memory, and only the items that need human judgment. Patient assignment remains non-blocking.
 

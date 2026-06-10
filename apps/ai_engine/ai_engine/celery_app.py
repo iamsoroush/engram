@@ -4,7 +4,7 @@ from ai_engine.config import settings
 
 
 celery_app = Celery(
-    "aesmem_ai_engine",
+    "notari_ai_engine",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
     include=["ai_engine.tasks"],

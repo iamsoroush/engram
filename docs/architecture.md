@@ -2,7 +2,7 @@
 
 ## Product Shape
 
-AesMem is currently an MVP prototype for fast clinical capture. The primary workflow is:
+Memora is currently an MVP prototype for fast clinical capture. The primary workflow is:
 
 1. Capture first.
 2. Save locally immediately.

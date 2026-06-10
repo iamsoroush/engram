@@ -208,7 +208,7 @@ scripts/dev-stack.sh up      # provision + start; prints this stack's app/API UR
 ```
 
 This uses shared Postgres + MinIO but gives your worktree its **own database** (cloned
-from the canonical `aesmem` DB, so you inherit real data to test against) and its **own
+from the canonical `notari` DB, so you inherit real data to test against) and its **own
 bucket**, on **unique host ports**. Your branch's new Alembic migrations apply on top of
 the cloned schema automatically. Stop it with `scripts/dev-stack.sh down` (add `--data`
 to also drop this worktree's database + bucket). Full details:
@@ -225,6 +225,6 @@ to also drop this worktree's database + bucket). Full details:
    `git worktree remove <path>` then `git branch -d <branch>`. The `clean` command prints
    these exact commands for the current worktree.
 
-In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `aesmem`
+In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `notari`
 stack (the clone source); the plain root `docker compose up` also still works as a
 self-contained, non-shared environment.

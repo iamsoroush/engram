@@ -1,6 +1,6 @@
 # Frontend
 
-Vite + React frontend for AesMem, a memory layer for aesthetics clinics.
+Vite + React frontend for Memora, a memory layer for aesthetics clinics.
 
 ## Runtime
 

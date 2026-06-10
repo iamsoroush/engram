@@ -271,7 +271,7 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
         for part in (
             configured_prompt if configured_prompt and configured_prompt != "Transcribe this audio." else None,
             (
-                "You are transcribing and extracting clinical identity details for AesMem, an aesthetics clinic memory system. "
+                "You are transcribing and extracting clinical identity details for Memora, an aesthetics clinic memory system. "
                 "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
                 f"{language_directive} "
                 "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
@@ -427,7 +427,7 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
     context = enrichment_context if isinstance(enrichment_context, dict) else {}
     return "\n\n".join(
         (
-            "You are a clinical photo captioner for AesMem, an aesthetics clinic memory system.",
+            "You are a clinical photo captioner for Memora, an aesthetics clinic memory system.",
             (
                 "Describe only what is clinically visible in the image in one or two sentences: the anatomical "
                 "area, observable findings (e.g. asymmetry, swelling, bruising, erythema, filler/Botox effect, "
@@ -446,7 +446,7 @@ def note_decoration_prompt(enrichment_context: dict[str, Any] | None) -> str:
     context = enrichment_context if isinstance(enrichment_context, dict) else {}
     return "\n\n".join(
         (
-            "You are cleaning up a clinician's quick free-text note for AesMem, an aesthetics clinic memory system.",
+            "You are cleaning up a clinician's quick free-text note for Memora, an aesthetics clinic memory system.",
             (
                 "Lightly decorate the note for readability: fix obvious typos, expand clinical shorthand, and "
                 "organize it into clear clinical phrasing. Preserve EVERY clinical detail, number, product, dose, "
@@ -1297,7 +1297,7 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     )
     return "\n\n".join(
         (
-            "You are AesMem, a calm clinical assistant that maintains a patient's longitudinal memory "
+            "You are Memora, a calm clinical assistant that maintains a patient's longitudinal memory "
             "for an aesthetics clinic.",
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "

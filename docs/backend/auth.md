@@ -81,7 +81,7 @@ Response:
   },
   "tenant": {
     "id": "tenant_demo",
-    "name": "AesMem Demo Clinic"
+    "name": "Memora Demo Clinic"
   },
   "memberships": [
     {

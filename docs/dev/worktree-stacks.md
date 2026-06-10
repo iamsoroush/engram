@@ -7,23 +7,23 @@ or sharing a database. This is handled by `scripts/dev-stack.sh`.
 ## Model
 
 ```text
-                ┌─────────────────────── shared infra (project: aesmem-infra) ───────────────────────┐
+                ┌─────────────────────── shared infra (project: notari-infra) ───────────────────────┐
                 │  Postgres  (host :5442)              MinIO (host :9010 api / :9011 console)         │
-                │   ├─ aesmem               (canonical / main dev data — the clone source)            │
-                │   ├─ aesmem_<slugA>       bucket aesmem-captures            (canonical)              │
-                │   └─ aesmem_<slugB>       bucket aesmem-captures-<slugA>    (mirror of canonical)    │
+                │   ├─ notari               (canonical / main dev data — the clone source)            │
+                │   ├─ notari_<slugA>       bucket notari-captures            (canonical)              │
+                │   └─ notari_<slugB>       bucket notari-captures-<slugA>    (mirror of canonical)    │
                 └────────────────────────────────────────────────────────────────────────────────────┘
                         ▲ backend only                         ▲ backend only
    ┌── main checkout ───┴──┐   ┌── worktree A ────┴──┐   ┌── worktree B ───────────┐
    │ backend  :8010        │   │ backend  :81xx       │   │ backend  :81yy          │
    │ frontend :5183        │   │ frontend :52xx       │   │ frontend :53yy          │
    │ ai-engine + redis     │   │ ai-engine + redis    │   │ ai-engine + redis       │
-   │ db = aesmem           │   │ db = aesmem_<slugA>  │   │ db = aesmem_<slugB>     │
+   │ db = notari           │   │ db = notari_<slugA>  │   │ db = notari_<slugB>     │
    └───────────────────────┘   └──────────────────────┘   └─────────────────────────┘
 ```
 
 - **Shared (one instance, heavy/stateful):** Postgres + MinIO. Defined in
-  `docker-compose.shared-infra.yml`, run as the `aesmem-infra` Compose project.
+  `docker-compose.shared-infra.yml`, run as the `notari-infra` Compose project.
 - **Per stack (cheap / under development):** backend, ai-engine, frontend, and a local
   redis. Defined in `docker-compose.app.yml`.
 - **Why only the backend joins the shared network:** the ai-engine never touches
@@ -35,16 +35,16 @@ or sharing a database. This is handled by `scripts/dev-stack.sh`.
 
 | Concern | How it's isolated |
 | --- | --- |
-| Compose network, containers, redis | Per-stack Compose project name (`aesmem_<slug>`) |
-| Database | Per-stack DB `aesmem_<slug>`, **cloned from `aesmem`** on first `up` |
-| Object storage | Per-stack bucket `aesmem-captures-<slug>`, mirrored from the canonical bucket |
+| Compose network, containers, redis | Per-stack Compose project name (`notari_<slug>`) |
+| Database | Per-stack DB `notari_<slug>`, **cloned from `notari`** on first `up` |
+| Object storage | Per-stack bucket `notari-captures-<slug>`, mirrored from the canonical bucket |
 | Host ports | `FRONTEND_PORT` / `BACKEND_PORT` auto-picked free and pinned in the worktree `.env` |
 | Shared Postgres/MinIO host ports | Fixed (5442 / 9010 / 9011) — one shared instance, so no clash |
 
 ## Inheriting data from the main database
 
 On the first `up` for a worktree, the stack's database is created by cloning the
-canonical `aesmem` database (`pg_dump … | psql`), including its `alembic_version`. So you
+canonical `notari` database (`pg_dump … | psql`), including its `alembic_version`. So you
 start with the same accounts and data you have in main, then your branch's new migrations
 apply on top via the backend's `alembic upgrade head`. Capture media is mirrored from the
 canonical bucket so inherited captures actually render.
@@ -55,10 +55,10 @@ Re-seed at any time:
 scripts/dev-stack.sh refresh   # drop + re-clone this worktree's DB and media from main, restart
 ```
 
-> The canonical `aesmem` data lives in shared infra, independent of any worktree's
+> The canonical `notari` data lives in shared infra, independent of any worktree's
 > lifecycle — tearing a worktree stack down (even with `--data`) never touches it. A git
 > **merge** moves code only; it never moves a stack's rows. After merging a branch, run
-> the main stack and its `aesmem` data is exactly as you left it, with the merged
+> the main stack and its `notari` data is exactly as you left it, with the merged
 > migrations applied.
 
 ## Commands
@@ -107,16 +107,16 @@ What `clean` removes, so nothing is left orphaned:
 
 - Containers + the stack's local volumes (redis data, node_modules).
 - The built `backend` / `ai-engine` / `frontend` images for this stack.
-- The Postgres database `aesmem_<slug>`.
-- The MinIO bucket `aesmem-captures-<slug>` **and all media objects in it**
+- The Postgres database `notari_<slug>`.
+- The MinIO bucket `notari-captures-<slug>` **and all media objects in it**
   (`mc rb --force`) — both the initial mirror and anything the stack uploaded.
 
 The local `./captures` directory (gitignored) is removed with the worktree in step 4.
-`clean` only operates on worktree stacks — it refuses to touch the canonical `aesmem`
+`clean` only operates on worktree stacks — it refuses to touch the canonical `notari`
 database/bucket or the main stack, and the shared `redis` / Postgres / MinIO base images
 are pulled (not built), so they are left intact.
 
-## One-time: seeding shared `aesmem` with your existing data
+## One-time: seeding shared `notari` with your existing data
 
 The shared Postgres starts empty. The legacy all-in-one root stack
 (`docker compose up`) and the shared infra **cannot run at the same time** — they bind
@@ -124,18 +124,18 @@ the same host ports (5442 / 9010 / 9011). So migrate your existing data in seque
 
 ```sh
 # 1. With your current root stack running, dump the main DB to a file:
-docker compose exec -T postgres pg_dump -U aesmem -d aesmem --no-owner --no-privileges > /tmp/aesmem-main.sql
+docker compose exec -T postgres pg_dump -U notari -d notari --no-owner --no-privileges > /tmp/notari-main.sql
 
 # 2. Stop the legacy root stack (frees the shared ports):
 docker compose down
 
-# 3. Start shared infra and restore into the canonical `aesmem` DB:
+# 3. Start shared infra and restore into the canonical `notari` DB:
 scripts/dev-stack.sh infra-up
-docker compose -p aesmem-infra -f docker-compose.shared-infra.yml exec -T postgres \
-  psql -q -U aesmem -d aesmem < /tmp/aesmem-main.sql
+docker compose -p notari-infra -f docker-compose.shared-infra.yml exec -T postgres \
+  psql -q -U notari -d notari < /tmp/notari-main.sql
 ```
 
-After this, `aesmem` in shared infra is the canonical source every new stack clones from,
+After this, `notari` in shared infra is the canonical source every new stack clones from,
 and you launch the main app with `scripts/dev-stack.sh up` instead of the root
 `docker compose up`. (Optional: mirror existing capture media the same way with
 `mc mirror` between the two MinIO instances, run sequentially.)

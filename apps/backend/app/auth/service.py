@@ -31,32 +31,32 @@ DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
 # (dev-login `tier` selects which one). Mirrors production, where tier is a tenant attribute.
 DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
 DEV_TENANTS = {
-    "pro": {"id": DEV_TENANT_ID, "name": "AesMem Demo Clinic", "slug": "aesmem-demo", "tier": "pro"},
-    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "AesMem Demo Clinic (Basic)", "slug": "aesmem-demo-basic", "tier": "basic"},
+    "pro": {"id": DEV_TENANT_ID, "name": "Memora Demo Clinic", "slug": "notari-demo", "tier": "pro"},
+    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memora Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic"},
 }
 
 DEV_PERSONAS = {
     "doctor": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:doctor"),
-        "email": "doctor@aesmem.local",
+        "email": "doctor@notari.local",
         "full_name": "Dr. Demo",
         "role": MembershipRole.doctor,
     },
     "assistant": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:assistant"),
-        "email": "assistant@aesmem.local",
+        "email": "assistant@notari.local",
         "full_name": "Ari Assistant",
         "role": MembershipRole.assistant,
     },
     "admin": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:admin"),
-        "email": "admin@aesmem.local",
-        "full_name": "AesMem Admin",
+        "email": "admin@notari.local",
+        "full_name": "Memora Admin",
         "role": MembershipRole.admin,
     },
     "patient-preview": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:patient-preview"),
-        "email": "patient@aesmem.local",
+        "email": "patient@notari.local",
         "full_name": "Patient Preview",
         "role": MembershipRole.patient,
     },
