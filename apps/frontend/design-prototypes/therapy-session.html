@@ -81,9 +81,33 @@
   .gen .lab .edit{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--color-text-soft);font-weight:700;font-size:.66rem;cursor:pointer;text-transform:none;letter-spacing:0}
   .gen p{margin:5px 0 0;font-size:.84rem;line-height:1.5}
   .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
-  .recap-hint{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.72rem;color:var(--teal-deep);
-    background:var(--teal-soft);border:1px solid var(--teal-border);border-radius:var(--radius-md);padding:6px 9px;margin:2px 0 8px;line-height:1.4}
-  .recap-hint b{font-weight:800}
+
+  /* "Session so far" — continuous synthesis + brief-thread coverage */
+  .sofar{background:linear-gradient(180deg,var(--teal-soft),#fff);border:1px solid var(--teal-border);border-radius:var(--radius-lg);padding:11px 13px;margin:10px 15px 6px}
+  .sofar-head{display:flex;align-items:center;gap:8px}
+  .sofar-head .sf-t{font-size:.68rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal-deep);display:flex;align-items:center;gap:7px}
+  .sofar-head .sf-t .spark svg{width:14px;height:14px;fill:var(--violet)}
+  .sofar-head .sf-toggle{margin-left:auto;font-size:.68rem;font-weight:700;color:var(--teal-deep);background:none;border:0;cursor:pointer}
+  .sf-syn{font-size:.85rem;line-height:1.5;color:var(--color-text-soft);margin-top:8px}
+  .sf-threads{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:11px}
+  .sf-lab{font-size:.58rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-muted-2);width:100%}
+  .tchip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);font-size:.74rem;font-weight:700;padding:5px 10px;border:1px solid}
+  .tchip.cov{background:var(--color-success-soft);color:var(--color-success);border-color:#cdeede}
+  .tchip.open{background:var(--color-warning-soft);color:var(--color-warning);border-color:#f3e3bf}
+  .tchip .tk{font-weight:900;font-size:.82rem;line-height:1}
+
+  /* decorated note — raw shorthand line above the cleaned prose */
+  .raw{display:flex;gap:7px;align-items:baseline;font-size:.76rem;color:var(--color-muted);margin-bottom:4px}
+  .raw .rk{font-size:.58rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--color-muted-2);flex:0 0 auto}
+  .raw .rt{font-style:italic}
+
+  /* gentle nudge — never a block */
+  .nudge{display:flex;gap:9px;align-items:center;flex-wrap:wrap;background:var(--color-warning-soft);border:1px dashed #e3c98f;border-radius:var(--radius-md);padding:10px 12px;margin:4px 15px 14px;font-size:.78rem;color:var(--color-warning);line-height:1.4}
+  .nudge b{font-weight:800}
+  .nudge .n-act{margin-left:auto;display:flex;gap:7px;flex:0 0 auto}
+  .nudge .n-btn{border:1px solid #e3c98f;background:#fff;color:var(--color-warning);font-weight:800;font-size:.72rem;border-radius:var(--radius-pill);padding:5px 11px;cursor:pointer}
+  .nudge .n-x{border:0;background:transparent;color:var(--color-warning);opacity:.7;cursor:pointer;font-weight:800;font-size:.72rem}
+
   .effects{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px}
   .chip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);font-size:.73rem;font-weight:700;padding:5px 10px;border:1px solid transparent;line-height:1}
   .chip.assign{background:var(--color-info-soft);color:var(--color-info);border-color:#d6e4ff}
@@ -153,23 +177,23 @@
 <div class="wrap">
   <div class="lede">
     <h1><span class="vbadge">Memara · Therapy</span> Session capture &amp; two-plane summary</h1>
-    <p><b>Dictation-first capture (jots + a short recap) — not session recording — private by default,
-    and a summary split into two visibility planes.</b> The therapist stays present in session; capture is
-    optional short <b>jots</b> + a <b>post-session recap</b> dictation (we deliberately do not record/
-    transcribe the whole session — cost &amp; privacy, §1.2). The system drafts a narrative summary in a
-    <b>Shareable</b> plane (progress-note-shaped, releasable) and a <b>Private</b> plane (reflections + the
-    recap transcript, therapist-only). Sharing is always an explicit act. Spec:
-    <b>redesign-therapy.md §1.2, §5.2–5.3, §7</b>.</p>
+    <p><b>A free capture stream — note-first, nothing required — continuously synthesized, private by
+    default.</b> In-session the therapist adds discreet <b>typed notes</b> (each auto-<b>decorated</b> from
+    shorthand into clean prose); audio is optional and for when they're alone. A glanceable <b>"Session so
+    far"</b> panel synthesizes as they go and tracks the <b>brief's threads (covered ✓ / open ◦)</b>. The
+    same synthesis becomes the two-plane summary — <b>Shareable</b> (releasable) and <b>Private</b>
+    (reflections + any audio transcript). Sharing is always an explicit act; a missing thread only earns a
+    gentle, dismissible nudge. Spec: <b>redesign-therapy.md §1.2, §5.2–5.3, §7</b>.</p>
   </div>
 
   <!-- FRAME 1 : CAPTURE -->
   <section>
-    <p class="frame-label">Capture · dictation-first (jots + recap) · private-by-default</p>
+    <p class="frame-label">Capture · note-first stream · "Session so far" · private-by-default</p>
     <div class="app">
       <div class="sess-head">
         <div>
           <div class="sess-title"><span class="dot"></span> Session 7 · Today 16:30</div>
-          <div class="sess-sub">2 jots · 1 recap · saved on this device</div>
+          <div class="sess-sub">2 notes · 1 audio jot · saved on this device</div>
         </div>
         <button class="mini-btn">End session</button>
       </div>
@@ -196,46 +220,70 @@
           <div class="updating"></div>
         </div>
         <div class="divider"></div>
-        <div class="feed">
-          <!-- in-session jot: short voice memo, a "don't forget" -->
-          <div class="cap audio">
-            <div class="cap-node"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-mic"/></svg></div>
-            <div class="cap-head"><span class="t">Jot · voice</span><span class="time">in-session · 16:44</span></div>
-            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:08</span></div>
-            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
-              <p class="rtl" lang="fa">خواب این هفته بد بوده — یادم بمونه دنبالش کنم.</p></div>
-            <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
-          </div>
 
-          <!-- in-session jot: typed -->
+        <!-- Session so far: continuous synthesis + live brief-thread coverage -->
+        <div class="sofar">
+          <div class="sofar-head">
+            <span class="sf-t"><span class="spark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span> Session so far</span>
+            <button class="sf-toggle">Collapse ▾</button>
+          </div>
+          <div class="sf-syn">Touched the boundary conversation with her mother (went well) and the sleep thread. Affect brighter than last session.</div>
+          <div class="sf-threads">
+            <span class="sf-lab">Brief threads</span>
+            <span class="tchip cov"><span class="tk">✓</span> Boundary conversation</span>
+            <span class="tchip cov"><span class="tk">✓</span> Sleep</span>
+            <span class="tchip open"><span class="tk">◦</span> Job ambivalence</span>
+          </div>
+        </div>
+        <div class="divider"></div>
+
+        <div class="feed">
+          <!-- decorated note: shorthand → clean clinical prose -->
           <div class="cap note">
             <div class="cap-node"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><use href="#i-note"/></svg></div>
-            <div class="cap-head"><span class="t">Jot · note</span><span class="time">in-session · 16:52</span></div>
-            <div class="gen" style="border-left-color:var(--violet)"><div class="lab"><span>Note</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
-              <p>Affect brighter than session 6.</p></div>
+            <div class="cap-head"><span class="t">Note</span><span class="time">in-session · 16:48</span></div>
+            <div class="raw"><span class="rk">you typed</span><span class="rt rtl" lang="fa">گفتگو با مادرش بهتر از تصور — خواب هنوز بد</span></div>
+            <div class="gen" style="border-left-color:var(--violet)"><div class="lab"><span class="spark" style="display:inline-flex"><svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:var(--violet)"><use href="#i-spark"/></svg></span><span>Decorated</span><span class="ai" style="color:var(--violet)">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">بیمار گزارش داد گفت‌وگو با مادرش بهتر از آنچه می‌ترسید پیش رفته است؛ خواب همچنان مختل است.</p></div>
             <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
           </div>
 
-          <!-- the primary capture: a short post-session recap dictation, brief-guided -->
-          <div class="cap audio">
-            <div class="cap-node"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-mic"/></svg></div>
-            <div class="cap-head"><span class="t">Post-session recap</span><span class="time">17:18 · the primary capture</span></div>
-            <div class="recap-hint"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" style="stroke:var(--teal-deep)"><use href="#i-spark"/></svg> <b>From the brief — cover?</b> boundary conversation · sleep · the job ambivalence</div>
-            <div class="player"><span class="play">▶</span><span class="bar" style="background:linear-gradient(90deg,var(--teal) 100%,var(--color-border) 100%)"></span><span>1:48</span></div>
-            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
-              <p class="rtl" lang="fa">امروز درباره‌ی گفت‌وگو با مادرش حرف زدیم؛ بهتر از انتظارش پیش رفته بود. خواب هنوز مشکل‌داره. برنامه: یک روال آرام‌سازی پیش از خواب.</p></div>
+          <!-- decorated note 2 -->
+          <div class="cap note">
+            <div class="cap-node"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><use href="#i-note"/></svg></div>
+            <div class="cap-head"><span class="t">Note</span><span class="time">in-session · 16:55</span></div>
+            <div class="raw"><span class="rk">you typed</span><span class="rt">affect brighter than s6</span></div>
+            <div class="gen" style="border-left-color:var(--violet)"><div class="lab"><span class="spark" style="display:inline-flex"><svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:var(--violet)"><use href="#i-spark"/></svg></span><span>Decorated</span><span class="ai" style="color:var(--violet)">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
+              <p>Affect noticeably brighter than session 6.</p></div>
             <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
           </div>
+
+          <!-- optional audio jot (secondary) -->
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Audio jot</span><span class="time">in-session · 17:01 · optional</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>0:08</span></div>
+            <div class="gen"><div class="lab"><span>Transcript</span><span class="ai">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">یادم باشه دفعه‌ی بعد روی موضوع کار بیشتر بمونیم.</p></div>
+            <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
+          </div>
+        </div>
+
+        <!-- gentle nudge — a brief thread left uncovered; never a block -->
+        <div class="nudge">
+          <svg class="ic" width="16" height="16" viewBox="0 0 24 24" style="flex:0 0 auto"><use href="#i-spark"/></svg>
+          <div><b>Job ambivalence</b> was on the brief but isn't captured yet — add a note, or a quick recap later?</div>
+          <div class="n-act"><button class="n-btn">Add a note</button><button class="n-x">Dismiss</button></div>
         </div>
       </div>
 
       <div class="capbar">
-        <button class="capbtn primary"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-mic"/></svg> Recap</button>
-        <button class="capbtn"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-note"/></svg> Jot</button>
+        <button class="capbtn primary"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-note"/></svg> Note</button>
+        <button class="capbtn"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-mic"/></svg> Audio</button>
         <button class="capbtn faint"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-cam"/></svg> Photo</button>
       </div>
     </div>
-    <p class="frame-note"><b>No "record the session" button.</b> Capture is short <b>jots</b> (seconds, voice or typed) during, and one <b>Recap</b> dictation after — <b>brief-guided</b> (the brief's open threads prompt the recap). ~1–2 min of audio vs. ~24, and the client's raw speech is never stored (§1.2). Every capture is <b>Private</b>; matching still runs; Persian renders RTL.</p>
+    <p class="frame-note"><b>Note-first, nothing required.</b> In-session the therapist adds discreet typed <b>notes</b>, each <b>decorated</b> from shorthand into clean prose (raw kept + editable); audio is optional. <b>"Session so far"</b> synthesizes live and tracks the brief's threads (<b>Boundary ✓ · Sleep ✓ · Job ◦ open</b>). A left-open thread earns only a <b>dismissible nudge</b> — never a block (§1.2). Every capture is Private; Persian renders RTL.</p>
   </section>
 
   <!-- FRAME 2 : SUMMARY — SHAREABLE PLANE -->
@@ -281,21 +329,21 @@
         </div>
         <div class="priv-head">
           <div class="lock"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-lock"/></svg></div>
-          <div><div class="pt">Private plane · only you</div><div class="ps">Your process notes &amp; your recap transcript — separate from the record, like a psychotherapy note.</div></div>
+          <div><div class="pt">Private plane · only you</div><div class="ps">Your process notes &amp; any audio transcript — separate from the record, like a psychotherapy note.</div></div>
         </div>
         <span class="nevershare"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" style="stroke:var(--priv)"><use href="#i-lock"/></svg> Never included in a release or export</span>
         <div class="priv-body">
           <div class="priv-sec"><h3><svg class="ic" width="12" height="12" viewBox="0 0 24 24" style="stroke:var(--priv)"><use href="#i-spark"/></svg> Reflections &amp; hypotheses</h3><p>The boundary win seems to have shifted something — she's testing whether warmth and limits can coexist. Hypothesis: the sleep disruption tracks anticipatory guilt after asserting herself, not the conflict itself. Worth gently naming next time. Keep watching SI; today felt genuinely lighter, but the brightness can mask.</p></div>
-          <div class="priv-sec"><h3>Recap transcript</h3>
+          <div class="priv-sec"><h3>Audio transcript <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--color-muted)">· if any (this session: one 0:08 jot)</span></h3>
             <div class="transcript">
-              <div class="tx-top"><span>Recap dictation · 1:48 · your words</span><span class="retain">Retention: 90 days · change</span></div>
-              <p class="rtl" lang="fa">امروز درباره‌ی گفت‌وگو با مادرش حرف زدیم؛ بهتر از انتظارش پیش رفته بود. خواب هنوز مشکل‌داره؛ برنامه یک روال آرام‌سازی پیش از خواب…</p>
+              <div class="tx-top"><span>Audio jot · 0:08 · your words</span><span class="retain">Retention: 90 days · change</span></div>
+              <p class="rtl" lang="fa">یادم باشه دفعه‌ی بعد روی موضوع کار بیشتر بمونیم.</p>
             </div>
           </div>
         </div>
       </div>
     </div>
-    <p class="frame-note">The private plane is visually distinct (the <b>lock/indigo</b> accent) and structurally walled: reflections + the <b>recap transcript</b> (the therapist's own dictation — there is no whole-session verbatim) with a <b>retention control</b> (E2). It is <b>never</b> readable by a patient payload or export — mirroring the HIPAA psychotherapy-note rule by construction (research §4.1).</p>
+    <p class="frame-note">The private plane is visually distinct (the <b>lock/indigo</b> accent) and structurally walled: reflections + <b>any audio transcript</b> (only if the therapist recorded — many sessions are notes-only; never a whole-session verbatim) with a <b>retention control</b> (E2). It is <b>never</b> readable by a patient payload or export — mirroring the HIPAA psychotherapy-note rule by construction (research §4.1).</p>
   </section>
 
 </div>

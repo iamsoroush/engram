@@ -32,37 +32,50 @@ Three structural commitments distinguish therapy from aesthetics:
   and exports draw *only* from the shareable plane. This is built into the model, not a settings toggle.
 - **Risk/safety is first-class memory** — persistent, dated, clinician-confirmed, surfaced at the top of
   the brief. The one thing a clinician must never walk in not knowing.
-- **Dictation-first capture — *not* session recording.** The therapist stays **present** in session; the
-  product captures a short **post-session recap dictation** (1–2 min, optionally guided by the brief's open
-  threads) plus optional **in-session jots** (a few seconds, voice or text). We deliberately do **not**
-  record or transcribe the whole session — see §1.2.
+- **Note-first, free-stream capture — *not* session recording, *nothing required*.** The therapist stays
+  **present**; capture is a free stream of optional items — **typed notes in-session** (auto-decorated),
+  **audio when alone** — that the system **continuously synthesizes**. The whole session is never recorded;
+  nothing is forced — see §1.2.
 
 ### 1.1 Screen inventory (four surfaces)
 
 | # | Surface | When | Role |
 | --- | --- | --- | --- |
 | 1 | **Pre-session brief** (§5.1) | before | the *distillation* — what you need to walk in |
-| 2 | **Active session** (§5.2–5.3) | during/after | capture (jots + recap) + the two-plane summary |
+| 2 | **Active session** (§5.2–5.3) | during/after | capture (notes + optional audio) + "Session so far" + the two-plane summary |
 | 3 | **Past-session view** | anytime | a prior session's summary, read-only (surface 2 in read mode) |
 | 4 | **Client memory / history** (§5.4) | anytime | the full *archive* — longitudinal summary + session timeline |
 
 The **brief is the distillation; history is the archive.** The brief also carries a compact **arc strip**
 (a mini-timeline) so the longitudinal context is present at the doorway without opening history (§5.1).
 
-### 1.2 Capture model & cost/privacy rationale (the corrected core)
+### 1.2 Capture model (the corrected core): a free stream, note-first, continuously synthesized
 
-Aesthetics Pro capture is **dictated audio** (the doctor dictates; they don't record the procedure).
-Therapy mirrors this: **jots + a short recap dictation, never continuous session recording.** *Why this,
-not ambient full-session capture:*
+Capture is a **stream of optional captures** — the therapist just adds things; the system does the rest
+(capture-first DNA, foundation §2). **Nothing is ever required** — not a recap, not a format, not a field.
+The system **continuously synthesizes** a session summary from whatever exists (three terse notes → a
+summary from three notes; add audio → richer). Capture types, by how they fit the *moment*:
 
-- **Cost.** ~24 min of session audio through a multimodal LLM is ≈40–50k input tokens **per session**, every
-  session, across a caseload; a 1–2 min recap is ≈3–4k — an order of magnitude cheaper.
+- **Note (typed) — the in-session primary.** Mid-session the therapist is *with* the client; a discreet
+  **typed note** is the natural tool (you can't narrate an audio jot aloud in the room without breaking it).
+  Each note is **decorated** — the therapist types shorthand, the `note_decoration` capability cleans it
+  into clinical prose, raw kept underneath + editable. *"bndry convo w mother — better than feared"* →
+  *"Client reported the boundary conversation with her mother went better than she feared."*
+- **Audio — secondary / after.** Natural when the therapist is *alone*: an optional **post-session recap**
+  dictation, or a between-session voice jot. Never mid-session-primary, never required.
+- **Photo — rare.** Therapy isn't visual.
+
+*Why note-first + no full-session recording (cost + privacy):*
+
+- **Cost.** ~24 min of session audio through a multimodal LLM is ≈40–50k input tokens **per session**; a
+  short note is a tiny fraction, and a 1–2 min recap ≈3–4k. Note-first is the **cheapest** input there is.
 - **Privacy.** A verbatim transcript of the client's most sensitive disclosures is the single worst object
-  to store in a stigma-sensitive market. A *therapist's recap* is already filtered through clinical
-  judgment — it is their words, not the client's raw speech. (Mirrors Eleos's "ambient, not stored" stance,
-  research §3–4.)
-- **Workflow fit.** Therapists already write a note after session; a 2-min dictation replacing 10-min typing
-  is the win — and the **brief's open threads pre-structure the recap**, so it's fast.
+  to store in a stigma-sensitive market. Notes and a therapist recap are **already filtered through clinical
+  judgment** — their words, not the client's raw speech. (Mirrors Eleos's "ambient, not stored", research §3–4.)
+
+**Two surfaces fall out of "continuous synthesis":** mid-session it's the **"Session so far"** panel — a
+glanceable running synthesis that also tracks the **brief's threads as covered / open** (live agenda); after
+session the *same* synthesis is the **two-plane summary** (§5.3). One synthesis, two temporal views.
 
 **Ambient full-session capture is explicitly out of MVP** — a possible future, consent-gated, opt-in mode
 for clinics that want it and accept the cost, never the default.
@@ -79,10 +92,10 @@ Grouped by purpose. Build-status is a planning estimate (foundation §3): `(exis
 - **A1. Client memory** — longitudinal **summary + history**, therapy-shaped: *arc position*, *recurring
   themes*, *risk timeline*, *qualitative trajectory* (improving/stuck/worsening, derived from session
   memory — no formal instrument). Reuses the patient-memory artifact `(modify — therapy prompt-shaping)`.
-- **A2. Capture-first sessions** — **dictation-first** (jots + recap, §1.2); capture never requires picking
+- **A2. Capture-first sessions** — **note-first free stream** (§1.2); capture never requires picking
   a client; AI matching catches up, defaulting to the *scheduled* client `(modify)`.
-- **A3. Transcription** (of dictation, not full sessions) `(exists — in therapy capability set)` · **A4. AI
-  client matching + out-of-context** `(exists)`.
+- **A3. Transcription** (of jots/recap, not full sessions) `(exists)` · **note decoration** (shorthand →
+  clinical prose) `(modify — mock today)` · **A4. AI client matching + out-of-context** `(exists)`.
 - **A5. Smart search over memory** — Persian-aware, multi-field `(modify)`.
 
 ### B. The session loop — the signature
@@ -90,11 +103,14 @@ Grouped by purpose. Build-status is a planning estimate (foundation §3): `(exis
 - **B1. Pre-session brief** — *the front door.* One screen before the client walks in: **arc strip
   (mini-timeline) → safety/risk → arc position → recurring themes → since last time → today's prompt.**
   Built on A1 `(new)`.
-- **B2. In/post-session capture** — **dictation-first, private-by-default**: optional in-session **jots** +
-  a short **post-session recap** dictation (brief-guided). **No continuous session recording** (§1.2) `(modify)`.
-- **B3. Narrative session summary, two planes** — a **shareable** progress-note-shaped summary and a
-  **private** reflections + *recap*-transcript layer; risk surfaced and dated. Default narrative format is
-  **DAP-leaning**, with a quiet format switch (DAP / SOAP / BIRP) `(new — structured synthesis behind narrative)`.
+- **B2. Capture stream** — a free, **private-by-default** stream of optional captures: **note (typed,
+  decorated) primary in-session**, **audio (recap/jot) secondary/after**, photo rare. **Nothing is required;**
+  the system synthesizes from whatever's there (§1.2). `(modify)`
+- **B2a. "Session so far"** — a glanceable, collapsible mid-session synthesis that also tracks the **brief's
+  threads as covered / open** (live agenda). It is the two-plane synthesis (B3) viewed mid-session `(new)`.
+- **B3. Narrative session summary, two planes** — the same synthesis after session: a **shareable**
+  progress-note-shaped summary and a **private** reflections + audio-transcript layer; risk surfaced and
+  dated. Default format **DAP-leaning**, with a quiet switch (DAP / SOAP / BIRP) `(new — structured synthesis behind narrative)`.
 
 ### C. The clinical thread — continuity
 
@@ -178,24 +194,26 @@ BEFORE (in the doorway, ~60s)
     5 Today's prompt — one suggested opening, dismissible
   → walks in oriented, no chart-digging
 
-DURING
-  Presence, not recording. Optional short in-session JOT (voice memo of a few
-  seconds, or a typed note) only for a "must-not-forget" item. (Private-by-default.)
+DURING (presence, not recording — nothing required)
+  Discreet typed NOTES as needed → each auto-DECORATED (shorthand → clean prose).
+  Glanceable "SESSION SO FAR" panel: a running synthesis + the brief's threads
+  shown COVERED ✓ / OPEN ◦ — a live agenda. Audio jot only if natural. All private.
 
-AFTER (post-session, ~1-2 min)
-  Dictate a short RECAP — guided by the brief's open threads ("cover the boundary
-  conversation?"). No whole-session transcript exists (§1.2).
-  → System drafts the NARRATIVE SUMMARY in two planes:
+AFTER (optional, when alone)
+  Optionally add a short audio RECAP — or just end; the summary is already built
+  from the notes. If a brief thread was left uncovered, a GENTLE NUDGE offers
+  "add a note / recap?" — dismissible, never blocking.
+  → The continuous synthesis is the NARRATIVE SUMMARY in two planes:
       • SHAREABLE (DAP-leaning): what happened, response, plan — releasable
-      • PRIVATE: reflections, hypotheses, the RECAP transcript — therapist-only
+      • PRIVATE: reflections, hypotheses, any audio transcript — therapist-only
   Therapist reviews → edits → (optionally) RELEASES the shareable plane to the client.
   Risk, if present, is confirmed + dated here.
   → MEMORY UPDATES: summary, history, themes, arc, trajectory, treatment thread.
 ```
 
 **First session with a new client** is a variant: no prior memory → the brief shows the **intake context**
-(reason for referral, consent state) instead of an arc; the recap + summary seed memory; the therapist sets
-the initial **treatment thread**.
+(reason for referral, consent state) instead of an arc; the captures + summary seed memory; the therapist
+sets the initial **treatment thread**.
 
 ### 4.2 Receptionist — intake & the container
 
@@ -255,21 +273,24 @@ read-only synthesis; its primary action is **Start session** (→ 5.2).
 
 ### 5.2 In/post-session capture — `therapy-session.html`
 
-Reuses the capture surface (`redesign-capture-surface.md`), therapy-shaped. **Dictation-first, not session
-recording** (§1.2) — the two capture moments are *jots* and a *recap*:
+A **free capture stream, note-first, continuously synthesized** (§1.2). Nothing is required.
 
-- **Capture bar:** **Recap** (record a short post-session dictation) primary, **Jot** (a few-second voice
-  memo or typed note) secondary, **Photo** rare (de-emphasized — therapy is not visual). A persistent
-  `Capturing for: <client> · Session N` cue. **No "recording the session" affordance** by default.
-- **Brief-guided recap:** when the therapist records the recap, the surface shows the **open threads from
-  the brief** as gentle prompts ("cover: the boundary conversation? sleep?") so the dictation is fast and
-  structured — the brief's exit becomes the recap's checklist.
-- **Private-by-default banner:** every capture lands in the **private plane**; a calm line states
-  "Captures are private to you until you release a summary." No patient sees raw captures, ever (E2).
-- **Captures tab:** the short feed (recap + jots, with their transcripts), inline **Edit** on generated
-  text, RTL-on-Persian. No before/after, no treatment-item extraction (aesthetics-only).
-- **Matching** still runs (A4): assignment chips, out-of-context handling — identical mechanics, calmer copy.
-  Capture is **never gated by the brief** (§4.0); matching defaults to the scheduled client.
+- **Capture bar (note-first):** **Note** primary (a discreet typed jot — the in-session tool), **Audio**
+  secondary (recap/voice jot, natural when alone), **Photo** faint. A persistent
+  `Capturing for: <client> · Session N` cue, and a private-by-default line. **No "record the session"
+  affordance.**
+- **Decorated notes:** the therapist types **shorthand**; each note shows the **`✨ decorated`** clinical
+  prose with the **raw text kept underneath + inline Edit** (the `note_decoration` capability). Low effort
+  in, clean text out — and the cheapest possible input.
+- **"Session so far" panel** (B2a) — a collapsible strip at the top of the Captures tab: a one-line
+  **running synthesis** (`✨`) + the **brief's threads as chips, covered ✓ / open ◦** (a live agenda the
+  therapist can glance at without leaving presence). It's the two-plane synthesis (§5.3) viewed mid-session.
+- **Gentle nudge, never a block:** if a brief thread is left **open** at session end (or the session looks
+  thin), a dismissible nudge offers *"Job ambivalence was on the brief but not captured — add a note or a
+  quick recap?"* The therapist can always ignore it; nothing is enforced.
+- **Private-by-default:** every capture lands in the **private plane**; no patient sees raw captures, ever (E2).
+- **Matching** still runs (A4): assignment chips, out-of-context handling. Capture is **never gated by the
+  brief** (§4.0); matching defaults to the scheduled client. RTL-on-Persian; no before/after (aesthetics-only).
 
 ### 5.3 Narrative session summary, two planes — `therapy-session.html` (Summary tab)
 
@@ -280,10 +301,10 @@ The therapy analogue of the aesthetics "Live report," restructured around the **
 - **Shareable plane** — narrative, progress-note-shaped, **releasable**. DAP default sections:
   **Data** (what the client reported + observable) · **Assessment** (clinical impression, progress vs. the
   treatment thread, risk status) · **Plan** (next focus, homework, follow-up). Reads like prose, not a form.
-- **Private plane** — the therapist's **reflections/hypotheses** + the **recap (and jot) transcript**
-  (most-private, collapsible, retention-controlled). There is **no whole-session verbatim transcript** —
-  the most-private object is the therapist's own dictation (§1.2). Visually distinct (private/lock accent);
-  **never exportable to a patient payload**.
+- **Private plane** — the therapist's **reflections/hypotheses** + **any audio transcript** (a recap/jot, if
+  the therapist recorded one; many sessions are notes-only and have none) — most-private, collapsible,
+  retention-controlled. There is **no whole-session verbatim transcript** (§1.2). Visually distinct
+  (private/lock accent); **never exportable to a patient payload**.
 - **Release control** — an explicit **Release to client** action on the shareable plane only; until pressed,
   the patient surface shows nothing for this session. A released summary shows a `Released <date>` badge;
   re-release after edits is explicit.
@@ -339,9 +360,13 @@ Personas: **TH** therapist · **RC** receptionist · **PT** patient · **AS** as
 
 ### Capture & summary (B2/B3, E1/E2)
 
-- **[TH] (modify)** As a therapist, I want to **capture by a short jot or recap dictation — never a
-  whole-session recording**, so it's present, cheap, and private (§1.2). *Accept:* Recap + Jot affordances;
-  no continuous-record control by default; recap is brief-guided.
+- **[TH] (modify)** As a therapist, I want to **capture with discreet typed notes (auto-decorated) plus
+  optional audio — never a whole-session recording, and never forced**, so it's present, cheap, and private
+  (§1.2). *Accept:* Note primary / Audio secondary; notes decorated (raw kept + editable); no
+  continuous-record control; the system synthesizes from whatever's captured.
+- **[TH] (new)** As a therapist, I want a **"Session so far" panel that tracks the brief's threads as
+  covered / open**, so I see my agenda live without leaving presence. *Accept:* collapsible; running
+  synthesis (`✨`); per-thread covered ✓ / open ◦; a left-open thread earns a dismissible nudge, never a block.
 - **[TH] (modify)** As a therapist, I want **capture that never makes me pick a client first**, so it never
   interrupts presence. *Accept:* one tap to record unassigned; matching catches up, defaulting to the
   scheduled client; works offline; **never gated by the brief** (§4.0).
@@ -403,21 +428,21 @@ Personas: **TH** therapist · **RC** receptionist · **PT** patient · **AS** as
 ## 7. Privacy model (the structural spine) — E1/E2
 
 ```text
-   capture (NOT the session):       ┌──────────────────── SESSION ────────────────────┐
-   • in-session JOTS                │   PRIVATE PLANE                 SHAREABLE PLANE  │
-   • post-session RECAP dictation ──┼─► reflections, hypotheses, ───► narrative summary│
-   (recap transcript = most-private,│   recap transcript              (DAP/SOAP/BIRP)  │
-    E2 — no whole-session verbatim) └───────────┬──────────────────────────┬───────────┘
-                                                │ therapist-only           │ therapist edits
-                                                ▼                          ▼ + explicit RELEASE
-                                          (never exported)        patient surface / export
+   capture stream (NOT the session): ┌──────────────────── SESSION ────────────────────┐
+   • typed NOTES (decorated)         │   PRIVATE PLANE                 SHAREABLE PLANE  │
+   • optional AUDIO (recap/jot) ─────┼─► reflections, hypotheses, ───► narrative summary│
+   (audio transcript, if any, =      │   audio transcript (if any)     (DAP/SOAP/BIRP)  │
+    most-private, E2 — no full        └───────────┬──────────────────────────┬───────────┘
+    session verbatim)                            │ therapist-only           │ therapist edits
+                                                  ▼                          ▼ + explicit RELEASE
+                                            (never exported)        patient surface / export
    who sees what:
      Therapist  → both planes      Assistant → shareable only      Receptionist → neither (container only)
      Patient    → only RELEASED shareable summaries
 ```
 
 Invariants: there is **no whole-session verbatim transcript** to begin with (§1.2); a patient payload or
-export **never** reads the private plane or the recap transcript; **release is always an explicit therapist
+export **never** reads the private plane or any audio transcript; **release is always an explicit therapist
 act**; **risk flags are clinician-confirmed and dated**; consent state gates the patient surface. These
 mirror the HIPAA psychotherapy-note rule **by construction** (research §4.1).
 
@@ -439,17 +464,18 @@ Reuse [states.md](states.md) + the memory-refresh states in `patient-memory-stat
 
 - `therapy-pre-session-brief.html` — the signature surface (§5.1): arc strip, risk banner, arc position,
   recurring themes, qualitative trajectory, prompt, and the AI-down fallback.
-- `therapy-session.html` — **dictation-first** capture (jots + recap, private-by-default) + the two-plane
-  narrative summary with the Release control (§5.2–5.3).
+- `therapy-session.html` — **note-first capture stream** (decorated notes, the "Session so far"
+  thread-coverage panel, optional audio, private-by-default) plus the two-plane narrative summary with the
+  Release control (§5.2–5.3).
 - `therapy-intake-patient.html` — receptionist intake/consent (the privacy wall) + the privacy-gated patient
   surface (§5.5).
 
 ## 10. Open questions (for human review)
 
 1. **Treatment thread depth** — full goals/objectives/interventions, or just "current focus" for v1? (Proposed: current focus + light goals.)
-2. **Recap discipline** — do we *require* a post-session recap to close a session, or allow jots-only? (Proposed: recap encouraged, not forced; jots-only still produces a thin summary.)
+2. **Nudge sensitivity** — *nothing is required*; the system only nudges when something looks missing (a brief thread left open, a thin session). How eager should that nudge be, and on which signals? (Proposed: quiet, end-of-session, brief-thread-driven, always dismissible.)
 3. **Assistant persona** — include at v1, or therapist+receptionist only? (Proposed: design the wall now, ship AS later.)
 4. **Risk detection assist** — how forward-leaning should AI be in *suggesting* a risk flag vs. staying silent until the clinician raises it? (Proposed: gentle suggestion, clinician-confirmed.)
-5. **Recap retention** — default retention window for the most-private recap audio/transcript (E2). (Proposed: short default, e.g. 90 days, configurable.)
-6. **Ambient full capture (post-MVP)** — do we ever offer opt-in whole-session capture given the cost/privacy cost (§1.2), or stay dictation-only? (Proposed: revisit only on real demand from a design partner.)
+5. **Audio retention window** — when a therapist *does* record audio (recap/jot), how long do we keep the raw audio + verbatim transcript (the most-private object, E2) before auto-deleting and keeping only the derived summary? (Proposed: short default, e.g. 30–90 days, configurable; many sessions are notes-only with no audio at all.)
+6. **Ambient full capture (post-MVP)** — do we ever offer opt-in whole-session capture given the cost/privacy cost (§1.2), or stay note/dictation-only? (Proposed: revisit only on real demand from a design partner.)
 7. **MBC at launch (post-MVP)** — when MBC lands, PHQ-9 + GAD-7 only or a small library? Persian validation/licensing to confirm.
