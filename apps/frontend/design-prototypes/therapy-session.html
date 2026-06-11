@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara for Therapy — Session capture + two-plane summary</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --color-danger:#b42318; --color-danger-soft:#fdeceb; --color-danger-border:#f4cdc9;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --teal:#0d8b8b; --teal-soft:#e4f5f4; --teal-border:#bfe6e4; --teal-deep:#0a6f6f;
+    /* private plane accent — slate/indigo "lock" tone */
+    --priv:#3f3d8c; --priv-soft:#edecf7; --priv-border:#d7d5ee;
+    --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:var(--color-page);color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:36px 22px 70px}
+  .wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:42px}
+  h1,h2,h3,h4,p{margin:0}
+  .lede h1{font-size:1.3rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .vbadge{font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal-deep);
+    background:var(--teal-soft);border:1px solid var(--teal-border);border-radius:var(--radius-pill);padding:3px 9px}
+  .lede p{font-size:.86rem;color:var(--color-muted);line-height:1.55;margin-top:9px}
+  .frame-label{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:9px 2px 0;line-height:1.5}.frame-note b{color:var(--color-text-soft)}
+  .app{background:var(--color-page);border:1px solid var(--color-border);border-radius:18px;padding:16px;box-shadow:var(--shadow-card)}
+  .ic{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+
+  /* head + client row */
+  .sess-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:10px}
+  .sess-title{font-size:1.05rem;font-weight:800;display:flex;align-items:center;gap:9px}
+  .sess-sub{font-size:.74rem;color:var(--color-muted);margin-top:3px}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--color-success);box-shadow:0 0 0 3px var(--color-success-soft);display:inline-block}
+  .mini-btn{border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-pill);font-size:.75rem;font-weight:600;color:var(--color-text-soft);padding:6px 12px;cursor:pointer;white-space:nowrap}
+  .client-row{display:flex;align-items:center;gap:11px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:11px 13px;margin-bottom:11px}
+  .av{width:36px;height:36px;border-radius:50%;background:var(--teal-soft);color:var(--teal-deep);display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  .client-row .name{font-weight:700}.client-row .meta{font-size:.73rem;color:var(--color-muted);margin-top:1px}
+  .grow{flex:1}.link{color:var(--teal-deep);font-weight:700;cursor:pointer}
+
+  /* privacy banner — present on capture + summary */
+  .privacy-banner{display:flex;align-items:center;gap:9px;background:var(--priv-soft);border:1px solid var(--priv-border);border-radius:var(--radius-md);padding:9px 12px;margin-bottom:11px;font-size:.78rem;color:var(--priv);line-height:1.4}
+  .privacy-banner svg{flex:0 0 auto}.privacy-banner b{font-weight:800}
+
+  /* card + header tabs */
+  .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .card-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:13px 15px}
+  .card-top h2{font-size:.95rem;font-weight:800;margin:0;display:flex;align-items:center;gap:8px}
+  .plan-tag{font-size:.6rem;font-weight:800;letter-spacing:.05em;color:var(--teal-deep);background:var(--teal-soft);border:1px solid var(--teal-border);border-radius:var(--radius-pill);padding:3px 8px;text-transform:uppercase}
+  .updating{justify-self:end;display:flex;align-items:center;gap:7px;font-size:.72rem;color:var(--color-muted)}
+  .spin{width:12px;height:12px;border-radius:50%;border:2px solid var(--color-border-strong);border-top-color:var(--teal);animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .tabs{justify-self:center;display:inline-flex;gap:4px;background:#eef2f9;border-radius:var(--radius-pill);padding:4px}
+  .tab{border:0;background:transparent;border-radius:var(--radius-pill);font-size:.8rem;font-weight:600;color:var(--color-muted);padding:6px 14px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .tab.active{background:#fff;color:var(--teal-deep);box-shadow:0 1px 3px rgb(8 13 45 / 8%)}
+  .tab.active.priv{color:var(--priv)}
+  .divider{height:1px;background:var(--color-border)}
+
+  /* capture feed */
+  .feed{padding:6px 15px 14px}
+  .cap{position:relative;padding:13px 0 13px 40px;border-left:2px solid var(--color-border);margin-left:13px}
+  .cap-node{position:absolute;left:-15px;top:11px;width:28px;height:28px;border-radius:50%;background:#fff;border:1.5px solid var(--teal);color:var(--teal-deep);display:flex;align-items:center;justify-content:center}
+  .cap.note .cap-node{border-color:var(--violet);color:var(--violet)}
+  .cap-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  .cap-head .t{font-weight:700;font-size:.85rem}.cap-head .time{font-size:.72rem;color:var(--color-muted);margin-left:auto}
+  .player{display:flex;align-items:center;gap:10px;background:var(--color-surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:6px 11px;font-size:.74rem;color:var(--color-muted)}
+  .player .play{width:21px;height:21px;border-radius:50%;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.55rem;flex:0 0 auto}
+  .bar{flex:1;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--teal) 30%,var(--color-border) 30%)}
+  .gen{margin-top:8px;border-left:3px solid var(--teal);background:var(--color-surface-soft);border-radius:0 var(--radius-md) var(--radius-md) 0;padding:8px 11px}
+  .gen .lab{font-size:.6rem;font-weight:800;letter-spacing:.06em;color:var(--color-muted);text-transform:uppercase;display:flex;align-items:center;gap:8px}
+  .gen .lab .ai{color:var(--teal-deep)}
+  .gen .lab .edit{margin-left:auto;display:inline-flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--color-text-soft);font-weight:700;font-size:.66rem;cursor:pointer;text-transform:none;letter-spacing:0}
+  .gen p{margin:5px 0 0;font-size:.84rem;line-height:1.5}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .effects{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:9px}
+  .chip{display:inline-flex;align-items:center;gap:6px;border-radius:var(--radius-pill);font-size:.73rem;font-weight:700;padding:5px 10px;border:1px solid transparent;line-height:1}
+  .chip.assign{background:var(--color-info-soft);color:var(--color-info);border-color:#d6e4ff}
+  .chip.priv{background:var(--priv-soft);color:var(--priv);border-color:var(--priv-border)}
+  .chip.processing{background:#eef2f9;color:var(--color-muted);border-color:var(--color-border)}
+  .shimmer{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--color-muted);opacity:.5;animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.25}50%{opacity:.7}}
+
+  /* capture footer */
+  .capbar{display:flex;gap:9px;margin-top:13px}
+  .capbtn{flex:1;border:1px solid var(--color-border);background:#fff;border-radius:var(--radius-md);padding:11px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:.84rem;font-weight:700;color:var(--color-text-soft);cursor:pointer}
+  .capbtn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+  .capbtn.faint{opacity:.62;font-weight:600}
+
+  /* summary document */
+  .summ-meta{padding:10px 15px;font-size:.73rem;color:var(--color-muted);display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--color-border);flex-wrap:wrap}
+  .fmt{display:inline-flex;gap:3px;background:#eef2f9;border-radius:var(--radius-pill);padding:3px}
+  .fmt button{border:0;background:transparent;border-radius:var(--radius-pill);font-size:.68rem;font-weight:700;color:var(--color-muted);padding:4px 9px;cursor:pointer}
+  .fmt button.on{background:#fff;color:var(--teal-deep);box-shadow:0 1px 2px rgb(8 13 45 / 8%)}
+  .summ-body{padding:6px 16px 8px}
+  .summ-sec{padding:13px 0;border-top:1px solid var(--color-border)}.summ-sec:first-child{border-top:0}
+  .summ-sec h3{margin:0 0 5px;font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-soft);display:flex;align-items:center;gap:7px}
+  .summ-sec p{margin:0;font-size:.88rem;line-height:1.58;color:var(--color-text-soft)}
+  .risk-inline{font-size:.68rem;font-weight:800;color:var(--color-danger);background:var(--color-danger-soft);border:1px solid var(--color-danger-border);border-radius:var(--radius-pill);padding:2px 8px}
+
+  /* release bar */
+  .release-bar{display:flex;align-items:center;gap:11px;padding:13px 15px;background:var(--teal-soft);border-top:1px solid var(--teal-border)}
+  .release-bar .rb-txt{font-size:.78rem;color:var(--teal-deep);line-height:1.4}.release-bar .rb-txt b{font-weight:800}
+  .release-btn{margin-left:auto;border:0;background:var(--teal);color:#fff;font-weight:800;font-size:.82rem;border-radius:var(--radius-md);padding:10px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;box-shadow:0 5px 14px rgb(13 139 139 / 26%)}
+  .released-badge{margin-left:auto;font-size:.74rem;font-weight:800;color:var(--color-success);background:var(--color-success-soft);border:1px solid #cdeede;border-radius:var(--radius-pill);padding:6px 12px;display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+
+  /* private plane */
+  .priv-head{display:flex;align-items:center;gap:10px;padding:13px 15px;background:var(--priv-soft);border-bottom:1px solid var(--priv-border)}
+  .priv-head .lock{width:30px;height:30px;border-radius:9px;background:var(--priv);color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .priv-head .pt{font-weight:800;font-size:.86rem;color:var(--priv)}
+  .priv-head .ps{font-size:.71rem;color:#6b69a8;margin-top:1px}
+  .priv-body{padding:6px 16px 14px}
+  .priv-sec{padding:12px 0;border-top:1px solid var(--priv-border)}.priv-sec:first-child{border-top:0}
+  .priv-sec h3{margin:0 0 5px;font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--priv);display:flex;align-items:center;gap:7px}
+  .priv-sec p{margin:0;font-size:.88rem;line-height:1.58;color:var(--color-text-soft)}
+  .transcript{margin-top:6px;background:var(--color-surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:10px 12px}
+  .transcript .tx-top{display:flex;align-items:center;gap:8px;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--color-muted)}
+  .transcript .tx-top .retain{margin-left:auto;font-weight:700;text-transform:none;letter-spacing:0;color:var(--priv);cursor:pointer}
+  .transcript p{font-size:.82rem;line-height:1.6;color:var(--color-text-soft);margin:7px 0 0}
+  .nevershare{display:inline-flex;align-items:center;gap:6px;font-size:.68rem;font-weight:800;color:var(--priv);background:#fff;border:1px solid var(--priv-border);border-radius:var(--radius-pill);padding:5px 11px;margin:4px 15px 14px}
+
+  @media(max-width:520px){
+    body{font-size:13px;padding:20px 12px 50px}
+    .card-top{grid-template-columns:1fr auto;row-gap:10px}
+    .tabs{grid-column:1/-1;justify-self:stretch}.tab{flex:1;justify-content:center}
+    .updating{grid-column:1/-1;justify-self:start}
+    .release-bar{flex-wrap:wrap}.release-btn,.released-badge{margin-left:0}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v12H9l-4 3.5z"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.8l7.6-3.6M8.2 13.2l7.6 3.6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24" style="stroke:none"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z" fill="currentColor"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <div class="lede">
+    <h1><span class="vbadge">Memara · Therapy</span> Session capture &amp; two-plane summary</h1>
+    <p><b>Audio-first capture, private by default — and a summary split into two visibility planes.</b>
+    The therapist captures by talking (no template gate, no client-picker first); the system drafts a
+    narrative summary in a <b>Shareable</b> plane (progress-note-shaped, releasable) and a <b>Private</b>
+    plane (reflections + raw transcript, therapist-only). Sharing is always an explicit act. Spec:
+    <b>redesign-therapy.md §5.2–5.3, §7</b>.</p>
+  </div>
+
+  <!-- FRAME 1 : CAPTURE -->
+  <section>
+    <p class="frame-label">Capture · audio-first · private-by-default</p>
+    <div class="app">
+      <div class="sess-head">
+        <div>
+          <div class="sess-title"><span class="dot"></span> Session 7 · Today 16:30</div>
+          <div class="sess-sub">3 captures · recording · saved on this device</div>
+        </div>
+        <button class="mini-btn">End session</button>
+      </div>
+
+      <div class="client-row">
+        <div class="av rtl" lang="fa">رن</div>
+        <div>
+          <div class="name rtl" lang="fa">رؤیا نیک‌پور</div>
+          <div class="meta">Matched by AI · Session 7 · <span class="link">View memory</span></div>
+        </div>
+        <div class="grow"></div>
+        <button class="mini-btn">Change</button>
+      </div>
+
+      <div class="privacy-banner">
+        <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-lock"/></svg>
+        <div><b>Private to you.</b> Everything you capture stays in your private plane — nothing reaches the client until you release a summary.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-top">
+          <h2>Session <span class="plan-tag">Therapy</span></h2>
+          <div class="tabs"><button class="tab active">Captures</button><button class="tab">Summary</button></div>
+          <div class="updating"><span class="spin"></span> listening…</div>
+        </div>
+        <div class="divider"></div>
+        <div class="feed">
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Session audio</span><span class="time">16:31 · ongoing</span></div>
+            <div class="player"><span class="play">▶</span><span class="bar"></span><span>24:18</span></div>
+            <div class="gen"><div class="lab"><span>Live transcript</span><span class="ai">AI</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">این هفته بالاخره با مادرم حرف زدم… از چیزی که فکر می‌کردم بهتر پیش رفت.</p></div>
+            <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
+          </div>
+
+          <div class="cap note">
+            <div class="cap-node"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><use href="#i-note"/></svg></div>
+            <div class="cap-head"><span class="t">Quick note</span><span class="time">16:44</span></div>
+            <div class="gen" style="border-left-color:var(--violet)"><div class="lab"><span>Note</span><button class="edit"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-edit"/></svg> Edit</button></div>
+              <p>Affect brighter than session 6. Watch the sleep thread — she looked tired.</p></div>
+            <div class="effects"><span class="chip priv"><svg class="ic" width="12" height="12" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</span></div>
+          </div>
+
+          <div class="cap audio">
+            <div class="cap-node"><svg class="ic" width="16" height="16" viewBox="0 0 24 24"><use href="#i-mic"/></svg></div>
+            <div class="cap-head"><span class="t">Post-session recap</span><span class="time">17:18</span></div>
+            <div class="effects"><span class="chip processing"><span class="shimmer"></span> Transcribing…</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="capbar">
+        <button class="capbtn primary"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-mic"/></svg> Audio</button>
+        <button class="capbtn"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-note"/></svg> Note</button>
+        <button class="capbtn faint"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-cam"/></svg> Photo</button>
+      </div>
+    </div>
+    <p class="frame-note"><b>Audio is primary, Note secondary, Photo de-emphasized</b> — therapy isn't visual. Every capture carries a <b>Private</b> chip. Matching (Matched by AI) still runs, identical to aesthetics; transcript renders RTL for Persian.</p>
+  </section>
+
+  <!-- FRAME 2 : SUMMARY — SHAREABLE PLANE -->
+  <section>
+    <p class="frame-label">Summary · Shareable plane · DAP · not yet released</p>
+    <div class="app">
+      <div class="card">
+        <div class="card-top">
+          <h2>Session summary <span class="plan-tag">Therapy</span></h2>
+          <div class="tabs"><button class="tab active"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" style="stroke:var(--teal-deep)"><use href="#i-share"/></svg> Shareable</button><button class="tab priv"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-lock"/></svg> Private</button></div>
+          <div class="updating"></div>
+        </div>
+        <div class="summ-meta">
+          <span><b style="color:var(--color-text-soft)">Progress note</b> · the releasable record</span>
+          <div class="grow"></div>
+          <span>Format</span>
+          <div class="fmt"><button class="on">DAP</button><button>SOAP</button><button>BIRP</button></div>
+        </div>
+        <div class="summ-body">
+          <div class="summ-sec"><h3>Data</h3><p>Client attended session 7. Reported having the boundary conversation with her mother she had rehearsed, describing it as "better than I feared." Noted two nights of disrupted sleep mid-week with nighttime rumination. Affect brighter than the prior session.</p></div>
+          <div class="summ-sec"><h3>Assessment <span class="risk-inline">Risk: passive SI · safety plan active</span></h3><p>Continued progress on the boundaries focus of the treatment thread; engagement strong. Sleep/rumination remains an open target. Passive suicidal ideation from session 6 reviewed — no current intent or plan; safety plan reaffirmed.</p></div>
+          <div class="summ-sec"><h3>Plan</h3><p>Reinforce boundary gains; introduce a brief wind-down routine for sleep. Continue GAD-7 fortnightly. Next session in one week.</p></div>
+        </div>
+        <div class="release-bar">
+          <svg class="ic" width="18" height="18" viewBox="0 0 24 24" style="stroke:var(--teal-deep);flex:0 0 auto"><use href="#i-share"/></svg>
+          <div class="rb-txt"><b>Nothing shared yet.</b> The client sees this only when you release it. Your private reflections &amp; transcript are never included.</div>
+          <button class="release-btn"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-share"/></svg> Release to client</button>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">The shareable plane reads like prose, not a form. <b>Format switch</b> (DAP default · SOAP · BIRP) re-projects the same content. Risk status echoes into Assessment. <b>Release is a separate, explicit act</b> — calmer than aesthetics' always-live report because therapy sharing is consequential.</p>
+  </section>
+
+  <!-- FRAME 3 : SUMMARY — PRIVATE PLANE -->
+  <section>
+    <p class="frame-label">Summary · Private plane · therapist-only · never exported</p>
+    <div class="app">
+      <div class="card">
+        <div class="card-top">
+          <h2>Session summary <span class="plan-tag">Therapy</span></h2>
+          <div class="tabs"><button class="tab"><svg class="ic" width="13" height="13" viewBox="0 0 24 24"><use href="#i-share"/></svg> Shareable</button><button class="tab active priv"><svg class="ic" width="13" height="13" viewBox="0 0 24 24" style="stroke:var(--priv)"><use href="#i-lock"/></svg> Private</button></div>
+          <div class="updating"></div>
+        </div>
+        <div class="priv-head">
+          <div class="lock"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" style="stroke:#fff"><use href="#i-lock"/></svg></div>
+          <div><div class="pt">Private plane · only you</div><div class="ps">Your process notes &amp; the raw transcript — separate from the record, like a psychotherapy note.</div></div>
+        </div>
+        <span class="nevershare"><svg class="ic" width="12" height="12" viewBox="0 0 24 24" style="stroke:var(--priv)"><use href="#i-lock"/></svg> Never included in a release or export</span>
+        <div class="priv-body">
+          <div class="priv-sec"><h3><svg class="ic" width="12" height="12" viewBox="0 0 24 24" style="stroke:var(--priv)"><use href="#i-spark"/></svg> Reflections &amp; hypotheses</h3><p>The boundary win seems to have shifted something — she's testing whether warmth and limits can coexist. Hypothesis: the sleep disruption tracks anticipatory guilt after asserting herself, not the conflict itself. Worth gently naming next time. Keep watching SI; today felt genuinely lighter, but the brightness can mask.</p></div>
+          <div class="priv-sec"><h3>Raw transcript</h3>
+            <div class="transcript">
+              <div class="tx-top"><span>Full transcript · 31 min</span><span class="retain">Retention: 90 days · change</span></div>
+              <p class="rtl" lang="fa">…بعد از اینکه حرفمو زدم، یه حسی داشتم انگار سبک شدم، ولی شب خوابم نبرد. نمی‌دونم چرا…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">The private plane is visually distinct (the <b>lock/indigo</b> accent) and structurally walled: reflections + the most-private <b>raw transcript</b> with a <b>retention control</b> (E2). It is <b>never</b> readable by a patient payload or export — mirroring the HIPAA psychotherapy-note rule by construction (research §4.1).</p>
+  </section>
+
+</div>
+</body>
+</html>

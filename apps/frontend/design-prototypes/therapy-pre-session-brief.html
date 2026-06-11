@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara for Therapy — Pre-session brief (signature surface)</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --color-danger:#b42318; --color-danger-soft:#fdeceb; --color-danger-border:#f4cdc9;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    /* therapy accent — calm teal, distinguishes the vertical without forking the system */
+    --teal:#0d8b8b; --teal-soft:#e4f5f4; --teal-border:#bfe6e4; --teal-deep:#0a6f6f;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%); --shadow-float:0 16px 38px rgb(15 23 42 / 14%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:#eef2f8;color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:36px 20px 70px}
+  h1,h2,h3,h4,p{margin:0}
+  .wrap{max-width:1180px;margin:0 auto}
+  .lede{max-width:760px;margin:0 auto 30px}
+  .lede h1{font-size:1.3rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+  .vbadge{font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal-deep);
+    background:var(--teal-soft);border:1px solid var(--teal-border);border-radius:var(--radius-pill);padding:3px 9px}
+  .lede p{font-size:.86rem;color:var(--color-muted);line-height:1.55;margin-top:9px}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;align-items:start}
+  .col .frame-label{font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.78rem;color:var(--color-muted);margin:11px 2px 0;line-height:1.5}
+  .frame-note b{color:var(--color-text-soft)}
+
+  /* phone frame — the brief is a doorway/mobile moment */
+  .phone{background:var(--color-page);border:1px solid var(--color-border);border-radius:24px;box-shadow:var(--shadow-float);overflow:hidden}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;border-bottom:1px solid var(--color-border);background:#fff}
+  .nav-pill{display:inline-flex;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:3px}
+  .nav-pill span{font-size:.72rem;font-weight:700;color:var(--color-muted);padding:5px 10px;border-radius:var(--radius-pill)}
+  .nav-pill span.on{background:var(--teal-soft);color:var(--teal-deep)}
+  .brand{font-size:.92rem;font-weight:800}
+  .avatar-dd{width:28px;height:28px;border-radius:50%;background:var(--teal-soft);color:var(--teal-deep);display:flex;align-items:center;justify-content:center;font-size:.64rem;font-weight:800}
+  .screen{padding:14px}
+
+  /* client header */
+  .chead{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+  .av{width:48px;height:48px;border-radius:50%;background:var(--teal-soft);color:var(--teal-deep);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1rem;flex:0 0 auto}
+  .chead .name{font-size:1.08rem;font-weight:800}
+  .chead .meta{font-size:.73rem;color:var(--color-muted);margin-top:2px}
+  .brief-tag{display:inline-flex;align-items:center;gap:6px;font-size:.64rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--teal-deep);background:var(--teal-soft);border:1px solid var(--teal-border);border-radius:var(--radius-pill);padding:4px 10px;margin-bottom:12px}
+
+  /* section block */
+  .sec{background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 13px;margin-bottom:10px;box-shadow:var(--shadow-card)}
+  .sec h3{font-size:.62rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--color-muted-2);margin-bottom:7px;display:flex;align-items:center;gap:7px}
+  .sec p{font-size:.86rem;line-height:1.5;color:var(--color-text-soft)}
+  .ord{width:17px;height:17px;border-radius:50%;background:var(--teal-soft);color:var(--teal-deep);display:inline-flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex:0 0 auto}
+  .spark{display:inline-flex;color:var(--violet)}.spark svg{width:13px;height:13px;fill:currentColor}
+
+  /* 1 — safety banner */
+  .safety{border-radius:var(--radius-lg);padding:12px 13px;margin-bottom:10px;border:1px solid}
+  .safety.high{background:var(--color-danger-soft);border-color:var(--color-danger-border)}
+  .safety.calm{background:var(--color-success-soft);border-color:#cdeede}
+  .safety .s-top{display:flex;align-items:center;gap:8px}
+  .safety.high .s-top h3{color:var(--color-danger)}
+  .safety.calm .s-top h3{color:var(--color-success)}
+  .safety h3{font-size:.78rem;font-weight:800;display:flex;align-items:center;gap:8px;margin:0}
+  .safety .s-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto;font-weight:800;font-size:.8rem}
+  .safety.high .s-ic{background:var(--color-danger);color:#fff}
+  .safety.calm .s-ic{background:var(--color-success);color:#fff}
+  .safety .s-body{font-size:.8rem;color:var(--color-text-soft);line-height:1.45;margin-top:7px}
+  .safety .s-meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:9px;font-size:.7rem;color:var(--color-muted)}
+  .safety .s-meta b{color:var(--color-danger);font-weight:700}
+  .s-link{color:var(--color-danger);font-weight:800;text-decoration:none;font-size:.74rem;display:inline-flex;align-items:center;gap:5px}
+
+  /* themes chips */
+  .threads{display:flex;flex-direction:column;gap:0}
+  .thread{display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--color-border)}
+  .thread:first-child{border-top:0}
+  .thread .tn{width:7px;height:7px;border-radius:50%;background:var(--teal);flex:0 0 auto;margin-top:6px}
+  .thread .tt{font-size:.85rem;color:var(--color-text-soft);line-height:1.45}
+  .thread .open-loop{font-size:.64rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--color-warning);background:var(--color-warning-soft);border:1px solid #f3e3bf;border-radius:var(--radius-pill);padding:2px 7px;margin-left:6px;white-space:nowrap}
+  .chev{margin-left:auto;color:var(--color-muted-2);flex:0 0 auto}.chev svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2}
+
+  /* since-last + trend */
+  .trend{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px 11px;background:var(--color-surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-md)}
+  .trend .lbl{font-size:.68rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted)}
+  .trend .val{font-size:.92rem;font-weight:800;color:var(--color-text)}
+  .trend .delta{font-size:.74rem;font-weight:800;color:var(--color-success);display:inline-flex;align-items:center;gap:3px}
+  .trend svg.spark-line{display:block}
+  .trend .grow{flex:1}
+
+  /* today prompt */
+  .prompt{background:var(--violet-soft);border:1px solid var(--violet-border);border-radius:var(--radius-lg);padding:11px 12px;margin-bottom:12px;position:relative}
+  .prompt h3{color:var(--violet);margin-bottom:6px}
+  .prompt p{font-size:.86rem;color:#3c2c66;line-height:1.5;font-style:italic}
+  .prompt .x{position:absolute;top:9px;right:10px;border:0;background:transparent;color:var(--violet);opacity:.6;cursor:pointer;font-size:1rem;line-height:1}
+
+  /* CTA */
+  .cta-row{display:flex;gap:9px;margin-top:4px}
+  .cta{flex:1;border:0;background:var(--teal);color:#fff;font-weight:800;font-size:.9rem;border-radius:var(--radius-md);padding:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 6px 16px rgb(13 139 139 / 26%)}
+  .cta.ghost{flex:0 0 auto;background:#fff;color:var(--color-text-soft);border:1px solid var(--color-border-strong);box-shadow:none;padding:13px 15px}
+
+  /* AI-down fallback note */
+  .fallback-note{display:flex;gap:8px;align-items:flex-start;font-size:.74rem;color:var(--color-warning);background:var(--color-warning-soft);border:1px solid #f3e3bf;border-radius:var(--radius-sm);padding:9px 10px;margin-bottom:11px;line-height:1.45}
+  .visit-list{list-style:none;padding:0;margin:0}
+  .visit-list li{font-size:.82rem;color:var(--color-text-soft);line-height:1.45;padding:8px 0;border-top:1px solid var(--color-border);display:flex;gap:8px}
+  .visit-list li:first-child{border-top:0}
+  .visit-list .vd{font-weight:700;color:var(--color-muted);flex:0 0 auto}
+
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  @media(max-width:1000px){.grid{grid-template-columns:1fr;max-width:440px;margin:0 auto;gap:34px}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V6z"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <div class="lede">
+    <h1><span class="vbadge">Memara · Therapy</span> Pre-session brief — the signature surface</h1>
+    <p><b>Walk in knowing the client.</b> One calm screen, read in the doorway in ~60 seconds, built on the
+    existing patient-memory artifact. Sections are ordered by <b>clinical urgency</b>: safety first, then arc
+    position, themes to revisit, since-last + outcome trend, and today's prompt. Three states shown:
+    the full brief, the no-risk calm variant, and the graceful AI-down fallback. Spec:
+    <b>redesign-therapy.md §5.1</b>.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ STATE 1 : FULL BRIEF, ACTIVE RISK ============ -->
+    <div class="col">
+      <p class="frame-label">State A · full brief · active safety flag</p>
+      <div class="phone">
+        <div class="topbar">
+          <div class="nav-pill"><span class="on">Brief</span><span>Memory</span></div>
+          <div class="brand">Memara</div>
+          <div class="avatar-dd">DR</div>
+        </div>
+        <div class="screen">
+          <div class="brief-tag"><span class="spark"><svg><use href="#i-spark"/></svg></span> Pre-session brief · before you walk in</div>
+          <div class="chead">
+            <div class="av rtl" lang="fa">رن</div>
+            <div>
+              <div class="name rtl" lang="fa">رؤیا نیک‌پور</div>
+              <div class="meta">Session 7 · today 16:30 · last seen 8 days ago</div>
+            </div>
+          </div>
+
+          <!-- 1 safety -->
+          <div class="safety high">
+            <div class="s-top"><span class="s-ic"><svg class="ic" width="13" height="13" fill="none" stroke="#fff" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V6z"/></svg></span><h3>Active safety flag · elevated risk</h3></div>
+            <div class="s-body">Passive suicidal ideation raised on <b>session 6</b>; no plan or intent. A safety plan is on file. Check in early.</div>
+            <div class="s-meta"><span>Set <b>Jun 3</b></span><span>Confirmed by Dr. Rahimi</span><a class="s-link" href="#">View safety plan <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></div>
+          </div>
+
+          <!-- 2 arc -->
+          <div class="sec">
+            <h3><span class="ord">2</span> Arc position</h3>
+            <p><b>Mid-phase.</b> Working the treatment thread: <b>boundaries with family</b> and rumination at night. Building tolerance for sitting with conflict rather than withdrawing.</p>
+          </div>
+
+          <!-- 3 themes -->
+          <div class="sec">
+            <h3><span class="ord">3</span> Themes to revisit <span class="spark"><svg><use href="#i-spark"/></svg></span></h3>
+            <div class="threads">
+              <div class="thread"><span class="tn"></span><span class="tt">Boundary-setting with her mother — last time she rehearsed one conversation</span><span class="chev"><svg><use href="#i-chev"/></svg></span></div>
+              <div class="thread"><span class="tn"></span><span class="tt">Sleep &amp; nighttime rumination<span class="open-loop">open loop</span></span><span class="chev"><svg><use href="#i-chev"/></svg></span></div>
+              <div class="thread"><span class="tn"></span><span class="tt">Ambivalence about the job change she mentioned in passing</span><span class="chev"><svg><use href="#i-chev"/></svg></span></div>
+            </div>
+          </div>
+
+          <!-- 4 since last -->
+          <div class="sec">
+            <h3><span class="ord">4</span> Since last time</h3>
+            <p>Tried the boundary conversation with her mother — went better than feared. Reported two nights of poor sleep mid-week.</p>
+            <div class="trend">
+              <div><div class="lbl">GAD-7</div><div class="val">8</div></div>
+              <svg class="spark-line" width="84" height="34" viewBox="0 0 84 34"><polyline points="2,6 22,10 42,14 62,20 82,24" fill="none" stroke="#16834a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="24" r="3" fill="#16834a"/></svg>
+              <div class="grow"></div>
+              <div class="delta">▼ 4 <span style="color:var(--color-muted);font-weight:600">over 4 wk</span></div>
+            </div>
+          </div>
+
+          <!-- 5 prompt -->
+          <div class="prompt">
+            <button class="x">×</button>
+            <h3><span class="spark"><svg><use href="#i-spark"/></svg></span> Today's prompt · suggestion</h3>
+            <p>"Last week you tried that conversation with your mother — how did it sit with you afterward?"</p>
+          </div>
+
+          <div class="cta-row">
+            <button class="cta"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Start session</button>
+            <button class="cta ghost">History</button>
+          </div>
+        </div>
+      </div>
+      <p class="frame-note">Safety is <b>pinned at the top, dated, non-dismissible</b> while active (research §4.3) — the one thing you must never miss. Everything below is synthesized memory (<b>✨</b>), tappable into history.</p>
+    </div>
+
+    <!-- ============ STATE 2 : CALM, NO RISK ============ -->
+    <div class="col">
+      <p class="frame-label">State B · no active risk · calm</p>
+      <div class="phone">
+        <div class="topbar">
+          <div class="nav-pill"><span class="on">Brief</span><span>Memory</span></div>
+          <div class="brand">Memara</div>
+          <div class="avatar-dd">DR</div>
+        </div>
+        <div class="screen">
+          <div class="brief-tag"><span class="spark"><svg><use href="#i-spark"/></svg></span> Pre-session brief · before you walk in</div>
+          <div class="chead">
+            <div class="av">SN</div>
+            <div>
+              <div class="name">Sina Naderi</div>
+              <div class="meta">Session 12 · today 11:00 · last seen 6 days ago</div>
+            </div>
+          </div>
+
+          <div class="safety calm">
+            <div class="s-top"><span class="s-ic"><svg width="13" height="13" fill="none" stroke="#fff" stroke-width="2.4" viewBox="0 0 24 24"><path d="M5 12l4.5 4.5L19 7"/></svg></span><h3>No active safety flags</h3></div>
+          </div>
+
+          <div class="sec">
+            <h3><span class="ord">2</span> Arc position</h3>
+            <p><b>Consolidation phase.</b> Workplace anxiety much improved; thread now on maintaining gains and a relapse-prevention plan. Spacing toward biweekly.</p>
+          </div>
+
+          <div class="sec">
+            <h3><span class="ord">3</span> Themes to revisit <span class="spark"><svg><use href="#i-spark"/></svg></span></h3>
+            <div class="threads">
+              <div class="thread"><span class="tn"></span><span class="tt">Relapse-prevention plan — drafting his "early warning signs" list</span><span class="chev"><svg><use href="#i-chev"/></svg></span></div>
+              <div class="thread"><span class="tn"></span><span class="tt">Exposure wins at work he wanted to keep practicing</span><span class="chev"><svg><use href="#i-chev"/></svg></span></div>
+            </div>
+          </div>
+
+          <div class="sec">
+            <h3><span class="ord">4</span> Since last time</h3>
+            <p>Led a team meeting without prep-anxiety — a first. Felt "almost boring," which he framed as progress.</p>
+            <div class="trend">
+              <div><div class="lbl">PHQ-9</div><div class="val">3</div></div>
+              <svg class="spark-line" width="84" height="34" viewBox="0 0 84 34"><polyline points="2,8 22,12 42,18 62,22 82,27" fill="none" stroke="#16834a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="82" cy="27" r="3" fill="#16834a"/></svg>
+              <div class="grow"></div>
+              <div class="delta">▼ 6 <span style="color:var(--color-muted);font-weight:600">over 8 wk</span></div>
+            </div>
+          </div>
+
+          <div class="prompt">
+            <button class="x">×</button>
+            <h3><span class="spark"><svg><use href="#i-spark"/></svg></span> Today's prompt · suggestion</h3>
+            <p>"You mentioned wanting a plan for the harder weeks — shall we sketch your early-warning signs today?"</p>
+          </div>
+
+          <div class="cta-row">
+            <button class="cta"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Start session</button>
+            <button class="cta ghost">History</button>
+          </div>
+        </div>
+      </div>
+      <p class="frame-note">"No active safety flags" is shown <b>present and calm</b> — its absence is informative, not a blank. The trend strip is optional: it appears only when the client has completed measures (C4).</p>
+    </div>
+
+    <!-- ============ STATE 3 : AI-DOWN FALLBACK ============ -->
+    <div class="col">
+      <p class="frame-label">State C · AI unavailable · structural fallback</p>
+      <div class="phone">
+        <div class="topbar">
+          <div class="nav-pill"><span class="on">Brief</span><span>Memory</span></div>
+          <div class="brand">Memara</div>
+          <div class="avatar-dd">DR</div>
+        </div>
+        <div class="screen">
+          <div class="brief-tag" style="color:var(--color-muted);background:#eef2f9;border-color:var(--color-border)">Pre-session brief · last saved memory</div>
+          <div class="chead">
+            <div class="av rtl" lang="fa">رن</div>
+            <div>
+              <div class="name rtl" lang="fa">رؤیا نیک‌پور</div>
+              <div class="meta">Session 7 · today 16:30 · last seen 8 days ago</div>
+            </div>
+          </div>
+
+          <div class="fallback-note">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" style="flex:0 0 auto;margin-top:1px"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
+            <div>Live synthesis is catching up. Showing your <b>last saved brief + recent sessions</b> — never blank. It refreshes on its own.</div>
+          </div>
+
+          <!-- safety still shows: it's durable memory, not live synthesis -->
+          <div class="safety high">
+            <div class="s-top"><span class="s-ic"><svg width="13" height="13" fill="none" stroke="#fff" stroke-width="2.4" viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><path d="M12 3l7 3v5c0 4.5-3 8.2-7 9-4-.8-7-4.5-7-9V6z"/></svg></span><h3>Active safety flag · elevated risk</h3></div>
+            <div class="s-meta" style="margin-top:7px"><span>Set <b>Jun 3</b></span><a class="s-link" href="#">View safety plan <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></a></div>
+          </div>
+
+          <div class="sec">
+            <h3>Last saved summary</h3>
+            <p>Session 6 (Jun 3): rehearsed a boundary conversation with her mother; passive SI raised and safety-planned. Plan: review the conversation, continue sleep work.</p>
+          </div>
+
+          <div class="sec">
+            <h3>Recent sessions</h3>
+            <ul class="visit-list">
+              <li><span class="vd">Jun 3</span><span>Session 6 · audio + note on file</span></li>
+              <li><span class="vd">May 27</span><span>Session 5 · audio on file</span></li>
+              <li><span class="vd">May 20</span><span>Session 4 · audio on file</span></li>
+            </ul>
+          </div>
+
+          <div class="cta-row">
+            <button class="cta"><svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg> Start session</button>
+            <button class="cta ghost">History</button>
+          </div>
+        </div>
+      </div>
+      <p class="frame-note">When AI is down the brief degrades to <b>durable memory</b> — the last saved summary, the session list, and the <b>safety flag (which is stored memory, not live synthesis, so it never disappears)</b>. No error, ever (foundation behavior).</p>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
