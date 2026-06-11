@@ -48,7 +48,7 @@ class TranscriptionContextTests(unittest.TestCase):
 
         context = transcription_context_from_inputs(
             session=session,
-            clinic={"name": "Memora Clinic", "assumptions": ["Persian/Iranian aesthetics clinic."]},
+            clinic={"name": "Memara Clinic", "assumptions": ["Persian/Iranian aesthetics clinic."]},
             assigned_patient={"status": "assigned", "displayName": "Sara N.", "nationalId": "0012345678"},
             patient_history_summary="Prior cheek filler, no allergy noted.",
             captures=[previous_audio, previous_note, current_audio],
@@ -67,21 +67,21 @@ class TranscriptionContextTests(unittest.TestCase):
 class CaptureEnrichmentContextTests(unittest.TestCase):
     def test_context_carries_clinic_patient_language_and_type(self):
         context = capture_enrichment_context_from_inputs(
-            clinic={"name": "Memora Clinic", "assumptions": ["Aesthetics clinic context."]},
+            clinic={"name": "Memara Clinic", "assumptions": ["Aesthetics clinic context."]},
             assigned_patient={"status": "assigned", "displayName": "Sara N."},
             preferred_language="fa",
             capture_type="photo",
         )
 
         self.assertEqual(context["schemaVersion"], "2026-06-06.capture-enrichment-context.v1")
-        self.assertEqual(context["clinic"]["name"], "Memora Clinic")
+        self.assertEqual(context["clinic"]["name"], "Memara Clinic")
         self.assertEqual(context["assignedPatient"]["displayName"], "Sara N.")
         self.assertEqual(context["preferredLanguage"], "fa")
         self.assertEqual(context["captureType"], "photo")
 
     def test_unassigned_visit_carries_none_patient(self):
         context = capture_enrichment_context_from_inputs(
-            clinic={"name": "Memora Clinic"},
+            clinic={"name": "Memara Clinic"},
             assigned_patient=None,
             preferred_language="auto",
             capture_type="note",

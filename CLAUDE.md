@@ -2,7 +2,7 @@
 
 This repository is developed with AI coding agents.
 
-**Naming:** the platform/codebase is **Notari** (repo, services, infra, API). Its first product is **Memora** — capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Rule of thumb in code and docs: **internal/infra → Notari; customer-facing product surfaces → Memora.**
+**Naming:** the platform/codebase is **Notari** (repo, services, infra, API). Its first product is **Memara** — capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Rule of thumb in code and docs: **internal/infra → Notari; customer-facing product surfaces → Memara.**
 
 Use this file as the starting guide. Do not read the whole repository blindly. Start from the relevant README/docs, then inspect only the files needed for the task.
 
@@ -88,6 +88,9 @@ Read:
 ---
 
 ## 2. Documentation map
+
+- `docs/spines.md`  
+  **Multi-vertical strategy:** the three product spines, capability/tier matrix, sequencing, and per-spine next steps. Start here for product direction beyond today's aesthetics build.
 
 - `docs/product.md`  
   Product purpose, users, MVP scope, and accepted product behavior.

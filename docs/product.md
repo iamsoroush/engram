@@ -2,7 +2,7 @@
 
 ## Product summary
 
-Memora is an AI-native clinical memory system for aesthetics clinics. It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
+Memara is an AI-native clinical memory system for aesthetics and therapy clinics (dermatology next). It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
 
 The product is designed around real clinical behavior:
 
@@ -15,7 +15,7 @@ The product is designed around real clinical behavior:
 
 ## Target users
 
-- Aesthetics doctors
+- Aesthetics and therapy clinicians
 - Small and medium clinics
 - Clinical assistants involved in documentation
 

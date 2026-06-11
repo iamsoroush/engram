@@ -34,10 +34,10 @@ class EnrichmentPromptTests(unittest.TestCase):
         self.assertIn("native script", directive)
 
     def test_caption_prompt_has_aesthetics_context_and_no_invention(self):
-        prompt = caption_prompt({"clinic": {"name": "Memora Clinic"}, "preferredLanguage": "auto"})
+        prompt = caption_prompt({"clinic": {"name": "Memara Clinic"}, "preferredLanguage": "auto"})
         self.assertIn("aesthetics clinic", prompt.lower())
         self.assertIn("Do NOT invent", prompt)
-        self.assertIn("Memora Clinic", prompt)
+        self.assertIn("Memara Clinic", prompt)
         self.assertIn("never romanize", prompt.lower())
 
     def test_note_decoration_prompt_preserves_details(self):

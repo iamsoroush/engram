@@ -1,6 +1,6 @@
 # Frontend
 
-Vite + React frontend for Memora, a memory layer for aesthetics clinics.
+Vite + React frontend for Memara, clinical memory for aesthetics and therapy clinics.
 
 ## Runtime
 

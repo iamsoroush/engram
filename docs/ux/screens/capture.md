@@ -27,7 +27,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 
 ## Visible Data
 
-- Mobile-first app header with centered `Memora`, a left menu affordance, and a compact user/avatar area.
+- Mobile-first app header with centered `Memara`, a left menu affordance, and a compact user/avatar area.
 - Session summary with `Current session`, verified chip, patient context, capture count, updated time, and compact New session action.
 - Separate patient context card with patient avatar, assignment source, and Edit patient action.
 - Single `Clinical report` card with `Live draft` and `Structured report` tabs.

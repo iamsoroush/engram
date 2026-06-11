@@ -23,7 +23,7 @@ test.beforeEach(async ({ page }) => {
         },
         tenant: {
           id: "tenant-visual",
-          name: "Memora Visual Clinic",
+          name: "Memara Visual Clinic",
         },
         memberships: [{ tenantId: "tenant-visual", role: "doctor" }],
       },

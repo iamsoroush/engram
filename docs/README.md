@@ -23,4 +23,4 @@ This folder is the starting point for future product and engineering work. The a
 
 ## Core Principle
 
-Memora is a capture-first clinical memory tool. A doctor must never be forced to select a patient before capturing audio, photo, or text. Capture must remain available even when syncing, processing, patient assignment, or organization is delayed.
+Memara is a capture-first clinical memory tool. A doctor must never be forced to select a patient before capturing audio, photo, or text. Capture must remain available even when syncing, processing, patient assignment, or organization is delayed.

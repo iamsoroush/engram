@@ -31,8 +31,8 @@ DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
 # (dev-login `tier` selects which one). Mirrors production, where tier is a tenant attribute.
 DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
 DEV_TENANTS = {
-    "pro": {"id": DEV_TENANT_ID, "name": "Memora Demo Clinic", "slug": "notari-demo", "tier": "pro"},
-    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memora Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic"},
+    "pro": {"id": DEV_TENANT_ID, "name": "Memara Demo Clinic", "slug": "notari-demo", "tier": "pro"},
+    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memara Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic"},
 }
 
 DEV_PERSONAS = {
@@ -51,7 +51,7 @@ DEV_PERSONAS = {
     "admin": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:admin"),
         "email": "admin@notari.local",
-        "full_name": "Memora Admin",
+        "full_name": "Memara Admin",
         "role": MembershipRole.admin,
     },
     "patient-preview": {

@@ -576,7 +576,7 @@ Bugs/improvements surfaced while testing Epic E; not yet scheduled.
    with no report model (Basic, or before the first Pro report job).
 5. **Dev tooling — make both tiers testable side-by-side** (Epic A1) — **DONE (2026-06-04).**
    `ensure_dev_seed` now provisions two dev tenants — `DEV_TENANT_ID` (Pro) and
-   `DEV_TENANT_BASIC_ID` (Basic, "Memora Demo Clinic (Basic)", own "Bita B." seed patient) — with
+   `DEV_TENANT_BASIC_ID` (Basic, "Memara Demo Clinic (Basic)", own "Bita B." seed patient) — with
    every persona a member of both. `POST /auth/dev-login` takes an optional `tier: pro|basic`
    (default `pro`); the login screen shows a **Tier · Pro / Basic** toggle. Log in to each in
    separate tabs to compare. Verified: Basic upload transcribes but dispatches **no report job**,

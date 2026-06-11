@@ -49,7 +49,7 @@ export function LoginGate({
     <main className="login-shell">
       <Card className="login-card">
         <div className="stack">
-          <p className="eyebrow">Memora</p>
+          <p className="eyebrow">Memara</p>
           <h1>Sign in to continue</h1>
           <p>Capture opens after an authenticated tenant session is ready.</p>
         </div>

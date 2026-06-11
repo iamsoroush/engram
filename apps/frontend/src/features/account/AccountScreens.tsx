@@ -124,7 +124,7 @@ export function SettingsScreen({
       <Card className="settings-group">
         <div className="settings-group-head">
           <h2>Languages</h2>
-          <p>How Memora transcribes audio and writes the report.</p>
+          <p>How Memara transcribes audio and writes the report.</p>
         </div>
         <SettingRow label="Transcription" hint="Auto transcribes verbatim in the spoken script — best for mixed-language clinics; avoids romanization that breaks name matching.">
           <select aria-label="Transcription language" disabled={saving} onChange={(event) => save({ transcriptionLanguage: event.target.value })} value={auth.tenant.transcriptionLanguage || "auto"}>

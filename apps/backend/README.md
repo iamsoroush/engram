@@ -1,6 +1,6 @@
 # Backend
 
-FastAPI API server for Notari, the platform behind Memora (a memory layer for aesthetics clinics).
+FastAPI API server for Notari, the platform behind Memara (clinical memory for aesthetics and therapy clinics).
 
 ## Runtime
 

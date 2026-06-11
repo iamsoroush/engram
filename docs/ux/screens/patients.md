@@ -236,7 +236,7 @@ Timeline cards label times explicitly. The session time is primary, for example 
 Two patient-level memory artifacts are generated from the patient's visits and surfaced together:
 
 - **Patient summary** — one to two sentences on the **patient card** (Patients tab).
-- **Patient history** — a richer brief atop the **patient timeline/detail** page. Replaces the older single "Memora assistant summary:" line.
+- **Patient history** — a richer brief atop the **patient timeline/detail** page. Replaces the older single "Memara assistant summary:" line.
 
 Both are tier-aware. The tone reads like a calm assistant in either tier; only the depth differs:
 

@@ -25,7 +25,7 @@ class ReportTemplate:
 # TODO(report-templates): Replace this singleton with tenant-aware multi-template selection.
 DEFAULT_REPORT_TEMPLATE = ReportTemplate(
     key=DEFAULT_REPORT_TEMPLATE_KEY,
-    clinic_name="Memora Demo Clinic",
+    clinic_name="Memara Demo Clinic",
     clinic_information=("Clinical memory report",),
     section_order=("clinic_header", "patient_information", "body"),
 )

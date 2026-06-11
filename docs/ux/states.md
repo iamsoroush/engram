@@ -2,7 +2,7 @@
 
 ## Assistant-State Language
 
-Memora should translate technical system work into calm assistant language.
+Memara should translate technical system work into calm assistant language.
 
 Preferred user-facing states:
 

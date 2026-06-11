@@ -73,7 +73,7 @@ export function Shell({
               <SearchNavIcon />
             </button>
           </div>
-          <strong className="topbar-brand">Memora</strong>
+          <strong className="topbar-brand">Memara</strong>
           <details className="user-menu" ref={menuRef}>
             <summary>
               <span className="user-menu-avatar" aria-hidden="true">{initials}</span>

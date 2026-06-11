@@ -1,6 +1,6 @@
 # Notari
 
-Monorepo for Notari. Its first product, Memora, is a memory layer for aesthetics clinics.
+Monorepo for Notari. Its first product, Memara, is clinical memory for aesthetics and therapy clinics (dermatology next).
 
 ## Apps
 
@@ -45,7 +45,16 @@ Use the engineering docs for architecture and design decisions:
 - [docs/backend/README.md](docs/backend/README.md)
 - [docs/production.md](docs/production.md)
 
-For full-stack development with both services in Docker:
+**Recommended — `scripts/dev-stack.sh` is the default way to bring up the dev stack.** It provisions an isolated stack and supports **multi-worktree development**: each git worktree gets its own database, bucket, and host ports (the database is cloned from the canonical data, so you inherit real data to test against).
+
+```sh
+scripts/dev-stack.sh up      # provision + start; prints this stack's app/API URLs
+scripts/dev-stack.sh down    # stop (add --data to also drop this stack's DB + bucket)
+```
+
+See [docs/dev/worktree-stacks.md](docs/dev/worktree-stacks.md) for details. Inside a **git worktree** you must use this script (not the root `docker compose up`) to avoid host-port/DB collisions with other stacks.
+
+Alternatively, for a single self-contained stack in the **primary checkout**:
 
 ```sh
 docker compose up --build
