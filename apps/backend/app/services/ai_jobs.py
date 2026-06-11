@@ -12,6 +12,13 @@ from app.auth.service import audit
 from app.config import settings
 from app.models import Capture, CaptureStatus, CaptureType, AiJob, AiJobStatus, AiJobType, OrganizationSource, Patient, Session, SessionStatus, Tenant
 from app.services.ai_model_config import get_ai_model_overrides
+from app.services.capabilities import (
+    CROSS_VISIT_SYNTHESIS,
+    IMAGE_CAPTION,
+    LIVE_REPORT_SYNTHESIS,
+    NOTE_DECORATION,
+    tenant_has_capability,
+)
 from app.services.capture_storage import get_capture_for_tenant
 from app.services.patient_memory_intelligence import (
     apply_patient_memory_output,
@@ -1207,20 +1214,20 @@ def regenerate_session_report(db: DbSession, *, session: Session) -> None:
     the capture chain is idle — so it is always current for the latest capture. Pro additionally
     records each folded-in capture's `report_contribution` and the included/set-aside meta counts.
     """
-    is_pro = tenant_tier(db, session.tenant_id) == "pro"
+    synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     captures = sorted(
         _reportable_captures(db, tenant_id=session.tenant_id, session_id=session.id),
         key=lambda capture: (capture.captured_at or capture.created_at or utc_now()),
     )
     generated_at = utc_now()
-    model = build_session_report_model(session, captures, grouped=is_pro)
+    model = build_session_report_model(session, captures, grouped=synthesized)
     session.report_model = model
     session.generated_report = render_report_body_markdown(model, db=db, session=session)
     session.organization_source = OrganizationSource.ai_engine
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     metadata = {**metadata, "generated_output_stale": False, "generated_at": generated_at.isoformat()}
-    if is_pro:
-        # The "Added to report" chip + meta strip are a Pro affordance; Basic is a plain chronological render.
+    if synthesized:
+        # The "Added to report" chip + meta strip ride on live-report synthesis; Basic is a plain chronological render.
         metadata["report_contribution_summary"] = mark_session_report_contributions(
             db, session=session, generated_at=generated_at.isoformat()
         )
@@ -1392,7 +1399,7 @@ def maybe_dispatch_patient_memory_job(
     """
     if patient_id is None:
         return
-    if tenant_tier(db, tenant_id) != "pro":
+    if not tenant_has_capability(db, tenant_id, CROSS_VISIT_SYNTHESIS):
         return
     if trigger_session is not None and not session_is_complete(trigger_session):
         return
@@ -1531,8 +1538,10 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
             if session is not None:
                 if capture.capture_type == CaptureType.audio:
                     transcription_context = build_transcription_context(db, session=session, capture=capture)
-                # Image captions and note decoration are Pro-only; the gate is attaching the context.
-                elif tenant_tier(db, job.tenant_id) == "pro":
+                # Image captions (photo) and note decoration (note) are gated capabilities; the gate attaches the context.
+                elif tenant_has_capability(
+                    db, job.tenant_id, IMAGE_CAPTION if capture.capture_type == CaptureType.photo else NOTE_DECORATION
+                ):
                     enrichment_context = build_capture_enrichment_context(db, session=session, capture=capture)
         return {
             "job": ai_job_payload(job),
@@ -1681,10 +1690,9 @@ def complete_worker_job(
     patient_match_candidate = None
     ai_patient_action = None
     patient_information = output.get("patient_information")
-    tier = tenant_tier(db, job.tenant_id)
     # Intelligent patient matching (match/create/reassign/suggest) runs for both tiers — it is the
-    # core memory-accuracy feature. Tier only gates enrichment (captions/decoration) and the Pro
-    # synthesized report below.
+    # core memory-accuracy feature. Capabilities gate enrichment (captions/decoration) and the
+    # synthesized report below; matching itself is never gated.
     if (
         isinstance(patient_information, dict)
         and patient_information_has_explicit_identity(patient_information)
@@ -1806,7 +1814,7 @@ def complete_worker_job(
     # marked `pending` here; the report job flips it to `added` once it's folded in. Basic is a
     # chronological render with no synthesis, so it carries no contribution effect, and an
     # out-of-context capture is set aside rather than contributed.
-    if tier == "pro" and ooc_marker is None:
+    if tenant_has_capability(db, job.tenant_id, LIVE_REPORT_SYNTHESIS) and ooc_marker is None:
         capture.capture_metadata = {
             **capture.capture_metadata,
             "report_contribution": report_contribution_effect("pending", had_append_intent=has_append_intent(output)),
@@ -2077,8 +2085,8 @@ def complete_session_worker_job(
     # The synthesized live report is a Pro capability: mark the captures it folded in as
     # contributed and record the included / set-aside counts for the report meta strip.
     report_contribution_summary: dict[str, int] | None = None
-    is_pro = tenant_tier(db, job.tenant_id) == "pro"
-    if is_pro:
+    synthesized = tenant_has_capability(db, job.tenant_id, LIVE_REPORT_SYNTHESIS)
+    if synthesized:
         report_source_ids = extracted_metadata.get("source_capture_ids") if isinstance(extracted_metadata.get("source_capture_ids"), list) else None
         report_contribution_summary = mark_session_report_contributions(
             db, session=session, generated_at=completed_at.isoformat(), source_capture_ids=report_source_ids
