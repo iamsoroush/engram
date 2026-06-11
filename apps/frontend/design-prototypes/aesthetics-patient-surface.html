@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara — Patient surface · shareable report + aftercare · post-session Q&A</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --green:#0a9d6e;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%); --shadow-float:0 16px 38px rgb(15 23 42 / 14%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:#eef2f8;color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:34px 22px 70px}
+  .wrap{max-width:1080px;margin:0 auto}
+  .frames{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+  @media(max-width:920px){ .frames{grid-template-columns:1fr;max-width:440px;margin:0 auto} }
+  .frame-label{font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:10px 2px 0;line-height:1.5}
+  .frame-note b{color:var(--color-text-soft)}
+  .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic.sm{width:13px;height:13px}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .grow{flex:1}
+
+  /* phone */
+  .phone{background:#fff;border:1px solid var(--color-border);border-radius:24px;box-shadow:var(--shadow-float);overflow:hidden;display:flex;flex-direction:column;height:640px}
+  .phone.app{background:var(--color-page)}
+  .pscroll{overflow:hidden;flex:1;display:flex;flex-direction:column}
+
+  /* patient-facing header (no app chrome — it's a web link) */
+  .pf-head{background:var(--color-primary);color:#fff;padding:16px 16px 18px}
+  .pf-clinic{display:flex;align-items:center;gap:10px}
+  .pf-logo{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-weight:800}
+  .pf-name{font-weight:800;font-size:.95rem}
+  .pf-sub{font-size:.7rem;opacity:.85;margin-top:1px}
+  .pf-hi{font-size:.95rem;font-weight:700;margin-top:14px}
+  .pf-meta{font-size:.74rem;opacity:.9;margin-top:2px}
+  .pf-body{padding:14px;overflow-y:auto;flex:1}
+  .sec{margin-bottom:16px}
+  .sec h3{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-muted);margin:0 0 8px}
+  .ba{display:flex;gap:8px}
+  .ba .img{flex:1;height:120px;border-radius:var(--radius-md);border:1px solid var(--color-border);position:relative;overflow:hidden;
+    background:radial-gradient(circle at 50% 40%, #f2d3c4 0 36%, #f6ece6 38% 100%)}
+  .ba .img.after{background:radial-gradient(circle at 50% 40%, #efc9b6 0 34%, #f4e6dd 36% 100%)}
+  .ba .tag{position:absolute;top:6px;left:6px;font-size:.6rem;font-weight:800;text-transform:uppercase;background:rgba(8,13,45,.6);color:#fff;border-radius:var(--radius-pill);padding:2px 8px}
+  .care{list-style:none;padding:0;margin:0}
+  .care li{display:flex;gap:9px;font-size:.85rem;line-height:1.45;color:var(--color-text-soft);padding:8px 0;border-top:1px solid var(--color-border)}
+  .care li:first-child{border-top:0}
+  .care li .ck{width:18px;height:18px;border-radius:50%;background:var(--color-success-soft);color:var(--color-success);display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:1px}
+  .pf-foot{padding:12px 14px;border-top:1px solid var(--color-border);background:var(--color-surface-soft);font-size:.74rem;color:var(--color-muted);display:flex;align-items:center;gap:8px}
+  .askbtn{display:flex;align-items:center;justify-content:center;gap:8px;margin:4px 14px 14px;padding:12px;border-radius:var(--radius-md);background:var(--color-primary);color:#fff;font-weight:800;font-size:.86rem;border:0;cursor:pointer}
+
+  /* chat thread (patient + doctor) */
+  .chat-head{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:1px solid var(--color-border);background:#fff}
+  .chat-av{width:34px;height:34px;border-radius:50%;background:var(--color-primary-soft);color:var(--color-primary);display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .chat-name{font-weight:800;font-size:.9rem}.chat-sub{font-size:.7rem;color:var(--color-muted)}
+  .thread{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:11px;background:var(--color-page)}
+  .bubble{max-width:82%;padding:10px 12px;border-radius:14px;font-size:.84rem;line-height:1.45}
+  .bubble.them{align-self:flex-start;background:#fff;border:1px solid var(--color-border);border-bottom-left-radius:5px}
+  .bubble.me{align-self:flex-end;background:var(--color-primary);color:#fff;border-bottom-right-radius:5px}
+  .btime{font-size:.64rem;color:var(--color-muted);margin-top:4px}
+  .bubble.me .btime{color:rgba(255,255,255,.8);text-align:right}
+  .verified{display:inline-flex;align-items:center;gap:5px;font-size:.64rem;font-weight:700;color:var(--color-success);margin-top:5px}
+  .composer{display:flex;align-items:center;gap:9px;padding:11px 12px;border-top:1px solid var(--color-border);background:#fff}
+  .composer .box{flex:1;border:1px solid var(--color-border-strong);border-radius:var(--radius-pill);padding:9px 13px;font-size:.82rem;color:var(--color-muted)}
+  .composer .send{width:36px;height:36px;border-radius:50%;background:var(--color-primary);color:#fff;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto}
+
+  /* doctor Q&A inbox */
+  .topbar{display:flex;align-items:center;gap:8px;padding:13px 14px;border-bottom:1px solid var(--color-border);background:#fff}
+  .topbar .nav-pill{display:inline-flex;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:3px}
+  .topbar .nav-pill span{font-size:.7rem;font-weight:700;color:var(--color-muted);padding:4px 10px;border-radius:var(--radius-pill)}
+  .topbar .nav-pill span.on{background:var(--color-primary-soft);color:var(--color-primary)}
+  .brand{font-weight:800;font-size:.92rem;margin-left:auto}
+  .inbox{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:13px}
+  .qcard{background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .qpatient{display:flex;align-items:center;gap:10px;padding:11px 13px;border-bottom:1px solid var(--color-border)}
+  .qp-av{width:32px;height:32px;border-radius:50%;background:#dcf3e9;color:#0c6f50;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .qp-name{font-weight:700;font-size:.86rem}.qp-meta{font-size:.68rem;color:var(--color-muted)}
+  .qask{padding:11px 13px;font-size:.84rem;color:var(--color-text);line-height:1.45}
+  .qask .qlabel{font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-muted);display:block;margin-bottom:4px}
+  .qdraft{margin:0 13px 11px;border:1px solid var(--violet-border);background:var(--violet-soft);border-radius:var(--radius-md);padding:10px 12px}
+  .qdraft .dl{display:flex;align-items:center;gap:6px;font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--violet);margin-bottom:5px}
+  .qdraft .dl svg{width:13px;height:13px;fill:currentColor}
+  .qdraft p{margin:0;font-size:.84rem;line-height:1.5;color:#3a2a78}
+  .qctx{font-size:.68rem;color:var(--color-muted-2);padding:0 13px 9px;display:flex;align-items:center;gap:6px}
+  .qactions{display:flex;gap:8px;padding:0 13px 13px}
+  .qbtn{flex:1;border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-md);padding:9px;font-size:.8rem;font-weight:700;color:var(--color-text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+  .qbtn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+  .qbtn.ghost{border-color:var(--color-border);color:var(--color-muted)}
+  .spark svg{fill:currentColor}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12l16-7-7 16-2.5-6.5z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+  <div class="frames">
+
+    <!-- FRAME 1 : PATIENT VIEW — report + aftercare (Basic payload) -->
+    <section>
+      <p class="frame-label">Patient · Basic payload — read-only report + aftercare</p>
+      <div class="phone">
+        <div class="pscroll">
+          <div class="pf-head">
+            <div class="pf-clinic"><div class="pf-logo">AM</div>
+              <div><div class="pf-name">Memara Demo Clinic</div><div class="pf-sub">Vali-e-Asr Ave, Tehran</div></div></div>
+            <div class="pf-hi rtl" lang="fa">سلام سارا 👋</div>
+            <div class="pf-meta">Your visit · Today, 14:05 · forehead treatment</div>
+          </div>
+          <div class="pf-body">
+            <div class="sec"><h3>Your before / after</h3>
+              <div class="ba"><div class="img"><span class="tag">Before</span></div><div class="img after"><span class="tag">After</span></div></div></div>
+            <div class="sec"><h3>Aftercare for the next 24 hours</h3>
+              <ul class="care">
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Stay upright for 4 hours — don't lie down.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Don't rub or massage the treated area.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Skip exercise, saunas, and alcohol for 24 hours.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Mild redness is normal and settles within hours.</li>
+              </ul></div>
+          </div>
+          <div class="pf-foot"><svg class="ic sm"><use href="#i-lock"/></svg> Private link for سارا · this is everything shared with you.</div>
+        </div>
+      </div>
+      <p class="frame-note">What the patient opens from a link (no login). <b>Read-only</b>: the curated before/after + the <b>aftercare template</b> the clinic chose — and <b>nothing else</b> from the file. Re-openable anytime; revocable by the clinic. This is the <b>Basic</b> patient payload (foundation §4).</p>
+    </section>
+
+    <!-- FRAME 2 : PATIENT VIEW — Q&A thread (Pro payload) -->
+    <section>
+      <p class="frame-label">Patient · Pro payload — ask a question, get a verified answer</p>
+      <div class="phone">
+        <div class="pscroll">
+          <div class="chat-head"><div class="chat-av">AM</div>
+            <div><div class="chat-name">Memara Demo Clinic</div><div class="chat-sub">Aftercare questions · replies are doctor-verified</div></div></div>
+          <div class="thread">
+            <div class="bubble me">My forehead feels a bit firm and there's slight swelling — is that normal?<div class="btime">Yesterday 21:14</div></div>
+            <div class="bubble them">Yes — mild firmness and slight swelling in the first 24–48 hours after botulinum toxin is completely normal and settles on its own. Keep upright today, avoid rubbing it, and it should ease. If you get spreading redness, fever, or it worsens after day 3, message us.
+              <div class="verified"><svg class="ic sm" style="color:var(--color-success)"><use href="#i-check"/></svg> Reviewed &amp; sent by Dr. — Memara Demo Clinic</div>
+              <div class="btime">Yesterday 21:31</div></div>
+            <div class="bubble me">Thank you! 🙏<div class="btime">Yesterday 21:33</div></div>
+          </div>
+          <div class="composer"><div class="box">Ask about your aftercare…</div>
+            <button class="send"><svg class="ic sm"><use href="#i-send"/></svg></button></div>
+        </div>
+      </div>
+      <p class="frame-note">The <b>Pro</b> patient payload on the same channel: the patient asks in-thread instead of in a WhatsApp void. Every reply is <b>doctor-verified before it sends</b> (next frame). The exchange is captured into the patient's memory — the next visit knows it happened.</p>
+    </section>
+
+    <!-- FRAME 3 : DOCTOR Q&A INBOX (Pro, clinic side) -->
+    <section>
+      <p class="frame-label">Doctor · Pro · Q&A inbox — AI-drafted, doctor-verified</p>
+      <div class="phone app">
+        <div class="pscroll">
+          <div class="topbar"><div class="nav-pill"><span>Session</span><span>Memory</span><span class="on"><svg class="ic sm" style="vertical-align:-2px"><use href="#i-chat"/></svg> Q&amp;A</span></div><span class="brand">Memara</span></div>
+          <div class="inbox">
+            <div class="qcard">
+              <div class="qpatient"><div class="qp-av rtl" lang="fa">سن</div>
+                <div class="grow"><div class="qp-name rtl" lang="fa">سارا نظری</div><div class="qp-meta">Forehead Botox · yesterday</div></div>
+                <div class="qp-meta">21:14</div></div>
+              <div class="qask"><span class="qlabel">Patient asks</span>"My forehead feels a bit firm and there's slight swelling — is that normal?"</div>
+              <div class="qdraft"><div class="dl"><span class="spark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span> Suggested reply · from your prior answers</div>
+                <p>Yes — mild firmness and slight swelling in the first 24–48 hours after botulinum toxin is normal and settles on its own. Keep upright today, avoid rubbing it. If you get spreading redness, fever, or it worsens after day 3, message us.</p></div>
+              <div class="qctx"><svg class="ic sm"><use href="#i-spark"/></svg> Grounded in: this visit (20u forehead, today) · your 3 prior swelling answers</div>
+              <div class="qactions">
+                <button class="qbtn primary"><svg class="ic sm"><use href="#i-check"/></svg> Send</button>
+                <button class="qbtn"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button>
+                <button class="qbtn ghost"><svg class="ic sm"><use href="#i-x"/></svg> Dismiss</button>
+              </div>
+            </div>
+
+            <div class="qcard" style="opacity:.72">
+              <div class="qpatient"><div class="qp-av">با</div>
+                <div class="grow"><div class="qp-name rtl" lang="fa">بابک احمدی</div><div class="qp-meta">Cheek filler · 2 days ago</div></div>
+                <div class="qp-meta">✓ sent</div></div>
+              <div class="qask"><span class="qlabel">Patient asked</span>"When can I exercise again?"</div>
+              <div class="qctx" style="padding-top:9px"><svg class="ic sm" style="color:var(--color-success)"><use href="#i-check"/></svg> You sent the suggested reply · added to بابک's memory</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="frame-note">The clinic side: <b>"Patient X asks … · Suggested reply … · Send / Edit / Dismiss."</b> The draft is grounded in <b>this patient's context + the doctor's prior answers</b> and <b>never sends without approval</b> (CLAUDE.md: verification is the gate that matters here). Two taps turns the WhatsApp deluge into a fast, in-context, accruing channel.</p>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>

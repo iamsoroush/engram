@@ -153,6 +153,13 @@ current product to iterate from).
 4. **Clickable prototype + spec** — match `redesign-capture-surface.md` +
    `../../apps/frontend/design-prototypes/*.html`.
 
+> **Aesthetics track — delivered (design, for review).** Spec: [redesign-aesthetics.md](redesign-aesthetics.md).
+> Research: [aesthetics-research-brief.md](aesthetics-research-brief.md). Journeys:
+> [aesthetics-journeys.md](aesthetics-journeys.md). Stories (build hand-off):
+> [aesthetics-stories.md](aesthetics-stories.md). Prototypes:
+> `../../apps/frontend/design-prototypes/aesthetics-{capture,report,patient,patient-surface,frontdesk}.html`.
+> Proposed extensions for human review: [redesign-aesthetics.md §10](redesign-aesthetics.md).
+
 **Design Basic + Pro together (one aesthetics track), not as separate parallel agents.** *Why:* the
 Basic↔Pro boundary *is* the design (what's deterministic vs. AI, where the upsell sits) — design the
 halves apart and they won't meet at the seam.

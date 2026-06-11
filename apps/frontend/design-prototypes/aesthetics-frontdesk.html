@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara — Front desk · arrivals · register + duplicate guard · attach visit</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --color-danger:#b42318; --color-danger-soft:#fdeceb;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --green:#0a9d6e; --green-soft:#dcf3e9;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-pill:999px; --shadow-card:0 8px 22px rgb(8 13 45 / 5%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:var(--color-page);color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:34px 22px 70px}
+  .wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:42px}
+  .frame-label{font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:8px 2px 0;line-height:1.5}
+  .frame-note b{color:var(--color-text-soft)}
+  .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic.sm{width:13px;height:13px}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .grow{flex:1}
+  .link{color:var(--color-primary);font-weight:700;cursor:pointer}
+  .app{max-width:440px;margin:0 auto}
+
+  /* phone shell */
+  .phone{background:var(--color-page);border:1px solid var(--color-border);border-radius:22px;box-shadow:0 16px 38px rgb(15 23 42 / 12%);overflow:hidden}
+  .topbar{display:flex;align-items:center;gap:8px;padding:13px 15px;border-bottom:1px solid var(--color-border);background:#fff}
+  .nav-pill{display:inline-flex;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:3px}
+  .nav-pill span{font-size:.7rem;font-weight:700;color:var(--color-muted);padding:4px 10px;border-radius:var(--radius-pill)}
+  .nav-pill span.on{background:var(--color-primary-soft);color:var(--color-primary)}
+  .brand{font-weight:800;font-size:.92rem;margin-left:auto}
+  .screen{padding:15px}
+  .h-title{font-size:1.05rem;font-weight:800}
+  .h-sub{font-size:.76rem;color:var(--color-muted);margin:3px 0 13px}
+  .tabs{display:inline-flex;background:#eef2f9;border-radius:var(--radius-pill);padding:4px;margin-bottom:13px}
+  .tabs button{border:0;background:transparent;border-radius:var(--radius-pill);font-size:.76rem;font-weight:700;color:var(--color-muted);padding:6px 14px;cursor:pointer}
+  .tabs button.on{background:#fff;color:var(--color-primary);box-shadow:0 1px 3px rgb(8 13 45 / 8%)}
+
+  /* arrival cards */
+  .acard{background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:13px;margin-bottom:11px}
+  .ac-top{display:flex;align-items:center;gap:11px}
+  .av{width:40px;height:40px;border-radius:50%;background:var(--green-soft);color:#0c6f50;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .av.q{background:#eef2f9;color:var(--color-muted)}
+  .ac-name{font-weight:700}
+  .ac-meta{font-size:.72rem;color:var(--color-muted);margin-top:1px}
+  .statebadge{font-size:.66rem;font-weight:800;border-radius:var(--radius-pill);padding:3px 9px;border:1px solid;white-space:nowrap}
+  .statebadge.active{color:var(--color-success);background:var(--color-success-soft);border-color:#cdeede}
+  .statebadge.unassigned{color:var(--color-warning);background:var(--color-warning-soft);border-color:#f3e3bf}
+  .statebadge.waiting{color:var(--color-info);background:var(--color-info-soft);border-color:#d6e4ff}
+  .ac-flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .flag{display:inline-flex;align-items:center;gap:5px;font-size:.68rem;font-weight:700;border-radius:var(--radius-pill);padding:3px 8px;border:1px solid transparent}
+  .flag.allergy{background:var(--color-danger-soft);color:var(--color-danger);border-color:#f4cdc9}
+  .flag.consent{background:var(--color-success-soft);color:var(--color-success);border-color:#cdeede}
+  .flag.consent.off{background:var(--color-warning-soft);color:var(--color-warning);border-color:#f3e3bf}
+  .ac-act{display:flex;gap:8px;margin-top:11px}
+  .btn{flex:1;border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-md);padding:9px;font-size:.8rem;font-weight:700;color:var(--color-text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+  .btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+  .fab{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:1px dashed var(--color-border-strong);background:#fff;border-radius:var(--radius-md);padding:11px;font-size:.84rem;font-weight:700;color:var(--color-primary);cursor:pointer;margin-top:4px}
+
+  /* register form + duplicate guard */
+  .field{margin-bottom:11px}
+  .field label{display:block;font-size:.7rem;font-weight:700;color:var(--color-text-soft);margin-bottom:5px}
+  .field label .opt{color:var(--color-muted);font-weight:500}
+  .field input{width:100%;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:10px 12px;font-size:.86rem;font-family:inherit;color:var(--color-text)}
+  .field input.warnf{border-color:#e9b400;background:#fffdf5}
+  .row{display:flex;gap:10px}.row>*{flex:1}
+  .guard{border:1px solid #f0d488;background:var(--color-warning-soft);border-radius:var(--radius-md);padding:11px 12px;margin:2px 0 12px}
+  .guard-h{display:flex;align-items:center;gap:7px;font-size:.78rem;font-weight:800;color:var(--color-warning)}
+  .guard-sub{font-size:.73rem;color:#7a5300;margin:3px 0 9px}
+  .gmatch{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:9px 10px}
+  .gmatch + .gmatch{margin-top:7px}
+  .gm-av{width:32px;height:32px;border-radius:50%;background:var(--green-soft);color:#0c6f50;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto;font-size:.78rem}
+  .gm-name{font-weight:700;font-size:.83rem}.gm-meta{font-size:.68rem;color:var(--color-muted)}
+  .gm-use{border:1px solid var(--color-primary);color:var(--color-primary);background:#fff;border-radius:var(--radius-pill);font-size:.72rem;font-weight:700;padding:6px 12px;cursor:pointer;white-space:nowrap}
+  .formbtns{display:flex;gap:9px;margin-top:4px}
+
+  /* attach resolver */
+  .ctx{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:11px 13px;background:var(--color-surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:.76rem;color:var(--color-text-soft);margin-bottom:13px}
+  .ctx .k{color:var(--color-muted);display:block;font-size:.62rem;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+  .lbl{font-size:.64rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 8px}
+  .suggest{display:flex;align-items:center;gap:11px;border:1.5px solid var(--color-primary);background:var(--color-primary-soft);border-radius:var(--radius-md);padding:11px;margin-bottom:11px}
+  .match{display:flex;align-items:center;gap:11px;padding:9px 2px;border-top:1px solid var(--color-border)}
+  .search{display:flex;align-items:center;gap:9px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:10px 12px;color:var(--color-muted);font-size:.83rem;margin:11px 0}
+  .det-note{font-size:.66rem;font-weight:700;color:var(--color-info);background:var(--color-info-soft);border:1px solid #d6e4ff;border-radius:var(--radius-pill);padding:2px 8px;display:inline-block}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="16.6" r=".6" fill="currentColor"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></symbol>
+</defs></svg>
+<div class="wrap">
+
+  <!-- FRAME 1 : ARRIVALS / TODAY (front-desk lens) -->
+  <section>
+    <p class="frame-label">Front desk · Today / arrivals — a lens on Clinical Memory · Today (not a scheduler)</p>
+    <div class="app">
+      <div class="phone">
+        <div class="topbar"><div class="nav-pill"><span class="on">Today</span><span>Patients</span><span>Needs input</span></div><span class="brand">Memara</span></div>
+        <div class="screen">
+          <div class="h-title">Front desk · Today</div>
+          <div class="h-sub">Tue Jun 11 · 3 in the clinic · 1 visit needs a patient</div>
+
+          <!-- active visit -->
+          <div class="acard">
+            <div class="ac-top"><div class="av rtl" lang="fa">سن</div>
+              <div class="grow"><div class="ac-name rtl" lang="fa">سارا نظری</div><div class="ac-meta">In with Dr. · forehead · Session: Today 14:05</div></div>
+              <span class="statebadge active">In chair</span></div>
+            <div class="ac-flags"><span class="flag allergy">⚠ lidocaine</span><span class="flag consent">✓ consent</span></div>
+          </div>
+
+          <!-- unassigned (doctor captured first) -->
+          <div class="acard" style="border-color:#f0d488">
+            <div class="ac-top"><div class="av q">?</div>
+              <div class="grow"><div class="ac-name">Unassigned visit</div><div class="ac-meta">Dr. started capturing · Session: Today 14:18 · 2 captures</div></div>
+              <span class="statebadge unassigned">Needs patient</span></div>
+            <div class="ac-act"><button class="btn primary">Assign patient</button><button class="btn">Open visit</button></div>
+          </div>
+
+          <!-- waiting / checked in -->
+          <div class="acard">
+            <div class="ac-top"><div class="av">با</div>
+              <div class="grow"><div class="ac-name rtl" lang="fa">بابک احمدی</div><div class="ac-meta">Checked in 14:20 · cheek filler review</div></div>
+              <span class="statebadge waiting">Waiting</span></div>
+            <div class="ac-flags"><span class="flag consent off">⚠ consent needed</span></div>
+          </div>
+
+          <button class="fab"><svg class="ic"><use href="#i-plus"/></svg> Register a patient</button>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">Reception's home: who's in, in plain clinical-memory language — <b>In chair · Needs patient · Waiting</b> — with <b>Pro flags</b> (allergy, consent) surfaced at check-in so the room is ready. The amber card is the <b>capture-first handoff</b>: the doctor started before reception finished, so the visit waits for a patient, not the other way around. Scheduling-<i>adjacent</i>, never a calendar.</p>
+  </section>
+
+  <!-- FRAME 2 : REGISTER + DUPLICATE GUARD -->
+  <section>
+    <p class="frame-label">Register a patient — one shared form · the duplicate-patient guard (Basic, deterministic)</p>
+    <div class="app">
+      <div class="phone">
+        <div class="topbar"><span style="font-weight:700;color:var(--color-text-soft);font-size:.86rem">‹ New patient</span><span class="brand">Memara</span></div>
+        <div class="screen">
+          <div class="field"><label>Full name</label><input class="warnf rtl" lang="fa" value="سارا نظری" /></div>
+
+          <div class="guard">
+            <div class="guard-h"><svg class="ic sm"><use href="#i-warn"/></svg> This looks like an existing patient</div>
+            <div class="guard-sub">2 close matches — Persian-aware. Use an existing record instead of splitting the history.</div>
+            <div class="gmatch"><div class="gm-av rtl" lang="fa">سن</div>
+              <div class="grow"><div class="gm-name rtl" lang="fa">سارا نظری</div><div class="gm-meta">ID 0012 345 678 · 3 visits · last today</div></div>
+              <button class="gm-use">Use this</button></div>
+            <div class="gmatch"><div class="gm-av rtl" lang="fa">سر</div>
+              <div class="grow"><div class="gm-name rtl" lang="fa">سارا نظری‌فر</div><div class="gm-meta">ID 0019 887 210 · 1 visit · May 2</div></div>
+              <button class="gm-use">Use this</button></div>
+          </div>
+
+          <div class="row">
+            <div class="field"><label>National ID <span class="opt">· optional</span></label><input placeholder="00xx xxx xxx" /></div>
+            <div class="field"><label>Phone <span class="opt">· optional</span></label><input placeholder="+98…" /></div>
+          </div>
+          <div class="formbtns"><button class="btn">Cancel</button><button class="btn primary">Create anyway</button></div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">The reception-critical Basic feature. As the name is typed, a <b>deterministic, Persian-orthography-aware</b> near-match check runs (normalized name + ID/phone) and warns <b>before</b> a duplicate is created — the exact failure mode that splits one Persian patient into many records (research §3). <b>Use this</b> adopts the existing record; <b>Create anyway</b> is always available (never blocks). Same shared form used by the resolver, the Patients tab, and AI auto-create.</p>
+  </section>
+
+  <!-- FRAME 3 : ATTACH UNASSIGNED VISIT -->
+  <section>
+    <p class="frame-label">Attach the doctor-captured visit — the capture-first handoff closes</p>
+    <div class="app">
+      <div class="phone">
+        <div class="topbar"><span style="font-weight:700;color:var(--color-text-soft);font-size:.86rem">‹ Assign patient</span><span class="brand">Memara</span></div>
+        <div class="screen">
+          <div class="ctx">
+            <div><span class="k">Visit</span>Today · 14:18</div>
+            <div><span class="k">Captures</span>2 (1 audio, 1 photo)</div>
+            <div><span class="k">Clinician</span>Dr.</div>
+            <div><span class="k">State</span>Unassigned</div>
+          </div>
+
+          <p class="lbl">Suggested — just registered <span class="det-note">deterministic</span></p>
+          <div class="suggest"><div class="gm-av rtl" lang="fa">سن</div>
+            <div class="grow"><div class="gm-name rtl" lang="fa">سارا نظری</div><div class="gm-meta">ID 0012 345 678 · registered 14:17</div></div>
+            <button class="gm-use" style="background:var(--color-primary);color:#fff;border-color:var(--color-primary)">Assign</button></div>
+
+          <div class="search"><svg class="ic"><use href="#i-search"/></svg> Search by name, phone, or national ID</div>
+
+          <p class="lbl">Detected in this session</p>
+          <div class="match"><div class="gm-av">با</div>
+            <div class="grow"><div class="gm-name rtl" lang="fa">بابک احمدی</div><div class="gm-meta">mentioned in audio · waiting</div></div>
+            <button class="gm-use">Assign</button></div>
+
+          <div class="ac-act" style="margin-top:14px"><button class="btn">Keep unassigned</button><button class="btn">Create new</button></div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">The other half of the handoff. The doctor's unassigned visit gets a <b>deterministic suggestion</b> — the patient reception just registered, ranked first (no AI in Basic) — plus <b>Detected in this session</b>, search, and <b>Keep unassigned / Create new</b>. In <b>Pro</b> this visit usually <b>auto-matches</b> from the dictated name, so it never reaches the desk at all; the resolver stays the fallback for the ambiguous ones.</p>
+  </section>
+
+</div>
+</body>
+</html>

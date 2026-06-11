@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara — Aesthetics report · Basic ↔ Pro + shareable</title>
+<style>
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --green:#0a9d6e;
+    --radius-md:10px; --radius-lg:12px; --radius-pill:999px; --shadow-card:0 8px 22px rgb(8 13 45 / 5%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:var(--color-page);color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:34px 22px 70px}
+  .wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:42px}
+  .frame-label{font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:8px 2px 0;line-height:1.5}
+  .frame-note b{color:var(--color-text-soft)}
+  .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic.sm{width:13px;height:13px}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .grow{flex:1}
+  .link{color:var(--color-primary);font-weight:700;cursor:pointer}
+  .app{background:var(--color-page);border:1px solid var(--color-border);border-radius:18px;padding:16px;box-shadow:var(--shadow-card)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){ .cols{grid-template-columns:1fr} }
+
+  .report-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .rep-titlebar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .rep-titlebar h2{font-size:.9rem;font-weight:800;margin:0}
+  .tier{font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:var(--radius-pill);padding:3px 8px;border:1px solid}
+  .tier.pro{color:var(--violet);background:var(--violet-soft);border-color:var(--violet-border)}
+  .tier.basic{color:#475569;background:#eef2f9;border-color:var(--color-border)}
+  .doc-header{display:flex;align-items:center;gap:11px;padding:13px 14px;background:var(--color-surface-soft);border-bottom:1px solid var(--color-border)}
+  .clinic-logo{width:38px;height:38px;border-radius:10px;background:var(--color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .clinic-name{font-weight:800;font-size:.9rem}
+  .clinic-addr{font-size:.68rem;color:var(--color-muted);margin-top:1px}
+  .pinfo{display:flex;flex-wrap:wrap;gap:5px 22px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .pinfo .f{font-size:.8rem}
+  .pinfo .f span{font-size:.58rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);display:block;margin-bottom:1px}
+  .rep-meta{padding:8px 14px;font-size:.7rem;color:var(--color-muted);display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--color-border)}
+  .badge-complete{display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;color:var(--color-success);background:var(--color-success-soft);border:1px solid #cdeede;border-radius:var(--radius-pill);padding:3px 9px}
+  .rep-body{padding:4px 14px 14px}
+  .rep-sec{padding:11px 0;border-top:1px solid var(--color-border)}
+  .rep-sec:first-child{border-top:0}
+  .rep-sec h3{margin:0 0 5px;font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-soft)}
+  .rep-sec p{margin:0;font-size:.85rem;line-height:1.55;color:var(--color-text-soft)}
+  .rep-img{width:100%;height:96px;border-radius:var(--radius-md);border:1px solid var(--color-border);margin-top:8px;
+    background:radial-gradient(circle at 50% 40%, #f2d3c4 0 36%, #f6ece6 38% 100%)}
+  .ba-row{display:flex;gap:8px;margin-top:8px}
+  .ba-row .rep-img{margin-top:0;height:86px}
+  .ba-row .rep-img.after{background:radial-gradient(circle at 50% 40%, #efc9b6 0 34%, #f4e6dd 36% 100%)}
+
+  /* treatment table */
+  .ttable{width:100%;border-collapse:collapse;margin-top:7px;font-size:.78rem}
+  .ttable th{text-align:left;font-size:.56rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted-2);padding:5px 8px;border-bottom:1px solid var(--color-border)}
+  .ttable td{padding:7px 8px;border-bottom:1px solid var(--color-border);color:var(--color-text)}
+  .ttable td.lot{font-variant-numeric:tabular-nums;font-weight:700}
+  .ttable tr:last-child td{border-bottom:0}
+
+  /* basic chronological */
+  .b-entry{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--color-border)}
+  .b-entry:first-child{border-top:0}
+  .b-node{width:24px;height:24px;border-radius:50%;border:1.5px solid var(--color-primary);color:var(--color-primary);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .b-entry.photo .b-node{border-color:var(--green);color:var(--green)}
+  .b-entry .b-time{font-size:.64rem;color:var(--color-muted);margin-bottom:3px}
+  .b-entry p{margin:0;font-size:.83rem;line-height:1.5;color:var(--color-text-soft)}
+  .b-img{width:120px;height:78px;border-radius:var(--radius-md);border:1px solid var(--color-border);margin-top:6px;background:radial-gradient(circle at 50% 40%, #f2d3c4 0 36%, #f6ece6 38% 100%)}
+
+  .teaser{display:flex;align-items:center;gap:10px;margin:11px 14px 14px;border:1px solid var(--violet-border);background:var(--violet-soft);border-radius:var(--radius-md);padding:10px 12px;cursor:pointer}
+  .teaser .spark{color:var(--violet);display:flex}.teaser .spark svg{width:16px;height:16px;fill:currentColor}
+  .teaser .tt{font-size:.78rem;font-weight:700;color:#4b2bb3}
+  .teaser .ts{font-size:.7rem;color:var(--violet);opacity:.85;margin-top:1px}
+  .teaser .go{margin-left:auto;color:var(--violet);font-weight:800;font-size:.72rem;white-space:nowrap}
+
+  /* shareable artifact */
+  .share-head{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .pillbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-pill);font-size:.74rem;font-weight:700;color:var(--color-text-soft);padding:7px 12px;cursor:pointer}
+  .pillbtn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+  .incl{display:flex;align-items:center;gap:9px;padding:9px 14px;border-bottom:1px solid var(--color-border);font-size:.8rem;color:var(--color-text-soft)}
+  .sw{width:34px;height:20px;border-radius:var(--radius-pill);background:var(--color-primary);position:relative;flex:0 0 auto}
+  .sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+  .sw.off{background:var(--color-border-strong)}.sw.off::after{right:auto;left:2px}
+  .withheld{font-size:.72rem;color:var(--color-muted);padding:9px 14px;display:flex;align-items:center;gap:7px;background:var(--color-surface-soft)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="8.5" y1="21" x2="15.5" y2="21"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.2"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v12H9l-4 3.5z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="17" cy="6" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M8.2 11L15 7M8.2 13L15 17"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z"/></symbol>
+</defs></svg>
+<div class="wrap">
+
+  <!-- FRAME 1 : THE TWO REPORTS SIDE BY SIDE -->
+  <section>
+    <p class="frame-label">Live report · Basic (chronological) vs Pro (structured aesthetics report)</p>
+    <div class="app">
+      <div class="cols">
+
+        <!-- BASIC -->
+        <div class="report-card">
+          <div class="rep-titlebar"><h2>Clinical report</h2><span class="tier basic">Basic</span></div>
+          <div class="doc-header"><div class="clinic-logo">AM</div>
+            <div><div class="clinic-name">Memara Demo Clinic</div><div class="clinic-addr">Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div></div>
+          <div class="pinfo">
+            <div class="f"><span>Patient</span><span class="rtl" lang="fa" style="font-weight:600">سارا نظری</span></div>
+            <div class="f"><span>Assignment</span>Manual</div>
+            <div class="f"><span>Date of visit</span>Today · 14:05</div>
+          </div>
+          <div class="rep-body" style="padding-top:0">
+            <div class="b-entry audio"><div class="b-node"><svg class="ic sm"><use href="#i-mic"/></svg></div>
+              <div><div class="b-time">14:05 · voice memo (0:14)</div><p>Audio saved on this device. Open the visit to play.</p></div></div>
+            <div class="b-entry photo"><div class="b-node"><svg class="ic sm"><use href="#i-cam"/></svg></div>
+              <div><div class="b-time">14:08 · Before/After · Forehead</div><p>Two photos, paired.</p>
+                <div style="display:flex;gap:6px"><div class="b-img" style="width:96px;height:64px"></div><div class="b-img" style="width:96px;height:64px"></div></div></div></div>
+            <div class="b-entry"><div class="b-node"><svg class="ic sm"><use href="#i-note"/></svg></div>
+              <div><div class="b-time">14:10 · note</div><p>Treatment log — Forehead · Botox · 20u · lot (blank). Recheck 2 weeks.</p></div></div>
+          </div>
+          <div class="teaser" data-teaser>
+            <span class="spark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span>
+            <div class="grow"><div class="tt">Try Pro — turn this into a structured treatment report</div>
+              <div class="ts">Visit summary, assessment, and an extracted Treatment-performed table.</div></div>
+            <span class="go">Try Pro →</span>
+          </div>
+        </div>
+
+        <!-- PRO -->
+        <div class="report-card">
+          <div class="rep-titlebar"><h2>Clinical report</h2><span class="tier pro">Pro</span><span class="grow"></span><span class="link" style="font-size:.66rem">aesthetic default · Change</span></div>
+          <div class="doc-header"><div class="clinic-logo">AM</div>
+            <div><div class="clinic-name">Memara Demo Clinic</div><div class="clinic-addr">Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div></div>
+          <div class="pinfo">
+            <div class="f"><span>Patient</span><span class="rtl" lang="fa" style="font-weight:600">سارا نظری</span></div>
+            <div class="f"><span>National ID</span>0012 345 678</div>
+            <div class="f"><span>Date of visit</span>Today · 14:05</div>
+          </div>
+          <div class="rep-meta"><span class="badge-complete"><svg class="ic sm"><use href="#i-check"/></svg> Complete</span>· Generated from 3 captures · 1 set aside</div>
+          <div class="rep-body">
+            <div class="rep-sec"><h3>Visit summary</h3><p>Forehead botulinum-toxin maintenance; conservative dosing continued. Patient happy with prior result.</p></div>
+            <div class="rep-sec"><h3>Concern / goals</h3><p>Soften dynamic forehead lines; keep a natural, subtle look.</p></div>
+            <div class="rep-sec"><h3>Assessment</h3><p>Moderate dynamic rhytids, symmetric. No contraindication noted; lidocaine allergy on file.</p></div>
+            <div class="rep-sec"><h3>Treatment performed</h3>
+              <table class="ttable"><thead><tr><th>Area</th><th>Product · brand</th><th>Units</th><th>Lot #</th></tr></thead>
+                <tbody><tr><td>Forehead</td><td>Botulinum toxin · Dysport</td><td>20 u</td><td class="lot">D‑4471</td></tr></tbody></table></div>
+            <div class="rep-sec"><h3>Before / after</h3>
+              <div class="ba-row"><div class="rep-img"></div><div class="rep-img after"></div></div></div>
+            <div class="rep-sec"><h3>Plan &amp; follow-up</h3><p>Review in 2 weeks; assess symmetry. Possible small touch-up per patient preference.</p></div>
+            <div class="rep-sec"><h3>Aftercare given</h3><p>Standard botulinum aftercare: stay upright 4h, no rubbing, no exercise 24h.</p></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <p class="frame-note"><b>Same captures, two reports.</b> Basic is an honest chronological notebook (header from template/DB, photos shown, no synthesis) with the <b>✨ Try Pro</b> teaser exactly where structure would land. Pro is the fixed v1 structured report — note the <b>Treatment performed</b> table with <b>area · product · brand · units · lot</b> extracted from the dictation, the auto-<b>Complete</b> badge, and out-of-context excluded ("1 set aside"). The report is always live — no Generate, no verify gate.</p>
+  </section>
+
+  <!-- FRAME 2 : SHAREABLE REPORT (CLINIC-SIDE CURATION) -->
+  <section>
+    <p class="frame-label">Shareable patient report — clinic-side curation (Basic + Pro) · the sharing/withholding contract</p>
+    <div class="app" style="max-width:430px;margin:0 auto;padding:0;background:#fff;border-radius:var(--radius-lg)">
+      <div class="report-card" style="border:0;box-shadow:none">
+        <div class="share-head"><svg class="ic" style="color:var(--color-primary)"><use href="#i-share"/></svg>
+          <h2 style="font-size:.95rem;font-weight:800;margin:0">Share with patient</h2><span class="grow"></span>
+          <span class="tier basic">Basic</span></div>
+        <div style="padding:10px 14px;font-size:.78rem;color:var(--color-muted);border-bottom:1px solid var(--color-border)">
+          Pick what سارا sees. She gets a read-only link — nothing else from the file.</div>
+        <div class="incl"><span class="sw"></span><div class="grow"><b>Before / after — Forehead</b><div style="font-size:.7rem;color:var(--color-muted)">1 pair</div></div></div>
+        <div class="incl"><span class="sw"></span><div class="grow"><b>Aftercare instructions</b><div style="font-size:.7rem;color:var(--color-muted)">Botulinum · standard template</div></div><span class="link" style="font-size:.7rem">Change</span></div>
+        <div class="incl"><span class="sw off"></span><div class="grow" style="color:var(--color-muted)">Visit summary <span style="font-size:.7rem">(Pro)</span></div></div>
+        <div class="withheld"><svg class="ic sm"><use href="#i-lock"/></svg> Always withheld: raw audio, internal notes, lot numbers, national ID, other visits.</div>
+        <div style="padding:13px 14px;display:flex;gap:9px">
+          <button class="pillbtn grow" style="justify-content:center">Preview</button>
+          <button class="pillbtn primary grow" style="justify-content:center"><svg class="ic sm"><use href="#i-share"/></svg> Send link</button>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note">Sharing is an <b>explicit, curated</b> action with a per-share preview — the foundation §4 <b>contract</b> (access · delivery · consent · shared-vs-withheld), not per-tier buttons. Clinical internals (raw captures, notes, <b>lots</b>, IDs, other visits) are <b>always withheld</b>; the link is read-only and revocable. Delivery channel (SMS / WhatsApp) is a <b>⊕ candidate</b> for human review. In Pro the same sheet pre-fills from the structured report; Basic curates from the chronological one.</p>
+  </section>
+
+</div>
+<script>
+  document.querySelectorAll('[data-teaser]').forEach(t=>t.style.cursor='pointer');
+  document.querySelectorAll('.incl .sw').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('off')));
+</script>
+</body>
+</html>
