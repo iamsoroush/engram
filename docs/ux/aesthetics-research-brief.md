@@ -56,8 +56,8 @@ spreadsheet**. Failure modes, mapped to the tier that resolves them:
 - **Before/after photos lost in a 10,000-image camera roll**, unpaired, unlabeled, mixed with personal
   photos → **Basic kills it**: patient-filed capture + before/after pairing + ghost-overlay.
 - **"What did I inject last time — product, units, lot?"** lives in a note or someone's memory →
-  **Basic kills the lookup** (per-patient longitudinal log + lot field); **Pro adds** auto-extraction
-  from voice/notes + cross-visit synthesis.
+  **Basic kills the lookup** by *retrieval* — the previous visit's note + before/after are one glance
+  away (no structured form); **Pro adds** auto-extraction from voice/notes + cross-visit synthesis.
 - **The WhatsApp question deluge** ("is this swelling normal?") scattered across DMs/SMS/IG; messages
   slip through (a real one-star-review failure mode). → **Basic** centralizes the thread + shareable
   aftercare; **Pro adds** post-session Q&A answered from the actual session record.

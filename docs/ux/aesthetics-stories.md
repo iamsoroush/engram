@@ -58,12 +58,14 @@ angle/framing/lighting match and the comparison is credible.
 - **Acceptance:** deterministic on-screen overlay of the paired before image at low opacity during
   capture; no AI. *Candidate extension (research §6 ADOPT).*
 
-### AES-106 — "Same as last time" pre-fill 〔Basic · Dr/As · new〕
-As a **doctor**, I want to start a new note pre-filled from this patient's **last visit** note, so that
-returning-patient documentation is one edit, not a retype.
-- **Acceptance:** deterministic copy of the prior visit's typed note into a new editable note; clearly
-  marked "from last visit · DATE"; never auto-saved without an edit/confirm. *Extends naturally to the
-  treatment line.*
+### AES-106 — Last visit, one glance + "same as last time" pre-fill 〔Basic · Dr/As · new〕
+As a **doctor**, with a returning patient I want **last visit's note + before/after surfaced at capture**
+and a one-tap pre-fill of a new note from it, so that "what did we use last time" is answered by
+retrieval and documentation is one edit, not a retype.
+- **Acceptance:** for a returning patient the capture strip shows last visit's note + before/after (tap
+  to open the visit); **"same as last time"** deterministically copies the prior typed note into a new
+  editable note, marked "from last visit · DATE", never auto-saved without an edit/confirm. *This is
+  Basic's substitute for structured treatment recall (no form — AES-108/203).*
 
 ### AES-107 — Structured session report (Pro) 〔Pro · Dr · modify〕
 As a **doctor**, I want my dictation + photos + notes turned into a **structured per-visit report**, so
@@ -74,13 +76,14 @@ that the record is consistent and the treatment specifics are captured.
   but **AI-synthesized** content as captures land; auto-**Complete** badge; no Generate button, no verify
   gate. Out-of-context excluded.
 
-### AES-108 — Treatment-line capture & extraction 〔Both · Dr/As · new/modify〕
-As a **doctor**, I want each treatment item recorded as *area · product · brand · units/volume · lot*,
-so that "what we did" is queryable.
-- **Acceptance:** **Basic** — a lightweight **deterministic structured treatment row** the doctor/assistant
-  fills (or leaves blank), stored on the visit (research §6 ADAPT: structured lot/product/units even in
-  Basic). **Pro** — the same fields **auto-extracted** from dictation into *Treatment performed*. Both
-  feed the patient's treatment history (AES-203).
+### AES-108 — Treatment extraction into the structured report 〔Pro · Dr/As · modify〕
+As a **doctor**, I want each treatment item *extracted from my dictation* as *area · product · brand ·
+units/volume · lot*, so that "what we did" is queryable **without my filling a form**.
+- **Acceptance:** **Pro only.** Auto-extracted from dictation into *Treatment performed* (AES-107) + the
+  lot ledger (AES-705); feeds the treatment table (AES-203). **Basic does NOT capture structured
+  treatment** — detail stays free-text (a note/voice memo); Basic answers "what did we use last time" by
+  **retrieval** (AES-106/203), not entry. *Why:* a manual structured form would make Basic feel like a
+  small EHR ([design-principles §2,§5](../design-principles.md)) — **decision 2026-06-11**.
 
 ### AES-109 — Out-of-context capture 〔Pro · Dr · exists〕
 As a **doctor**, I want an off-topic capture (a phone call, a side comment) dimmed and excluded from the
@@ -88,12 +91,13 @@ report, never deleted, with one-tap **Mark relevant**, so that the report stays 
 - **Acceptance:** as the generic build ([capture-surface](redesign-capture-surface.md)); Pro-only
   (report exclusion). Basic has no report synthesis to exclude from.
 
-### AES-110 — Face-map injection logging 〔Pro · Dr · new · ⊕〕
-As a **doctor**, I want to tap a **face diagram** to log each injection site with product/units/lot, so
-that the treatment log is structured and recall-ready.
-- **Acceptance:** tap-to-place sites on a face map → rows in *Treatment performed*. *Candidate extension
-  (research §6). A deterministic Basic version = manual area tag only; the diagram + per-site rollup is
-  the Pro hook.*
+### AES-110 — Face-map injection visualization 〔Pro · Dr · new · ⊕〕
+As a **doctor**, I want my **dictated** treatment rendered onto a **face diagram** I can glance at and
+correct, so that where/what was injected is visual — **without filling a form**.
+- **Acceptance:** *Candidate extension (research §6) — **derived visualization only.*** The face map is
+  populated from the **extracted** *Treatment performed* sites (AES-108), a read-back the doctor taps
+  **only to correct** — never a tap-to-enter capture gate (that would violate capture-first,
+  [design-principles §1,§5](../design-principles.md)). **Later spike, not alpha** (decision 2026-06-11).
 
 ---
 
@@ -112,11 +116,14 @@ I see the whole aesthetic history at a glance.
 - **Acceptance:** deterministic grouping; pairs show side-by-side/slider; tap a pair → the visit. Photos
   never leave the patient file for the camera roll.
 
-### AES-203 — Treatment & lot history (per patient) 〔Both · Dr/As · new〕
-As a **doctor**, I want a **longitudinal treatment log** — each visit's area/product/brand/units/lot —
-on the patient, so that "what did we do last time" is always answerable.
-- **Acceptance:** **Basic** = deterministic table from the captured treatment rows (AES-108).
-  **Pro** = same, populated by extraction + summarized in memory. The most-cited memory gap (research §3).
+### AES-203 — Visit history & "what did we use last time" 〔Both · Dr/As · new〕
+As a **doctor**, I want last visit's detail instantly findable, so that "what did we use last time" is
+answerable **without structured data entry**.
+- **Acceptance:** **Basic** = a **glanceable visit list**; each visit shows the doctor's own note +
+  before/after — the answer lives in the free text they wrote, made instantly skimmable (**no structured
+  table**). **Pro** = a longitudinal **treatment & lot table** (visit · area · product · units · lot)
+  from extraction (AES-108), which also powers recall / lot-recall / smart-lists. Structure exists in
+  Pro *because it's extracted*, never entered. The most-cited memory gap (research §3).
 
 ### AES-204 — Smart Persian search 〔Basic · All · modify〕
 As a **receptionist**, I want **deterministic, Persian-orthography-aware, multi-field** search (name /
@@ -228,14 +235,14 @@ after-photo**, so that I can run the practice from the data.
 ### AES-502 — Lot/batch tracking + recall 〔Pro · Dr/As/Rc · new〕
 As an **assistant**, I want to find **every patient who received a recalled lot**, so that we can act on
 a product recall safely.
-- **Acceptance:** lot ledger built from extracted/entered lots (AES-108); a **recall lookup** returns
-  affected patients/visits; surfaced for outreach (ties to AES-501 follow-up + E4 messaging). Real safety
-  need (research §6; FDA counterfeit-Botox recalls).
+- **Acceptance:** lot ledger built from **extracted** lots (AES-108; no Basic lot data — Basic lot is
+  free text in a note); a **recall lookup** returns affected patients/visits; surfaced for outreach (ties
+  to AES-501 follow-up + E4 messaging). Real safety need (research §6; FDA counterfeit-Botox recalls).
 
 ### AES-503 — Lot/expiry scan 〔Pro · As · new · ⊕〕
 As an **assistant**, I want to **scan a product box** (barcode/lot) at use, so that lot capture is
 accurate and effortless.
-- **Acceptance:** *Candidate extension.* Scan → lot/expiry onto the treatment row + ledger.
+- **Acceptance:** *Candidate extension.* Scan → lot/expiry onto the extracted treatment item + ledger.
 
 ---
 
@@ -336,7 +343,8 @@ the Pro gallery upgrade in context.
 As a **Basic doctor**, on a returning patient I want `✨ recall — what product/units last time?` and an
 AI-history teaser, so that the longitudinal-understanding upsell shows on every return.
 - **Acceptance:** labelled teasers on the Basic patient file; tap → upgrade. Basic still shows the
-  deterministic treatment log (AES-203) — the teaser sells the *synthesis*, not the data.
+  glanceable visit history + your own notes (AES-203) — the teaser sells the *synthesis + recall*, not
+  the data.
 
 ---
 
@@ -366,3 +374,11 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 **Candidate extensions (⊕, for human review):** AES-105 ghost-overlay · AES-110 face-map ·
 AES-404 SMS/WhatsApp delivery · AES-503 lot scan · AES-703 consent capture · AES-704 pre-visit link.
 Rationale + recommendation for each: [redesign-aesthetics.md §10](redesign-aesthetics.md).
+
+**Decisions (2026-06-11 review):** **No structured forms in Basic** — a Basic treatment/lot row is
+**rejected** (Basic = free-text note + retrieval; structure is Pro-only, by extraction). **AES-703
+consent — dropped** (a consent form a clinic wants on file is just a photo). **AES-404 delivery** —
+copy-link / native-share / QR first; automated SMS/WhatsApp deferred. **AES-110 face-map** — a *derived*
+visualization of dictated treatment only (never tap-to-enter), later spike. **AES-503 lot scan** — out
+of MVP. **AES-704 pre-visit link** — agreed, deferred. **AES-105 ghost-overlay** — adopt for v1 Basic.
+See [redesign-aesthetics.md §10](redesign-aesthetics.md).

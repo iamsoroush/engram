@@ -26,22 +26,25 @@ One rule decides every cell: **if a task needs AI, it's Pro** ([foundation §1](
 Basic is **deterministic, zero-AI, instant, offline** — a genuinely-better-than-Apple-Notes floor. Pro
 adds the **understanding** layer. Lightweight AI shows in Basic **only** as a labelled `✨ Try Pro`
 teaser (§8) — never a Basic feature, because the moment Basic has "a little AI" the pricing line
-collapses ([foundation §1](redesign-foundation.md)).
+collapses ([foundation §1](redesign-foundation.md)). **And structure in Pro is *emergent*** — the AI
+extracts it from dictation; **Basic never asks the user to fill structured fields** (a manual form would
+make a fast capture app feel like a small EHR — [design-principles §2,§5](../design-principles.md)).
+Basic's answer to "what did we use last time" is **fast retrieval** of the previous visit, not data entry.
 
 | Capability | Basic (deterministic) | Pro (AI) | Story |
 | --- | --- | --- | --- |
 | Capture lifecycle | Note/photo primary; audio = **voice memo**; saved instant, local-first, **no AI job/`processing`** | **Audio-first** dictation; transcription · captions · note decoration | AES-101/102 |
 | Patient filing | Auto-filed patient→visit (det. presentation) | + AI **matching** (match/create/reassign/suggest) | AES-201/208 |
 | Before/after photos | Manual **Before/After + area** tag; **manual/one-tap pair**; ghost-overlay align `⊕`; gallery by visit | + AI **captions** + **auto-pair by area** | AES-103/104/202 |
-| Treatment log | **Deterministic** structured row (area·product·units·lot), you fill | **Extracted** from dictation into *Treatment performed* | AES-108 |
+| Treatment detail | **Free-text note / photos** — no structured form | **Extracted** from dictation into *Treatment performed* | AES-108 |
 | Report | **Chronological** document (notes+photos, honest timestamps, no synthesis) | **Structured** v1 report (synthesis + extraction); auto-**Complete** | AES-302/107 |
 | Search | **Persian-aware deterministic** multi-field, instant at scale | (same) | AES-204 |
 | Assign-later | **Deterministic** "Assign to …?" suggestion | AI auto-match; ambiguous → resolver | AES-301 |
 | Patient memory | **Structural** recap, **no ✨**, never guesses from audio | **AI history** (Snapshot/Story/Worth-remembering/Right-now) + **recall** | AES-206/207 |
-| Same-as-last-time | **Det.** note pre-fill from last visit | (Basic feature; Pro recall extends it) | AES-106 |
+| Last-visit retrieval | **Det.** glance at last visit (note + before/after) + "same as last time" pre-fill | + AI **recall** ("what product/units last time") | AES-106 |
 | Duplicate guard | **Det.** near-match warning at create | (same) | AES-205 |
 | Smart lists / filters | — | **Pro** (seen this week · due follow-up · on product X · missing after-photo) | AES-501 |
-| Lot/batch + recall | (lot field captured deterministically) | **Pro** recall — every patient on a recalled lot | AES-502 |
+| Lot/batch + recall | — (lot lives in your note text; not queryable) | **Pro** — extracted lots → recall every patient on a recalled lot | AES-502 |
 | Flags / safety | — | **Pro** (allergy · consent · preference) surfaced each visit | AES-701 |
 | Shareable report + aftercare | **Basic** (curated report + static aftercare) | (Pro pre-fills from structured report) | AES-303/304 |
 | Post-session Q&A | — | **Pro** (AI-drafted, doctor-verified) | AES-402 |
@@ -59,8 +62,9 @@ Aesthetics reuses the existing shell (Active Session · Clinical Memory · Searc
 
 - **Active Session** — adds before/after pair capture, the treatment block, the patient-row **flags**
   (Pro), the **"same as last time"** / **recall** strip, and the teaser slots. ([capture prototype](../../apps/frontend/design-prototypes/aesthetics-capture.html))
-- **Patient detail** — adds a **before/after gallery** (grouped by visit), a **treatment & lot history**
-  table, and a **flags** band; memory is tiered (det. structural ↔ AI history + recall). ([patient prototype](../../apps/frontend/design-prototypes/aesthetics-patient.html))
+- **Patient detail** — adds a **before/after gallery** (grouped by visit), **visit history** (Basic: a
+  glanceable list of your own notes; Pro: a **treatment & lot table** from extraction), and a **flags**
+  band (Pro); memory is tiered (det. structural ↔ AI history + recall). ([patient prototype](../../apps/frontend/design-prototypes/aesthetics-patient.html))
 - **Clinical Memory** — adds Pro **smart lists** and an admin **lot recall** lookup. Reception uses
   Today as a **front-desk lens** (§7).
 - **Q&A** — a new Pro surface (doctor inbox); reachable from the shell navigator. ([patient-surface prototype](../../apps/frontend/design-prototypes/aesthetics-patient-surface.html))
@@ -94,12 +98,14 @@ The aesthetics signature — *aesthetics is photos* ([foundation §3 Basic 3](re
   the caption slot is a `✨ Try Pro` teaser (AES-803).
 
 ### 3.2 Treatment capture & the structured report (AES-108/107)
-*Why structure lives in Pro:* turning a note into structured fields is the most-tempting cheap-LLM task
-and is **exactly the core Pro value** — giving it away kills the upgrade reason
-([foundation §1](redesign-foundation.md)).
-- **Basic:** an **optional deterministic treatment row** — `Area · Product · Units · Lot` the
-  doctor/assistant fills (or leaves blank). Stored on the visit; feeds the treatment history (§5). The
-  Basic Live report stays **chronological** ([redesign-capture-surface.md B2 Basic](redesign-capture-surface.md)).
+*Structure in Pro is **emergent**, never data entry:* the doctor dictates naturally and the AI extracts
+the fields — turning a note into structure is the core Pro value, so forcing a form (or giving the
+extraction away) defeats the upgrade ([foundation §1](redesign-foundation.md)).
+- **Basic:** treatment detail is **just what the doctor types or says** — a free-text note or a voice
+  memo; **no `Area/Product/Units/Lot` fields.** *Why no form:* a structured row would make a fast
+  capture app feel like a small EHR ([design-principles §2,§5](../design-principles.md)). The "what did
+  we use last time" job is solved by **fast retrieval** (§3.3, §5), not entry. The Basic Live report
+  stays **chronological** ([redesign-capture-surface.md B2 Basic](redesign-capture-surface.md)).
 - **Pro:** the dictation (+ photos/notes) becomes the **fixed v1 structured report** — *Visit summary ·
   Concern/goals · Assessment · **Treatment performed** (area · product · brand · units/volume · **lot #**)
   · Before/after media · Plan & follow-up · Aftercare given* ([foundation §3 Pro 3](redesign-foundation.md)).
@@ -110,8 +116,10 @@ and is **exactly the core Pro value** — giving it away kills the upgrade reaso
 ### 3.3 Patient row — flags, same-as-last-time, recall
 - **Flags (Pro, AES-701):** `⚠ Allergy · Consent · Preference` ride the patient row at every visit and
   at check-in (§7) — never blocking, but prominent. *Why:* safety facts must be impossible to miss.
-- **Same as last time (Basic, AES-106):** for a returning patient, a one-tap **pre-fill** of a new note
-  from the last visit's note ("from Jun 4 · forehead Botox"); never auto-saved without an edit.
+- **Last visit, one glance (Basic, AES-106):** for a returning patient the strip surfaces **last
+  visit's note + before/after** at capture time (tap to open it) and offers a one-tap **"same as last
+  time"** note pre-fill; never auto-saved without an edit. *This is how Basic answers "what did we use
+  last time" — retrieval, not a form.*
 - **Recall (Pro, AES-207):** the same strip becomes "Last time: forehead · Botox (Dysport) · 20u · lot
   D-4471" answered from structured data. In Basic this is a `✨ recall` teaser (AES-804).
 
@@ -140,9 +148,12 @@ from the structured report; Basic curates from the chronological one.
 
 - **Before/after gallery, grouped by visit (Basic, AES-202)** — the whole aesthetic history at a glance;
   pairs show slider/side-by-side; deterministic grouping. The camera-roll-chaos cure.
-- **Treatment & lot history (Both, AES-203)** — a longitudinal table (visit · area · product · units ·
-  **lot**). Basic builds it from the captured rows; Pro from extraction. This is the *"what did we do
-  last time"* answer ([research §3](aesthetics-research-brief.md)) and the data **lot recall** needs.
+- **Visit history & "what did we do last time" (AES-203)** — **Basic:** a **glanceable visit list** —
+  each visit shows the doctor's own note + that visit's before/after, so the answer lives in the notes
+  they already wrote, made instantly skimmable (**no structured table**). **Pro:** a longitudinal
+  **treatment & lot table** (visit · area · product · units · **lot**) built from extraction — the
+  structure **lot recall** + smart lists need, and it exists *because* Pro extracts, never because
+  anyone filled a form ([research §3](aesthetics-research-brief.md)).
 - **Flags band (Pro, AES-701)** — allergy/consent/preference at the top of the file.
 - **Tiered memory** ([screens/patients.md](screens/patients.md)): **Basic** = honest **structural**
   recap, **no ✨**, never paraphrases audio; **Pro** = **AI history** (Snapshot · Story so far · Worth
@@ -234,18 +245,33 @@ scope.** Each: what · why · tier · recommendation. (No agreed feature is chan
 
 | # | Extension | What | Why (research) | Tier | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| ⊕1 | **Ghost-overlay capture** (AES-105) | Overlay the prior baseline at low opacity while shooting the "after" | Highest-credibility photo feature; comparisons stay angle/light-consistent | Basic (det.) | **Adopt in v1** — pure-deterministic, high delight, fits before/after pairing |
-| ⊕2 | **Treatment row in Basic** (AES-108) | A deterministic structured Area·Product·Units·Lot row in **Basic** (agreed set frames extraction as Pro) | The "what did we do last time" lookup is the most-cited gap; the *data* is cheap and deterministic | Basic | **Adopt** — keeps Basic's lookup value; Pro still owns *extraction + synthesis* (boundary intact) |
-| ⊕3 | **Lot/expiry scan** (AES-503) | Scan a product box barcode → lot/expiry onto the row + ledger | Makes lot capture accurate/effortless; powers recall | Pro | **Defer to fast-follow** — needs the lot ledger first |
-| ⊕4 | **Face-map injection logging** (AES-110) | Tap a face diagram to log per-site product/units/lot | Turns the treatment log into structured, recall-ready data | Pro | **Spike post-v1** — strong hook, more UI surface; validate with a design partner |
-| ⊕5 | **Lightweight consent capture** (AES-703) | Attach/store a signed consent + a consent flag | Incumbents are heavy here; clinics need *some* consent on file | Both | **Adopt minimal** (attach + flag) — **legally sensitive; needs human sign-off.** Do **not** build a legal e-forms engine (research §5 concession) |
+| ⊕1 | **Ghost-overlay capture** (AES-105) | Overlay the prior baseline at low opacity while shooting the "after" | Highest-credibility photo feature; comparisons stay angle/light-consistent | Basic (det.) | **Adopt in v1** — pure-deterministic, high delight |
+| ⊕3 | **Lot/expiry scan** (AES-503) | Scan a product box → lot/expiry onto the extracted treatment item + ledger | Makes lot capture accurate/effortless; powers recall | Pro | **Out of MVP** — deferred fast-follow; barcodes often don't encode lot (OCR risk); gate on real recall usage |
+| ⊕4 | **Face-map injection viz** (AES-110) | Render *dictated* treatment onto a face diagram (a read-back; tap only to correct) | A glanceable visual of where/what was injected | Pro | **Derived viz only** (never tap-to-enter) + **later spike**, not alpha |
+| ⊕5 | **Lightweight consent capture** (AES-703) | Attach/store a signed consent + a consent flag | Incumbents are heavy here; clinics need *some* consent on file | Both | **Dropped** — just a photo if a clinic wants it; don't build a consent feature |
 | ⊕6 | **Pre-visit consent/questionnaire link** (AES-704) | Send an inbound patient-surface form, auto-attached to the visit | Proven pattern; removes in-clinic friction | Pro | **Defer** — reuses the patient surface inbound; sequence after Q&A |
-| ⊕7 | **SMS/WhatsApp delivery** (AES-404) | The patient-surface delivery channel | The channel Iranian patients actually use | Both | **Confirm with human** — a delivery integration + compliance decision, not a UI choice |
+| ⊕7 | **SMS/WhatsApp delivery** (AES-404) | The patient-surface delivery channel | The channel Iranian patients actually use | Both | **Copy-link / native-share / QR first**; automated SMS/WhatsApp later (provider + compliance) |
 
-**Open questions for the human:** (a) Is lightweight consent (⊕5) in scope for the alpha, given legal
-sensitivity? (b) Which delivery channel (⊕7) — and does it gate the patient surface, or can a copyable
-link ship first? (c) Should the Basic treatment row (⊕2) be confirmed as Basic, or held as a Pro-only
-extraction target? Recommendation: yes-Basic, per the recall value above.
+**Decided (2026-06-11 review):**
+
+- **No structured forms in Basic.** A Basic treatment/lot row (an earlier proposal) is **rejected** —
+  Basic treatment detail is **free-text + fast retrieval** of the previous visit (§3.2, §5); structure
+  exists only in Pro, by **extraction**. *Why:* keeps Basic from becoming a small EHR, true to the
+  system's spirit ([design-principles §2,§5](../design-principles.md)). This also rules out a manual lot
+  field in Basic — lot lives in the note text; cross-patient lot recall is Pro.
+- **Lightweight consent (⊕5) — dropped.** Not the wedge; legally sensitive; incumbents own it and we
+  shouldn't compete there. A signed form a clinic wants on file is **just a photo** we already capture.
+  (The agreed Pro "consent" *flag* — an optional staff marker — is separate; keep only if check-in
+  visibility is wanted.)
+- **Delivery (⊕7) — copy-link / native-share / QR first**; defer *automated* SMS/WhatsApp to a later
+  integration once the provider/channel is chosen. The surface stays channel-agnostic.
+- **Face-map (⊕4) — derived visualization only** (render dictated treatment onto the diagram; never
+  tap-to-enter), and a **later spike**, not alpha.
+- **Lot scan (⊕3) — out of MVP**; deferred fast-follow, gated on real lot-recall usage.
+- **Pre-visit link (⊕6) — agreed, deferred** (after Q&A). **Ghost-overlay (⊕1) — adopt for v1 Basic.**
+
+**Still open:** the patient never installs anything — report + Q&A are a tokenized web link (confirmed).
+No blocking questions remain.
 
 ---
 *Cross-refs:* [redesign-foundation.md](redesign-foundation.md) · [spines.md](../spines.md) ·

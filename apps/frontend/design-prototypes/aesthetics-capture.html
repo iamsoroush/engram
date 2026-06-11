@@ -257,8 +257,8 @@
       <!-- "Same as last time" (Basic) / recall (Pro) — returning only -->
       <div class="quick ret-only basic-only" id="quick-basic">
         <div class="icwrap"><svg class="ic"><use href="#i-copy"/></svg></div>
-        <div class="grow"><b>Same as last time?</b> Start this note pre-filled from Jun 4 · forehead Botox.</div>
-        <span class="link">Use</span>
+        <div class="grow"><b>Last visit · Jun 4</b> — your note: “forehead Botox, 20u Dysport, lot on box.” <span class="link">View visit</span></div>
+        <span class="link">Use as note</span>
       </div>
       <div class="quick ret-only pro-only" id="quick-pro" style="border-style:solid;border-color:var(--violet-border);background:var(--violet-soft)">
         <div class="icwrap" style="color:var(--violet);border-color:var(--violet-border)"><svg class="ic"><use href="#i-recall"/></svg></div>
@@ -328,7 +328,7 @@
           <!-- 3 · TREATMENT -->
           <div class="cap treat">
             <div class="cap-node"><svg class="ic"><use href="#i-edit"/></svg></div>
-            <div class="cap-head"><span class="t" id="treat-title">Treatment performed</span><span class="time">14:10</span></div>
+            <div class="cap-head"><span class="t">Treatment</span><span class="time">14:10</span></div>
             <!-- Pro: extracted -->
             <div class="treat-card pro-only">
               <div class="treat-head"><span>Treatment performed</span><span class="ai">extracted · AI</span>
@@ -341,22 +341,16 @@
                 <div class="tk">Lot #</div><div class="tv">D‑4471 <span class="link" style="font-size:.7rem">· in ledger</span></div>
               </div>
             </div>
-            <!-- Basic: deterministic, fill-in -->
-            <div class="treat-card basic-only">
-              <div class="treat-head"><span>Treatment (optional log)</span><span class="grow"></span><span style="color:var(--color-muted);font-weight:600;text-transform:none;letter-spacing:0">you fill</span></div>
-              <div class="treat-grid">
-                <div class="tk">Area</div><div class="tv">Forehead</div>
-                <div class="tk">Product</div><div class="tv"><input value="Botox" /></div>
-                <div class="tk">Units</div><div class="tv"><input value="20" /></div>
-                <div class="tk">Lot #</div><div class="tv"><input placeholder="D-4471" /></div>
-              </div>
-            </div>
+            <!-- Basic: just a free-text note — no structured form -->
+            <div class="gen basic-only" style="border-left-color:var(--violet)">
+              <div class="lab"><span>Note</span><button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
+              <p class="rtl" lang="fa">بوتاکس پیشانی، ۲۰ واحد دیسپورت. لات روی جعبه. بررسی مجدد ۲ هفته.</p></div>
             <div class="effects pro-only"><span class="chip report">✓ Added to report</span></div>
             <div class="basic-only">
               <div class="teaser" data-teaser="structure">
                 <span class="spark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span>
-                <div class="grow"><div class="tt">Try Pro — fill this from your dictation</div>
-                  <div class="ts">Pro extracts area · product · brand · units · lot from what you say, and builds the report.</div></div>
+                <div class="grow"><div class="tt">Try Pro — structure this from your dictation</div>
+                  <div class="ts">You just type a note in Basic. Pro extracts area · product · brand · units · lot from what you say, and builds the report.</div></div>
                 <span class="go">Try Pro →</span>
               </div>
             </div>
@@ -389,7 +383,7 @@
   const CASES = {
     'pro|returning': "<b>Pro · returning patient.</b> Audio-first: dictate and the visit auto-matches, the transcript and the <b>structured Treatment performed</b> (area·product·brand·units·lot) extract themselves, photos auto-caption and auto-pair by area. Safety <b>flags</b> + <b>recall</b> (“last time…”) ride at the top.",
     'pro|new': "<b>Pro · new / unassigned.</b> Capture never waits on identity — the visit is unassigned now and <b>auto-matches</b> (or AI-creates, flagged verify) once the name is heard. Everything else is identical to the returning case.",
-    'basic|returning': "<b>Basic · returning patient.</b> Zero AI: note/photo primary, audio is a <b>voice memo</b>. You tag <b>Before/After + area</b> (ghost-overlay keeps framing aligned) and fill an optional treatment log. <b>“Same as last time”</b> pre-fills the note. Every place Pro would help shows a labelled <b>✨ Try Pro</b> teaser — the upsell line is the design.",
+    'basic|returning': "<b>Basic · returning patient.</b> Zero AI, <b>no forms</b>: note/photo primary, audio is a <b>voice memo</b>. You tag <b>Before/After + area</b> (ghost-overlay keeps framing aligned) and just <b>type a note</b> — treatment detail lives in your own words. <b>Last visit is one glance away</b> and <b>“same as last time”</b> pre-fills the note — that’s how Basic answers “what did we use last time,” by retrieval not data entry. Every place Pro would help shows a labelled <b>✨ Try Pro</b> teaser.",
     'basic|new': "<b>Basic · new / unassigned.</b> Capture-first, deterministic <b>“Assign to…?”</b> — no AI matching. The duplicate-patient guard catches near-duplicates at create. Teasers mark exactly where Pro’s understanding would slot in."
   };
   function refresh(){ document.getElementById('case-text').innerHTML = CASES[app.dataset.tier+'|'+app.dataset.patient];
