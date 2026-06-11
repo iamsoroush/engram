@@ -197,7 +197,14 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 
 ## 8. Running the app in a git worktree (isolated dev stack)
 
-This rule applies **only if you are working inside a git worktree** (not the primary
+**Where to create worktrees:** under **`~/notari-worktrees/<branch-slug>`** — grouped in one place
+and *outside* the repo, so the repo's Docker build context (`COPY . .`), `rg`/test discovery, and
+dev-stack scripts never pick up a nested checkout. E.g.
+`git worktree add ~/notari-worktrees/therapy -b p2/therapy-ux`. All worktrees share the main repo's
+`.git` (same branches + objects), so a worktree's branch is merged from the primary checkout with a
+normal `git merge <branch>` — the worktree's on-disk location is irrelevant to merging.
+
+The dev-stack rule below applies **only if you are working inside a git worktree** (not the primary
 checkout). Check with:
 
 ```sh
