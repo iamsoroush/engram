@@ -126,19 +126,23 @@ This keeps review fast while still allowing cache eviction after backend sync.
 ## Entity Model (verticals)
 
 `Patient` is **universal** across verticals and stays the assignment target. What varies by
-vertical is the **report-required work-unit** — a clinic **Session**, a radiology **Study**, a
-pathology **Case** — modeled as one generic **Encounter** (`Patient 1—* Encounter 1—* Capture`,
-one `Report` per Encounter). v1 ships clinics only, so the Encounter **is** today's `Session`
-(no `Session → Encounter` rename yet).
+vertical is the **report-required work-unit** — a capture-first **Session**/**Visit**, a radiology
+**Study**, a pathology **Case** — modeled as one generic **Encounter** (`Patient 1—* Encounter 1—*
+Capture`, one `Report` per Encounter). The Encounter **is** today's `Session` (no `Session →
+Encounter` rename yet).
 
-- `tenant.vertical` (`clinic` | `radiology` | `pathology`; default `clinic`) types the workspace.
+- `tenant.vertical` (`aesthetics` | `therapy` | `dermatology` | `radiology` | `pathology`; default
+  `aesthetics`) types the workspace. The Spine-A verticals (aesthetics/therapy/dermatology) share
+  the capture-first core. The legacy `clinic` value normalizes to `aesthetics` (the current
+  product).
 - The work-unit **presentation label** is derived from the vertical via
   [`services/verticals.encounter_label`](../apps/backend/app/services/verticals.py)
-  (clinic→"Session", radiology→"Study", pathology→"Case") and surfaced on the `TenantProfile`
-  (`vertical`, `encounterLabel`) — it must not be hardcoded in core/apply logic.
+  (aesthetics/therapy→"Session", dermatology→"Visit", radiology→"Study", pathology→"Case") and
+  surfaced on the `TenantProfile` (`vertical`, `encounterLabel`) — it must not be hardcoded in
+  core/apply logic.
 - `session.attributes` (JSONB) is a reserved per-vertical extension point (radiology:
   accession/modality/body_part; pathology: specimen_id/stain), kept separate from
-  `extracted_metadata` (AI/processing output). Empty for clinics.
+  `extracted_metadata` (AI/processing output). Empty for capture-first verticals.
 
 The literal `Session → Encounter` rename and per-vertical `attributes` fields land with the second
 vertical. See [intelligence-layer.md §2](intelligence-layer.md) for the full rationale.

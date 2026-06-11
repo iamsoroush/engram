@@ -31,8 +31,8 @@ DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
 # (dev-login `tier` selects which one). Mirrors production, where tier is a tenant attribute.
 DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
 DEV_TENANTS = {
-    "pro": {"id": DEV_TENANT_ID, "name": "Memara Demo Clinic", "slug": "notari-demo", "tier": "pro"},
-    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memara Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic"},
+    "pro": {"id": DEV_TENANT_ID, "name": "Memara Demo Clinic", "slug": "notari-demo", "tier": "pro", "vertical": "aesthetics"},
+    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memara Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic", "vertical": "aesthetics"},
 }
 
 DEV_PERSONAS = {
@@ -73,6 +73,7 @@ def ensure_dev_seed(db: Session) -> None:
                     slug=spec["slug"],
                     status=TenantStatus.active,
                     tier=spec["tier"],
+                    vertical=spec["vertical"],
                 )
             )
 
