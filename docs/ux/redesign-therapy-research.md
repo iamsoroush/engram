@@ -38,7 +38,7 @@ category-B product with a memory center of gravity** — and that's the right si
 ## 2. Category patterns that matter (and our stance on each)
 
 | Pattern | What the category does | Memara-therapy stance |
-|---|---|---|
+| --- | --- | --- |
 | **Note formats** | SOAP / DAP / BIRP (+ GIRP, PIRP, PIE, EMDR, intake, MSE). Upheal/Mentalyc offer ~10 formats; DAP & BIRP dominate outpatient. | Ship **one strong default (DAP-leaning narrative)** + a small format switch. Don't open a 10-format template bazaar at v1 — but **structure-behind-narrative** so a format can be projected later. |
 | **Treatment plan ("golden thread")** | Goals → objectives → interventions, SMART, tied to medical necessity; AI now drafts it from intake + early sessions (Upheal *Golden Thread*, Blueprint smart plans). | A **living plan that threads the arc** — but framed as *memory*, not an insurance artifact (our market isn't US payers). The plan is "where we're heading"; each session's summary references it. |
 | **Measurement-based care (MBC)** | PHQ-9 / GAD-7 etc. completed via client portal on a cadence (often pre-session), auto-scored, trended over time; reviewed before the visit. Blueprint's whole wedge. | **Optional, light, and trend-first.** Outcome scores feed the **pre-session brief** ("GAD-7 down 4 since last month") — a brief input, not a compliance chore. Persian-localized instruments. |
@@ -137,19 +137,22 @@ category depth we can add later; none is the wedge.
 
 ## 6. Direct inputs to the design (→ [redesign-therapy.md](redesign-therapy.md))
 
-- **Signature surface = pre-session brief**, sections ordered by clinical urgency: **Safety/risk first**,
-  then *arc position*, *themes to revisit*, *since last time* (incl. MBC trend), *today's prompt*.
-- **Session capture** = audio-first, narrative; no format gate; private-by-default.
+- **Signature surface = pre-session brief**, with a compact **arc strip** (mini-timeline) for longitudinal
+  context, then sections ordered by clinical urgency: **safety/risk first**, *arc position*, *recurring
+  themes*, *since last time* (qualitative trajectory), *today's prompt*.
+- **Session capture** = **dictation-first** (in-session jots + a short post-session recap), private-by-default
+  — **not** whole-session recording (cost + privacy; see redesign-therapy.md §1.2).
 - **Session summary** = narrative + **two planes** (shareable progress-note-shaped / private reflections
-  + transcript); risk surfaced and dated.
+  + the *recap* transcript); risk surfaced and dated.
 - **Longitudinal history** = the existing memory artifact, therapy-shaped (arc, themes, risk timeline,
-  outcome trend).
+  qualitative trajectory).
 - **Treatment thread** = a light living plan (goals/focus), memory-framed, referenced by each summary.
-- **MBC** = optional Persian-localized measures, trend-first, feeding the brief — not a compliance module.
 - **Intake/reception** = consent + confidentiality limits + first-visit context; consent gates the
   patient surface.
-- **Patient surface** = a privacy-gated payload on the shared primitive (foundation §4): intake, measures,
-  and a *withheld-by-default* summary the clinician explicitly releases.
+- **Patient surface (MVP)** = a privacy-gated payload on the shared primitive (foundation §4): intake +
+  consent, and a *withheld-by-default* summary the clinician explicitly releases.
+- **MBC (post-MVP)** = optional Persian-localized measures, trend-first — a whole subsystem, deferred; the
+  brief's qualitative trajectory covers the core value until then (redesign-therapy.md §2 Post-MVP).
 
 ---
 

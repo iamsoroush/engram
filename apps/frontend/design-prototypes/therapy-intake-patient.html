@@ -78,6 +78,9 @@
   .ptile .pstat{margin-left:auto;font-size:.66rem;font-weight:800;border-radius:var(--radius-pill);padding:4px 9px;flex:0 0 auto}
   .pstat.todo{color:var(--color-primary);background:var(--color-primary-soft);border:1px solid #cfe0ff}
   .pstat.done{color:var(--color-success);background:var(--color-success-soft);border:1px solid #cdeede}
+  .pstat.later{color:var(--color-muted-2);background:#eef2f9;border:1px solid var(--color-border)}
+  .ptile.later{border-style:dashed;border-color:var(--color-border-strong);box-shadow:none;opacity:.78}
+  .ptile.later .pti{background:#eef2f9;color:var(--color-muted-2)}
   .ptile .pbody{font-size:.82rem;color:var(--color-text-soft);line-height:1.5;margin-top:9px}
   .measure-row{display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--color-border)}
   .measure-row .mn{font-size:.72rem;font-weight:700;color:var(--color-muted)}
@@ -118,8 +121,10 @@
     <p><b>Reception creates the container; the patient surface is narrow and privacy-gated.</b> The
     receptionist makes a client + captures consent (which <b>gates</b> what the patient may ever see) and
     sees <b>no clinical content</b>. The patient surface — one payload on the shared patient primitive
-    (foundation §4) — carries intake, measures, and a <b>withheld-by-default</b> summaries area: a client
-    sees a session summary only when the therapist explicitly releases it. Spec: <b>redesign-therapy.md §5.5, §3</b>.</p>
+    (foundation §4) — carries, in <b>MVP</b>, intake + consent and a <b>withheld-by-default</b> summaries
+    area: a client sees a session summary only when the therapist explicitly releases it. (Measures &amp;
+    between-session check-ins are a <b>post-MVP</b> addition to the same surface — shown dashed below.)
+    Spec: <b>redesign-therapy.md §5.5, §2 Post-MVP, §3</b>.</p>
   </div>
 
   <div class="grid">
@@ -186,23 +191,22 @@
               <span class="pstat done">کامل</span></div>
           </div>
 
-          <div class="ptile">
-            <div class="pth"><div class="pti violet"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-chart"/></svg></div>
-              <div><div class="ptt">پرسش‌نامه GAD-7</div><div class="pts">این هفته · ۷ سؤال · ۲ دقیقه</div></div>
-              <span class="pstat todo">انجام دهید</span></div>
-            <div class="measure-row"><span class="mn">آخرین نمره</span><span class="mv">۱۲</span><span style="flex:1"></span><span class="mn">روند: رو به بهبود</span></div>
-            <button class="pbtn">شروع پرسش‌نامه</button>
-          </div>
-
           <div class="section-label rtl" style="text-align:right">آنچه درمانگر به اشتراک گذاشته</div>
           <div class="empty">
             <div class="ei"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-lock"/></svg></div>
             <div class="et">هنوز چیزی به اشتراک گذاشته نشده</div>
             <div class="es">درمانگر شما می‌تواند خلاصه‌ی جلسه را در صورت تمایل با شما به اشتراک بگذارد.</div>
           </div>
+
+          <!-- post-MVP slot: measures live on this same surface, built later -->
+          <div class="ptile later" style="margin-top:11px">
+            <div class="pth"><div class="pti"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-chart"/></svg></div>
+              <div><div class="ptt">پرسش‌نامه‌های سنجش</div><div class="pts">GAD-7 / PHQ-9 — افزوده می‌شود</div></div>
+              <span class="pstat later">post-MVP</span></div>
+          </div>
         </div>
       </div>
-      <p class="frame-note"><b>RTL/Persian-native</b>, calm, minimal. Measures (C4) show the client a simple trend. The released-summaries area is <b>empty by default</b> — a deliberate, reassuring state ("nothing shared yet"), not a gap. This matches the stigma-sensitive, withheld-by-default stance (research §4.5).</p>
+      <p class="frame-note"><b>RTL/Persian-native</b>, calm, minimal. MVP = <b>intake + consent</b> and the released-summaries area, which is <b>empty by default</b> — a deliberate, reassuring state ("nothing shared yet"), not a gap (research §4.5). The dashed <b>post-MVP</b> tile shows where measures slot into the <i>same</i> surface later, without implying it's built now.</p>
     </div>
 
     <!-- ===== PATIENT: A RELEASED SUMMARY ===== -->
@@ -219,19 +223,19 @@
             <div class="shared-h"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" style="stroke:var(--teal-deep)"><use href="#i-doc"/></svg><span class="sh-t">خلاصه‌ی جلسه ۷</span><span class="sh-d">۱۸ خرداد</span></div>
             <div class="shared-b">
               <div class="ssec"><h4 class="rtl" style="text-align:right">این جلسه</h4><p>درباره‌ی گفت‌وگو با مادرتان صحبت کردیم؛ بهتر از انتظار پیش رفته بود. روی خواب و آرام‌سازی شب کار می‌کنیم.</p></div>
-              <div class="ssec"><h4 class="rtl" style="text-align:right">قدم بعدی</h4><p>تمرین یک روال کوتاه پیش از خواب. ادامه‌ی پرسش‌نامه‌ی GAD-7 هر دو هفته.</p></div>
+              <div class="ssec"><h4 class="rtl" style="text-align:right">قدم بعدی</h4><p>تمرین یک روال کوتاه و آرام پیش از خواب تا جلسه‌ی بعد.</p></div>
             </div>
           </div>
 
-          <div class="ptile" style="margin-top:12px">
-            <div class="pth"><div class="pti violet"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-chart"/></svg></div>
-              <div><div class="ptt">روند GAD-7</div><div class="pts">۴ هفته‌ی اخیر</div></div></div>
-            <div class="measure-row"><span class="mn">۴ هفته پیش</span><span class="mv">۱۲</span><span style="flex:1"></span><span class="mn">این هفته</span><span class="mv" style="color:var(--color-success)">۸</span></div>
-            <button class="pbtn ghost">مشاهده‌ی جزئیات</button>
+          <!-- post-MVP slot: the client's own outcome trend, once measures ship -->
+          <div class="ptile later" style="margin-top:12px">
+            <div class="pth"><div class="pti"><svg class="ic" width="18" height="18" viewBox="0 0 24 24"><use href="#i-chart"/></svg></div>
+              <div><div class="ptt">روند نمرات شما</div><div class="pts">با افزوده‌شدن پرسش‌نامه‌ها</div></div>
+              <span class="pstat later">post-MVP</span></div>
           </div>
         </div>
       </div>
-      <p class="frame-note">Only the <b>shareable plane</b> reaches the client — plain-language, no jargon, <b>never</b> the private reflections or transcript. The client also sees their own outcome trend, reinforcing measurement-based care as collaborative, not clinical surveillance.</p>
+      <p class="frame-note">Only the <b>shareable plane</b> reaches the client — plain-language, no jargon, <b>never</b> the private reflections or recap transcript. The released summary is the MVP payload; the dashed tile shows where the client's own outcome trend would appear once measures ship (post-MVP) — collaborative, not surveillance.</p>
     </div>
 
   </div>
