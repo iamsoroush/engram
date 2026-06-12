@@ -171,3 +171,42 @@ halves apart and they won't meet at the seam.
 Output is for human review. Design runs ahead of build (cheap, parallel); **build starts with
 aesthetics-Basic.** *Why:* pre-PMF, aesthetics is the alpha that gets into clinics and teaches you —
 ship the thin slice, learn, then earn the rest.
+
+## 7. Multi-seat clinics (multi-user)
+
+> Most clinics have several users. **The model differs by vertical, and permissions are configurable,
+> not imposed** — never block the workflow.
+
+- **Aesthetics = shared workspace** (any provider, any patient; the base is the clinic's). **Therapy =
+  federated caseloads** (a client belongs to *their* therapist; clients + clinical content are
+  **private between clinicians** by default). *Why:* aesthetics is collaborative; therapy is a
+  confidential 1:1 relationship.
+- **Active session is user-scoped; the patient base is tenant-scoped.** *Why:* concurrency without collision.
+- **Session ownership** — owned by the clinician who created it (capture-first → the capturer owns); the
+  owner is the *default* edit-holder; everything is **attributed** ("by &lt;user&gt; · time"). *Why:*
+  accountability + a clear default, not a wall.
+- **Permissions are tenant-configurable, permissive by default.** The admin sets what each non-owner
+  role (assistant · receptionist) may do — **contribute (append) · reassign · edit** — as a few
+  **presets** (not a granular matrix). Zero-config default for a small clinic: contribute open ·
+  reassign = receptionist + owner · edit = owner; each loosenable ("receptionist: full") or tightenable.
+  *Why:* small clinics have fluid roles; rigid RBAC fights the no-friction principle — **the product
+  adapts to the clinic's org, it doesn't impose one.**
+- **The intent gate is policy-aware (Pro).** A capture's intent (append/reassign/edit) auto-applies
+  **iff the capturer's role is permitted**; otherwise it **doesn't block — it suggests to the owner**
+  (reuse `suggested_reassignment`). *Why:* permissions decide *auto-apply vs. suggest*, never *stop*.
+- **Soft worklist, both directions, never forced.** Reception can **pre-assign** (register + line a
+  patient up for a doctor → the doctor's **"Today / up next"** → tap to start), and doctor-captured
+  **unassigned** work flows back to reception's Needs-input. Either way capture-first still works (the
+  footer always starts fresh). *Why:* multi-user assignment without breaking capture-first — a
+  convenience lane, not a gate. A soft "Today" list, **not a scheduler.**
+- **"Mine vs Clinic"** filters on Today / search / lists (deterministic).
+- **Q&A routing (Pro only)** — admin-configurable; default AI-routes to the treating doctor (plural for
+  multi-provider patients) + manual override; therapy = always the client's own therapist.
+- **Therapy privacy is layered** — the *shareable* plane (progress note) may reach a supervisor /
+  covering clinician **with consent + audit**; the *private* plane (reflections + transcript) is
+  individual-only; reception sees schedule + identity, **not** clinical content. *Why:* confidentiality
+  is the therapy non-negotiable.
+
+Stories: aesthetics **E9** in [aesthetics-stories.md](aesthetics-stories.md) (a later increment, not in
+the in-flight Basic build); therapy's caseload + privacy surfaces are detailed in
+[redesign-therapy.md](redesign-therapy.md) at build time.

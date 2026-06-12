@@ -353,6 +353,35 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 
 ---
 
+## E9 — Multi-seat / multi-user
+*Details [foundation §7](redesign-foundation.md). **A later increment — NOT in the in-flight Basic build (tracks ②/③).***
+
+### AES-901 — Author attribution 〔Both · All · new〕
+As **any clinician**, I want every capture/visit/note/photo to show **who created it and when**, so that in a multi-seat clinic it's clear who did what.
+- **Acceptance:** "by <user> · time" on captures, visits, the patient timeline; from `created_by_user_id` (exists); deterministic.
+
+### AES-902 — Session ownership 〔Both · All · new〕
+As a **doctor**, I want the session I started **owned by me** and editable/curatable only by me by default, so that my record isn't changed under me.
+- **Acceptance:** session owner = creator; edit/curate owner-only unless tenant policy (AES-905) grants more; others see it attributed/read-only; *contribute* follows policy.
+
+### AES-903 — My "up next" worklist 〔Both · Dr · new〕
+As a **doctor**, I want the patients reception lined up for me, and to start one with a tap (history + before/after first), so that I can work from my list — **without being forced to**.
+- **Acceptance:** a "Today / up next" filtered to patients assigned to me; tap → patient → start session (assign-first); the capture footer **always** still starts a fresh session (capture-first never blocked). Soft list, not a calendar.
+
+### AES-904 — "Mine vs Clinic" filter 〔Both · All · new〕
+As a **doctor**, I want to filter Today / search / lists to my own work vs. the whole clinic, so that I focus without losing the shared base.
+- **Acceptance:** deterministic toggle; sensible default (mine on Today, clinic on search).
+
+### AES-905 — Configurable role permissions 〔Both · Admin · new〕
+As an **admin**, I want to set what assistants and receptionists may do (**contribute / reassign / edit**), so that the product fits my clinic's real roles.
+- **Acceptance:** per-role **presets** in Settings (contribute-only · +reassign · full); permissive default (contribute open · reassign = receptionist+owner · edit = owner); loosenable/tightenable; drives AES-902 + AES-906. Not a granular matrix.
+
+### AES-906 — Policy-aware intent application 〔Pro · All · modify〕
+As a **doctor**, I want a colleague's capture to **add** to my session, but a **reassign/edit they're not permitted** to become a **suggestion** for me rather than apply silently, so that permissions never block and never surprise.
+- **Acceptance:** the intent gate applies append/reassign/edit **iff** the capturer's role is permitted (AES-905); else → **suggest-to-owner** (reuse `suggested_reassignment`); never blocks the capture. Pro (intents from transcription).
+
+---
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](redesign-foundation.md) item | Stories |
