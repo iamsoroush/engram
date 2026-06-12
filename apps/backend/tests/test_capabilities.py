@@ -1,4 +1,6 @@
 import unittest
+import uuid
+from types import SimpleNamespace
 
 from app.services.capabilities import (
     ALL_CAPABILITIES,
@@ -6,6 +8,7 @@ from app.services.capabilities import (
     LIVE_REPORT_SYNTHESIS,
     TRANSCRIPTION,
     capabilities,
+    tenant_processes_captures_with_ai,
 )
 
 
@@ -42,6 +45,32 @@ class CapabilitiesTests(unittest.TestCase):
         for capability in (CROSS_VISIT_SYNTHESIS, LIVE_REPORT_SYNTHESIS):
             self.assertIn(capability, capabilities("aesthetics", "pro"))
             self.assertNotIn(capability, capabilities("aesthetics", "basic"))
+
+
+class _CapDb:
+    """Minimal DB stub: ``execute(...).one_or_none()`` → ``(vertical, tier)``."""
+
+    def __init__(self, vertical, tier):
+        self._row = (vertical, tier)
+
+    def execute(self, _statement):
+        return SimpleNamespace(one_or_none=lambda: self._row)
+
+
+class CaptureAiGateTests(unittest.TestCase):
+    """Whether a capture upload runs the AI pipeline (AES-101)."""
+
+    def test_aesthetics_basic_skips_capture_ai(self):
+        self.assertFalse(tenant_processes_captures_with_ai(_CapDb("aesthetics", "basic"), uuid.uuid4()))
+
+    def test_legacy_clinic_basic_skips_capture_ai(self):
+        self.assertFalse(tenant_processes_captures_with_ai(_CapDb("clinic", "basic"), uuid.uuid4()))
+
+    def test_aesthetics_pro_runs_capture_ai(self):
+        self.assertTrue(tenant_processes_captures_with_ai(_CapDb("aesthetics", "pro"), uuid.uuid4()))
+
+    def test_therapy_runs_capture_ai(self):
+        self.assertTrue(tenant_processes_captures_with_ai(_CapDb("therapy", "basic"), uuid.uuid4()))
 
 
 if __name__ == "__main__":

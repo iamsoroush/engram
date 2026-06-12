@@ -312,14 +312,19 @@ async def upload_source_capture(
         artifact.object_key = object_key
         capture.source_artifact_id = artifact.id
         from app.services.ai_jobs import create_capture_processing_job, dispatch_capture_processing_job
+        from app.services.capabilities import tenant_processes_captures_with_ai
 
-        ai_job = create_capture_processing_job(db, principal=principal, capture=capture)
+        # Zero-AI Basic lifecycle (AES-101): a capture with no capture-AI capabilities is saved
+        # deterministically — no AI job, no `processing` state. Pro/therapy run the job as before.
+        runs_capture_ai = tenant_processes_captures_with_ai(db, principal.tenant_id)
+        ai_job = create_capture_processing_job(db, principal=principal, capture=capture) if runs_capture_ai else None
         if patient_uuid and session.patient_id is None:
             session.patient_id = patient_uuid
         evolve_session_after_capture(session, capture_type=capture_type, captured_at=captured_at, capture_id=capture.id)
         session.updated_at = utc_now()
-        # A new capture changes the patient's memory — flag it refreshing (mock AI-job latency).
-        mark_patient_memory_updating(db, session.patient_id)
+        if runs_capture_ai:
+            # A new capture changes the patient's memory — flag it refreshing (AI-job latency).
+            mark_patient_memory_updating(db, session.patient_id)
 
         audit(
             db,
@@ -334,19 +339,26 @@ async def upload_source_capture(
         db.refresh(session)
         db.refresh(capture)
         db.refresh(artifact)
-        db.refresh(ai_job)
-        from app.services.ai_jobs import is_capture_chain_head
+        if runs_capture_ai:
+            db.refresh(ai_job)
+            from app.services.ai_jobs import is_capture_chain_head
 
-        # Same-session captures process in order; only dispatch when this is the chain head.
-        if is_capture_chain_head(db, ai_job):
-            dispatch_capture_processing_job(db, ai_job)
-        db.refresh(ai_job)
+            # Same-session captures process in order; only dispatch when this is the chain head.
+            if is_capture_chain_head(db, ai_job):
+                dispatch_capture_processing_job(db, ai_job)
+            db.refresh(ai_job)
+        else:
+            # Basic: no worker job will rebuild the report, so rebuild it synchronously (deterministic).
+            from app.services.ai_jobs import regenerate_session_report_if_idle
+
+            regenerate_session_report_if_idle(db, tenant_id=principal.tenant_id, session_id=session.id)
+            db.refresh(session)
         from app.services.ai_jobs import ai_job_payload
 
         return {
             "session": session_payload(session, db),
             "item": capture_payload(capture, artifact),
-            "processingJob": ai_job_payload(ai_job),
+            "processingJob": ai_job_payload(ai_job) if ai_job else None,
         }
     except Exception:
         db.rollback()

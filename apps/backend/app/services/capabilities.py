@@ -78,3 +78,21 @@ def tenant_capabilities(db: DbSession, tenant_id: uuid.UUID) -> frozenset[str]:
 def tenant_has_capability(db: DbSession, tenant_id: uuid.UUID, capability: str) -> bool:
     """True when the tenant's resolved capability set includes ``capability``."""
     return capability in tenant_capabilities(db, tenant_id)
+
+
+# The AI capabilities exercised by the per-capture processing job (transcription, photo/note
+# enrichment, matching, out-of-context). A tenant with none of these — e.g. aesthetics-Basic — skips
+# the capture AI pipeline entirely: the capture is saved deterministically, with no AI job and no
+# `processing` state (AES-101).
+CAPTURE_AI_CAPABILITIES: frozenset[str] = frozenset(
+    {TRANSCRIPTION, IMAGE_CAPTION, NOTE_DECORATION, PATIENT_MATCHING, OUT_OF_CONTEXT}
+)
+
+
+def tenant_processes_captures_with_ai(db: DbSession, tenant_id: uuid.UUID) -> bool:
+    """True if a capture upload should dispatch the AI processing job for this tenant.
+
+    False for the zero-AI Basic lifecycle (no capture-AI capabilities) — the capture is saved
+    deterministically with no AI job and no ``processing`` state.
+    """
+    return bool(tenant_capabilities(db, tenant_id) & CAPTURE_AI_CAPABILITIES)
