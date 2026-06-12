@@ -98,16 +98,16 @@ AI transcript, an AI caption, or an AI-written summary. The only ✨ allowed is 
   appears **faintly overlaid** on the capture area as an alignment guide. Toggling again removes it. No
   Before/After labels, no AI.
 
-### 6. "✨ Try Pro" capture teasers are labelled & non-functional (AES-802 / AES-803)
-- **Story:** Lightweight AI shows in Basic only as a labelled, non-functional teaser.
-- **Setup:** Doctor · Basic, with at least one **audio** and one **photo** capture in the feed
-  (Scenarios 3–4).
-- **Steps:** Find the small violet **"✨ Try Pro"** badge — below the first audio player and on the
-  bottom-left of the first photo. Tap one.
-- **Expected:** Each is a compact **"✨ Try Pro"** badge (only on the *first* audio and *first* photo, so
-  the feed stays calm). Tapping it does **not** run AI — it opens a small **info box** ("Pro feature ·
-  what Pro adds · This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it. · Got it").
-  The same one-card teasers appear once on the Basic report (Scenario 16) and patient file (Scenario 13).
+### 6. The single "✨ Try Pro" upsell is labelled & non-functional (AES-801–804)
+- **Story:** Lightweight AI shows in Basic only as a labelled, non-functional teaser — **one per screen**.
+- **Setup:** Doctor · Basic, with a capture or two in the feed (Scenarios 2–4).
+- **Steps:** Scroll to the **bottom of the Captures feed**. There are **no** ✨ badges on individual
+  captures — instead there is **one** consolidated **"Do more with Pro"** card. Tap it.
+- **Expected:** A single info box opens ("**Upgrade to Pro · Do more with Pro**") listing the Pro
+  capture features as bullets (dictate & transcribe audio · auto-caption & pair before/after photos · a
+  structured treatment report). It **never** runs AI; dismiss with the **× (top-right)**, **Got it**, or
+  by **tapping the backdrop**. One contextual teaser also appears once on the Basic **report** (Scenario
+  16) and the **patient file** (Scenario 13) — never per-capture.
 
 ### 7. Last visit, one glance + "same as last time" (AES-106)
 - **Story:** For a returning patient, the prior visit's note + photos surface at capture, with a one-tap
