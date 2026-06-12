@@ -26,9 +26,10 @@
 > reception assign-suggestion, curate-&-share, aftercare-template settings). Manual test script:
 > [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md). A few **as-built refinements**
 > from build-time review are folded into §8–§9: the per-capture teasers were consolidated to **one
-> Try Pro per screen**; Basic audio drops the persistent "voice memo" badge (sync state only on a
-> problem); a Basic note is **tap-to-edit inline**; and a Basic photo may carry an **optional
-> free-text caption** (the doctor's own words — not a Before/After tag).
+> Try Pro per screen**; Basic audio drops the persistent "voice memo" badge (sync state only when
+> offline); a Basic note is **tap-to-edit inline**; a Basic photo may carry an **optional free-text
+> caption** (the doctor's own words — not a Before/After tag); and the active-visit header names the
+> session **"{patient}'s Nth session"** (date+time when unassigned), badge-free unless offline.
 
 ## 1 · The Basic↔Pro boundary (the spine)
 
@@ -261,9 +262,11 @@ calm while still selling Pro. The table above still records *what each capabilit
 ## 9 · States
 Inherits [states.md](states.md) wholesale. Aesthetics-specific notes:
 - **Basic has no AI states** — no `Processing`/`Organizing`/`Updating`, no needs-input AI items.
-  *As built:* audio is a **voice memo** (compact player, no transcript) and carries **no persistent
-  "saved" badge** — sync state surfaces **only on a problem** (`Syncing` / `Needs attention`), per the
-  offline contract. The only hard stop remains durable-storage-full
+  *As built:* audio is a **voice memo** (compact player, no transcript). There are **no persistent
+  sync badges** — not on the session header, not per capture. A single **"Trying to sync"** marker
+  (on the header + the affected captures) appears **only when offline / the backend is unreachable**;
+  when connected, captures are badge-free. The header also names the active visit **"{patient}'s Nth
+  session"** (date+time when unassigned). The only hard stop remains durable-storage-full
   ([redesign-capture-surface.md States](redesign-capture-surface.md)).
 - **Flags / lot-recall warnings** are attention markers, never blockers ([design-principles §7](../design-principles.md)).
 - **Q&A drafts** never auto-send; a stale/failed draft is silent and self-healing, never a needs-input

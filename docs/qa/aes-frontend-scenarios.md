@@ -303,10 +303,14 @@ AI transcript, an AI caption, or an AI-written summary. The only ✨ allowed is 
 
 - **No ✨ on any Basic feature.** The only ✨ allowed is on a violet **"Try Pro"** teaser. If you see a
   sparkle anywhere else (memory recap, report, captures), that's a bug.
-- **No processing/organizing states.** Saving a note/photo/audio in Basic shows "saved on this device",
-  never "Processing", "Organizing", or "Transcribing".
-- **Audio never transcribed in Basic.** Always a "voice memo" chip; the transcript lives behind the
-  Try-Pro teaser only.
+- **No processing/organizing states, and no badges when synced.** Saving a note/photo/audio shows
+  **no** status when connected (it just syncs), and never "Processing"/"Organizing"/"Transcribing". The
+  only sync indicator — **"Trying to sync"** (on the session header and the affected captures) — appears
+  **only when offline / the backend is unreachable**.
+- **Session header naming.** The active visit reads **"{patient}'s Nth session"** when assigned, or the
+  session **date + time** when unassigned (not a raw "Session …" name, no "Complete" badge).
+- **Audio never transcribed in Basic.** A compact voice-memo player, no transcript; transcription lives
+  behind Try Pro only.
 - **Teasers are non-functional.** Tapping a "Try Pro" teaser never runs AI on your content; it only
   reveals the "Pro feature — upgrade your plan" note.
 - **Duplicate guard never auto-merges.** It only suggests; "Create anyway" always works.
