@@ -38,25 +38,29 @@ decorated, so that I document by talking.
   today), `note_decoration` (modify). Generated text is inline-**editable** with edited-vs-AI attribution.
   RTL per the per-line script rule.
 
-### AES-103 — Before/after photo pairing 〔Basic · Dr/As · new〕
-As a **doctor**, I want to tag a photo **Before / After / During** and an **area** (e.g. forehead, cheek,
-lips, jaw), and have the after auto-suggested to pair with the matching before, so that progress is
-visible without camera-roll hunting.
-- **Acceptance:** deterministic tag + manual/one-tap pair within a visit; pair renders **side-by-side
-  + slider** compare; photos are filed to the patient, **not** the device camera roll. *AI auto-pairing
-  by detected area is Pro (AES-104).*
+### AES-103 — Photo gallery, no tagging (Basic) 〔Basic · Dr/As · new〕
+As a **doctor**, I want my photos filed to the patient and shown **well — grouped by visit, recent
+visits prominent — with no tagging**, so that I see progress at a glance and compare by eye, without
+camera-roll hunting or labeling work.
+- **Acceptance:** photos filed to the patient, **not** the device camera roll; a per-patient gallery
+  **grouped by visit** (≈last 4 prominent), photos in capture order; the returning-visit capture strip
+  surfaces last visit's photos for eyeball comparison. **No Before/After/area tags, no app-built pairs,
+  no slider** — that's Pro (AES-104). *Amends foundation §3 Basic 3: pairing → Pro (approved 2026-06-12).*
 
-### AES-104 — AI before/after auto-pairing + captions 〔Pro · Dr · modify〕
-As a **doctor**, I want photos **auto-captioned and auto-paired by area** so that the gallery organizes
-itself.
-- **Acceptance:** Pro captions describe the clinical image; same-area before/after auto-paired; pairing
-  is reversible. Shown in Basic as a `✨ Try Pro` teaser on a photo (AES-803).
+### AES-104 — AI captions + prepared before/after (Pro) 〔Pro · Dr · modify〕
+As a **doctor**, I want photos **auto-captioned** and the **before/after pairs prepared for me** — area
+detected, matched, aligned — so that the comparison builds itself.
+- **Acceptance:** Pro captions the clinical image; detects area/angle; **intelligently assembles
+  before/after pairs** with the **side-by-side + slider** compare (reversible); feeds the structured
+  report's Before/after media + the curated share; powers "missing after-photo" (AES-501). Shown in
+  Basic as the `✨ Try Pro` teaser on a photo (AES-803).
 
 ### AES-105 — Ghost-overlay capture alignment 〔Basic · Dr/As · new · ⊕〕
-As a **doctor**, I want the prior baseline photo faintly overlaid while I shoot the "after", so that
+As a **doctor**, I want to optionally overlay a **previous photo** faintly while I shoot, so that
 angle/framing/lighting match and the comparison is credible.
-- **Acceptance:** deterministic on-screen overlay of the paired before image at low opacity during
-  capture; no AI. *Candidate extension (research §6 ADOPT).*
+- **Acceptance:** deterministic, **optional** on-screen overlay of a prior photo (default: the patient's
+  most recent shot; user can pick another) at low opacity during capture; **no Before/After taxonomy**,
+  no AI. *Candidate extension (research §6 ADOPT) — adopt v1.*
 
 ### AES-106 — Last visit, one glance + "same as last time" pre-fill 〔Basic · Dr/As · new〕
 As a **doctor**, with a returning patient I want **last visit's note + before/after surfaced at capture**
@@ -110,11 +114,12 @@ real structure replaces a flat pile of notes.
 - **Acceptance:** deterministic presentation of the existing patient/session/capture model; no AI
   needed to file. Patient detail shows visits grouped by time.
 
-### AES-202 — Before/after gallery, grouped by visit 〔Basic · Dr/As · new〕
-As a **doctor**, I want a **per-patient gallery auto-grouped by visit** with before/after pairs, so that
-I see the whole aesthetic history at a glance.
-- **Acceptance:** deterministic grouping; pairs show side-by-side/slider; tap a pair → the visit. Photos
-  never leave the patient file for the camera roll.
+### AES-202 — Per-patient photo gallery, grouped by visit 〔Basic · Dr/As · new〕
+As a **doctor**, I want a **per-patient gallery auto-grouped by visit**, so that I see the whole photo
+history at a glance.
+- **Acceptance:** deterministic grouping (recent visits prominent); photos in capture order; tap a photo
+  → the visit. **No tags / pairs / slider** (that's Pro, AES-104). Photos never leave the patient file
+  for the camera roll.
 
 ### AES-203 — Visit history & "what did we use last time" 〔Both · Dr/As · new〕
 As a **doctor**, I want last visit's detail instantly findable, so that "what did we use last time" is
@@ -335,9 +340,9 @@ As a **Basic doctor**, I want my voice-memo to offer `✨ Try Pro — transcribe
 upsell sits exactly where audio stops being first-class.
 - **Acceptance:** on a Basic audio card; labelled; non-functional preview/upgrade.
 
-### AES-803 — Teaser: caption & auto-pair photos 〔Basic · Dr/As · new〕
-As a **Basic doctor**, I want `✨ Try Pro — auto-caption & pair before/after` on a photo, so that I see
-the Pro gallery upgrade in context.
+### AES-803 — Teaser: caption & prepare before/after 〔Basic · Dr/As · new〕
+As a **Basic doctor**, I want `✨ Try Pro — caption & prepare before/after` on a photo, so that I see the
+Pro upgrade (captions + assembled pairs + slider) in context.
 
 ### AES-804 — Teaser: recall & AI history 〔Basic · Dr · new〕
 As a **Basic doctor**, on a returning patient I want `✨ recall — what product/units last time?` and an
@@ -354,7 +359,7 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 | --- | --- |
 | Basic 1 — shared clinic workspace | (exists; underpins AES-201, E6) |
 | Basic 2 — patient-centric filing | AES-201 |
-| Basic 3 — before/after pairing + gallery | AES-103, AES-202 (+⊕ AES-105) |
+| Basic 3 — visual-first gallery *(pairing → Pro, amended 06-12)* | AES-103, AES-202; AES-104 (Pro pairing) (+⊕ AES-105) |
 | Basic 4 — smart search | AES-204 |
 | Basic 5 — capture-first / deterministic assign-later | AES-301 |
 | Basic 6 — shareable report + aftercare | AES-303, AES-304, AES-401 |
@@ -375,10 +380,12 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 AES-404 SMS/WhatsApp delivery · AES-503 lot scan · AES-703 consent capture · AES-704 pre-visit link.
 Rationale + recommendation for each: [redesign-aesthetics.md §10](redesign-aesthetics.md).
 
-**Decisions (2026-06-11 review):** **No structured forms in Basic** — a Basic treatment/lot row is
+**Decisions (2026-06-11 & 06-12 reviews):** **Before/after — Basic presents** (a visit-grouped photo
+gallery, **no tagging / pairs / slider**); **Pro prepares** (captions + assembled before/after pairs +
+slider) — *amends foundation §3 Basic 3 (06-12)*. **No structured forms in Basic** — a Basic treatment/lot row is
 **rejected** (Basic = free-text note + retrieval; structure is Pro-only, by extraction). **AES-703
 consent — dropped** (a consent form a clinic wants on file is just a photo). **AES-404 delivery** —
 copy-link / native-share / QR first; automated SMS/WhatsApp deferred. **AES-110 face-map** — a *derived*
 visualization of dictated treatment only (never tap-to-enter), later spike. **AES-503 lot scan** — out
-of MVP. **AES-704 pre-visit link** — agreed, deferred. **AES-105 ghost-overlay** — adopt for v1 Basic.
-See [redesign-aesthetics.md §10](redesign-aesthetics.md).
+of MVP. **AES-704 pre-visit link** — agreed, deferred. **AES-105 ghost-overlay** — adopt v1 Basic,
+reframed as an optional "align to a previous photo" aid. See [redesign-aesthetics.md §10](redesign-aesthetics.md).

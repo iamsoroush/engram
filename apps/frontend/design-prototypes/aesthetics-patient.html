@@ -187,9 +187,9 @@
     <p class="frame-note">The aesthetics patient file: <b>safety flags</b> up top (allergy · consent · preference), the <b>AI history</b> (Snapshot · Worth remembering · Right now) with a one-tap <b>recall</b>, the <b>before/after gallery auto-grouped by visit</b> (slider/side-by-side, photos filed to the patient — never the camera roll), and a longitudinal <b>treatment &amp; lot history</b>. The lot column is what makes <b>recall</b> (next frame) possible.</p>
   </section>
 
-  <!-- FRAME 2 : PATIENT DETAIL (BASIC) — same gallery, deterministic memory -->
+  <!-- FRAME 2 : PATIENT DETAIL (BASIC) — photo gallery (no tags), deterministic memory -->
   <section>
-    <p class="frame-label">Patient detail — Basic · same gallery &amp; your own visit notes, deterministic memory (no ✨), recall is a teaser</p>
+    <p class="frame-label">Patient detail — Basic · photo gallery (no tags, by visit) &amp; your own visit notes · deterministic memory (no ✨) · recall is a teaser</p>
     <div class="app">
       <div class="card">
         <div class="phead"><div class="av rtl" lang="fa">سن</div>
@@ -212,17 +212,19 @@
         </div>
       </div>
       <div class="card">
-        <div class="sec-h"><h3>Before / after gallery</h3></div>
-        <div class="vg-head">Today · forehead Botox <span class="vg-meta">· 1 pair</span></div>
-        <div class="pair">
-          <div class="pimg"><span class="ptag">Before</span><span class="parea">Forehead</span></div>
-          <div class="pmid"><svg class="ic sm"><use href="#i-slider"/></svg></div>
-          <div class="pimg after"><span class="ptag">After</span><span class="parea">Forehead</span></div>
+        <div class="sec-h"><h3>Photo gallery</h3><span style="margin-left:auto;font-size:.72rem;color:var(--color-muted)">by visit</span></div>
+        <div class="vg-head">Today · forehead Botox <span class="vg-meta">· 2 photos</span></div>
+        <div class="pair" style="background:transparent;border:0;padding:0;gap:7px">
+          <div class="pimg"></div><div class="pimg after"></div>
         </div>
-        <div style="font-size:.72rem;color:var(--color-muted);margin-top:8px">Pairs you tagged Before/After · area. Same gallery as Pro — the photos are deterministic.</div>
+        <div class="vg-head" style="margin-top:11px">Jun 4 · cheek-filler review <span class="vg-meta">· 2 photos</span></div>
+        <div class="pair" style="background:transparent;border:0;padding:0;gap:7px">
+          <div class="pimg lips"></div><div class="pimg lips after"></div>
+        </div>
+        <div style="font-size:.72rem;color:var(--color-muted);margin-top:9px">No tagging — your photos, grouped by visit, recent first. You compare by eye; <b>Pro</b> labels &amp; pairs them with a slider.</div>
       </div>
     </div>
-    <p class="frame-note">Basic keeps the <b>visual-first gallery</b> and <b>your own visit notes</b>, made instantly skimmable — <b>no structured forms</b> (that would make it a small EHR). "What did we use last time" is answered by <b>glancing at the last visit</b>, where you wrote it. Memory is the honest <b>structural recap</b> (no ✨, never guesses from audio). The only thing Pro adds is <b>synthesis + recall + the extracted treatment/lot table</b> — sold by one teaser, not by gating the data.</p>
+    <p class="frame-note">Basic keeps the <b>visual-first photo gallery</b> (grouped by visit, <b>no tagging</b> — the eye reads progress) and <b>your own visit notes</b> — zero-AI wins. "What did we use last time" is answered by <b>glancing at the last visit</b>, where you wrote it. Memory is the honest <b>structural recap</b> (no ✨, never guesses from audio). Pro adds <b>captions + prepared before/after pairs (slider)</b>, synthesis, recall, and the extracted treatment/lot table — sold by teasers, not by gating the data.</p>
   </section>
 
   <!-- FRAME 3 : SMART LISTS + LOT RECALL (PRO) -->

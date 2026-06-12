@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | **Active Session** (capture) | Doctor, Assistant | Basic: note+photo primary, audio = voice memo. Pro: audio-first, transcription, structured report. |
 | **Clinical Memory** (Today / Patients / Needs input) | All | Pro adds smart lists, AI memory/history, recall, flags, lot recall. |
-| **Patient detail** (gallery · treatment history · flags) | Doctor, Assistant | Before/after gallery + visit history are Basic; AI history, recall, flags are Pro. |
+| **Patient detail** (gallery · treatment history · flags) | Doctor, Assistant | Photo gallery + visit history are Basic; before/after pairing, AI history, recall, flags are Pro. |
 | **Front desk** (a lens on Clinical Memory · Today) | Receptionist | Registration + duplicate guard (Basic); AI matching reduces manual assign (Pro). |
 | **Patient surface** (clinic→patient channel) | Patient (+ Doctor/Assistant author) | Basic: shareable report + aftercare. Pro: post-session Q&A. |
 | **Settings** (products & lots · aftercare · report template · flags) | Assistant/Admin | Lots, flags, report template are Pro; aftercare templates are Basic. |
@@ -53,11 +53,11 @@ build themselves.
 
 | Phase | Step | What the doctor does | System (deterministic) | Seam / teaser |
 | --- | --- | --- | --- | --- |
-| **Before** | Pull up the patient | Opens patient from **smart search** (name / phone / national ID), Persian-orthography-aware, instant at scale | `det` fuzzy-but-deterministic Persian search; opens patient detail with the **before/after gallery** grouped by visit | A returning patient's prior photos are *right there* — the camera-roll problem is gone |
+| **Before** | Pull up the patient | Opens patient from **smart search** (name / phone / national ID), Persian-orthography-aware, instant at scale | `det` fuzzy-but-deterministic Persian search; opens patient detail with the **photo gallery** grouped by visit | A returning patient's prior photos are *right there* — the camera-roll problem is gone |
 | | "Same as last time" | Glances at last visit's note/photos before starting | `det` patient file shows last visit verbatim; **"Same as last time"** offers to pre-fill a new note from the last one | `✨ recall — "what product/units last time?"` teaser (Pro extracts it structurally) |
 | **During** | Start capturing | Taps **Note** or **Photo** (primary in Basic); **Audio** is a voice-memo (kept, not transcribed) | `det` capture saved **instantly, local-first**; assigned to the active session; **no AI job, no `processing` state** | Audio card shows `✨ Try Pro — transcribe & structure your dictation` |
-| | Before photo | Takes the **before** photo; tags area (cheek/lips/forehead) and **Before** | `det` photo tagged `Before` + area; enters the gallery; **ghost-overlay** `⊕ candidate` helps frame | Manual before/after tag = Basic; *auto*-pairing-by-area = Pro |
-| | Treat + after photo | Treats; takes the **after** photo, tags **After** | `det` after-photo auto-suggested to pair with the matching before (same area, same visit) | `✨ Try Pro — auto-caption these photos` |
+| | Before photo | Takes the **before** photo — **no tagging** | `det` photo filed to the patient → the **visit-grouped gallery**; optional **ghost-overlay** (`⊕`) aligns to a prior shot | Basic just *presents*; pairing/captions = Pro |
+| | After photo | Treats; takes the **after** photo | `det` filed to the same visit; the doctor compares **by eye** in the gallery | `✨ Try Pro — caption & prepare before/after` |
 | | Note the work | Types a short note ("بوتاکس پیشانی، ۲۰ واحد، lot X") | `det` saved verbatim as a typed note; **no extraction** | `✨ Try Pro — turn this into a structured treatment report` |
 | **After** | Assign patient | Confirms the active patient (already open) — or, if captured first, a **deterministic "Assign to …?"** suggestion based on the open patient / recent context | `det` one-tap assign; **duplicate-patient guard** if creating new | Never blocks; assignment can lag capture |
 | | Share with patient | Curates a few before/after + picks an **aftercare** template; **shares a read-only report** (link via SMS/WhatsApp `⊕ candidate channel`) | `det` curated report + **static aftercare** rendered from template/DB | The professional artifact Apple Notes can't make |
@@ -73,7 +73,7 @@ no chips. A tidy notebook that stands on its own ([redesign-capture-surface.md](
 | --- | --- | --- | --- | --- |
 | **Before** | Walk in knowing the patient | Opens the patient; reads the **AI patient history** (Snapshot · Story so far · Worth remembering · Right now) and any **flags** (allergy · consent · preference) | `ai` cross-visit synthesis; `ai` flags surfaced on the patient row at the top of the session | Pro turns the file into a brief; Basic showed facts, Pro shows understanding |
 | | Recall | Asks "what did I use last time?" | `ai` **recall** answers from the structured *Treatment performed* data — area · product · brand · units · lot | The Basic teaser is now real |
-| **During** | Dictate | **Audio-first**: dictates the visit naturally while treating; drops photos as before/after | `ai` **transcription** (native script, RTL-aware); `ai` **captions** photos; `ai` **before/after auto-paired** by area | Audio is first-class in Pro; secondary in Basic |
+| **During** | Dictate | **Audio-first**: dictates the visit naturally while treating; drops photos | `ai` **transcription** (native script, RTL-aware); `ai` **captions** photos; `ai` **before/after prepared** (paired + slider) | Audio is first-class in Pro; secondary in Basic |
 | | Out-of-context | A side-comment / phone call mid-session | `ai` **out-of-context** capture dimmed, excluded from the report, never deleted; one-tap **Mark relevant** | Same guard as the generic build |
 | | Patient match | Says the patient's name, or it's inferred | `ai` **patient matching** — auto-match / create / reassign / suggest; partial matches resolve in-place ([capture-surface H4](redesign-capture-surface.md)) | Capture never waits on the match |
 | **After** | Structured report builds itself | Glances at the **Live report** | `ai` **structured session report** (fixed v1: Visit summary · Concern/goals · Assessment · **Treatment performed** [area·product·brand·units·**lot**] · Before/after · Plan & follow-up · Aftercare); rebuilt as captures land; auto-**Complete** badge | The core Pro value; no Generate button, no verify gate |
@@ -95,8 +95,8 @@ manual-but-fast; in Pro the assistant becomes a *verifier* of AI output rather t
 
 | Phase | Step | Assistant does | System (det) | Seam |
 | --- | --- | --- | --- | --- |
-| **During** | Capture on behalf | Stands in the room, takes before/after photos, types the doctor's spoken notes | `det` instant capture into the active session; before/after tagging + pairing | Audio voice-memo captures the doctor verbatim for later typing; `✨ Try Pro — transcribe it` |
-| **After** | Organize | Assigns the visit to the right patient; pairs any stray photos; tidies the gallery | `det` assign + **duplicate guard**; gallery grouped by visit | Capture-first: organizing is a *later* pass, not a gate |
+| **During** | Capture on behalf | Stands in the room, takes the photos, types the doctor's spoken notes | `det` instant capture into the active session; photos filed to the visit-grouped gallery (no tagging) | Audio voice-memo captures the doctor verbatim for later typing; `✨ Try Pro — transcribe it` |
+| **After** | Organize | Assigns the visit to the right patient; tidies the visit-grouped gallery | `det` assign + **duplicate guard**; gallery grouped by visit | Capture-first: organizing is a *later* pass, not a gate |
 | | Prepare the share | Curates the before/after set, picks the aftercare template, sends the report | `det` curated report + aftercare | The assistant owns the patient-facing polish |
 | **Between** | Keep the file clean | Adds phone/DOB/national ID to thin records; merges obvious duplicates via the guard | `det` patient edit; `det` duplicate guard | Front-desk-adjacent housekeeping |
 

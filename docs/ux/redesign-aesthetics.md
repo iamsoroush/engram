@@ -35,7 +35,7 @@ Basic's answer to "what did we use last time" is **fast retrieval** of the previ
 | --- | --- | --- | --- |
 | Capture lifecycle | Note/photo primary; audio = **voice memo**; saved instant, local-first, **no AI job/`processing`** | **Audio-first** dictation; transcription · captions · note decoration | AES-101/102 |
 | Patient filing | Auto-filed patient→visit (det. presentation) | + AI **matching** (match/create/reassign/suggest) | AES-201/208 |
-| Before/after photos | Manual **Before/After + area** tag; **manual/one-tap pair**; ghost-overlay align `⊕`; gallery by visit | + AI **captions** + **auto-pair by area** | AES-103/104/202 |
+| Before/after photos | **No tagging** — photos filed to the patient + a **gallery grouped by visit** (recent prominent); optional ghost-overlay align `⊕`; the eye pairs them | AI **captions** + **intelligently-assembled before/after pairs** + the aligned slider compare | AES-103/104/202 |
 | Treatment detail | **Free-text note / photos** — no structured form | **Extracted** from dictation into *Treatment performed* | AES-108 |
 | Report | **Chronological** document (notes+photos, honest timestamps, no synthesis) | **Structured** v1 report (synthesis + extraction); auto-**Complete** | AES-302/107 |
 | Search | **Persian-aware deterministic** multi-field, instant at scale | (same) | AES-204 |
@@ -60,11 +60,13 @@ the non-blocking handoff is shown concretely in [journeys §4](aesthetics-journe
 Aesthetics reuses the existing shell (Active Session · Clinical Memory · Search · Settings,
 [navigation.md](navigation.md)) and adds vertical-specific surfaces. Deltas:
 
-- **Active Session** — adds before/after pair capture, the treatment block, the patient-row **flags**
-  (Pro), the **"same as last time"** / **recall** strip, and the teaser slots. ([capture prototype](../../apps/frontend/design-prototypes/aesthetics-capture.html))
-- **Patient detail** — adds a **before/after gallery** (grouped by visit), **visit history** (Basic: a
-  glanceable list of your own notes; Pro: a **treatment & lot table** from extraction), and a **flags**
-  band (Pro); memory is tiered (det. structural ↔ AI history + recall). ([patient prototype](../../apps/frontend/design-prototypes/aesthetics-patient.html))
+- **Active Session** — adds photo capture + before/after (**presented** in Basic, **prepared** in Pro),
+  the free-text note, the patient-row **flags** (Pro), the **"same as last time"** / **recall** strip,
+  and the teaser slots. ([capture prototype](../../apps/frontend/design-prototypes/aesthetics-capture.html))
+- **Patient detail** — adds a **photo gallery** (grouped by visit; Basic presents, Pro prepares
+  before/after pairs), **visit history** (Basic: a glanceable list of your own notes; Pro: a **treatment
+  & lot table** from extraction), and a **flags** band (Pro); memory is tiered (det. structural ↔ AI
+  history + recall). ([patient prototype](../../apps/frontend/design-prototypes/aesthetics-patient.html))
 - **Clinical Memory** — adds Pro **smart lists** and an admin **lot recall** lookup. Reception uses
   Today as a **front-desk lens** (§7).
 - **Q&A** — a new Pro surface (doctor inbox); reachable from the shell navigator. ([patient-surface prototype](../../apps/frontend/design-prototypes/aesthetics-patient-surface.html))
@@ -88,14 +90,24 @@ report** tabs, the patient row above, the sticky **Audio / Photo / Note** footer
 **Footer order encodes the tier** ([foundation §1](redesign-foundation.md)): **Basic** leads with
 **Note** (primary) — audio is a labelled voice **memo**; **Pro** leads with **Audio** (`dictate`).
 
-### 3.1 Before/after photo pairing (AES-103/104)
+### 3.1 Before/after photos — present (Basic) vs prepare (Pro) (AES-103/104)
 The aesthetics signature — *aesthetics is photos* ([foundation §3 Basic 3](redesign-foundation.md)).
-- **Basic:** on a photo capture, tag **Before / After / During** + an **area** (forehead, glabella,
-  cheek, lips, jaw…). The after is one-tap paired with the matching before in the same visit; the pair
-  renders **side-by-side + slider** compare. Photos are **filed to the patient, never the camera roll**
-  (research §6 ADOPT). **Ghost-overlay** alignment during capture is `⊕ candidate` (§10).
-- **Pro:** photos **auto-captioned** and **auto-paired by detected area**; pairing reversible. In Basic
-  the caption slot is a `✨ Try Pro` teaser (AES-803).
+**Amends foundation §3 Basic 3** (approved 2026-06-12): per-photo *pairing/tagging* moves Basic→Pro;
+Basic keeps the gallery. *Why:* tagging photos Before/After is organizing work — the same friction we
+stripped from the treatment note — so Basic's value is **presentation + retrieval**, and the AI does the
+organizing in Pro.
+- **Basic — present, don't tag:** the doctor just shoots; **zero labeling.** Photos are **filed to the
+  patient, never the camera roll** (research §6 ADOPT) and shown **well** — a per-patient **gallery
+  grouped by visit**, recent visits prominent (≈last 4), photos in capture order; at a returning visit
+  last visit's photos surface at capture so the doctor compares **by eye**. The app organizes and
+  surfaces; the human reads the before/after. **No Before/After/area tags, no app-built pairs, no
+  slider.** **Ghost-overlay** is an optional "align to a previous photo" capture aid (`⊕`, §10) — no
+  Before/After taxonomy needed.
+- **Pro — prepare the comparison:** photos are **auto-captioned**, **area/angle detected**, and the
+  actual **before/after pairs assembled intelligently** with the aligned **side-by-side + slider**
+  compare (reversible). This feeds the structured report's Before/after media + the curated share, and
+  powers "missing after-photo" (§5). In Basic the caption + "prepare my before/afters" is the
+  `✨ Try Pro` teaser (AES-803).
 
 ### 3.2 Treatment capture & the structured report (AES-108/107)
 *Structure in Pro is **emergent**, never data entry:* the doctor dictates naturally and the AI extracts
@@ -146,8 +158,10 @@ from the structured report; Basic curates from the chronological one.
 ## 5 · Patient file & memory
 *Prototype: [`aesthetics-patient.html`](../../apps/frontend/design-prototypes/aesthetics-patient.html).*
 
-- **Before/after gallery, grouped by visit (Basic, AES-202)** — the whole aesthetic history at a glance;
-  pairs show slider/side-by-side; deterministic grouping. The camera-roll-chaos cure.
+- **Photo gallery, grouped by visit (Basic, AES-202)** — the whole photo history at a glance; **no
+  tagging**, deterministic grouping (recent visits prominent), the eye reads progress. The
+  camera-roll-chaos cure. **Pro** adds captions + **prepared before/after pairs** with the slider
+  compare (AES-104).
 - **Visit history & "what did we do last time" (AES-203)** — **Basic:** a **glanceable visit list** —
   each visit shows the doctor's own note + that visit's before/after, so the answer lives in the notes
   they already wrote, made instantly skimmable (**no structured table**). **Pro:** a longitudinal
@@ -245,15 +259,20 @@ scope.** Each: what · why · tier · recommendation. (No agreed feature is chan
 
 | # | Extension | What | Why (research) | Tier | Recommendation |
 | --- | --- | --- | --- | --- | --- |
-| ⊕1 | **Ghost-overlay capture** (AES-105) | Overlay the prior baseline at low opacity while shooting the "after" | Highest-credibility photo feature; comparisons stay angle/light-consistent | Basic (det.) | **Adopt in v1** — pure-deterministic, high delight |
+| ⊕1 | **Ghost-overlay capture** (AES-105) | Optional "align to a previous photo" — overlay a prior shot at low opacity while shooting (no Before/After tags) | Comparisons stay angle/light-consistent | Basic (det.) | **Adopt in v1** — pure-deterministic, optional, high delight |
 | ⊕3 | **Lot/expiry scan** (AES-503) | Scan a product box → lot/expiry onto the extracted treatment item + ledger | Makes lot capture accurate/effortless; powers recall | Pro | **Out of MVP** — deferred fast-follow; barcodes often don't encode lot (OCR risk); gate on real recall usage |
 | ⊕4 | **Face-map injection viz** (AES-110) | Render *dictated* treatment onto a face diagram (a read-back; tap only to correct) | A glanceable visual of where/what was injected | Pro | **Derived viz only** (never tap-to-enter) + **later spike**, not alpha |
 | ⊕5 | **Lightweight consent capture** (AES-703) | Attach/store a signed consent + a consent flag | Incumbents are heavy here; clinics need *some* consent on file | Both | **Dropped** — just a photo if a clinic wants it; don't build a consent feature |
 | ⊕6 | **Pre-visit consent/questionnaire link** (AES-704) | Send an inbound patient-surface form, auto-attached to the visit | Proven pattern; removes in-clinic friction | Pro | **Defer** — reuses the patient surface inbound; sequence after Q&A |
 | ⊕7 | **SMS/WhatsApp delivery** (AES-404) | The patient-surface delivery channel | The channel Iranian patients actually use | Both | **Copy-link / native-share / QR first**; automated SMS/WhatsApp later (provider + compliance) |
 
-**Decided (2026-06-11 review):**
+**Decided (2026-06-11 & 06-12 reviews):**
 
+- **Before/after — present (Basic) vs prepare (Pro).** *Amends foundation §3 Basic 3* (approved
+  2026-06-12): per-photo tagging/pairing moves Basic→Pro. **Basic** = a well-presented, visit-grouped
+  **photo gallery, no tagging** (the eye pairs); **Pro** = AI captions + **intelligently-assembled
+  before/after pairs** + the slider compare. Ghost-overlay (⊕1) reframed as an optional "align to a
+  previous photo" aid. See §3.1.
 - **No structured forms in Basic.** A Basic treatment/lot row (an earlier proposal) is **rejected** —
   Basic treatment detail is **free-text + fast retrieval** of the previous visit (§3.2, §5); structure
   exists only in Pro, by **extraction**. *Why:* keeps Basic from becoming a small EHR, true to the

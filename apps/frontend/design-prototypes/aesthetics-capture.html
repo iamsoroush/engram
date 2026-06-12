@@ -299,27 +299,33 @@
             </div>
           </div>
 
-          <!-- 2 · BEFORE/AFTER PHOTO PAIR -->
+          <!-- 2 · PHOTOS — Basic: presented; Pro: prepared before/after -->
           <div class="cap photo">
             <div class="cap-node"><svg class="ic"><use href="#i-cam"/></svg></div>
-            <div class="cap-head"><span class="t">Before / after</span><span class="time">14:08</span></div>
-            <div class="ba">
+            <div class="cap-head"><span class="t pro-only">Before / after</span><span class="t basic-only">Photos · this visit</span><span class="time">14:08</span></div>
+
+            <!-- Pro: prepared pair (tags + slider) -->
+            <div class="ba pro-only">
               <div class="ba-col"><div class="ba-img"><span class="ba-tag">Before</span><span class="ba-area">Forehead</span></div></div>
               <div class="ba-slider"><div class="knob"><svg class="ic sm"><use href="#i-slider"/></svg></div></div>
               <div class="ba-col"><div class="ba-img after"><span class="ba-tag">After</span><span class="ba-area">Forehead</span></div></div>
             </div>
-            <!-- Pro caption -->
             <div class="gen pro-only" style="margin-top:9px"><div class="lab"><span>Caption</span><span class="ai">AI</span>
               <button class="edit"><svg class="ic sm"><use href="#i-edit"/></svg> Edit</button></div>
               <p>Forehead before/after — softened dynamic lines after treatment; auto-paired by area.</p></div>
-            <div class="ba-cap pro-only"><svg class="ic sm" style="color:var(--green)"><use href="#i-slider"/></svg> Auto-paired by area · drag to compare</div>
-            <!-- Basic: manual tags, no caption + teaser -->
+            <div class="ba-cap pro-only"><svg class="ic sm" style="color:var(--green)"><use href="#i-slider"/></svg> Prepared by Memara · paired by area · drag to compare</div>
+
+            <!-- Basic: just the photos, no tags, no slider -->
             <div class="basic-only">
-              <div class="ba-cap">Tagged <b>Before/After · Forehead</b> by you · ghost-overlay kept framing aligned · drag to compare</div>
+              <div class="ba" style="gap:7px">
+                <div class="ba-col"><div class="ba-img"></div></div>
+                <div class="ba-col"><div class="ba-img after"></div></div>
+              </div>
+              <div class="ba-cap">2 photos this visit · filed to the patient, not your camera roll · <b>ghost-overlay</b> aligned to last photo · you compare by eye</div>
               <div class="teaser" data-teaser="caption">
                 <span class="spark"><svg viewBox="0 0 24 24"><use href="#i-spark"/></svg></span>
-                <div class="grow"><div class="tt">Try Pro — auto-caption & auto-pair before/after</div>
-                  <div class="ts">Basic pairs photos you tag. Pro captions them and pairs by detected area.</div></div>
+                <div class="grow"><div class="tt">Try Pro — caption & prepare before/after</div>
+                  <div class="ts">Basic files &amp; shows your photos. Pro captions them and builds the labeled before/after with a slider.</div></div>
                 <span class="go">Try Pro →</span>
               </div>
             </div>
@@ -383,7 +389,7 @@
   const CASES = {
     'pro|returning': "<b>Pro · returning patient.</b> Audio-first: dictate and the visit auto-matches, the transcript and the <b>structured Treatment performed</b> (area·product·brand·units·lot) extract themselves, photos auto-caption and auto-pair by area. Safety <b>flags</b> + <b>recall</b> (“last time…”) ride at the top.",
     'pro|new': "<b>Pro · new / unassigned.</b> Capture never waits on identity — the visit is unassigned now and <b>auto-matches</b> (or AI-creates, flagged verify) once the name is heard. Everything else is identical to the returning case.",
-    'basic|returning': "<b>Basic · returning patient.</b> Zero AI, <b>no forms</b>: note/photo primary, audio is a <b>voice memo</b>. You tag <b>Before/After + area</b> (ghost-overlay keeps framing aligned) and just <b>type a note</b> — treatment detail lives in your own words. <b>Last visit is one glance away</b> and <b>“same as last time”</b> pre-fills the note — that’s how Basic answers “what did we use last time,” by retrieval not data entry. Every place Pro would help shows a labelled <b>✨ Try Pro</b> teaser.",
+    'basic|returning': "<b>Basic · returning patient.</b> Zero AI, <b>no forms, no tagging</b>: note/photo primary, audio is a <b>voice memo</b>. Photos are just <b>filed &amp; shown by visit</b> — you compare <b>by eye</b> (ghost-overlay aligns to a prior shot); no Before/After labels. You just <b>type a note</b> — treatment detail lives in your own words. <b>Last visit is one glance away</b> and <b>“same as last time”</b> pre-fills the note — that’s how Basic answers “what did we use last time,” by retrieval not data entry. Every place Pro would help shows a labelled <b>✨ Try Pro</b> teaser.",
     'basic|new': "<b>Basic · new / unassigned.</b> Capture-first, deterministic <b>“Assign to…?”</b> — no AI matching. The duplicate-patient guard catches near-duplicates at create. Teasers mark exactly where Pro’s understanding would slot in."
   };
   function refresh(){ document.getElementById('case-text').innerHTML = CASES[app.dataset.tier+'|'+app.dataset.patient];

@@ -64,9 +64,12 @@ superpowers; **Pro** adds the AI understanding layer + the upsell.
 2. **Patient-centric, automatic** filing by patient → visit `(modify)` — the patient/session/capture
    model exists; the *zero-AI Basic presentation* of it is new. *Why:* Notes is a flat pile you title
    and search by hand.
-3. **Visual-first**: before/after pairing + per-patient gallery auto-grouped by visit `(new)` — photo
-   capture exists; pairing + gallery are new. *Why:* aesthetics *is* photos; camera-roll/Notes chaos
-   is the pain felt every visit.
+3. **Visual-first**: per-patient gallery auto-grouped by visit `(new)` — photo capture exists; the
+   zero-AI gallery presentation is new. *Why:* aesthetics *is* photos; camera-roll/Notes chaos is the
+   pain felt every visit. *(Amended 2026-06-12: per-photo **before/after pairing** moved to **Pro** — see
+   Pro #1 — because tagging photos Before/After is organizing work, and Basic's value is presentation +
+   retrieval, not labeling. Basic keeps the well-presented gallery; the eye pairs. Spec:
+   [redesign-aesthetics.md §3.1](redesign-aesthetics.md).)*
 4. **Smart search**: deterministic, Persian-orthography-aware, multi-field, instant at scale
    `(modify)` — a basic patient list/search exists; the smart, fuzzy, Persian-aware, fast-at-scale
    version is an upgrade. *Why:* Notes' search is dumb and slow, worse for Persian names.
@@ -85,7 +88,8 @@ superpowers; **Pro** adds the AI understanding layer + the upsell.
 ### Pro — understanding + upsell (capture is audio-first; everything in Basic, plus AI)
 
 1. **Capture enrichment**: audio **transcription** `(exists)` · image **captions** `(modify — mock
-   today)` · note **decoration** `(modify — mock today)`.
+   today)` · note **decoration** `(modify — mock today)` · **before/after pairing** — captions +
+   intelligently-assembled pairs + the aligned slider `(new; amended 2026-06-12, moved from Basic #3)`.
 2. **AI patient matching** (auto match / create / reassign / suggest) `(exists)` + **out-of-context
    detection** `(exists)`.
 3. **Structured session report** `(modify)` — the AI turns the **dictated session** (+ photos/notes)
