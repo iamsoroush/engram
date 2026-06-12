@@ -43,6 +43,8 @@ export function CaptureScreen({
   lastVisit,
   onOpenVisit,
   onUseAsNote,
+  offline = false,
+  sessionOrdinal = null,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -78,6 +80,10 @@ export function CaptureScreen({
   lastVisit?: LastVisitInfo | null;
   onOpenVisit?: (sessionId: string) => void;
   onUseAsNote?: (text: string) => void;
+  /** No connection / backend unreachable — gates the only sync indicators we show. */
+  offline?: boolean;
+  /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
+  sessionOrdinal?: number | null;
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
@@ -85,8 +91,11 @@ export function CaptureScreen({
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
   // Basic active visits get a lightweight header — no "Complete" badge, no raw "Session <time>"
-  // name (those read as AI/EHR ceremony). Just "Today's visit" + a calm local-first meta line.
+  // name. Title = the patient's Nth session when assigned, else the session date+time. Sync state
+  // only shows when offline/unreachable (calm when everything is fine).
   const lightHeader = !isPro && !isHistorical;
+  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
+  const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
   // The live report regenerates automatically as captures land (Epic E); "updating" is a calm
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
@@ -138,9 +147,14 @@ export function CaptureScreen({
             <>
               <div className="session-summary-heading">
                 <span className="session-live-dot" aria-hidden="true" />
-                <h1>Today's visit</h1>
+                <h1 dir={textDirection(lightTitle)}>{lightTitle}</h1>
               </div>
-              <p>{captureCountLabel}{activeSession?.time ? <> <span aria-hidden="true">&bull;</span> {activeSession.time}</> : null} <span aria-hidden="true">&bull;</span> saved on this device</p>
+              <p>
+                {captureCountLabel}
+                {offline && sessionPending ? (
+                  <span className="session-sync-pending"><SyncIcon /> Trying to sync the session</span>
+                ) : null}
+              </p>
             </>
           ) : (
             <>
@@ -169,25 +183,38 @@ export function CaptureScreen({
           ) : null}
         </div>
       </div>
-      <Card className="patient-context-card">
+      <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
         <span className="patient-context-avatar" aria-hidden="true">
           <PatientIcon />
         </span>
-        <div>
-          <strong>{patientName}</strong>
+        <div className="patient-context-copy">
+          <strong dir={textDirection(patientName)}>{patientName}</strong>
           <p>
-            {activeSession?.patientId
+            {activeSession?.patientId || activeSession?.patientName
               ? activeSession.assignmentSource
                 ? assignmentSourceLabel(activeSession.assignmentSource)
                 : "Assigned manually"
-              : "No patient assigned"}
+              : "Capture-first — assign when ready"}
           </p>
         </div>
         {onAssignPatient ? (
-          <Button className="edit-patient-button" onClick={onCloseAssignment} size="sm" type="button" variant="secondary">
-            <EditIcon />
-            Edit patient
-          </Button>
+          <button
+            className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
+            onClick={onCloseAssignment}
+            type="button"
+          >
+            {activeSession?.patientId || activeSession?.patientName ? (
+              <>
+                <EditIcon />
+                Change
+              </>
+            ) : (
+              <>
+                <AddPatientIcon />
+                Assign
+              </>
+            )}
+          </button>
         ) : null}
       </Card>
       {!isPro && !isHistorical && activeSession?.patientId && lastVisit ? (
@@ -253,6 +280,7 @@ export function CaptureScreen({
           ) : (
             <LiveDraftReport
               isPro={isPro}
+              offline={offline}
               session={activeSession}
               onApplyRelevant={onMarkRelevant}
               onAssignPatient={onAssignPatient}
@@ -691,6 +719,7 @@ function formatLastVisit(value?: string | null) {
 
 function LiveDraftReport({
   isPro,
+  offline = false,
   session,
   onApplyRelevant,
   onAssignPatient,
@@ -704,6 +733,7 @@ function LiveDraftReport({
   onUpdateNote,
 }: {
   isPro: boolean;
+  offline?: boolean;
   session: CaptureSession | null;
   onApplyRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
@@ -755,6 +785,7 @@ function LiveDraftReport({
           activePatientAction={activePatientAction}
           alternateCandidate={alternateCandidateForCapture(candidates, item.id)}
           isPro={isPro}
+          offline={offline}
           item={item}
           key={item.sourceUrl || item.id}
           menuOpen={openMenuId === item.id}
@@ -798,6 +829,7 @@ function LiveDraftCaptureItem({
   activePatientAction,
   alternateCandidate,
   isPro,
+  offline = false,
   item,
   menuOpen,
   onApplyReassignment,
@@ -818,6 +850,7 @@ function LiveDraftCaptureItem({
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate: AssignmentCandidate | null;
   isPro: boolean;
+  offline?: boolean;
   item: CaptureItem;
   menuOpen: boolean;
   onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
@@ -911,7 +944,7 @@ function LiveDraftCaptureItem({
               </span>
               <time>{item.time}</time>
             </div>
-            <CaptureInlineStatus status={item.status} isPro={isPro} />
+            <CaptureInlineStatus status={item.status} isPro={isPro} offline={offline} />
             <CapturePatientBadges
               activePatientAction={activePatientAction}
               alternateCandidate={alternateCandidate}
@@ -1349,26 +1382,20 @@ function AiCreatedPatientPanel({
   );
 }
 
-function CaptureInlineStatus({ status, isPro = true }: { status?: CaptureItem["status"]; isPro?: boolean }) {
-  if (status === "saved" || status === "syncing") {
+function CaptureInlineStatus({ status, isPro = true, offline = false }: { status?: CaptureItem["status"]; isPro?: boolean; offline?: boolean }) {
+  // When connected and healthy, a capture shows no status — it just syncs. The only sync indicator
+  // appears when we're offline / the backend is unreachable and this capture isn't synced yet.
+  const notSynced = captureNotSynced(status);
+  if (offline && notSynced) {
     return (
-      <span className="capture-inline-status active syncing">
-        <span aria-hidden="true" />
-        Syncing
+      <span className="capture-inline-status syncing-offline">
+        <SyncIcon />
+        Trying to sync
       </span>
     );
   }
-  if (status === "uploading") {
-    return (
-      <span className="capture-inline-status active syncing">
-        <span aria-hidden="true" />
-        Uploading
-      </span>
-    );
-  }
-  if (status === "uploaded" || status === "processing") {
-    // Basic is zero-AI — a saved capture never enters a "Processing" state.
-    if (!isPro) return null;
+  // Pro AI states (online only) keep their markers.
+  if (isPro && (status === "uploaded" || status === "processing")) {
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
@@ -1376,8 +1403,7 @@ function CaptureInlineStatus({ status, isPro = true }: { status?: CaptureItem["s
       </span>
     );
   }
-  if (status === "failed") return <span className="capture-inline-status issue">Needs attention</span>;
-  if (status === "needsReview") return <span className="capture-inline-status issue">Needs attention</span>;
+  if (isPro && (status === "failed" || status === "needsReview")) return <span className="capture-inline-status issue">Needs attention</span>;
   return null;
 }
 
@@ -1933,6 +1959,37 @@ function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boole
   const title = (session?.report?.title || session?.label || "").trim();
   if (title && session && !isLocalSessionId(session.id)) return title;
   return "Current session";
+}
+
+const ORDINAL_WORDS = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+function ordinalWord(n: number) {
+  if (!n || n <= 0) return "";
+  return ORDINAL_WORDS[n] || `${n}th`;
+}
+
+/** Basic light-header title: "{patient}'s {Nth} session" when assigned, else the session date+time. */
+function lightSessionTitle(session: CaptureSession | null, ordinal: number | null) {
+  if (!session) return "New session";
+  if (session.patientName || session.patientId) {
+    const name = session.patientName || "Patient";
+    const word = ordinal ? ordinalWord(ordinal) : "";
+    return word ? `${name}'s ${word} session` : `${name}'s session`;
+  }
+  return sessionDateTimeLabel(session.capturedAt || session.createdAt, session.time) || "New session";
+}
+
+/** A capture not yet confirmed on the backend (queued, in-flight, or failed). */
+function captureNotSynced(status?: CaptureItem["status"]) {
+  return status === "saved" || status === "syncing" || status === "uploading" || status === "failed";
+}
+
+function SyncIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M20 11a8 8 0 0 0-14.4-4.3M4 13a8 8 0 0 0 14.4 4.3" />
+      <path d="M20 4.5V9h-4.5M4 19.5V15h4.5" />
+    </svg>
+  );
 }
 
 function sessionPatientName(session: CaptureSession | null) {

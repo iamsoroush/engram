@@ -1514,6 +1514,10 @@ export function App() {
     syncing,
     lastError: syncError || undefined,
   };
+  // Offline = no connection OR the backend is known-unreachable. Used to gate the only sync
+  // indicators we show (header + per-capture "Trying to sync"); everything else stays badge-free.
+  const offline = !online || backendReachable === false;
+  const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
   const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
     setClinicalMemoryReturnContext(returnContext || null);
@@ -1637,6 +1641,7 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
+          offline={offline}
         />
       );
     }
@@ -1678,6 +1683,8 @@ export function App() {
           lastVisit={lastVisit}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
           onUseAsNote={composeNoteFromText}
+          offline={offline}
+          sessionOrdinal={activeSessionOrdinal}
         />
       );
     }
@@ -1824,4 +1831,24 @@ function captureContextLabel(session: CaptureSession | null) {
 
 function createClientSideId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * This session's 1-based chronological rank among its patient's sessions (so the capture header can
+ * read "Sara's third session"). Best-effort from the loaded sessions; null when unassigned.
+ */
+function computeSessionOrdinal(session: CaptureSession | null, sessions: CaptureSession[]): number | null {
+  if (!session || (!session.patientId && !session.patientName)) return null;
+  const matches = sessions.filter((candidate) =>
+    session.patientId ? candidate.patientId === session.patientId : Boolean(session.patientName) && candidate.patientName === session.patientName,
+  );
+  const pool = matches.some((candidate) => candidate.id === session.id) ? matches : [...matches, session];
+  const timeOf = (candidate: CaptureSession) => {
+    const value = candidate.capturedAt || candidate.createdAt || candidate.updatedAt;
+    const ms = value ? new Date(value).getTime() : NaN;
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+  const sorted = [...pool].sort((left, right) => timeOf(left) - timeOf(right));
+  const index = sorted.findIndex((candidate) => candidate.id === session.id);
+  return index >= 0 ? index + 1 : sorted.length;
 }
