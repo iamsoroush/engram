@@ -680,6 +680,19 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
 }
 
+export async function updateCaptureNote(apiFetch: ApiFetch, captureId: string, text: string) {
+  // Basic note body edit — stored as a staff-edited note field (no AI involved).
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      metadata: { note: { text, source: "staff_edit", updated_at: new Date().toISOString() } },
+    }),
+  });
+  if (!response.ok) throw new Error("Could not update note");
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
 export async function markCaptureRelevant(apiFetch: ApiFetch, captureId: string) {
   // Clears the AI out-of-context marker (the backend records the staff override and
   // re-folds the capture into the Pro live report).

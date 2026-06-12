@@ -14,6 +14,7 @@ import { Button, Card, Input } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
+import { VoiceMemoPlayer } from "../../aesthetics/VoiceMemoPlayer";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 
 export function CaptureScreen({
@@ -23,6 +24,7 @@ export function CaptureScreen({
   onRenameCapture,
   onUpdateCaptureCaption,
   onUpdateCaptureTranscript,
+  onUpdateNote,
   onDeleteCapture,
   mode = "active",
   onBack,
@@ -50,6 +52,7 @@ export function CaptureScreen({
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
   onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
+  onUpdateNote?: (sessionId: string, captureId: string, text: string) => Promise<void>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   mode?: "active" | "historical";
   onBack?: () => void;
@@ -81,6 +84,9 @@ export function CaptureScreen({
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
+  // Basic active visits get a lightweight header — no "Complete" badge, no raw "Session <time>"
+  // name (those read as AI/EHR ceremony). Just "Today's visit" + a calm local-first meta line.
+  const lightHeader = !isPro && !isHistorical;
   const processingState = activeSession?.processingStatus?.state;
   // The live report regenerates automatically as captures land (Epic E); "updating" is a calm
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
@@ -126,16 +132,28 @@ export function CaptureScreen({
           {backLabel}
         </button>
       ) : null}
-      <div className="active-session-summary">
+      <div className={`active-session-summary${lightHeader ? " light" : ""}`}>
         <div className="session-summary-copy">
-          <div className="session-summary-heading">
-            <h1>{sessionTitle}</h1>
-            <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
-              <span aria-hidden="true" />
-              {sessionStatusChip.label}
-            </span>
-          </div>
-          <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+          {lightHeader ? (
+            <>
+              <div className="session-summary-heading">
+                <span className="session-live-dot" aria-hidden="true" />
+                <h1>Today's visit</h1>
+              </div>
+              <p>{captureCountLabel}{activeSession?.time ? <> <span aria-hidden="true">&bull;</span> {activeSession.time}</> : null} <span aria-hidden="true">&bull;</span> saved on this device</p>
+            </>
+          ) : (
+            <>
+              <div className="session-summary-heading">
+                <h1>{sessionTitle}</h1>
+                <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
+                  <span aria-hidden="true" />
+                  {sessionStatusChip.label}
+                </span>
+              </div>
+              <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+            </>
+          )}
         </div>
         <div className="workspace-header-actions">
           {isHistorical && onResumeCapture ? (
@@ -245,6 +263,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onUpdateCaptureCaption={onUpdateCaptureCaption}
               onUpdateCaptureTranscript={onUpdateCaptureTranscript}
+              onUpdateNote={onUpdateNote}
             />
           )}
         </div>
@@ -252,7 +271,7 @@ export function CaptureScreen({
           <div className="workspace-report-footer-copy">
             {isUpdatingReport ? (
               <span>{reportUpdatingLabel(activeSession)}</span>
-            ) : activeSession?.complete ? (
+            ) : isPro && activeSession?.complete ? (
               <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
             ) : null}
           </div>
@@ -681,6 +700,7 @@ function LiveDraftReport({
   onResolveFile,
   onUpdateCaptureCaption,
   onUpdateCaptureTranscript,
+  onUpdateNote,
 }: {
   isPro: boolean;
   session: CaptureSession | null;
@@ -693,10 +713,14 @@ function LiveDraftReport({
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
+  onUpdateNote?: (sessionId: string, captureId: string, text: string) => Promise<void>;
 }) {
   const [openMenuId, setOpenMenuId] = React.useState("");
   const activePatientAction = activePatientAssignmentActionForSession(session);
   const candidates = sessionAssignmentCandidates(session);
+  // Show the Basic "Try Pro" chip on only the FIRST audio and FIRST photo, so the feed stays calm.
+  const firstAudioId = session?.items.find((item) => item.type === "audio" || item.type === "voice")?.id;
+  const firstPhotoId = session?.items.find((item) => item.type === "photo")?.id;
 
   React.useEffect(() => {
     setOpenMenuId("");
@@ -743,12 +767,14 @@ function LiveDraftReport({
           onDeleteCapture={onDeleteCapture ? () => onDeleteCapture(session.id, item.id) : undefined}
           onEditCaption={onUpdateCaptureCaption ? (text) => onUpdateCaptureCaption(session.id, item.id, text).then(() => undefined) : undefined}
           onEditTranscript={onUpdateCaptureTranscript ? (text) => onUpdateCaptureTranscript(session.id, item.id, text).then(() => undefined) : undefined}
+          onEditNote={onUpdateNote ? (text) => onUpdateNote(session.id, item.id, text) : undefined}
           onOpenCapture={() => onOpenCapture(item)}
           onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
           onResolveFile={onResolveFile}
           onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
           rootRef={index === session.items.length - 1 ? newestCaptureRef : undefined}
           sequence={index + 1}
+          showTeaser={item.id === firstAudioId || item.id === firstPhotoId}
         />
       ))}
       {isPro && session.processingStatus?.state === "processing" ? (
@@ -771,12 +797,14 @@ function LiveDraftCaptureItem({
   onDeleteCapture,
   onEditCaption,
   onEditTranscript,
+  onEditNote,
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
   onToggleMenu,
   rootRef,
   sequence,
+  showTeaser = true,
 }: {
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate: AssignmentCandidate | null;
@@ -790,12 +818,14 @@ function LiveDraftCaptureItem({
   onDeleteCapture?: () => Promise<void>;
   onEditCaption?: (text: string) => Promise<void>;
   onEditTranscript?: (text: string) => Promise<void>;
+  onEditNote?: (text: string) => Promise<void>;
   onOpenCapture: () => void;
   onRenameCapture?: (title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
   onToggleMenu: () => void;
   rootRef?: React.Ref<HTMLElement>;
   sequence: number;
+  showTeaser?: boolean;
 }) {
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
@@ -807,6 +837,8 @@ function LiveDraftCaptureItem({
     isPro && item.status !== "processed" && item.status !== "ready" && item.status !== "needsReview";
   const fallbackText = draftCaptureText(item);
   const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
+  // Basic note text: the staff-edited note, else the raw typed note. (No AI "decoration".)
+  const noteBasicText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
   const textAttribution = captureTextAttribution(item);
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
@@ -906,11 +938,11 @@ function LiveDraftCaptureItem({
           ) : null}
         </header>
         {isAudio ? (
-          <>
-            <div className="live-draft-audio-player">
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </div>
-            {isPro ? (
+          isPro ? (
+            <>
+              <div className="live-draft-audio-player">
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </div>
               <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
                 {generatedText ? (
                   <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
@@ -921,19 +953,24 @@ function LiveDraftCaptureItem({
                   </>
                 )}
               </section>
-            ) : (
-              // Basic: audio is a voice memo — no transcript, no AI job. (AES-101/802)
-              <>
-                <div className="capture-effect-chips" aria-label="Capture status">
-                  <span className="effect-chip is-saved">Saved on this device · voice memo</span>
-                </div>
+            </>
+          ) : (
+            // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. (AES-101/802)
+            <>
+              <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
+              <div className="capture-effect-chips" aria-label="Capture status">
+                <span className="effect-chip is-saved">Saved on this device · voice memo</span>
+              </div>
+              {showTeaser ? (
                 <TryProTeaser
-                  title="Try Pro — transcribe &amp; structure this dictation"
+                  compact
+                  chipLabel="Try Pro · transcribe"
+                  title="Transcribe &amp; structure this dictation"
                   subtitle="Basic keeps audio as a voice memo. Pro turns it into a structured treatment report."
                 />
-              </>
-            )}
-          </>
+              ) : null}
+            </>
+          )
         ) : null}
         {isPhoto ? (
           <div className="live-draft-photo-row">
@@ -957,27 +994,45 @@ function LiveDraftCaptureItem({
               ) : (
                 // Basic: photos are filed to the patient and shown — no tagging, no AI caption. (AES-103/803)
                 <>
-                  <p className="live-draft-photo-note">Filed to the patient, not your camera roll · you compare by eye.</p>
-                  <TryProTeaser
-                    title="Try Pro — caption &amp; prepare before/after"
-                    subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
-                  />
+                  <p className="live-draft-photo-note">Filed to the patient · you compare by eye.</p>
+                  {showTeaser ? (
+                    <TryProTeaser
+                      compact
+                      chipLabel="Try Pro · caption &amp; pair"
+                      title="Caption &amp; prepare before/after"
+                      subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
+                    />
+                  ) : null}
                 </>
               )}
             </div>
           </div>
         ) : null}
         {!isPhoto && !isAudio ? (
-          <>
-            <section className="capture-generated-section ready">
-              <h4>Decorated text</h4>
-              <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
+          isPro ? (
+            <>
+              <section className="capture-generated-section ready">
+                <h4>Decorated text</h4>
+                <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
+              </section>
+              <details className="capture-raw-note">
+                <summary>Raw note</summary>
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </details>
+            </>
+          ) : (
+            // Basic: a note is just the doctor's words — shown plainly and editable inline. (AES-101)
+            <section className="capture-generated-section ready basic-note">
+              <CaptureGeneratedText
+                addLabel="Add note"
+                attribution=""
+                dir={textDirection(noteBasicText)}
+                label="Note"
+                onSave={onEditNote}
+                text={noteBasicText}
+              />
             </section>
-            <details className="capture-raw-note">
-              <summary>Raw note</summary>
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </details>
-          </>
+          )
         ) : null}
       </div>
     </article>
@@ -1721,6 +1776,11 @@ function draftCaptureText(item: CaptureItem) {
 
 function generatedTextForReport(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
+  // A staff-edited Basic note wins for notes (it's the doctor's own words, no AI involved).
+  if (item.type === "note") {
+    const editedNote = metadataText(metadataRecord(metadata.note).text);
+    if (editedNote) return editedNote;
+  }
   const generated =
     item.type === "audio" || item.type === "voice"
       ? metadata.transcript

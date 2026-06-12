@@ -47,6 +47,7 @@ import {
   searchPatients,
   storeBackendMappings,
   updateCaptureCaption,
+  updateCaptureNote,
   updateCaptureTitle,
   updateCaptureTranscript,
   updatePatient,
@@ -1391,6 +1392,57 @@ export function App() {
 
   const resolveSourceFile = React.useCallback((endpoint: string) => resolveCaptureFileUrl(apiFetch, endpoint), [apiFetch]);
 
+  // Stable callbacks for the aesthetics-Basic surfaces. These feed child effects (smart search,
+  // gallery, share sheet, resolvers), so they MUST be memoized — an inline `() => fn(apiFetch, …)`
+  // is a new reference every render and would re-fire those effects (the "refreshing every few
+  // seconds" symptom). apiFetch is itself stable.
+  const getPatientMemoryDetail = React.useCallback((patientId: string) => fetchPatientMemoryDetail(apiFetch, patientId), [apiFetch]);
+  const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
+  const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
+  const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
+  const loadLastVisitForPatient = React.useCallback((patientId: string) => fetchLastVisit(apiFetch, patientId), [apiFetch]);
+  const listAftercare = React.useCallback(() => listAftercareTemplates(apiFetch), [apiFetch]);
+  const createShare = React.useCallback((input: Parameters<typeof createPatientShare>[1]) => createPatientShare(apiFetch, input), [apiFetch]);
+  const revokeShare = React.useCallback((id: string) => revokePatientShare(apiFetch, id), [apiFetch]);
+  const loadAssignmentSuggestion = React.useCallback((sessionId: string) => fetchAssignmentSuggestion(apiFetch, sessionId), [apiFetch]);
+  const createAftercare = React.useCallback((draft: Parameters<typeof createAftercareTemplate>[1]) => createAftercareTemplate(apiFetch, draft), [apiFetch]);
+  const updateAftercare = React.useCallback((id: string, draft: Parameters<typeof updateAftercareTemplate>[2]) => updateAftercareTemplate(apiFetch, id, draft), [apiFetch]);
+  const deleteAftercare = React.useCallback((id: string) => deleteAftercareTemplate(apiFetch, id), [apiFetch]);
+
+  // AES-101 — edit a (Basic) note's text inline. Persisted as a staff-edited note metadata field so
+  // it survives reloads; local (unsynced) notes update their pending capture in place.
+  const editCaptureNote = React.useCallback(
+    async (sessionId: string, captureId: string, text: string) => {
+      const editedAt = new Date().toISOString();
+      const editorName = authRef.current?.user.displayName || authRef.current?.user.email || "You";
+      const applyItem = (item: CaptureItem): CaptureItem =>
+        item.id === captureId
+          ? {
+              ...item,
+              detail: text,
+              metadata: { ...(item.metadata || {}), note: { text, source: "staff_edit", edited_at: editedAt, edited_by_name: editorName } },
+            }
+          : item;
+      const applySession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? { ...session, items: session.items.map(applyItem) } : session;
+      if (captureId.startsWith("local-capture-")) {
+        setSessions((current) => current.map(applySession));
+        setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
+        await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
+        setToast("Note updated.");
+        return;
+      }
+      const updated = await updateCaptureNote(apiFetch, captureId, text);
+      const merge = (item: CaptureItem): CaptureItem => (item.id === captureId ? { ...item, ...updated, detail: text } : item);
+      const mergeSession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
+      setSessions((current) => current.map(mergeSession));
+      setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
+      setToast("Note updated.");
+    },
+    [apiFetch],
+  );
+
   const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
     setAuthError("");
     try {
@@ -1536,10 +1588,10 @@ export function App() {
           onUpdateSettings={handleUpdateTenantSettings}
           onListAiModels={() => fetchAiModels(apiFetch)}
           onUpdateAiModels={(models) => updateAiModels(apiFetch, models)}
-          onListAftercareTemplates={() => listAftercareTemplates(apiFetch)}
-          onCreateAftercareTemplate={(draft) => createAftercareTemplate(apiFetch, draft)}
-          onUpdateAftercareTemplate={(id, draft) => updateAftercareTemplate(apiFetch, id, draft)}
-          onDeleteAftercareTemplate={(id) => deleteAftercareTemplate(apiFetch, id)}
+          onListAftercareTemplates={listAftercare}
+          onCreateAftercareTemplate={createAftercare}
+          onUpdateAftercareTemplate={updateAftercare}
+          onDeleteAftercareTemplate={deleteAftercare}
         />
       );
     }
@@ -1581,6 +1633,7 @@ export function App() {
           onRenameCapture={renameCapture}
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
+          onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
@@ -1618,6 +1671,7 @@ export function App() {
           onRenameCapture={renameCapture}
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
+          onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
@@ -1640,21 +1694,21 @@ export function App() {
         onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
-        onGetPatientMemory={(patientId) => fetchPatientMemoryDetail(apiFetch, patientId)}
+        onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
         onCreatePatient={createNewPatient}
         onExportCaptures={exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
-        onSmartSearch={(query) => searchPatientsSmart(apiFetch, query)}
-        onDuplicateCheck={(body) => checkDuplicatePatient(apiFetch, body)}
-        onLoadSessionCaptures={(sessionId) => fetchSessionCaptures(apiFetch, sessionId)}
+        onSmartSearch={smartSearchPatients}
+        onDuplicateCheck={duplicateCheckPatient}
+        onLoadSessionCaptures={loadSessionCaptures}
         onResolveFile={resolveSourceFile}
-        onLoadLastVisit={(patientId) => fetchLastVisit(apiFetch, patientId)}
-        onListAftercareTemplates={() => listAftercareTemplates(apiFetch)}
-        onCreateShare={(input) => createPatientShare(apiFetch, input)}
-        onRevokeShare={(id) => revokePatientShare(apiFetch, id)}
-        onLoadAssignmentSuggestion={(sessionId) => fetchAssignmentSuggestion(apiFetch, sessionId)}
+        onLoadLastVisit={loadLastVisitForPatient}
+        onListAftercareTemplates={listAftercare}
+        onCreateShare={createShare}
+        onRevokeShare={revokeShare}
+        onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
         syncHealth={syncHealth}
         tier={auth?.tenant.tier}

@@ -2,36 +2,64 @@ import React from "react";
 
 /**
  * The ✨ Try Pro upsell line (AES-801–804). Lightweight AI appears in Basic ONLY as a clearly
- * labelled, violet, **non-functional** teaser — a conversion lever, never a Basic feature. Tapping
- * it just surfaces a "Pro only" note here (the upgrade flow lives outside the alpha); it never runs
- * AI on Basic content.
+ * labelled, violet, **non-functional** teaser — a conversion lever, never a Basic feature. It never
+ * runs AI on Basic content; tapping only reveals a "Pro feature" note.
+ *
+ * Two shapes:
+ * - `compact` → a small inline chip (used on capture cards, one per type) that expands on tap and
+ *   can be dismissed, so the feed stays calm.
+ * - default → a full card (used once per surface: the Basic report, the patient file).
  */
 export function TryProTeaser({
   title,
   subtitle,
   cta = "Try Pro →",
   className,
+  compact = false,
+  chipLabel,
 }: {
   title: string;
   subtitle?: string;
   cta?: string;
   className?: string;
+  compact?: boolean;
+  chipLabel?: string;
 }) {
-  const [acknowledged, setAcknowledged] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  if (dismissed) return null;
+
+  if (compact) {
+    return (
+      <div className={`try-pro-chip-wrap${className ? ` ${className}` : ""}`}>
+        <button className="try-pro-chip" onClick={() => setOpen((value) => !value)} type="button" aria-expanded={open}>
+          <span className="try-pro-chip-spark" aria-hidden="true"><TrySparkIcon /></span>
+          <span className="try-pro-chip-label">{chipLabel || title}</span>
+        </button>
+        <button className="try-pro-chip-dismiss" onClick={() => setDismissed(true)} type="button" aria-label="Dismiss Try Pro">×</button>
+        {open ? (
+          <div className="try-pro-chip-panel">
+            <p className="try-pro-chip-title">{title}</p>
+            {subtitle ? <p className="try-pro-chip-sub">{subtitle}</p> : null}
+            <p className="try-pro-chip-note">Pro feature — upgrade your plan to enable this. Basic stays AI-free.</p>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <button
       className={`try-pro-teaser${className ? ` ${className}` : ""}`}
-      onClick={() => setAcknowledged(true)}
+      onClick={() => setOpen(true)}
       type="button"
       aria-label={`${title} — Pro feature`}
     >
-      <span className="try-pro-spark" aria-hidden="true">
-        <TrySparkIcon />
-      </span>
+      <span className="try-pro-spark" aria-hidden="true"><TrySparkIcon /></span>
       <span className="try-pro-copy">
         <span className="try-pro-title">{title}</span>
         {subtitle ? <span className="try-pro-subtitle">{subtitle}</span> : null}
-        {acknowledged ? <span className="try-pro-note">Pro feature — upgrade your plan to enable this. Basic stays AI-free.</span> : null}
+        {open ? <span className="try-pro-note">Pro feature — upgrade your plan to enable this. Basic stays AI-free.</span> : null}
       </span>
       <span className="try-pro-go" aria-hidden="true">{cta}</span>
     </button>

@@ -104,8 +104,9 @@ export function PatientsHome({
   // AES-204 — deterministic, Persian-aware smart search (shown while there is a query).
   const [smartResults, setSmartResults] = React.useState<SmartPatientMatch[] | null>(null);
   const [smartSearching, setSmartSearching] = React.useState(false);
-  // AES-303 — the patient whose curated share sheet is open.
-  const [sharePatient, setSharePatient] = React.useState<{ id: string; name: string } | null>(null);
+  // AES-303 — the patient whose curated share sheet is open (carrying their recent visits so the
+  // sheet can build a real before/after photo pool to curate from).
+  const [sharePatient, setSharePatient] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
@@ -405,11 +406,13 @@ export function PatientsHome({
         />
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
-      {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile ? (
+      {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile && onLoadSessionCaptures ? (
         <SharePatientSheet
           patientId={sharePatient.id}
           patientName={sharePatient.name}
+          visits={sharePatient.visits}
           onLoadLastVisit={onLoadLastVisit}
+          onLoadSessionCaptures={onLoadSessionCaptures}
           onListAftercareTemplates={onListAftercareTemplates}
           onResolveFile={onResolveFile}
           onCreateShare={onCreateShare}
@@ -470,7 +473,7 @@ export function PatientsHome({
           onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
           onLoadSessionCaptures={onLoadSessionCaptures}
           onResolveFile={onResolveFile}
-          onShare={onCreateShare && onLoadLastVisit ? () => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name }) : undefined}
+          onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
         />
       ) : (
         <>
@@ -495,9 +498,14 @@ export function PatientsHome({
       <label className="clinical-search">
         <SearchIcon />
         <Input
-          aria-label="Search clinical memory"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search patients, visits, notes..."
+          aria-label="Search patients"
+          onChange={(event) => {
+            // The search drives patient results, so typing jumps to the Patients tab where it acts
+            // (rather than sitting inert on Today / Needs input).
+            setQuery(event.target.value);
+            if (event.target.value.trim() && activeTab !== "patients") setActiveTab("patients");
+          }}
+          placeholder="Search patients by name, phone, or ID..."
           value={query}
         />
         <span aria-hidden="true" className="clinical-search-filter">
@@ -666,7 +674,10 @@ export function PatientsHome({
                   />
                 ))
               ) : (
-                <EmptyClinicalState title="No matching patients found." copy="Try another name, phone, or national ID." />
+                <EmptyClinicalState
+                  title="No matching patients found."
+                  copy={/^\d{1,3}$/.test(query.trim()) ? "Enter at least 4 digits of a phone or national ID — or search by name." : "Try another name, phone, or national ID."}
+                />
               )}
             </div>
           ) : (
@@ -1611,26 +1622,29 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
   );
 }
 
+// The edit-patient form (controlled open). The "Edit details" trigger lives in the patient-detail
+// action row so it sits beside "Share with patient" with matched styling.
 function PatientIdentityEditor({
   patient,
+  open,
+  onClose,
   onUpdatePatient,
   onFetchPatient,
 }: {
   patient: PatientRowModel;
+  open: boolean;
+  onClose: () => void;
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
 }) {
-  const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [initial, setInitial] = React.useState<Partial<{ displayName: string; nationalId: string; phone: string; dateOfBirth: string; sex: string; notes: string }>>({ displayName: patient.name || "" });
+  const loadedRef = React.useRef(false);
 
-  if (!onUpdatePatient) return null;
-
-  const openEditor = () => {
-    setOpen(true);
-    if (!onFetchPatient) return;
-    // Pre-fill the form with the patient's current values (reuses GET /patients/{id}).
+  React.useEffect(() => {
+    if (!open || loadedRef.current || !onFetchPatient) return;
+    loadedRef.current = true;
     setLoading(true);
     void onFetchPatient(patient.id)
       .then((info) => {
@@ -1645,17 +1659,9 @@ function PatientIdentityEditor({
         });
       })
       .finally(() => setLoading(false));
-  };
+  }, [open, onFetchPatient, patient.id, patient.name]);
 
-  if (!open) {
-    return (
-      <div className="patient-edit-row">
-        <button className="patient-edit-toggle" onClick={openEditor} type="button">
-          Edit details
-        </button>
-      </div>
-    );
-  }
+  if (!open || !onUpdatePatient) return null;
 
   return (
     <section className="patient-edit-card" aria-label="Edit patient details">
@@ -1663,7 +1669,7 @@ function PatientIdentityEditor({
         busy={saving}
         initial={initial}
         loading={loading}
-        onCancel={() => setOpen(false)}
+        onCancel={onClose}
         onSubmit={(values) => {
           setSaving(true);
           // Pre-filled = WYSIWYG, so send every field (a cleared field clears it).
@@ -1675,7 +1681,7 @@ function PatientIdentityEditor({
             sex: values.sex,
             notes: values.notes,
           })
-            .then(() => setOpen(false))
+            .then(onClose)
             .finally(() => setSaving(false));
         }}
         submitLabel="Save details"
@@ -1719,8 +1725,9 @@ function PatientTimelineDetail({
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
   onResolveFile?: (endpoint: string) => Promise<string>;
-  onShare?: () => void;
+  onShare?: (visits: GalleryVisit[]) => void;
 }) {
+  const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
   const timelineGroups = buildTimelineGroups(detail, localSessions);
   const sessionCount = detail?.patient.sessionCount || patient.sessionCount || localSessions.length;
@@ -1750,14 +1757,31 @@ function PatientTimelineDetail({
             <span>{visitCountLabel(sessionCount)}</span>
             {firstSeen ? <span>First seen {firstSeen}</span> : null}
           </div>
-          <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
         </div>
-        {onShare ? (
-          <Button className="patient-detail-share" onClick={onShare} size="sm" type="button" variant="secondary">
-            Share with patient
-          </Button>
-        ) : null}
       </section>
+
+      {(onUpdatePatient || onShare) && !editingPatient ? (
+        <div className="patient-detail-actions">
+          {onUpdatePatient ? (
+            <button className="patient-detail-action" onClick={() => setEditingPatient(true)} type="button">
+              <EditPatientIcon /> Edit details
+            </button>
+          ) : null}
+          {onShare ? (
+            <button className="patient-detail-action" onClick={() => onShare(galleryVisits)} type="button">
+              <ShareSmallIcon /> Share with patient
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <PatientIdentityEditor
+        patient={patient}
+        open={editingPatient}
+        onClose={() => setEditingPatient(false)}
+        onUpdatePatient={onUpdatePatient}
+        onFetchPatient={onFetchPatient}
+      />
 
       <PatientHistoryBlock
         history={detail?.history}
@@ -2816,6 +2840,26 @@ function CalendarIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M7 3.5v3M17 3.5v3M4.5 9h15M6.5 5h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+    </svg>
+  );
+}
+
+function EditPatientIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M4.5 17.8 4 21l3.2-.5 10.9-10.9-2.7-2.7L4.5 17.8Z" />
+      <path d="m15.4 6.9 1.4-1.4a1.9 1.9 0 0 1 2.7 2.7l-1.4 1.4" />
+    </svg>
+  );
+}
+
+function ShareSmallIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="6" cy="12" r="2.2" />
+      <circle cx="18" cy="6" r="2.2" />
+      <circle cx="18" cy="18" r="2.2" />
+      <path d="m8 11 8-4M8 13l8 4" />
     </svg>
   );
 }

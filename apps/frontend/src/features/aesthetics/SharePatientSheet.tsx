@@ -1,8 +1,10 @@
 import React from "react";
 import type { AftercareTemplate, CreatePatientShareInput, LastVisitInfo, PatientShare } from "../../domain/appTypes";
+import type { CaptureItem } from "../../domain/types";
 import { Button } from "../../shared/ui/primitives";
+import type { GalleryVisit } from "./PatientPhotoGallery";
 
-type MediaChoice = { captureId: string; caption: string; included: boolean; endpoint: string };
+type MediaChoice = { captureId: string; caption: string; included: boolean; endpoint: string; visitLabel: string };
 
 /**
  * AES-303 / AES-304 / AES-403 — curate & share. A clinic-side curation sheet: staff pick which
@@ -14,7 +16,9 @@ type MediaChoice = { captureId: string; caption: string; included: boolean; endp
 export function SharePatientSheet({
   patientId,
   patientName,
+  visits,
   onLoadLastVisit,
+  onLoadSessionCaptures,
   onListAftercareTemplates,
   onResolveFile,
   onCreateShare,
@@ -23,7 +27,10 @@ export function SharePatientSheet({
 }: {
   patientId: string;
   patientName: string;
+  /** The patient's recent visits — used to build the before/after photo pool to curate from. */
+  visits: GalleryVisit[];
   onLoadLastVisit: (patientId: string) => Promise<LastVisitInfo>;
+  onLoadSessionCaptures: (sessionId: string) => Promise<CaptureItem[]>;
   onListAftercareTemplates: () => Promise<AftercareTemplate[]>;
   onResolveFile: (endpoint: string) => Promise<string>;
   onCreateShare: (input: CreatePatientShareInput) => Promise<PatientShare>;
@@ -47,14 +54,42 @@ export function SharePatientSheet({
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void Promise.all([onLoadLastVisit(patientId).catch(() => null), onListAftercareTemplates().catch(() => [])]).then(([lastVisit, aftercare]) => {
+    const recentVisits = visits.filter((entry) => entry.sessionId).slice(0, 6);
+    void Promise.all([
+      onLoadLastVisit(patientId).catch(() => null),
+      onListAftercareTemplates().catch(() => []),
+      // Pull photos across the patient's recent visits so there's a real pool to curate from.
+      Promise.all(
+        recentVisits.map((entry) =>
+          onLoadSessionCaptures(entry.sessionId)
+            .then((captures) => captures.filter((capture) => capture.type === "photo").map((capture) => ({ capture, visit: entry })))
+            .catch(() => [] as Array<{ capture: CaptureItem; visit: GalleryVisit }>),
+        ),
+      ),
+    ]).then(([lastVisit, aftercare, photoGroups]) => {
       if (cancelled) return;
       const sourceVisit = lastVisit?.visit || null;
       setVisit(sourceVisit);
-      setTitle(sourceVisit?.title ? `Your ${sourceVisit.title.toLowerCase()}` : "Your visit");
+      // A raw "Session <timestamp>" auto-name isn't patient-friendly — fall back to "Your visit".
+      const rawTitle = sourceVisit?.title || "";
+      setTitle(rawTitle && !/^session\b/i.test(rawTitle) ? `Your ${rawTitle.toLowerCase()}` : "Your visit");
       setNoteBody(sourceVisit?.note || "");
       setNoteIncluded(Boolean(sourceVisit?.note));
-      setMedia((sourceVisit?.media || []).map((item) => ({ captureId: item.captureId, caption: item.caption || "", included: true, endpoint: item.contentEndpoint || item.fileEndpoint })));
+      // Flatten + dedupe photos; default the most-recent visit's photos included.
+      const seen = new Set<string>();
+      const pool: MediaChoice[] = [];
+      (photoGroups || []).flat().forEach(({ capture, visit: entry }, index) => {
+        if (!capture.id || seen.has(capture.id)) return;
+        seen.add(capture.id);
+        pool.push({
+          captureId: capture.id,
+          caption: capture.caption || "",
+          included: index < 2,
+          endpoint: capture.fileEndpoint || `/api/v1/captures/${capture.id}/file`,
+          visitLabel: `${entry.dateLabel}${entry.title ? ` · ${entry.title}` : ""}`,
+        });
+      });
+      setMedia(pool);
       const active = (aftercare || []).filter((template) => template.isActive);
       setTemplates(active);
       setAftercareId(active[0]?.id || "");
@@ -63,7 +98,7 @@ export function SharePatientSheet({
     return () => {
       cancelled = true;
     };
-  }, [patientId, onLoadLastVisit, onListAftercareTemplates]);
+  }, [patientId, visits, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates]);
 
   const selectedTemplate = templates.find((template) => template.id === aftercareId) || null;
   const includedMedia = media.filter((item) => item.included);
@@ -147,10 +182,10 @@ export function SharePatientSheet({
             </label>
 
             <div className="share-incl-list">
-              {visit?.media?.length ? (
-                <div className="share-incl-group">
-                  <span className="share-incl-group-label">Before / after photos</span>
-                  {media.map((item, index) => (
+              <div className="share-incl-group">
+                <span className="share-incl-group-label">Before / after photos</span>
+                {media.length ? (
+                  media.map((item, index) => (
                     <SharePhotoRow
                       key={item.captureId}
                       choice={item}
@@ -158,9 +193,11 @@ export function SharePatientSheet({
                       onToggle={() => setMedia((current) => current.map((m, i) => (i === index ? { ...m, included: !m.included } : m)))}
                       onCaption={(caption) => setMedia((current) => current.map((m, i) => (i === index ? { ...m, caption } : m)))}
                     />
-                  ))}
-                </div>
-              ) : null}
+                  ))
+                ) : (
+                  <p className="share-empty-photos">No photos on file for this patient yet — capture some on a visit to share before/after.</p>
+                )}
+              </div>
 
               <div className={`share-incl-row${noteIncluded ? "" : " off"}`}>
                 <Toggle on={noteIncluded} onChange={() => setNoteIncluded((value) => !value)} label="Include visit summary" />
@@ -177,17 +214,16 @@ export function SharePatientSheet({
                 <Toggle on={Boolean(aftercareId)} onChange={() => setAftercareId(aftercareId ? "" : templates[0]?.id || "")} label="Include aftercare" />
                 <div className="share-incl-copy">
                   <b>Aftercare instructions</b>
-                  <span>{templates.length ? "choose a template" : "no templates yet — add one in Settings"}</span>
+                  <span>{templates.length ? "choose a template below" : "no templates yet — add one in Settings"}</span>
                 </div>
-                {templates.length ? (
-                  <select className="share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label="Aftercare template">
-                    <option value="">None</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
-                    ))}
-                  </select>
-                ) : null}
               </div>
+              {aftercareId && templates.length ? (
+                <select className="share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label="Aftercare template">
+                  {templates.map((template) => (
+                    <option key={template.id} value={template.id}>{template.name}{template.procedureType ? ` · ${template.procedureType}` : ""}</option>
+                  ))}
+                </select>
+              ) : null}
             </div>
 
             <div className="share-withheld">
@@ -238,7 +274,10 @@ function SharePhotoRow({
     <div className={`share-photo-row${choice.included ? "" : " off"}`}>
       <Toggle on={choice.included} onChange={onToggle} label="Include photo" />
       <span className="share-photo-thumb">{url ? <img alt="Shared photo" src={url} /> : null}</span>
-      <input className="share-photo-caption" value={choice.caption} onChange={(event) => onCaption(event.target.value)} placeholder="Caption (optional)" disabled={!choice.included} />
+      <div className="share-photo-copy">
+        {choice.visitLabel ? <small className="share-photo-visit">{choice.visitLabel}</small> : null}
+        <input className="share-photo-caption" value={choice.caption} onChange={(event) => onCaption(event.target.value)} placeholder="Caption (optional)" disabled={!choice.included} />
+      </div>
     </div>
   );
 }

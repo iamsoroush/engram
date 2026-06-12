@@ -9356,3 +9356,166 @@ small {
   cursor: pointer;
 }
 .aftercare-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ===================================================================== */
+/* Aesthetics-Basic refinements (compact teasers · voice player · header) */
+/* ===================================================================== */
+
+/* Compact, dismissible Try-Pro chip (one per capture type) */
+.try-pro-chip-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.try-pro-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--violet-border);
+  background: var(--violet-soft);
+  border-radius: var(--radius-pill);
+  color: #4b2bb3;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.try-pro-chip-spark { display: inline-flex; color: var(--violet); }
+.try-pro-chip-spark svg { width: 13px; height: 13px; fill: currentColor; }
+.try-pro-chip-dismiss {
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.try-pro-chip-panel {
+  flex: 1 1 100%;
+  margin-top: 2px;
+  padding: 8px 11px;
+  border: 1px solid var(--violet-border);
+  background: var(--violet-soft);
+  border-radius: var(--radius-md);
+}
+.try-pro-chip-title { margin: 0; font-size: 0.78rem; font-weight: 700; color: #4b2bb3; }
+.try-pro-chip-sub { margin: 2px 0 0; font-size: 0.7rem; color: var(--violet); opacity: 0.9; }
+.try-pro-chip-note { margin: 5px 0 0; font-size: 0.68rem; font-weight: 700; color: var(--violet); }
+
+/* Compact voice-memo player (replaces the cramped native audio control) */
+.voice-memo-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+.voice-memo-play {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  cursor: pointer;
+}
+.voice-memo-play:disabled { opacity: 0.5; cursor: default; }
+.voice-memo-play svg { width: 16px; height: 16px; fill: currentColor; }
+.voice-memo-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--color-primary) var(--vm-progress, 0%), var(--color-border) var(--vm-progress, 0%));
+  cursor: pointer;
+}
+.voice-memo-track::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--color-border-strong);
+  box-shadow: 0 1px 3px rgb(8 13 45 / 18%);
+}
+.voice-memo-track::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--color-border-strong);
+}
+.voice-memo-time {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+}
+
+/* Lightweight Basic session header */
+.active-session-summary.light .session-summary-heading { gap: 8px; }
+.active-session-summary.light .session-summary-copy p { color: var(--color-muted); }
+.session-live-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 0 3px var(--color-success-soft);
+}
+
+/* Patient-detail action row — matched pills for Edit details + Share */
+.patient-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: -4px 0 4px;
+}
+.patient-detail-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: #fff;
+  color: var(--color-text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.patient-detail-action:hover,
+.patient-detail-action:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+.patient-detail-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+.patient-detail-action svg circle { fill: currentColor; stroke: none; }
+
+/* Share-sheet refinements */
+.share-empty-photos {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.share-photo-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.share-photo-visit { font-size: 0.66rem; color: var(--color-muted); }
+.share-photo-copy .share-photo-caption { width: 100%; }
+.share-aftercare-select {
+  width: 100%;
+  margin: 2px 0 4px;
+  flex: initial;
+}
