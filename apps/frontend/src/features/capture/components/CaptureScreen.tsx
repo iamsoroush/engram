@@ -279,6 +279,7 @@ export function CaptureScreen({
       </Card>
       <SourcePreviewDialog
         item={selectedCapture}
+        isPro={isPro}
         onClose={() => setSelectedCapture(null)}
         onResolveFile={onResolveFile}
         onUpdateCaption={
@@ -955,30 +956,29 @@ function LiveDraftCaptureItem({
               </section>
             </>
           ) : (
-            // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. (AES-101/802)
+            // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. Sync
+            // state is shown by the inline status only when there's a problem. (AES-101/802)
             <>
               <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
-              <div className="capture-effect-chips" aria-label="Capture status">
-                <span className="effect-chip is-saved">Saved on this device · voice memo</span>
-              </div>
               {showTeaser ? (
-                <TryProTeaser
-                  compact
-                  chipLabel="Try Pro · transcribe"
-                  title="Transcribe &amp; structure this dictation"
-                  subtitle="Basic keeps audio as a voice memo. Pro turns it into a structured treatment report."
-                />
+                <div className="live-draft-audio-teaser">
+                  <TryProTeaser
+                    compact
+                    title="Transcribe &amp; structure this dictation"
+                    subtitle="Basic keeps audio as a voice memo. Pro transcribes it and turns it into a structured treatment report."
+                  />
+                </div>
               ) : null}
             </>
           )
         ) : null}
         {isPhoto ? (
-          <div className="live-draft-photo-row">
-            <div className="live-draft-photo-thumb">
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </div>
-            <div className="live-draft-photo-copy">
-              {isPro ? (
+          isPro ? (
+            <div className="live-draft-photo-row">
+              <div className="live-draft-photo-thumb">
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </div>
+              <div className="live-draft-photo-copy">
                 <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
                   {generatedText ? (
                     <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
@@ -991,22 +991,23 @@ function LiveDraftCaptureItem({
                     <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
                   )}
                 </section>
-              ) : (
-                // Basic: photos are filed to the patient and shown — no tagging, no AI caption. (AES-103/803)
-                <>
-                  <p className="live-draft-photo-note">Filed to the patient · you compare by eye.</p>
-                  {showTeaser ? (
-                    <TryProTeaser
-                      compact
-                      chipLabel="Try Pro · caption &amp; pair"
-                      title="Caption &amp; prepare before/after"
-                      subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
-                    />
-                  ) : null}
-                </>
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            // Basic: the photo is filed to the patient and shown whole — no tagging, no AI caption.
+            // The Try Pro badge sits bottom-left over the photo. (AES-103/803)
+            <div className="live-draft-photo-basic">
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              {showTeaser ? (
+                <TryProTeaser
+                  compact
+                  className="try-pro-badge-overlay"
+                  title="Caption &amp; prepare before/after"
+                  subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
+                />
+              ) : null}
+            </div>
+          )
         ) : null}
         {!isPhoto && !isAudio ? (
           isPro ? (
@@ -1021,21 +1022,81 @@ function LiveDraftCaptureItem({
               </details>
             </>
           ) : (
-            // Basic: a note is just the doctor's words — shown plainly and editable inline. (AES-101)
-            <section className="capture-generated-section ready basic-note">
-              <CaptureGeneratedText
-                addLabel="Add note"
-                attribution=""
-                dir={textDirection(noteBasicText)}
-                label="Note"
-                onSave={onEditNote}
-                text={noteBasicText}
-              />
-            </section>
+            // Basic: a note is just the doctor's words — tap the text to edit it inline. (AES-101)
+            <BasicNoteEditor text={noteBasicText} onSave={onEditNote} />
           )
         ) : null}
       </div>
     </article>
+  );
+}
+
+/**
+ * AES-101 — a Basic note: tap the text to edit it inline (no Edit button), blur to save. The note
+ * is the doctor's own words — no AI "decoration", no transcript.
+ */
+function BasicNoteEditor({ text, onSave }: { text: string; onSave?: (text: string) => Promise<void> }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(text);
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!editing) setDraft(text);
+  }, [text, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (!onSave || !next || next === text.trim()) return;
+    setSaving(true);
+    void onSave(next).finally(() => setSaving(false));
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        className="basic-note-input"
+        dir={textDirection(draft)}
+        disabled={saving}
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        rows={Math.min(8, Math.max(2, Math.ceil((draft.length || 1) / 42)))}
+        value={draft}
+      />
+    );
+  }
+
+  const empty = !text.trim();
+  return (
+    <p
+      className={`basic-note-text${onSave ? " editable" : ""}${empty ? " empty" : ""}`}
+      dir={textDirection(text || "")}
+      onClick={
+        onSave
+          ? (event) => {
+              event.stopPropagation();
+              setEditing(true);
+            }
+          : undefined
+      }
+      onKeyDown={
+        onSave
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                setEditing(true);
+              }
+            }
+          : undefined
+      }
+      role={onSave ? "button" : undefined}
+      tabIndex={onSave ? 0 : undefined}
+    >
+      {text.trim() || (onSave ? "Tap to add a note" : "—")}
+    </p>
   );
 }
 

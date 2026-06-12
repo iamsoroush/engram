@@ -67,23 +67,27 @@ AI transcript, an AI caption, or an AI-written summary. The only ✨ allowed is 
   **Save to session**.
 - **Expected:** The note appears immediately in the **Captures** feed with a timestamp. A toast says it
   saved on the device. **No** "Processing", **no** ✨, **no** "Organizing" appears. The note text shows
-  as your own words (no AI "decorated text").
+  as your own words (no AI "decorated text"). **Tap the note text** → it becomes an inline editable
+  field (no separate "Edit" button); change it and tap away → it saves.
 
 ### 3. Audio is a voice memo — no transcript (AES-101 / AES-802 edge)
 - **Story:** In Basic, audio is a playable **voice memo**; it is never transcribed.
 - **Setup:** Doctor · Basic, on **Session**.
 - **Steps:** Tap **Audio**, record a few seconds, tap **Stop & save** (or attach an audio file).
-- **Expected:** The audio card shows a player and a grey chip **"Saved on this device · voice memo"**.
-  There is **no** "Transcribing audio" placeholder and **no** transcript section. Below it sits a
-  violet **"✨ Try Pro — transcribe & structure this dictation"** teaser (Scenario 6).
+- **Expected:** The audio card shows a **compact play/pause + seek-bar + time** player. There is **no**
+  transcript section, **no** "Transcribing audio" placeholder, and **no** persistent "saved" badge —
+  sync state appears **only if there's a problem** (a "Syncing" / "Needs attention" marker by the
+  title). On the **first** audio capture a small **"✨ Try Pro"** badge sits below the player (Scenario 6).
 
 ### 4. Photo capture, filed to the patient (AES-103)
-- **Story:** Photos are filed to the patient and shown — no tagging, no AI caption.
+- **Story:** Photos are filed to the patient and shown — no tagging, no AI caption, shown whole.
 - **Setup:** Doctor · Basic, on **Session**.
 - **Steps:** Tap **Photo** → **Take photo** or **Choose**, pick an image, tap **Use photo**.
-- **Expected:** The photo appears in the feed. Under it: **"Filed to the patient, not your camera roll ·
-  you compare by eye."** There is **no** Before/After tag, **no** slider, **no** "Reading image" AI
-  caption. Below it sits a violet **"✨ Try Pro — caption & prepare before/after"** teaser.
+- **Expected:** The photo appears in the feed **shown whole (not cropped)**. There is **no** Before/After
+  tag, **no** slider, **no** "Reading image" AI caption, and **no** explanatory caption text. On the
+  **first** photo a small **"✨ Try Pro"** badge sits at the **bottom-left** of the photo (Scenario 6).
+  Tap the photo to open it → a plain **"Caption"** free-text field (no "AI-generated caption", no
+  processing/file metadata) you can fill in.
 
 ### 5. Ghost-overlay alignment aid (AES-105)
 - **Story:** Optionally overlay the patient's previous photo faintly while shooting, so framing matches.
@@ -98,11 +102,12 @@ AI transcript, an AI caption, or an AI-written summary. The only ✨ allowed is 
 - **Story:** Lightweight AI shows in Basic only as a labelled, non-functional teaser.
 - **Setup:** Doctor · Basic, with at least one **audio** and one **photo** capture in the feed
   (Scenarios 3–4).
-- **Steps:** Read the violet teaser under the **audio** card and under the **photo** card. Tap one.
-- **Expected:** Each teaser is violet, starts with a ✨ sparkle, ends with **"Try Pro →"**, and reads
-  exactly: audio → "Try Pro — transcribe & structure this dictation"; photo → "Try Pro — caption &
-  prepare before/after". Tapping it does **not** run AI — it only reveals a small "Pro feature —
-  upgrade your plan to enable this. Basic stays AI-free." note.
+- **Steps:** Find the small violet **"✨ Try Pro"** badge — below the first audio player and on the
+  bottom-left of the first photo. Tap one.
+- **Expected:** Each is a compact **"✨ Try Pro"** badge (only on the *first* audio and *first* photo, so
+  the feed stays calm). Tapping it does **not** run AI — it opens a small **info box** ("Pro feature ·
+  what Pro adds · This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it. · Got it").
+  The same one-card teasers appear once on the Basic report (Scenario 16) and patient file (Scenario 13).
 
 ### 7. Last visit, one glance + "same as last time" (AES-106)
 - **Story:** For a returning patient, the prior visit's note + photos surface at capture, with a one-tap

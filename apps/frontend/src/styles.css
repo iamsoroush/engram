@@ -3061,7 +3061,8 @@ small {
   width: 100%;
   height: 94px;
   border-radius: 8px;
-  object-fit: cover;
+  object-fit: contain;
+  background: #f3f7ff;
 }
 
 .live-draft-photo-thumb .capture-raw-placeholder {
@@ -8995,7 +8996,7 @@ small {
   background: var(--color-surface-soft);
   cursor: pointer;
 }
-.patient-gallery-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.patient-gallery-photo img { width: 100%; height: 100%; object-fit: contain; background: var(--color-surface-soft); display: block; }
 .patient-gallery-photo-empty { display: block; width: 100%; height: 100%; }
 .patient-gallery-note { margin: 9px 0 0; font-size: 0.72rem; color: var(--color-muted); }
 .patient-gallery-skeleton { display: flex; gap: 7px; }
@@ -9518,4 +9519,145 @@ small {
   width: 100%;
   margin: 2px 0 4px;
   flex: initial;
+}
+
+/* ===================================================================== */
+/* Round 3 refinements — Try-Pro badge + info modal · note edit · photos  */
+/* ===================================================================== */
+
+/* Try Pro: a single small badge, consistent everywhere, opens an info box */
+.try-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--violet-border);
+  background: var(--violet-soft);
+  border-radius: var(--radius-pill);
+  color: #4b2bb3;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.try-pro-badge:hover,
+.try-pro-badge:focus-visible { border-color: var(--violet); outline: none; }
+.try-pro-badge-spark { display: inline-flex; color: var(--violet); }
+.try-pro-badge-spark svg { width: 12px; height: 12px; fill: currentColor; }
+/* Overlaid bottom-left on a Basic photo */
+.try-pro-badge.try-pro-badge-overlay {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: rgb(240 236 255 / 92%);
+  backdrop-filter: blur(2px);
+  box-shadow: 0 2px 8px rgb(8 13 45 / 14%);
+}
+.live-draft-audio-teaser { margin-top: 9px; }
+
+/* Try Pro info box (opens on tap) */
+.try-pro-info-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 22px;
+  background: rgb(8 13 45 / 38%);
+}
+.try-pro-info {
+  width: min(360px, 100%);
+  background: #fff;
+  border: 1px solid var(--violet-border);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: var(--shadow-float);
+  text-align: center;
+}
+.try-pro-info-spark {
+  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--violet-soft);
+  color: var(--violet);
+  margin-bottom: 10px;
+}
+.try-pro-info-spark svg { width: 22px; height: 22px; fill: currentColor; }
+.try-pro-info-eyebrow {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.try-pro-info-title { margin: 4px 0 0; font-size: 1rem; font-weight: 800; color: var(--color-text); }
+.try-pro-info-sub { margin: 8px 0 0; font-size: 0.86rem; line-height: 1.5; color: var(--color-text-soft); }
+.try-pro-info-note { margin: 10px 0 0; font-size: 0.78rem; color: var(--color-muted); }
+.try-pro-info-actions { margin-top: 16px; }
+.try-pro-info-close {
+  width: 100%;
+  border: 0;
+  background: var(--violet);
+  color: #fff;
+  border-radius: var(--radius-pill);
+  padding: 10px 16px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Basic photo capture card — full photo, no crop, badge overlaid */
+.live-draft-photo-basic {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f3f7ff;
+}
+.live-draft-photo-basic .capture-raw-photo {
+  width: 100%;
+  max-height: 260px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #f3f7ff;
+  display: block;
+}
+.live-draft-photo-basic .capture-raw-placeholder { min-height: 140px; }
+
+/* Basic note — tap the text to edit inline */
+.basic-note-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.basic-note-text.editable {
+  cursor: text;
+  border-radius: 8px;
+  padding: 6px 8px;
+  margin: -6px -8px;
+  transition: background 120ms ease;
+}
+.basic-note-text.editable:hover,
+.basic-note-text.editable:focus-visible {
+  background: var(--color-surface-soft);
+  outline: none;
+}
+.basic-note-text.empty { color: var(--color-muted); font-style: italic; }
+.basic-note-input {
+  width: 100%;
+  border: 1px solid var(--color-primary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
 }
