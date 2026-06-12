@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 
 /**
  * The ✨ Try Pro upsell line (AES-801–804). Lightweight AI appears in Basic ONLY as a clearly
@@ -57,9 +58,12 @@ function TryProInfo({ title, subtitle, onClose }: { title: string; subtitle?: st
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
+  const node = (
     <div className="try-pro-info-backdrop" role="presentation" onClick={onClose}>
       <div className="try-pro-info" role="dialog" aria-modal="true" aria-label="Try Pro" onClick={(event) => event.stopPropagation()}>
+        <button className="try-pro-info-x" onClick={onClose} type="button" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        </button>
         <span className="try-pro-info-spark" aria-hidden="true"><TrySparkIcon /></span>
         <span className="try-pro-info-eyebrow">Pro feature</span>
         <h3 className="try-pro-info-title">{title}</h3>
@@ -71,6 +75,11 @@ function TryProInfo({ title, subtitle, onClose }: { title: string; subtitle?: st
       </div>
     </div>
   );
+
+  // Portal to the document body so the overlay is never trapped/clipped by an ancestor's stacking
+  // or transform context (which made it render incomplete and undismissable inside the feed card).
+  if (typeof document === "undefined") return node;
+  return createPortal(node, document.body);
 }
 
 export function TrySparkIcon() {

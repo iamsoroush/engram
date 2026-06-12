@@ -995,18 +995,21 @@ function LiveDraftCaptureItem({
             </div>
           ) : (
             // Basic: the photo is filed to the patient and shown whole — no tagging, no AI caption.
-            // The Try Pro badge sits bottom-left over the photo. (AES-103/803)
-            <div className="live-draft-photo-basic">
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            // The Try Pro badge sits BELOW the photo so it never covers the clinical image. (AES-103/803)
+            <>
+              <div className="live-draft-photo-basic">
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </div>
               {showTeaser ? (
-                <TryProTeaser
-                  compact
-                  className="try-pro-badge-overlay"
-                  title="Caption &amp; prepare before/after"
-                  subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
-                />
+                <div className="live-draft-photo-teaser">
+                  <TryProTeaser
+                    compact
+                    title="Caption &amp; prepare before/after"
+                    subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
+                  />
+                </div>
               ) : null}
-            </div>
+            </>
           )
         ) : null}
         {!isPhoto && !isAudio ? (

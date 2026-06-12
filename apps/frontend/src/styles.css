@@ -9543,15 +9543,8 @@ small {
 .try-pro-badge:focus-visible { border-color: var(--violet); outline: none; }
 .try-pro-badge-spark { display: inline-flex; color: var(--violet); }
 .try-pro-badge-spark svg { width: 12px; height: 12px; fill: currentColor; }
-/* Overlaid bottom-left on a Basic photo */
-.try-pro-badge.try-pro-badge-overlay {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  background: rgb(240 236 255 / 92%);
-  backdrop-filter: blur(2px);
-  box-shadow: 0 2px 8px rgb(8 13 45 / 14%);
-}
+/* The Try Pro badge sits below the photo / under the audio player (never over the image). */
+.live-draft-photo-teaser { margin-top: 9px; }
 .live-draft-audio-teaser { margin-top: 9px; }
 
 /* Try Pro info box (opens on tap) */
@@ -9566,14 +9559,33 @@ small {
   background: rgb(8 13 45 / 38%);
 }
 .try-pro-info {
+  position: relative;
   width: min(360px, 100%);
   background: #fff;
   border: 1px solid var(--violet-border);
   border-radius: 16px;
-  padding: 20px;
+  padding: 22px 20px 20px;
   box-shadow: var(--shadow-float);
   text-align: center;
 }
+.try-pro-info-x {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.try-pro-info-x:hover,
+.try-pro-info-x:focus-visible { background: #eef2f9; color: var(--color-text); outline: none; }
+.try-pro-info-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
 .try-pro-info-spark {
   display: inline-flex;
   width: 40px;
