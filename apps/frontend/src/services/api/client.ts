@@ -4,15 +4,23 @@ import type {
   CaptureDraft,
   PatientAssignmentDraft,
   AiModelConfig,
+  AftercareTemplate,
+  AftercareTemplateDraft,
+  AssignmentSuggestionResponse,
+  CreatePatientShareInput,
+  DuplicateCheckResponse,
+  LastVisitInfo,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
   PatientMemoryHistory,
   PatientMemoryListResponse,
   PatientMemoryRow,
   PatientMemoryTimelineSession,
+  PatientShare,
   PatientSummary,
   PendingCapture,
   Persona,
+  SmartPatientSearchResponse,
 } from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
@@ -136,6 +144,256 @@ export async function searchPatients(apiFetch: ApiFetch, query: string) {
   if (!response.ok) throw new Error("Could not search patients");
   const patients = (await response.json()) as Array<Record<string, unknown>>;
   return patients.map(normalizePatientSummary);
+}
+
+// --- Aesthetics-Basic deterministic services (docs/backend/aes-basic-api.md) ---
+
+const arrayOfStrings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []);
+const stringOrNull = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value : null);
+
+/** AES-204 — deterministic, Persian-orthography-aware, ranked smart patient search. */
+export async function searchPatientsSmart(apiFetch: ApiFetch, query: string, limit = 20): Promise<SmartPatientSearchResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (query.trim()) params.set("q", query.trim());
+  const response = await apiFetch(`${API_BASE}/patients/search?${params.toString()}`);
+  if (!response.ok) throw new Error("Could not search patients");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  return {
+    query: String(payload.query || query.trim()),
+    total: numberValue(payload.total, items.length),
+    items: items
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item) => ({
+        ...normalizePatientSummary(item),
+        email: stringOrNull(item.email),
+        status: stringOrNull(item.status),
+        createdAt: stringOrNull(item.createdAt),
+        updatedAt: stringOrNull(item.updatedAt),
+        score: typeof item.score === "number" ? item.score : null,
+        matchedOn: arrayOfStrings(item.matchedOn),
+        reason: String(item.reason || ""),
+      })),
+  };
+}
+
+/** AES-205 — duplicate-patient guard; run before creating a new patient. */
+export async function checkDuplicatePatient(
+  apiFetch: ApiFetch,
+  body: { displayName?: string; nationalId?: string; phone?: string; email?: string },
+): Promise<DuplicateCheckResponse> {
+  const response = await apiFetch(`${API_BASE}/patients/duplicate-check`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Could not run duplicate check");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  return {
+    hasLikelyDuplicate: Boolean(payload.hasLikelyDuplicate),
+    candidates: candidates
+      .filter((candidate): candidate is Record<string, unknown> => Boolean(candidate && typeof candidate === "object"))
+      .map((candidate) => ({
+        patientId: String(candidate.patientId || ""),
+        displayName: String(candidate.displayName || "Unnamed patient"),
+        confidence: numberValue(candidate.confidence, 0),
+        matchedOn: arrayOfStrings(candidate.matchedOn),
+        reason: String(candidate.reason || ""),
+        risks: arrayOfStrings(candidate.risks),
+      })),
+  };
+}
+
+/** AES-301 — deterministic assign-later suggestion for an unassigned visit. */
+export async function fetchAssignmentSuggestion(apiFetch: ApiFetch, sessionId: string): Promise<AssignmentSuggestionResponse> {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/assignment-suggestion`);
+  if (!response.ok) throw new Error("Could not load assignment suggestion");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const mapCandidate = (raw: Record<string, unknown>) => ({
+    patientId: String(raw.patientId || ""),
+    displayName: String(raw.displayName || "Unnamed patient"),
+    basis: String(raw.basis || ""),
+    reason: String(raw.reason || ""),
+    lastVisitAt: stringOrNull(raw.lastVisitAt),
+  });
+  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
+  return {
+    sessionId: String(payload.sessionId || sessionId),
+    alreadyAssigned: Boolean(payload.alreadyAssigned),
+    suggestion:
+      payload.suggestion && typeof payload.suggestion === "object" ? mapCandidate(payload.suggestion as Record<string, unknown>) : null,
+    candidates: candidates
+      .filter((candidate): candidate is Record<string, unknown> => Boolean(candidate && typeof candidate === "object"))
+      .map(mapCandidate),
+  };
+}
+
+/** AES-106/203 — the prior visit's note + photos (how Basic answers "what did we use last time"). */
+export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<LastVisitInfo> {
+  const params = new URLSearchParams();
+  if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}/last-visit${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load last visit");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const rawVisit = payload.visit && typeof payload.visit === "object" ? (payload.visit as Record<string, unknown>) : null;
+  const rawSame = payload.sameAsLastTime && typeof payload.sameAsLastTime === "object" ? (payload.sameAsLastTime as Record<string, unknown>) : null;
+  const rawMedia = rawVisit && Array.isArray(rawVisit.media) ? rawVisit.media : [];
+  return {
+    patientId: String(payload.patientId || patientId),
+    hasPriorVisit: Boolean(payload.hasPriorVisit),
+    visit: rawVisit
+      ? {
+          sessionId: String(rawVisit.sessionId || ""),
+          title: String(rawVisit.title || "Visit"),
+          status: String(rawVisit.status || ""),
+          capturedAt: stringOrNull(rawVisit.capturedAt),
+          updatedAt: stringOrNull(rawVisit.updatedAt),
+          captureCount: numberValue(rawVisit.captureCount, 0),
+          note: stringOrNull(rawVisit.note),
+          noteSource: stringOrNull(rawVisit.noteSource),
+          media: rawMedia
+            .filter((media): media is Record<string, unknown> => Boolean(media && typeof media === "object"))
+            .map((media) => ({
+              captureId: String(media.captureId || ""),
+              type: String(media.type || "photo"),
+              fileEndpoint: String(media.fileEndpoint || ""),
+              contentEndpoint: String(media.contentEndpoint || ""),
+              capturedAt: stringOrNull(media.capturedAt),
+              caption: stringOrNull(media.caption),
+            })),
+        }
+      : null,
+    sameAsLastTime: rawSame
+      ? {
+          note: String(rawSame.note || ""),
+          fromSessionId: String(rawSame.fromSessionId || ""),
+          fromVisitAt: stringOrNull(rawSame.fromVisitAt),
+          label: String(rawSame.label || "from last visit"),
+        }
+      : null,
+  };
+}
+
+function normalizeAftercareTemplate(raw: Record<string, unknown>): AftercareTemplate {
+  return {
+    id: String(raw.id || ""),
+    tenantId: stringOrNull(raw.tenantId),
+    name: String(raw.name || "Untitled template"),
+    procedureType: stringOrNull(raw.procedureType),
+    body: String(raw.body || ""),
+    isActive: raw.isActive !== false,
+    createdAt: stringOrNull(raw.createdAt),
+    updatedAt: stringOrNull(raw.updatedAt),
+  };
+}
+
+/** AES-702 — aftercare templates managed in Settings, attached to a curated share (AES-304). */
+export async function listAftercareTemplates(apiFetch: ApiFetch, includeInactive = false): Promise<AftercareTemplate[]> {
+  const params = new URLSearchParams();
+  if (includeInactive) params.set("includeInactive", "true");
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/aftercare-templates${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load aftercare templates");
+  const payload = (await response.json()) as Array<Record<string, unknown>>;
+  return (Array.isArray(payload) ? payload : []).map(normalizeAftercareTemplate);
+}
+
+export async function createAftercareTemplate(apiFetch: ApiFetch, draft: AftercareTemplateDraft): Promise<AftercareTemplate> {
+  const response = await apiFetch(`${API_BASE}/aftercare-templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!response.ok) throw new Error("Could not create aftercare template");
+  return normalizeAftercareTemplate((await response.json()) as Record<string, unknown>);
+}
+
+export async function updateAftercareTemplate(apiFetch: ApiFetch, id: string, draft: Partial<AftercareTemplateDraft>): Promise<AftercareTemplate> {
+  const response = await apiFetch(`${API_BASE}/aftercare-templates/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!response.ok) throw new Error("Could not update aftercare template");
+  return normalizeAftercareTemplate((await response.json()) as Record<string, unknown>);
+}
+
+export async function deleteAftercareTemplate(apiFetch: ApiFetch, id: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE}/aftercare-templates/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("Could not delete aftercare template");
+}
+
+function normalizePatientShare(raw: Record<string, unknown>): PatientShare {
+  const rawPreview = raw.preview && typeof raw.preview === "object" ? (raw.preview as Record<string, unknown>) : null;
+  const rawSections = rawPreview && Array.isArray(rawPreview.sections) ? rawPreview.sections : [];
+  const rawMedia = rawPreview && Array.isArray(rawPreview.media) ? rawPreview.media : [];
+  const rawAftercare = rawPreview && rawPreview.aftercare && typeof rawPreview.aftercare === "object" ? (rawPreview.aftercare as Record<string, unknown>) : null;
+  const rawClinic = rawPreview && rawPreview.clinic && typeof rawPreview.clinic === "object" ? (rawPreview.clinic as Record<string, unknown>) : null;
+  return {
+    id: String(raw.id || ""),
+    patientId: String(raw.patientId || ""),
+    sessionId: stringOrNull(raw.sessionId),
+    token: String(raw.token || ""),
+    publicPath: String(raw.publicPath || ""),
+    payloadType: String(raw.payloadType || "report_aftercare"),
+    status: String(raw.status || "active"),
+    title: String(raw.title || "Patient report"),
+    mediaCount: numberValue(raw.mediaCount, 0),
+    createdAt: stringOrNull(raw.createdAt),
+    updatedAt: stringOrNull(raw.updatedAt),
+    expiresAt: stringOrNull(raw.expiresAt),
+    revokedAt: stringOrNull(raw.revokedAt),
+    preview: rawPreview
+      ? {
+          payloadType: String(rawPreview.payloadType || "report_aftercare"),
+          status: String(rawPreview.status || "active"),
+          clinic: { name: String((rawClinic && rawClinic.name) || "Clinic") },
+          patientName: String(rawPreview.patientName || ""),
+          title: String(rawPreview.title || ""),
+          visitDate: stringOrNull(rawPreview.visitDate),
+          sections: rawSections
+            .filter((section): section is Record<string, unknown> => Boolean(section && typeof section === "object"))
+            .map((section) => ({ label: String(section.label || ""), body: String(section.body || "") })),
+          media: rawMedia
+            .filter((media): media is Record<string, unknown> => Boolean(media && typeof media === "object"))
+            .map((media) => ({ captureId: String(media.captureId || ""), caption: stringOrNull(media.caption), url: String(media.url || "") })),
+          aftercare: rawAftercare
+            ? { templateId: stringOrNull(rawAftercare.templateId), name: String(rawAftercare.name || ""), body: String(rawAftercare.body || "") }
+            : null,
+          createdAt: stringOrNull(rawPreview.createdAt),
+          expiresAt: stringOrNull(rawPreview.expiresAt),
+        }
+      : null,
+  };
+}
+
+/** AES-303/304/403/401 — create a curated, revocable clinic→patient share. */
+export async function createPatientShare(apiFetch: ApiFetch, input: CreatePatientShareInput): Promise<PatientShare> {
+  const response = await apiFetch(`${API_BASE}/patient-shares`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Could not create patient share");
+  return normalizePatientShare((await response.json()) as Record<string, unknown>);
+}
+
+export async function listPatientShares(apiFetch: ApiFetch, patientId?: string): Promise<PatientShare[]> {
+  const params = new URLSearchParams();
+  if (patientId) params.set("patientId", patientId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/patient-shares${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load patient shares");
+  const payload = (await response.json()) as Array<Record<string, unknown>>;
+  return (Array.isArray(payload) ? payload : []).map(normalizePatientShare);
+}
+
+export async function revokePatientShare(apiFetch: ApiFetch, id: string): Promise<PatientShare> {
+  const response = await apiFetch(`${API_BASE}/patient-shares/${id}/revoke`, { method: "POST" });
+  if (!response.ok) throw new Error("Could not revoke patient share");
+  return normalizePatientShare((await response.json()) as Record<string, unknown>);
 }
 
 export async function fetchPatientMemory(

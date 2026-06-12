@@ -1,5 +1,5 @@
 import React from "react";
-import type { PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
+import type { LastVisitInfo, PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
 import type {
   CaptureItem,
   CaptureSession,
@@ -12,6 +12,8 @@ import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } 
 import { sessionUxState } from "../../../domain/status";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
+import { TryProTeaser } from "../../aesthetics/TryProTeaser";
+import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 
 export function CaptureScreen({
@@ -36,6 +38,9 @@ export function CaptureScreen({
   onMarkRelevant,
   onFetchPatient,
   tier,
+  lastVisit,
+  onOpenVisit,
+  onUseAsNote,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -66,6 +71,10 @@ export function CaptureScreen({
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
+  /** AES-106 — the returning patient's prior visit (note + photos), surfaced at capture (Basic). */
+  lastVisit?: LastVisitInfo | null;
+  onOpenVisit?: (sessionId: string) => void;
+  onUseAsNote?: (text: string) => void;
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
@@ -163,6 +172,9 @@ export function CaptureScreen({
           </Button>
         ) : null}
       </Card>
+      {!isPro && !isHistorical && activeSession?.patientId && lastVisit ? (
+        <LastVisitStrip lastVisit={lastVisit} onOpenVisit={onOpenVisit} onUseAsNote={onUseAsNote} onResolveFile={onResolveFile} />
+      ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
         <AiCreatedPatientPanel
           action={aiPatientAction}
@@ -859,7 +871,7 @@ function LiveDraftCaptureItem({
               </span>
               <time>{item.time}</time>
             </div>
-            <CaptureInlineStatus status={item.status} />
+            <CaptureInlineStatus status={item.status} isPro={isPro} />
             <CapturePatientBadges
               activePatientAction={activePatientAction}
               alternateCandidate={alternateCandidate}
@@ -898,16 +910,29 @@ function LiveDraftCaptureItem({
             <div className="live-draft-audio-player">
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
-            <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
-              {generatedText ? (
-                <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
-              ) : (
-                <>
-                  <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
-                  <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
-                </>
-              )}
-            </section>
+            {isPro ? (
+              <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
+                {generatedText ? (
+                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
+                ) : (
+                  <>
+                    <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
+                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                  </>
+                )}
+              </section>
+            ) : (
+              // Basic: audio is a voice memo — no transcript, no AI job. (AES-101/802)
+              <>
+                <div className="capture-effect-chips" aria-label="Capture status">
+                  <span className="effect-chip is-saved">Saved on this device · voice memo</span>
+                </div>
+                <TryProTeaser
+                  title="Try Pro — transcribe &amp; structure this dictation"
+                  subtitle="Basic keeps audio as a voice memo. Pro turns it into a structured treatment report."
+                />
+              </>
+            )}
           </>
         ) : null}
         {isPhoto ? (
@@ -916,19 +941,29 @@ function LiveDraftCaptureItem({
               <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
             </div>
             <div className="live-draft-photo-copy">
-              <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
-                {generatedText ? (
-                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
-                ) : captionStillProcessing ? (
-                  <>
-                    <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
-                    <CaptureWorkingPlaceholder label="Reading image" />
-                  </>
-                ) : (
-                  // Processed with no AI caption (Basic, or captioning unavailable) → manual add.
-                  <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
-                )}
-              </section>
+              {isPro ? (
+                <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
+                  {generatedText ? (
+                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
+                  ) : captionStillProcessing ? (
+                    <>
+                      <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
+                      <CaptureWorkingPlaceholder label="Reading image" />
+                    </>
+                  ) : (
+                    <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
+                  )}
+                </section>
+              ) : (
+                // Basic: photos are filed to the patient and shown — no tagging, no AI caption. (AES-103/803)
+                <>
+                  <p className="live-draft-photo-note">Filed to the patient, not your camera roll · you compare by eye.</p>
+                  <TryProTeaser
+                    title="Try Pro — caption &amp; prepare before/after"
+                    subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
+                  />
+                </>
+              )}
             </div>
           </div>
         ) : null}
@@ -1210,7 +1245,7 @@ function AiCreatedPatientPanel({
   );
 }
 
-function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
+function CaptureInlineStatus({ status, isPro = true }: { status?: CaptureItem["status"]; isPro?: boolean }) {
   if (status === "saved" || status === "syncing") {
     return (
       <span className="capture-inline-status active syncing">
@@ -1228,6 +1263,8 @@ function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
     );
   }
   if (status === "uploaded" || status === "processing") {
+    // Basic is zero-AI — a saved capture never enters a "Processing" state.
+    if (!isPro) return null;
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
@@ -1519,6 +1556,13 @@ function BasicLiveReport({
           <p className="report-doc-status">Captures will appear here, in order, as the session develops.</p>
         )}
       </section>
+      {items.length ? (
+        <TryProTeaser
+          className="report-teaser"
+          title="Try Pro — turn your notes into a structured treatment report"
+          subtitle="Visit summary, assessment, and a Treatment-performed table extracted from your words — no form-filling."
+        />
+      ) : null}
     </div>
   );
 }

@@ -197,6 +197,156 @@ export type PatientMemoryDetailResponse = {
   history?: PatientMemoryHistory | null;
 };
 
+// --- Aesthetics-Basic deterministic services (docs/backend/aes-basic-api.md) ---
+
+/** AES-204 — one ranked, match-annotated smart-search result (all patient fields + metadata). */
+export type SmartPatientMatch = PatientSummary & {
+  email?: string | null;
+  status?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  /** 0–1, or null on the blank-query "recent" list. */
+  score: number | null;
+  /** national_id | phone | email | name | name_prefix | name_fuzzy | contact_partial */
+  matchedOn: string[];
+  reason: string;
+};
+
+export type SmartPatientSearchResponse = {
+  query: string;
+  total: number;
+  items: SmartPatientMatch[];
+};
+
+/** AES-205 — a likely-existing patient surfaced by the duplicate guard at create time. */
+export type DuplicateCandidate = {
+  patientId: string;
+  displayName: string;
+  confidence: number;
+  matchedOn: string[];
+  reason: string;
+  risks: string[];
+};
+
+export type DuplicateCheckResponse = {
+  hasLikelyDuplicate: boolean;
+  candidates: DuplicateCandidate[];
+};
+
+/** AES-301 — a deterministic "Assign to …?" suggestion for an unassigned visit. */
+export type AssignmentSuggestionCandidate = {
+  patientId: string;
+  displayName: string;
+  /** active_patient (a visit open right now) | recent_patient (most recently seen). */
+  basis: string;
+  reason: string;
+  lastVisitAt: string | null;
+};
+
+export type AssignmentSuggestionResponse = {
+  sessionId: string;
+  alreadyAssigned: boolean;
+  suggestion: AssignmentSuggestionCandidate | null;
+  candidates: AssignmentSuggestionCandidate[];
+};
+
+/** AES-106/203 — a photo from the prior visit (before/after; untagged in Basic). */
+export type LastVisitMedia = {
+  captureId: string;
+  type: string;
+  fileEndpoint: string;
+  contentEndpoint: string;
+  capturedAt: string | null;
+  caption: string | null;
+};
+
+export type LastVisitInfo = {
+  patientId: string;
+  hasPriorVisit: boolean;
+  visit: {
+    sessionId: string;
+    title: string;
+    status: string;
+    capturedAt: string | null;
+    updatedAt: string | null;
+    captureCount: number;
+    note: string | null;
+    noteSource: string | null;
+    media: LastVisitMedia[];
+  } | null;
+  /** Deterministic "same as last time" pre-fill; null if the prior visit has no typed note. */
+  sameAsLastTime: {
+    note: string;
+    fromSessionId: string;
+    fromVisitAt: string | null;
+    label: string;
+  } | null;
+};
+
+/** AES-702 — a per-procedure deterministic aftercare instruction template. */
+export type AftercareTemplate = {
+  id: string;
+  tenantId?: string | null;
+  name: string;
+  procedureType: string | null;
+  body: string;
+  isActive: boolean;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type AftercareTemplateDraft = {
+  name: string;
+  procedureType?: string | null;
+  body: string;
+  isActive?: boolean;
+};
+
+// AES-303/304/403/401 — the patient-facing curated share.
+export type ShareSectionInput = { label: string; body: string };
+export type ShareMediaInput = { captureId: string; caption?: string };
+
+export type CreatePatientShareInput = {
+  patientId: string;
+  sessionId?: string;
+  title: string;
+  sections: ShareSectionInput[];
+  media: ShareMediaInput[];
+  aftercare?: { templateId?: string; name?: string; body?: string } | null;
+  expiresInDays?: number;
+};
+
+export type PatientSharePreview = {
+  payloadType: string;
+  status: string;
+  clinic: { name: string };
+  patientName: string;
+  title: string;
+  visitDate: string | null;
+  sections: ShareSectionInput[];
+  media: Array<{ captureId: string; caption: string | null; url: string }>;
+  aftercare: { templateId: string | null; name: string; body: string } | null;
+  createdAt: string | null;
+  expiresAt: string | null;
+};
+
+export type PatientShare = {
+  id: string;
+  patientId: string;
+  sessionId: string | null;
+  token: string;
+  publicPath: string;
+  payloadType: string;
+  status: string;
+  title: string;
+  mediaCount: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  preview?: PatientSharePreview | null;
+};
+
 export type PatientAssignmentDraft = {
   patientId?: string;
   displayName: string;

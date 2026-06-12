@@ -4,6 +4,7 @@ import type {
   ApiFetch,
   AuthSession,
   CaptureDraft,
+  LastVisitInfo,
   PatientAssignmentDraft,
   PatientMemoryFilter,
   PatientMemoryListResponse,
@@ -17,10 +18,20 @@ import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
   unassignSessionPatient,
+  checkDuplicatePatient,
+  createAftercareTemplate,
   createPatient,
+  createPatientShare,
+  deleteAftercareTemplate,
   deleteCapture,
   fetchAiModels,
+  fetchAssignmentSuggestion,
+  fetchLastVisit,
   getPatient,
+  listAftercareTemplates,
+  revokePatientShare,
+  searchPatientsSmart,
+  updateAftercareTemplate,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
   fetchSession,
@@ -117,8 +128,12 @@ export function App() {
   const [backendReachable, setBackendReachable] = React.useState<boolean | null>(null);
   const [syncError, setSyncError] = React.useState("");
   const [textOpen, setTextOpen] = React.useState(false);
+  const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [audioOpen, setAudioOpen] = React.useState(false);
+  // AES-106 — the active patient's prior visit (note + photos), surfaced at capture in Basic.
+  const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
+  const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
@@ -495,6 +510,44 @@ export function App() {
     return () => window.clearTimeout(refreshTimer);
   }, [activeSession, refreshVisibleSession]);
 
+  // AES-106 — for a Basic returning patient, fetch the prior visit (note + photos) so the capture
+  // strip can surface "last visit · same as last time", and resolve the first photo as a ghost
+  // overlay (AES-105) for the next shot. Deterministic retrieval — no AI.
+  const patientId = activeSession?.patientId;
+  const activeSessionId = activeSession?.id;
+  React.useEffect(() => {
+    if (auth?.tenant.tier !== "basic" || !patientId || isLocalAssignmentPatient(patientId)) {
+      setLastVisit(null);
+      setGhostPhotoUrl("");
+      return;
+    }
+    let cancelled = false;
+    void fetchLastVisit(apiFetch, patientId, activeSessionId && !isLocalSessionId(activeSessionId) ? activeSessionId : undefined)
+      .then((info) => {
+        if (cancelled) return;
+        setLastVisit(info);
+        const ghostEndpoint = info.visit?.media?.[0]?.contentEndpoint || info.visit?.media?.[0]?.fileEndpoint;
+        if (ghostEndpoint) {
+          void resolveCaptureFileUrl(apiFetch, ghostEndpoint)
+            .then((url) => {
+              if (!cancelled) setGhostPhotoUrl(url);
+            })
+            .catch(() => undefined);
+        } else {
+          setGhostPhotoUrl("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLastVisit(null);
+          setGhostPhotoUrl("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, auth?.tenant.tier, patientId, activeSessionId]);
+
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
       PROCESSING_REFRESH_DELAYS.forEach((delay) => {
@@ -744,6 +797,13 @@ export function App() {
     if (kind === "note") setTextOpen(true);
     if (kind === "photo") setPhotoOpen(true);
     if (kind === "audio") setAudioOpen(true);
+  };
+
+  // AES-106 "same as last time": seed an editable note from the prior visit's typed note (never
+  // auto-saved — the doctor confirms with an edit/save).
+  const composeNoteFromText = (text: string) => {
+    setTextSeed(text);
+    setTextOpen(true);
   };
 
   const beginCapture = (kind: CaptureDraft["kind"]) => {
@@ -1476,6 +1536,10 @@ export function App() {
           onUpdateSettings={handleUpdateTenantSettings}
           onListAiModels={() => fetchAiModels(apiFetch)}
           onUpdateAiModels={(models) => updateAiModels(apiFetch, models)}
+          onListAftercareTemplates={() => listAftercareTemplates(apiFetch)}
+          onCreateAftercareTemplate={(draft) => createAftercareTemplate(apiFetch, draft)}
+          onUpdateAftercareTemplate={(id, draft) => updateAftercareTemplate(apiFetch, id, draft)}
+          onDeleteAftercareTemplate={(id) => deleteAftercareTemplate(apiFetch, id)}
         />
       );
     }
@@ -1557,6 +1621,9 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
+          lastVisit={lastVisit}
+          onOpenVisit={(sessionId) => openMemorySession(sessionId)}
+          onUseAsNote={composeNoteFromText}
         />
       );
     }
@@ -1579,6 +1646,15 @@ export function App() {
         onCreatePatient={createNewPatient}
         onExportCaptures={exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
+        onSmartSearch={(query) => searchPatientsSmart(apiFetch, query)}
+        onDuplicateCheck={(body) => checkDuplicatePatient(apiFetch, body)}
+        onLoadSessionCaptures={(sessionId) => fetchSessionCaptures(apiFetch, sessionId)}
+        onResolveFile={resolveSourceFile}
+        onLoadLastVisit={(patientId) => fetchLastVisit(apiFetch, patientId)}
+        onListAftercareTemplates={() => listAftercareTemplates(apiFetch)}
+        onCreateShare={(input) => createPatientShare(apiFetch, input)}
+        onRevokeShare={(id) => revokePatientShare(apiFetch, id)}
+        onLoadAssignmentSuggestion={(sessionId) => fetchAssignmentSuggestion(apiFetch, sessionId)}
         sessions={sessions}
         syncHealth={syncHealth}
         tier={auth?.tenant.tier}
@@ -1638,14 +1714,20 @@ export function App() {
         {renderCurrentScreen()}
       </Shell>
       <TextCaptureSheet
-        onClose={() => setTextOpen(false)}
+        initialValue={textSeed}
+        onClose={() => {
+          setTextOpen(false);
+          setTextSeed("");
+        }}
         onSave={async (draft, intoNew) => {
           await saveDraft(draft, intoNew);
           setTextOpen(false);
+          setTextSeed("");
         }}
         open={textOpen}
       />
       <AddPhotoSheet
+        ghostPhotoUrl={ghostPhotoUrl}
         onClose={() => {
           setPhotoOpen(false);
         }}
