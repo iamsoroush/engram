@@ -9,6 +9,8 @@ from app.auth.service import dev_login, login, logout, me_response, refresh, upd
 from app.config import settings
 from app.db.session import get_db
 from app.schemas.api import (
+    AftercareTemplatePatch,
+    AftercareTemplateWrite,
     AiJobCompleteRequest,
     AiJobErrorRequest,
     AiJobProgressRequest,
@@ -16,9 +18,11 @@ from app.schemas.api import (
     AiModelConfigUpdate,
     AssignPatientRequest,
     CaptureUpdate,
+    DuplicateCheckRequest,
     PatientPatch,
     PatientMemoryDetailResponse,
     PatientMemoryListResponse,
+    PatientShareCreate,
     PatientWrite,
     SessionCreate,
     SessionSaveRequest,
@@ -47,6 +51,26 @@ from app.services.capture_storage import (
 )
 from app.services.patients import create_patient, get_patient, patient_payload, search_patients, update_patient
 from app.services.patient_memory import get_patient_memory_detail, list_patient_memory
+from app.services.patient_matching import find_patient_duplicates
+from app.services.patient_search import smart_search_patients
+from app.services.assignment_suggestions import suggest_session_assignment
+from app.services.last_visit import get_last_visit
+from app.services.aftercare_templates import (
+    aftercare_template_payload,
+    create_aftercare_template,
+    delete_aftercare_template,
+    get_aftercare_template,
+    list_aftercare_templates,
+    update_aftercare_template,
+)
+from app.services.patient_surface import (
+    create_patient_share,
+    get_patient_share_payload,
+    list_patient_shares,
+    public_share_media,
+    public_share_payload,
+    revoke_patient_share,
+)
 from app.services.sessions import (
     assign_session_patient,
     create_session,
@@ -338,6 +362,34 @@ def patients_create(
     return create_patient(db, principal, request)
 
 
+@api_v1.get("/patients/search")
+def patients_smart_search(
+    query: str | None = Query(default=None, alias="q"),
+    limit: int = Query(default=20, ge=1, le=100),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Deterministic, Persian-aware, multi-field, ranked patient search (AES-204)."""
+    return smart_search_patients(db, principal, query=query, limit=limit)
+
+
+@api_v1.post("/patients/duplicate-check")
+def patients_duplicate_check(
+    request: DuplicateCheckRequest,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Warn about likely existing patients before a duplicate is created (AES-205)."""
+    return find_patient_duplicates(
+        db,
+        tenant_id=principal.tenant_id,
+        display_name=request.display_name,
+        national_id=request.national_id,
+        phone=request.phone,
+        email=request.email,
+    )
+
+
 @api_v1.get("/patients/{patient_id}")
 def patients_get(
     patient_id: str,
@@ -346,6 +398,17 @@ def patients_get(
 ) -> dict[str, Any]:
     """Return one patient record in the current tenant."""
     return patient_payload(get_patient(db, principal.tenant_id, patient_id))
+
+
+@api_v1.get("/patients/{patient_id}/last-visit")
+def patients_last_visit(
+    patient_id: str,
+    exclude_session_id: str | None = Query(default=None, alias="excludeSessionId"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return the patient's prior visit's note + before/after media (AES-106/203)."""
+    return get_last_visit(db, principal, patient_id, exclude_session_id=exclude_session_id)
 
 
 @api_v1.get("/patients/{patient_id}/memory", response_model=PatientMemoryDetailResponse)
@@ -442,6 +505,16 @@ def assign_session_patient_route(
 ) -> dict[str, Any]:
     """Assign or clear the patient associated with a session."""
     return assign_session_patient(db, principal, session_id, request)
+
+
+@api_v1.get("/sessions/{session_id}/assignment-suggestion")
+def session_assignment_suggestion_route(
+    session_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return a deterministic, rule-based 'Assign to …?' suggestion for an unassigned visit (AES-301)."""
+    return suggest_session_assignment(db, principal, session_id)
 
 
 @api_v1.post("/sessions/{session_id}/start-review")
@@ -652,6 +725,122 @@ def get_capture_metadata_route(
 ) -> dict[str, Any]:
     """Return capture metadata, including generated transcript or caption data."""
     return capture_metadata(db, principal, capture_id)
+
+
+@api_v1.get("/aftercare-templates")
+def aftercare_templates_list_route(
+    procedure_type: str | None = Query(default=None, alias="procedureType"),
+    include_inactive: bool = Query(default=False, alias="includeInactive"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """List the tenant's aftercare templates (AES-702)."""
+    return list_aftercare_templates(db, principal, procedure_type=procedure_type, include_inactive=include_inactive)
+
+
+@api_v1.post("/aftercare-templates")
+def aftercare_templates_create_route(
+    request: AftercareTemplateWrite,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Create an aftercare template (AES-702)."""
+    return create_aftercare_template(db, principal, request)
+
+
+@api_v1.get("/aftercare-templates/{template_id}")
+def aftercare_templates_get_route(
+    template_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return one aftercare template."""
+    return aftercare_template_payload(get_aftercare_template(db, principal.tenant_id, template_id))
+
+
+@api_v1.patch("/aftercare-templates/{template_id}")
+def aftercare_templates_update_route(
+    template_id: str,
+    request: AftercareTemplatePatch,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Update an aftercare template (AES-702)."""
+    return update_aftercare_template(db, principal, template_id, request)
+
+
+@api_v1.delete("/aftercare-templates/{template_id}")
+def aftercare_templates_delete_route(
+    template_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete an aftercare template."""
+    return delete_aftercare_template(db, principal, template_id)
+
+
+@api_v1.post("/patient-shares")
+def patient_shares_create_route(
+    request: PatientShareCreate,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a tokenized, revocable share of curated content (AES-303/304/403)."""
+    return create_patient_share(db, principal, request)
+
+
+@api_v1.get("/patient-shares")
+def patient_shares_list_route(
+    patient_id: str | None = Query(default=None, alias="patientId"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """List the tenant's patient shares, optionally scoped to one patient."""
+    return list_patient_shares(db, principal, patient_id=patient_id)
+
+
+@api_v1.get("/patient-shares/{share_id}")
+def patient_shares_get_route(
+    share_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Return one share with its curated preview (AES-403 per-share preview)."""
+    return get_patient_share_payload(db, principal, share_id)
+
+
+@api_v1.post("/patient-shares/{share_id}/revoke")
+def patient_shares_revoke_route(
+    share_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Revoke a share so its public link stops working (AES-403)."""
+    return revoke_patient_share(db, principal, share_id)
+
+
+@api_v1.get("/share/{token}")
+def public_share_route(token: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """PUBLIC, read-only: the patient's curated report + aftercare for a share token (AES-401)."""
+    return public_share_payload(db, token)
+
+
+@api_v1.get("/share/{token}/media/{capture_id}")
+def public_share_media_route(
+    token: str,
+    capture_id: str,
+    range_header: str | None = Header(default=None, alias="Range"),
+    db: Session = Depends(get_db),
+    object_store: ObjectStore = Depends(get_object_store),
+) -> Response:
+    """PUBLIC, read-only: stream a curated photo for a share (only if it is in the share)."""
+    media = public_share_media(db, object_store=object_store, token=token, capture_id=capture_id)
+    return ranged_file_response(
+        content=media["content"],
+        media_type=media["media_type"],
+        filename=media["filename"],
+        range_header=range_header,
+    )
 
 
 app.include_router(api_v1)

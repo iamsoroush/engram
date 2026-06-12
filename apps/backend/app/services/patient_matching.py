@@ -418,6 +418,100 @@ def match_patient_from_patient_information(
     )
 
 
+DUPLICATE_SCHEMA_VERSION = "2026-06-12.duplicate-guard.v1"
+# matchedOn fields that mean "almost certainly the same person" (vs. a fuzzy name-only overlap).
+_STRONG_DUPLICATE_FIELDS = {"national_id", "phone", "email", "normalized_alias"}
+
+
+def find_patient_duplicates(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    display_name: str | None = None,
+    national_id: str | None = None,
+    phone: str | None = None,
+    email: str | None = None,
+) -> dict[str, Any]:
+    """Deterministic near-match check for the duplicate-patient guard (AES-205).
+
+    Run at create time, before a new patient is written, to catch the failure mode that splits one
+    (often Persian-named) patient into several records. Aggregates the same deterministic signals
+    the AI matcher uses — exact national ID / phone / email, an exact normalized name alias, and a
+    fuzzy name overlap — deduped to the strongest hit per patient. Never auto-merges; it only
+    surfaces likely existing matches for a **Use existing / Create anyway** decision.
+
+    Args:
+        db: Active database session.
+        tenant_id: Tenant scope.
+        display_name: The name being entered (any script).
+        national_id / phone / email: Optional contact identifiers being entered.
+
+    Returns:
+        ``{"schemaVersion", "candidates": [...], "hasLikelyDuplicate": bool}``. ``hasLikelyDuplicate``
+        is true only when a *strong* signal (id/phone/email/exact-name) matched; fuzzy-only
+        candidates are still returned (sorted by confidence) but do not by themselves raise the flag.
+    """
+    by_patient: dict[uuid.UUID, MatchCandidate] = {}
+
+    def _merge(candidates: list[MatchCandidate]) -> None:
+        for candidate in candidates:
+            existing = by_patient.get(candidate.patient_id)
+            if existing is None:
+                by_patient[candidate.patient_id] = candidate
+                continue
+            existing.matched_on = list(dict.fromkeys([*existing.matched_on, *candidate.matched_on]))
+            existing.risks = list(dict.fromkeys([*existing.risks, *candidate.risks]))
+            if candidate.confidence > existing.confidence:
+                existing.confidence = candidate.confidence
+                existing.reason = candidate.reason
+
+    if (normalized_national_id := normalize_national_id(national_id)):
+        _merge(
+            _exact_identifier_candidates(
+                db,
+                tenant_id=tenant_id,
+                identifier_type="national_id",
+                normalized_value=normalized_national_id,
+                matched_on="national_id",
+                reason="An existing patient already has this national ID.",
+            )
+        )
+    if (normalized_phone := normalize_iranian_phone(phone)):
+        _merge(
+            _exact_identifier_candidates(
+                db,
+                tenant_id=tenant_id,
+                identifier_type="phone",
+                normalized_value=normalized_phone,
+                matched_on="phone",
+                reason="An existing patient already has this phone number.",
+            )
+        )
+    if (normalized_email := normalize_email(email)):
+        _merge(
+            _exact_identifier_candidates(
+                db,
+                tenant_id=tenant_id,
+                identifier_type="email",
+                normalized_value=normalized_email,
+                matched_on="email",
+                reason="An existing patient already has this email.",
+            )
+        )
+    if display_name and display_name.strip():
+        aliases = normalized_aliases_for_value(display_name)
+        _merge(_exact_alias_candidates(db, tenant_id=tenant_id, aliases=aliases))
+        _merge(_fuzzy_alias_candidates(db, tenant_id=tenant_id, aliases=aliases))
+
+    ranked = sorted(by_patient.values(), key=lambda candidate: candidate.confidence, reverse=True)[:MAX_BACKEND_CANDIDATES]
+    has_strong = any(set(candidate.matched_on) & _STRONG_DUPLICATE_FIELDS for candidate in ranked)
+    return {
+        "schemaVersion": DUPLICATE_SCHEMA_VERSION,
+        "candidates": [_candidate_payload(candidate) for candidate in ranked],
+        "hasLikelyDuplicate": has_strong,
+    }
+
+
 def match_patient_from_metadata(
     db: DbSession,
     *,

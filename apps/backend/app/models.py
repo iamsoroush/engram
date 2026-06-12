@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     Enum,
@@ -437,6 +438,67 @@ class AuditEvent(Base):
     request_id: Mapped[str | None] = mapped_column(String(120))
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class AftercareTemplate(Base):
+    """A reusable, per-procedure aftercare instruction template (aesthetics-Basic, AES-702).
+
+    Deterministic content managed in Settings; selectable + editable per send when a curated
+    patient share is created (AES-304). ``procedure_type`` is a free-form clinic label
+    (e.g. ``botox``/``filler``); ``None`` is a general template.
+    """
+
+    __tablename__ = "aftercare_templates"
+    __table_args__ = (
+        Index("ix_aftercare_templates_tenant_id_procedure_type", "tenant_id", "procedure_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    procedure_type: Mapped[str | None] = mapped_column(String(120))
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+
+
+class PatientShare(Base):
+    """A tokenized, revocable clinic→patient share of CURATED content (the patient surface).
+
+    The shared primitive of [foundation §4]: a single clinic→patient channel. The Basic payload
+    (``report_aftercare``) carries a curated, read-only snapshot — selected sections + media refs +
+    aftercare — in ``content``. Storing a snapshot is the withholding contract (AES-403): raw
+    captures, internal notes, lots, national ID, and other visits are never copied in, so the public
+    read can only ever return what staff explicitly curated. The Pro Q&A payload lands later.
+    """
+
+    __tablename__ = "patient_shares"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_patient_shares_token"),
+        Index("ix_patient_shares_tenant_id_patient_id", "tenant_id", "patient_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"))
+    token: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_type: Mapped[str] = mapped_column(String(40), nullable=False, server_default="report_aftercare")
+    # "active" | "revoked" — String (not an enum type) to match tier/match_strictness/vertical.
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
 
 
 class AuthRefreshToken(Base):

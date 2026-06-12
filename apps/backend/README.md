@@ -21,6 +21,14 @@ When running through the development Compose stack:
 - OpenAPI JSON: `http://localhost:8010/api/v1/openapi.json`
 - Health: `http://localhost:8010/api/v1/health`
 
+## API contracts
+
+The OpenAPI schema (`/api/v1/openapi.json`) is the machine source of truth. The deterministic
+aesthetics-Basic surfaces (smart search, duplicate guard, assign-later suggestion, last-visit, aftercare
+templates) and the patient-facing surface (tokenized, revocable curated shares + the public read) have
+their stable request/response contracts documented for the frontend in
+[`docs/backend/aes-basic-api.md`](../../docs/backend/aes-basic-api.md).
+
 ## Docker Development
 
 From the repository root:
