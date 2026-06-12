@@ -13,12 +13,15 @@ import { createPortal } from "react-dom";
 export function TryProTeaser({
   title,
   subtitle,
+  features,
   cta = "Try Pro →",
   className,
   compact = false,
 }: {
   title: string;
   subtitle?: string;
+  /** When set, the info box lists these Pro capabilities as bullets (a consolidated explainer). */
+  features?: string[];
   cta?: string;
   className?: string;
   compact?: boolean;
@@ -44,12 +47,12 @@ export function TryProTeaser({
   return (
     <>
       {trigger}
-      {open ? <TryProInfo title={title} subtitle={subtitle} onClose={() => setOpen(false)} /> : null}
+      {open ? <TryProInfo title={title} subtitle={subtitle} features={features} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
 
-function TryProInfo({ title, subtitle, onClose }: { title: string; subtitle?: string; onClose: () => void }) {
+function TryProInfo({ title, subtitle, features, onClose }: { title: string; subtitle?: string; features?: string[]; onClose: () => void }) {
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -65,9 +68,19 @@ function TryProInfo({ title, subtitle, onClose }: { title: string; subtitle?: st
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
         <span className="try-pro-info-spark" aria-hidden="true"><TrySparkIcon /></span>
-        <span className="try-pro-info-eyebrow">Pro feature</span>
+        <span className="try-pro-info-eyebrow">{features && features.length ? "Upgrade to Pro" : "Pro feature"}</span>
         <h3 className="try-pro-info-title">{title}</h3>
         {subtitle ? <p className="try-pro-info-sub">{subtitle}</p> : null}
+        {features && features.length ? (
+          <ul className="try-pro-info-features">
+            {features.map((feature) => (
+              <li key={feature}>
+                <span className="try-pro-info-feature-spark" aria-hidden="true"><TrySparkIcon /></span>
+                {feature}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <p className="try-pro-info-note">This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it.</p>
         <div className="try-pro-info-actions">
           <button className="try-pro-info-close" onClick={onClose} type="button">Got it</button>

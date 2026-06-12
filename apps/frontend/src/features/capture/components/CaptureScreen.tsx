@@ -719,9 +719,6 @@ function LiveDraftReport({
   const [openMenuId, setOpenMenuId] = React.useState("");
   const activePatientAction = activePatientAssignmentActionForSession(session);
   const candidates = sessionAssignmentCandidates(session);
-  // Show the Basic "Try Pro" chip on only the FIRST audio and FIRST photo, so the feed stays calm.
-  const firstAudioId = session?.items.find((item) => item.type === "audio" || item.type === "voice")?.id;
-  const firstPhotoId = session?.items.find((item) => item.type === "photo")?.id;
 
   React.useEffect(() => {
     setOpenMenuId("");
@@ -775,11 +772,23 @@ function LiveDraftReport({
           onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
           rootRef={index === session.items.length - 1 ? newestCaptureRef : undefined}
           sequence={index + 1}
-          showTeaser={item.id === firstAudioId || item.id === firstPhotoId}
         />
       ))}
       {isPro && session.processingStatus?.state === "processing" ? (
         <div className="live-draft-processing">Memara is refining the live report. Your captures stay reviewable while it updates.</div>
+      ) : null}
+      {!isPro ? (
+        // One consolidated Try Pro for the whole capture surface (the per-capture badges are gone).
+        <TryProTeaser
+          className="capture-feed-teaser"
+          title="Do more with Pro"
+          subtitle="Basic captures fast and stays AI-free. Pro adds the understanding layer to the same captures."
+          features={[
+            "Dictate the visit — your audio is transcribed",
+            "Photos auto-captioned & paired before/after with a slider",
+            "A structured treatment report (area · product · units · lot), extracted from your dictation",
+          ]}
+        />
       ) : null}
     </div>
   );
@@ -805,7 +814,6 @@ function LiveDraftCaptureItem({
   onToggleMenu,
   rootRef,
   sequence,
-  showTeaser = true,
 }: {
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate: AssignmentCandidate | null;
@@ -826,7 +834,6 @@ function LiveDraftCaptureItem({
   onToggleMenu: () => void;
   rootRef?: React.Ref<HTMLElement>;
   sequence: number;
-  showTeaser?: boolean;
 }) {
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
@@ -958,18 +965,7 @@ function LiveDraftCaptureItem({
           ) : (
             // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. Sync
             // state is shown by the inline status only when there's a problem. (AES-101/802)
-            <>
-              <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
-              {showTeaser ? (
-                <div className="live-draft-audio-teaser">
-                  <TryProTeaser
-                    compact
-                    title="Transcribe &amp; structure this dictation"
-                    subtitle="Basic keeps audio as a voice memo. Pro transcribes it and turns it into a structured treatment report."
-                  />
-                </div>
-              ) : null}
-            </>
+            <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
           )
         ) : null}
         {isPhoto ? (
@@ -995,21 +991,10 @@ function LiveDraftCaptureItem({
             </div>
           ) : (
             // Basic: the photo is filed to the patient and shown whole — no tagging, no AI caption.
-            // The Try Pro badge sits BELOW the photo so it never covers the clinical image. (AES-103/803)
-            <>
-              <div className="live-draft-photo-basic">
-                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-              </div>
-              {showTeaser ? (
-                <div className="live-draft-photo-teaser">
-                  <TryProTeaser
-                    compact
-                    title="Caption &amp; prepare before/after"
-                    subtitle="Basic files &amp; shows your photos. Pro captions them and builds the labelled before/after with a slider."
-                  />
-                </div>
-              ) : null}
-            </>
+            // (AES-103); the upsell is the single consolidated Try Pro at the foot of the feed.
+            <div className="live-draft-photo-basic">
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            </div>
           )
         ) : null}
         {!isPhoto && !isAudio ? (
