@@ -1,0 +1,315 @@
+/*
+ * Patient surface — the public, read-only clinic→patient page (AES-401).
+ *
+ * Fully self-contained and scoped under `.patient-surface`: it must not depend on or bleed into the
+ * clinic app's stylesheet. Mobile-first; widens to a centered card on larger screens. Design tokens
+ * mirror the aesthetics prototype (design-prototypes/aesthetics-patient-surface.html).
+ */
+
+.patient-surface {
+  --ps-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ps-text: #080d2d;
+  --ps-text-soft: #263451;
+  --ps-muted: #52617e;
+  --ps-primary: #075eff;
+  --ps-page: #eef2f8;
+  --ps-surface: #ffffff;
+  --ps-surface-soft: #f8fbff;
+  --ps-border: #dce6f2;
+  --ps-success: #16834a;
+  --ps-success-soft: #e8f7ef;
+  --ps-radius-md: 10px;
+  --ps-radius-lg: 12px;
+  --ps-radius-pill: 999px;
+  --ps-shadow-float: 0 16px 38px rgb(15 23 42 / 14%);
+
+  min-height: 100vh;
+  margin: 0;
+  background: var(--ps-page);
+  color: var(--ps-text);
+  font-family: var(--ps-font);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.patient-surface *,
+.patient-surface *::before,
+.patient-surface *::after {
+  box-sizing: border-box;
+}
+
+.patient-surface .ps-shell {
+  max-width: 460px;
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--ps-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 600px) {
+  .patient-surface {
+    padding: 28px 16px;
+  }
+  .patient-surface .ps-shell {
+    min-height: auto;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: var(--ps-shadow-float);
+  }
+}
+
+/* Header — branded, no app chrome (it is a web link). */
+.patient-surface .ps-head {
+  background: var(--ps-primary);
+  color: #fff;
+  padding: 20px 18px 22px;
+}
+.patient-surface .ps-clinic {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.patient-surface .ps-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: rgb(255 255 255 / 18%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
+}
+.patient-surface .ps-clinic-name {
+  font-weight: 800;
+  font-size: 1rem;
+}
+.patient-surface .ps-clinic-sub {
+  font-size: 0.74rem;
+  opacity: 0.85;
+  margin-top: 1px;
+}
+.patient-surface .ps-hi {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 16px;
+}
+.patient-surface .ps-meta {
+  font-size: 0.78rem;
+  opacity: 0.9;
+  margin-top: 3px;
+}
+
+/* Body */
+.patient-surface .ps-body {
+  padding: 18px 16px 8px;
+  flex: 1;
+}
+.patient-surface .ps-sec {
+  margin-bottom: 22px;
+}
+.patient-surface .ps-sec:last-child {
+  margin-bottom: 8px;
+}
+.patient-surface .ps-sec h2 {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ps-muted);
+  margin: 0 0 10px;
+}
+.patient-surface .ps-sec p {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--ps-text-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Before / after media */
+.patient-surface .ps-media {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.patient-surface .ps-media.one {
+  grid-template-columns: 1fr;
+}
+.patient-surface .ps-figure {
+  margin: 0;
+}
+.patient-surface .ps-img-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: var(--ps-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--ps-border);
+  background: var(--ps-surface-soft);
+}
+.patient-surface .ps-img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.patient-surface .ps-img-wrap.failed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ps-muted);
+  font-size: 0.72rem;
+  text-align: center;
+  padding: 8px;
+}
+.patient-surface .ps-cap {
+  font-size: 0.74rem;
+  color: var(--ps-muted);
+  margin-top: 6px;
+  text-align: center;
+  word-break: break-word;
+}
+
+/* Aftercare checklist */
+.patient-surface .ps-care {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.patient-surface .ps-care li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--ps-text-soft);
+  padding: 10px 0;
+  border-top: 1px solid var(--ps-border);
+}
+.patient-surface .ps-care li:first-child {
+  border-top: 0;
+}
+.patient-surface .ps-care .ck {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ps-success-soft);
+  color: var(--ps-success);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+/* Footer — the privacy + scope reassurance */
+.patient-surface .ps-foot {
+  padding: 14px 16px 24px;
+  border-top: 1px solid var(--ps-border);
+  background: var(--ps-surface-soft);
+  font-size: 0.76rem;
+  color: var(--ps-muted);
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  line-height: 1.45;
+}
+.patient-surface .ps-expiry {
+  display: block;
+  margin-top: 3px;
+  opacity: 0.85;
+}
+
+/* Centered status states (loading / unavailable / error) */
+.patient-surface .ps-status {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+  padding: 56px 28px;
+  min-height: 70vh;
+}
+.patient-surface .ps-status .ps-status-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--ps-surface-soft);
+  border: 1px solid var(--ps-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ps-muted);
+}
+.patient-surface .ps-status h1 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 0;
+  color: var(--ps-text);
+}
+.patient-surface .ps-status p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--ps-muted);
+  max-width: 30ch;
+}
+.patient-surface .ps-retry {
+  margin-top: 4px;
+  border: 1px solid var(--ps-border);
+  background: var(--ps-surface);
+  color: var(--ps-primary);
+  font-weight: 700;
+  font-size: 0.88rem;
+  padding: 10px 20px;
+  border-radius: var(--ps-radius-pill);
+  cursor: pointer;
+}
+.patient-surface .ps-retry:hover {
+  background: var(--ps-surface-soft);
+}
+
+/* Spinner */
+.patient-surface .ps-spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 3px solid var(--ps-border);
+  border-top-color: var(--ps-primary);
+  animation: ps-spin 0.8s linear infinite;
+}
+@keyframes ps-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.patient-surface .ps-ic {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: 0 0 auto;
+}
+.patient-surface .ps-ic.sm {
+  width: 13px;
+  height: 13px;
+}
+.patient-surface .ps-ic.lg {
+  width: 26px;
+  height: 26px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .patient-surface .ps-spinner {
+    animation-duration: 2s;
+  }
+}

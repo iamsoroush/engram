@@ -10,6 +10,7 @@
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
 | `/#settings` | Settings | Tenant preferences: transcription/report language, patient-match strictness, and plan/tier (read-only). Reached from the account menu; has a Back action. |
 | `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |
+| `/share/<token>` | Patient surface (public) | **Separate public area, not the staff shell.** A real path (not a hash), no login — the token is the capability. Read-only curated report + aftercare (AES-401); revocable/expirable, and an unknown/revoked/expired token shows one graceful "no longer available" screen (AES-403). Served by its own page bundle, without the clinic stylesheet. |
 
 ## Entry Points
 
@@ -39,6 +40,7 @@
 - Staff API actions require backend roles `doctor` or `assistant`.
 - Admin can access read-oriented staff/admin APIs but the current frontend still shows the staff shell; write operations may fail if attempted.
 - Patient preview is blocked from staff screens by `PatientPreviewGate`.
+- The public patient surface (`/share/<token>`) requires **no** auth — the token in the URL is the capability. It serves only the curated snapshot and returns a graceful "no longer available" screen when the token is unknown, revoked, or expired; raw clinic internals are never reachable from it (AES-403).
 
 ## Fallback Behavior
 
