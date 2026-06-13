@@ -7647,6 +7647,30 @@ small {
   stroke-width: 2;
 }
 
+/* Q&A inbox button (Pro) — a triage entry beside Search, with a pending-count badge (AES-402). */
+.app-qa-button {
+  position: relative;
+}
+
+.app-qa-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--color-primary, #3753e6);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--color-surface, #fff);
+}
+
 .user-menu summary::after {
   width: 7px;
   height: 7px;

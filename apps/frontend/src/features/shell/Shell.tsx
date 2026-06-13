@@ -12,6 +12,7 @@ export function Shell({
   auth,
   syncHealth,
   onLogout,
+  qaPendingCount = 0,
 }: {
   screen: Screen;
   children: React.ReactNode;
@@ -21,6 +22,7 @@ export function Shell({
   auth: AuthSession;
   syncHealth: SyncHealth;
   onLogout: () => void;
+  qaPendingCount?: number;
 }) {
   const menuRef = React.useRef<HTMLDetailsElement>(null);
   const displayName = auth.user.displayName || auth.user.email;
@@ -37,14 +39,12 @@ export function Shell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "A";
-  // Q&A inbox is a Pro feature (AES-402) — only show it for Pro tenants; Basic never sees it.
+  // The primary navigator stays the two workspaces (Session, Memory). Q&A is a triage *inbox*, not a
+  // workspace — it lives as an icon + pending badge beside Search (Pro only), so the pill never crowds.
   const isPro = auth.tenant.tier !== "basic";
   const navigationItems: Array<{ screen: Screen; label: string; shortLabel: string; icon: React.ReactNode }> = [
     { screen: "active-session", label: "Active Session", shortLabel: "Session", icon: <ActiveSessionNavIcon /> },
     { screen: "patients", label: "Clinical Memory", shortLabel: "Memory", icon: <ClinicalMemoryNavIcon /> },
-    ...(isPro
-      ? [{ screen: "qa-inbox" as Screen, label: "Q&A inbox", shortLabel: "Q&A", icon: <QaInboxNavIcon /> }]
-      : []),
   ];
 
   return (
@@ -77,6 +77,23 @@ export function Shell({
             >
               <SearchNavIcon />
             </button>
+            {isPro ? (
+              <button
+                aria-current={screen === "qa-inbox" ? "page" : undefined}
+                aria-label={qaPendingCount ? `Q&A inbox, ${qaPendingCount} waiting` : "Q&A inbox"}
+                className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
+                onClick={() => onNavigate("qa-inbox")}
+                title="Q&A inbox"
+                type="button"
+              >
+                <QaInboxNavIcon />
+                {qaPendingCount ? (
+                  <span className="app-qa-badge" aria-hidden="true">
+                    {qaPendingCount > 9 ? "9+" : qaPendingCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
           </div>
           <strong className="topbar-brand">Memara</strong>
           <details className="user-menu" ref={menuRef}>

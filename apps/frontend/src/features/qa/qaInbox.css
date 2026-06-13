@@ -184,3 +184,49 @@
   color: #8a93a2;
   padding: 40px 0;
 }
+
+/* Conversation history (the thread persists after answering) */
+.qa-history > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5b6472;
+  padding: 2px 0;
+}
+
+.qa-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 2px;
+}
+
+.qa-history-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  border-left: 3px solid #e2e6ee;
+  padding: 2px 0 2px 10px;
+}
+
+.qa-history-msg.doctor {
+  border-left-color: #9bb0ff;
+}
+
+.qa-history-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 1px;
+}
+
+.qa-history-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.qa-history-time {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #aab2c0;
+}

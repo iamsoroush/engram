@@ -41,6 +41,31 @@ export interface QaSettings {
   routingMode: "ai_default" | "manual" | string;
 }
 
+export interface QaThreadMessage {
+  id: string;
+  role: "patient" | "doctor" | string;
+  body: string;
+  status: string;
+  inReplyToId: string | null;
+  createdAt: string | null;
+}
+
+export interface QaThreadDetail {
+  id: string;
+  patientId: string;
+  status: string;
+  assignedDoctor: QaAssignedDoctor | null;
+  routingSource: string;
+  messages: QaThreadMessage[];
+}
+
+export async function fetchQaThreadDetail(apiFetch: ApiFetch, threadId: string): Promise<QaThreadDetail> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/threads/${threadId}`);
+  if (!response.ok) throw new Error("Could not load the conversation");
+  const payload = (await response.json()) as QaThreadDetail & { messages?: QaThreadMessage[] };
+  return { ...payload, messages: Array.isArray(payload.messages) ? payload.messages : [] };
+}
+
 export async function fetchQaInbox(apiFetch: ApiFetch, scope: "mine" | "all" = "mine"): Promise<QaInboxResponse> {
   const response = await apiFetch(`${API_BASE}/patient-qa/inbox?scope=${encodeURIComponent(scope)}`);
   if (!response.ok) throw new Error("Could not load the Q&A inbox");

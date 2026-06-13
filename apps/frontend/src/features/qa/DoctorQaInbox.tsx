@@ -6,12 +6,14 @@ import {
   dismissQaQuestion,
   fetchQaInbox,
   fetchQaSettings,
+  fetchQaThreadDetail,
   fetchTreatingDoctors,
   routeQaThread,
   sendQaReply,
   setQaRoutingMode,
   type QaInboxItem,
   type QaSettings,
+  type QaThreadMessage,
   type QaTreatingDoctor,
 } from "./qaClient";
 
@@ -26,9 +28,11 @@ import {
 export function DoctorQaInbox({
   apiFetch,
   onToast,
+  onChanged,
 }: {
   apiFetch: ApiFetch;
   onToast?: (message: string) => void;
+  onChanged?: () => void;
 }) {
   const [scope, setScope] = React.useState<"mine" | "all">("mine");
   const [items, setItems] = React.useState<QaInboxItem[]>([]);
@@ -60,6 +64,7 @@ export function DoctorQaInbox({
         if (cancelled) return;
         setItems(response.items);
         setLoaded(true);
+        onChanged?.(); // keep the top-bar pending badge in sync
       })
       .catch(() => {
         if (cancelled) return;
@@ -69,7 +74,7 @@ export function DoctorQaInbox({
     return () => {
       cancelled = true;
     };
-  }, [apiFetch, scope, refresh]);
+  }, [apiFetch, scope, refresh, onChanged]);
 
   const handleRoutingMode = async (mode: "ai_default" | "manual") => {
     try {
@@ -186,6 +191,7 @@ function QaInboxCard({
 }) {
   const [reply, setReply] = React.useState(item.suggestedReply || "");
   const [doctors, setDoctors] = React.useState<QaTreatingDoctor[] | null>(null);
+  const [history, setHistory] = React.useState<QaThreadMessage[] | null>(null);
 
   // Keep the editable reply in sync when the draft finishes after the card first rendered.
   React.useEffect(() => {
@@ -197,6 +203,14 @@ function QaInboxCard({
     fetchTreatingDoctors(apiFetch, item.patientId)
       .then(setDoctors)
       .catch(() => setDoctors([]));
+  };
+
+  const loadHistory = () => {
+    if (history !== null) return;
+    fetchQaThreadDetail(apiFetch, item.threadId)
+      // Everything in the thread except the question being answered right now (shown above).
+      .then((detail) => setHistory(detail.messages.filter((message) => message.id !== item.messageId)))
+      .catch(() => setHistory([]));
   };
 
   const draftReady = item.draftStatus === "ready";
@@ -223,6 +237,30 @@ function QaInboxCard({
       <div className="qa-question" dir="auto">
         {item.question}
       </div>
+
+      <details className="qa-history" onToggle={(event) => (event.currentTarget as HTMLDetailsElement).open && loadHistory()}>
+        <summary>Conversation so far</summary>
+        <div className="qa-history-list">
+          {history === null ? (
+            <span className="qa-current">Loading…</span>
+          ) : history.length === 0 ? (
+            <span className="qa-current">This is the first message in the thread.</span>
+          ) : (
+            history.map((message) => (
+              <div key={message.id} className={`qa-history-msg ${message.role === "doctor" ? "doctor" : "patient"}`}>
+                <div className="qa-history-role">
+                  {message.role === "doctor" ? "Clinic" : item.patientName}
+                  {message.status === "dismissed" ? " · dismissed" : ""}
+                  <span className="qa-history-time"> · {formatDateTime(message.createdAt)}</span>
+                </div>
+                <div className="qa-history-body" dir="auto">
+                  {message.body}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </details>
 
       <div className="qa-draft-label">
         Suggested reply
