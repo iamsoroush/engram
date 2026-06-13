@@ -20,9 +20,13 @@ import type {
   PatientSummary,
   PendingCapture,
   Persona,
+  ClinicMember,
+  RolePermissions,
   SmartPatientSearchResponse,
+  WorklistEntry,
+  WorklistResponse,
 } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../domain/types";
+import type { Attribution, CaptureItem, CaptureSession, StructuredPatientInformation } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
@@ -65,8 +69,12 @@ export async function logoutSession(accessToken: string, refreshToken: string) {
   });
 }
 
-export async function fetchSessions(apiFetch: ApiFetch) {
-  const response = await apiFetch(`${API_BASE}/sessions`);
+export async function fetchSessions(apiFetch: ApiFetch, options?: { clinicianId?: string }) {
+  // AES-904 "Mine vs Clinic": pass the caller's own id as clinicianId for the Mine view.
+  const params = new URLSearchParams();
+  if (options?.clinicianId) params.set("clinicianId", options.clinicianId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/sessions${query ? `?${query}` : ""}`);
   if (!response.ok) throw new Error("Could not load sessions");
   const sessions = (await response.json()) as Array<Record<string, unknown>>;
   return sessions.map(normalizeApiSession);
@@ -403,15 +411,19 @@ export async function fetchPatientMemory(
     filter,
     limit = 50,
     offset = 0,
+    clinicianId,
   }: {
     query?: string;
     filter: PatientMemoryFilter;
     limit?: number;
     offset?: number;
+    /** AES-904 "Mine vs Clinic": the caller's own id → only their patients; omit → whole clinic. */
+    clinicianId?: string;
   },
 ): Promise<PatientMemoryListResponse> {
   const params = new URLSearchParams({ filter, limit: String(limit), offset: String(offset) });
   if (query?.trim()) params.set("query", query.trim());
+  if (clinicianId) params.set("clinicianId", clinicianId);
   const response = await apiFetch(`${API_BASE}/patient-memory?${params.toString()}`);
   if (!response.ok) throw new Error("Could not load patient memory");
   const payload = (await response.json()) as Record<string, unknown>;
@@ -521,7 +533,13 @@ export async function updateAiModels(apiFetch: ApiFetch, models: Record<string, 
 
 export async function updateTenantSettings(
   apiFetch: ApiFetch,
-  settings: { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string },
+  settings: {
+    transcriptionLanguage?: string;
+    reportLanguage?: string | null;
+    matchStrictness?: string;
+    // AES-905 — per non-owner role preset, e.g. { assistant: "reassign" }. Admin-only on the backend.
+    rolePermissions?: RolePermissions;
+  },
 ) {
   const response = await apiFetch(`${API_BASE}/tenant/settings`, {
     method: "PATCH",
@@ -529,7 +547,112 @@ export async function updateTenantSettings(
     body: JSON.stringify(settings),
   });
   if (!response.ok) throw new Error("Could not update tenant settings");
-  return (await response.json()) as { id: string; name: string; tier?: string; transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string };
+  return (await response.json()) as {
+    id: string;
+    name: string;
+    tier?: string;
+    transcriptionLanguage?: string;
+    reportLanguage?: string | null;
+    matchStrictness?: string;
+    rolePermissions?: RolePermissions;
+  };
+}
+
+// --- E9 multi-seat: clinic directory + worklist (AES-903) ---
+
+const normalizeAttribution = (value: unknown): Attribution | null => {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.userId !== "string") return null;
+  return { userId: raw.userId, displayName: typeof raw.displayName === "string" ? raw.displayName : null };
+};
+
+/** AES-903 — the clinic's active staff (for the worklist line-up picker). */
+export async function fetchClinicMembers(apiFetch: ApiFetch): Promise<ClinicMember[]> {
+  const response = await apiFetch(`${API_BASE}/clinic/members`);
+  if (!response.ok) throw new Error("Could not load clinic members");
+  const payload = (await response.json()) as { items?: Array<Record<string, unknown>> };
+  return (Array.isArray(payload.items) ? payload.items : [])
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      userId: String(item.userId || ""),
+      displayName: String(item.displayName || "Unnamed"),
+      role: String(item.role || ""),
+      isClinician: Boolean(item.isClinician),
+    }));
+}
+
+function normalizeWorklistEntry(raw: Record<string, unknown>): WorklistEntry {
+  return {
+    id: String(raw.id || ""),
+    status: String(raw.status || "waiting"),
+    note: stringOrNull(raw.note),
+    patientId: String(raw.patientId || ""),
+    patientName: stringOrNull(raw.patientName),
+    clinicianUserId: String(raw.clinicianUserId || ""),
+    clinician: normalizeAttribution(raw.clinician),
+    linedUpBy: normalizeAttribution(raw.linedUpBy),
+    sessionId: stringOrNull(raw.sessionId),
+    createdAt: stringOrNull(raw.createdAt),
+    updatedAt: stringOrNull(raw.updatedAt),
+    resolvedAt: stringOrNull(raw.resolvedAt),
+  };
+}
+
+/** AES-903 — a clinician's "Today / up next" worklist (default: the caller's waiting entries). */
+export async function fetchWorklist(
+  apiFetch: ApiFetch,
+  options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string },
+): Promise<WorklistResponse> {
+  const params = new URLSearchParams();
+  if (options?.scope) params.set("scope", options.scope);
+  if (options?.status) params.set("status", options.status);
+  if (options?.clinicianId) params.set("clinicianId", options.clinicianId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/worklist${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load worklist");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  return {
+    scope: String(payload.scope || options?.scope || "mine"),
+    clinicianId: stringOrNull(payload.clinicianId),
+    status: String(payload.status || options?.status || "waiting"),
+    items: items
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map(normalizeWorklistEntry),
+  };
+}
+
+/** AES-903 — line a patient up for a clinician. */
+export async function createWorklistEntry(
+  apiFetch: ApiFetch,
+  input: { patientId: string; clinicianUserId: string; note?: string },
+): Promise<WorklistEntry> {
+  const response = await apiFetch(`${API_BASE}/worklist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Could not line up patient");
+  return normalizeWorklistEntry((await response.json()) as Record<string, unknown>);
+}
+
+/** AES-903 — clear a worklist entry as seen (optionally linking the session that was started). */
+export async function markWorklistEntrySeen(apiFetch: ApiFetch, entryId: string, sessionId?: string): Promise<WorklistEntry> {
+  const response = await apiFetch(`${API_BASE}/worklist/${entryId}/seen`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sessionId ? { sessionId } : {}),
+  });
+  if (!response.ok) throw new Error("Could not update worklist entry");
+  return normalizeWorklistEntry((await response.json()) as Record<string, unknown>);
+}
+
+/** AES-903 — cancel (remove) a worklist entry. */
+export async function cancelWorklistEntry(apiFetch: ApiFetch, entryId: string): Promise<WorklistEntry> {
+  const response = await apiFetch(`${API_BASE}/worklist/${entryId}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("Could not cancel worklist entry");
+  return normalizeWorklistEntry((await response.json()) as Record<string, unknown>);
 }
 
 export async function getPatient(apiFetch: ApiFetch, patientId: string): Promise<StructuredPatientInformation | null> {
@@ -786,6 +909,8 @@ function normalizePatientMemoryTimelineSession(raw: Record<string, unknown>): Pa
     captureCount: numberValue(raw.captureCount, 0),
     complete: Boolean(raw.complete),
     needsInput: Boolean(raw.needsInput),
+    createdByUserId: stringOrNull(raw.createdByUserId),
+    createdBy: normalizeAttribution(raw.createdBy),
     groupLabel: String(raw.groupLabel || "Older"),
     sortDate: typeof raw.sortDate === "string" ? raw.sortDate : null,
     capturedAt: typeof raw.capturedAt === "string" ? raw.capturedAt : null,

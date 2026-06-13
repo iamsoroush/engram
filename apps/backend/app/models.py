@@ -144,6 +144,14 @@ class Tenant(Base):
     # (today's Session) is the generic Encounter; its presentation label and per-type
     # `Session.attributes` are derived from this. "clinic" for v1; "radiology"/"pathology" later.
     vertical: Mapped[str] = mapped_column(String(40), nullable=False, server_default="clinic")
+    # Multi-seat role permissions (AES-905): per non-owner role preset
+    # ("contribute" | "reassign" | "full"), e.g. {"assistant": "reassign"}. Permissive,
+    # tenant-configurable; empty/missing keys fall back to the permissive defaults in
+    # ``services.permissions``. The session owner and admins are always "full" and are not
+    # stored here. JSONB (not an enum) to match tier/match_strictness/vertical.
+    role_permissions: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
@@ -499,6 +507,40 @@ class PatientShare(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class WorklistEntry(Base):
+    """A soft "line a patient up for a clinician" entry — the multi-seat worklist (AES-903).
+
+    Reception (or any staff) pre-assigns a patient to a clinician; that clinician sees them under
+    "Today / up next" and taps through to the patient (history + before/after) to start a session.
+    It is a *convenience lane*, never a gate: capture-first still starts a fresh session from the
+    footer regardless of any worklist entry. Status is a plain String ("waiting" | "seen" |
+    "cancelled") to match tier/vertical/share-status — no enum DDL. A soft list, NOT a scheduler:
+    there is no time slot, only ordering by creation.
+    """
+
+    __tablename__ = "worklist_entries"
+    __table_args__ = (
+        Index("ix_worklist_entries_tenant_clinician_status", "tenant_id", "clinician_user_id", "status"),
+        Index("ix_worklist_entries_tenant_status", "tenant_id", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    # The clinician this patient is lined up for (whose "up next" list it appears on).
+    clinician_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="waiting")
+    note: Mapped[str | None] = mapped_column(Text)
+    # The session created when the clinician started seeing this patient (set on "seen").
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuthRefreshToken(Base):

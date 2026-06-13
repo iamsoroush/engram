@@ -6294,6 +6294,200 @@ small {
   color: #075eff;
 }
 
+/* --- E9 multi-seat: Mine/Clinic toggle, worklist, attribution, read-only (AES-901..906) --- */
+.mine-clinic-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #dce6f2;
+  border-radius: 999px;
+  background: #f6f9fd;
+}
+
+.mine-clinic-toggle button {
+  min-height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #4e5d93;
+  padding: 0 14px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mine-clinic-toggle button.active {
+  background: #075eff;
+  color: #ffffff;
+}
+
+.worklist-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.worklist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.worklist-head-copy h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #1f2a44;
+}
+
+.worklist-subtle {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: #6b7794;
+}
+
+.worklist-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b7794;
+}
+
+.worklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.worklist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #e4ebf4;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.worklist-item-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.worklist-item-name {
+  font-weight: 800;
+  color: #1f2a44;
+  font-size: 0.88rem;
+}
+
+.worklist-item-meta {
+  font-size: 0.74rem;
+  color: #6b7794;
+}
+
+.worklist-item-actions {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.worklist-add {
+  align-self: flex-start;
+}
+
+.worklist-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed #cdd9ea;
+  border-radius: 12px;
+  background: #f9fbfe;
+}
+
+.worklist-lineup-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.worklist-lineup-results button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e4ebf4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.worklist-lineup-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #4e5d93;
+  font-weight: 700;
+}
+
+.worklist-lineup-field select {
+  flex: 1;
+}
+
+.worklist-lineup-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+  color: #1f2a44;
+}
+
+.worklist-lineup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.session-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid #f6ddb0;
+  border-radius: 12px;
+  background: #fff8e8;
+  color: #8a5a00;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.capture-attribution {
+  color: #6b7794;
+  font-weight: 700;
+}
+
+.visit-metadata-attribution strong {
+  color: #4e5d93;
+}
+
 .patient-memory-badges {
   margin-top: 3px;
 }

@@ -2,6 +2,8 @@ import React from "react";
 import type {
   AftercareTemplate,
   AssignmentSuggestionResponse,
+  AuthSession,
+  ClinicMember,
   CaptureDraft,
   CreatePatientShareInput,
   DuplicateCandidate,
@@ -19,10 +21,14 @@ import type {
   SmartPatientMatch,
   SmartPatientSearchResponse,
   SyncHealth,
+  WorklistEntry,
+  WorklistResponse,
 } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureItemType, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
+import { attributionName } from "../../../shared/lib/multiseat";
+import { WorklistSection } from "./WorklistSection";
 import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
@@ -34,6 +40,7 @@ const PATIENT_PAGE_SIZE = 25;
 
 export function PatientsHome({
   activeSession,
+  auth,
   initialPatientId,
   initialTab,
   sessions,
@@ -58,10 +65,16 @@ export function PatientsHome({
   onCreateShare,
   onRevokeShare,
   onLoadAssignmentSuggestion,
+  onListWorklist,
+  onLineUpPatient,
+  onMarkWorklistSeen,
+  onCancelWorklistEntry,
+  onListClinicMembers,
   tier,
   memoryRefreshSignal = 0,
 }: {
   activeSession: CaptureSession | null;
+  auth?: AuthSession | null;
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
   sessions: CaptureSession[];
@@ -75,8 +88,14 @@ export function PatientsHome({
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   onCreatePatient?: (draft: PatientAssignmentDraft) => Promise<PatientSummary | null>;
-  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
+  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+  // E9 multi-seat worklist (AES-903).
+  onListWorklist?: (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) => Promise<WorklistResponse>;
+  onLineUpPatient?: (input: { patientId: string; clinicianUserId: string; note?: string }) => Promise<WorklistEntry>;
+  onMarkWorklistSeen?: (entryId: string, sessionId?: string) => Promise<WorklistEntry>;
+  onCancelWorklistEntry?: (entryId: string) => Promise<WorklistEntry>;
+  onListClinicMembers?: () => Promise<ClinicMember[]>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
@@ -94,6 +113,11 @@ export function PatientsHome({
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
+  // AES-904 "Mine vs Clinic" on the patients list. Default Clinic (the whole shared base); Mine
+  // filters to the patients the signed-in clinician has worked with (their owned sessions).
+  const [ownershipScope, setOwnershipScope] = React.useState<"mine" | "clinic">("clinic");
+  const myUserId = auth?.user.id;
+  const patientClinicianId = ownershipScope === "mine" && myUserId ? myUserId : undefined;
   const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
   const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
   const [patientRowsError, setPatientRowsError] = React.useState(false);
@@ -155,7 +179,7 @@ export function PatientsHome({
     let cancelled = false;
     setPatientRowsLoading(true);
     setPatientRowsError(false);
-    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: 0 })
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: 0, clinicianId: patientClinicianId })
       .then((result) => {
         if (cancelled) return;
         setBackendPatientRows(result.items);
@@ -171,7 +195,7 @@ export function PatientsHome({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion]);
+  }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
 
   // Needs input tab: fetch every patient with a critical decision (a high limit — this inbox is
   // small and not paginated). On failure we keep `needsInputRowsLoaded` false so the tab falls
@@ -223,7 +247,7 @@ export function PatientsHome({
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
     setPatientLoadingMore(true);
-    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: backendPatientRows.length })
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: backendPatientRows.length, clinicianId: patientClinicianId })
       .then((result) => {
         setBackendPatientRows((current) => [...current, ...result.items]);
         setPatientTotal(result.total);
@@ -474,6 +498,7 @@ export function PatientsHome({
           onLoadSessionCaptures={onLoadSessionCaptures}
           onResolveFile={onResolveFile}
           onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
+          currentUserId={myUserId}
         />
       ) : (
         <>
@@ -531,6 +556,22 @@ export function PatientsHome({
 
       {activeTab === "today" ? (
         <div className="clinical-tab-panel" role="tabpanel">
+          {onListWorklist && onLineUpPatient && onMarkWorklistSeen && onCancelWorklistEntry && onListClinicMembers ? (
+            <WorklistSection
+              auth={auth ?? null}
+              onListWorklist={onListWorklist}
+              onLineUpPatient={onLineUpPatient}
+              onMarkWorklistSeen={onMarkWorklistSeen}
+              onCancelWorklistEntry={onCancelWorklistEntry}
+              onListClinicMembers={onListClinicMembers}
+              onSearchPatients={onSearchPatients}
+              onOpenPatient={(patientId) => {
+                setSelectedPatientId(patientId);
+                setActiveTab("patients");
+              }}
+              refreshSignal={memoryRefreshSignal}
+            />
+          ) : null}
           <ClinicalSection
             title="Active session"
             badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session) : undefined}
@@ -629,6 +670,21 @@ export function PatientsHome({
                 </button>
               ))}
             </div>
+            {myUserId ? (
+              <div className="mine-clinic-toggle" role="group" aria-label="Mine vs Clinic">
+                {(["mine", "clinic"] as const).map((value) => (
+                  <button
+                    key={value}
+                    aria-pressed={ownershipScope === value}
+                    className={ownershipScope === value ? "active" : ""}
+                    onClick={() => setOwnershipScope(value)}
+                    type="button"
+                  >
+                    {value === "mine" ? "Mine" : "Clinic"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {onCreatePatient ? (
               <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
                 <span aria-hidden="true">+</span> New patient
@@ -1708,6 +1764,7 @@ function PatientTimelineDetail({
   onLoadSessionCaptures,
   onResolveFile,
   onShare,
+  currentUserId,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1726,6 +1783,7 @@ function PatientTimelineDetail({
   onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
   onResolveFile?: (endpoint: string) => Promise<string>;
   onShare?: (visits: GalleryVisit[]) => void;
+  currentUserId?: string;
 }) {
   const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
@@ -1822,6 +1880,7 @@ function PatientTimelineDetail({
                     key={session.sessionId}
                     localSession={session.localSession}
                     session={session}
+                    currentUserId={currentUserId}
                     onAssignPatient={onAssignPatient}
                     onContinueSession={onContinueSession}
                     onOpenSession={(sessionId) => onOpenSession(sessionId, { tab: "patients", patientId: patient.id })}
@@ -1851,6 +1910,7 @@ type TimelineGroupModel = {
 function PatientTimelineCard({
   localSession,
   session,
+  currentUserId,
   onAssignPatient,
   onContinueSession,
   onOpenSession,
@@ -1858,6 +1918,7 @@ function PatientTimelineCard({
 }: {
   localSession?: CaptureSession;
   session: TimelineSessionModel;
+  currentUserId?: string;
   onAssignPatient: (sessionId: string) => void;
   onContinueSession: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
@@ -1896,6 +1957,12 @@ function PatientTimelineCard({
             <div className={updatedLabel.startsWith("Updated today") ? "visit-metadata-success" : undefined}>
               {updatedLabel.startsWith("Updated today") ? null : <span>Updated:</span>}
               <strong>{updatedLabel}</strong>
+            </div>
+          ) : null}
+          {session.createdBy ? (
+            <div className="visit-metadata-attribution">
+              <span>By:</span>
+              <strong>{attributionName(session.createdBy, currentUserId)}</strong>
             </div>
           ) : null}
         </div>

@@ -1,4 +1,5 @@
 import type {
+  Attribution,
   CaptureItem,
   CaptureSession,
   SessionFinding,
@@ -59,6 +60,14 @@ function formatApiDateLabel(value?: string | null) {
 
 function stringValue(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+/** AES-901 author attribution from the API payload's `createdBy: {userId, displayName}`. */
+function normalizeAttribution(value: unknown): Attribution | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.userId !== "string") return null;
+  return { userId: raw.userId, displayName: typeof raw.displayName === "string" ? raw.displayName : null };
 }
 
 function normalizeApiReport(raw: Record<string, unknown>, fallbackTitle: string, fallbackBody: string): SessionReport {
@@ -253,6 +262,8 @@ export function normalizeApiCaptureItem(raw: Partial<CaptureItem> & Record<strin
     patientId: typeof raw.patientId === "string" ? raw.patientId : null,
     patientName: typeof raw.patientName === "string" ? raw.patientName : undefined,
     assignmentSource,
+    createdByUserId: typeof raw.createdByUserId === "string" ? raw.createdByUserId : null,
+    createdBy: normalizeAttribution(raw.createdBy),
     metadata,
   };
 }
@@ -303,6 +314,9 @@ export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string
     patientId: typeof raw.patientId === "string" ? raw.patientId : raw.patientId ?? undefined,
     patientName: typeof raw.patientName === "string" ? raw.patientName : undefined,
     assignmentSource: typeof raw.assignmentSource === "string" ? raw.assignmentSource : undefined,
+    createdByUserId: typeof raw.createdByUserId === "string" ? raw.createdByUserId : null,
+    ownerUserId: typeof raw.ownerUserId === "string" ? raw.ownerUserId : null,
+    createdBy: normalizeAttribution(raw.createdBy),
     organizationSource: typeof raw.organizationSource === "string" ? raw.organizationSource : null,
     generatedReport,
     reportModel: normalizeStructuredReportModel(raw.reportModel),

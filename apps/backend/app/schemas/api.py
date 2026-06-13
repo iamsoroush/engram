@@ -110,6 +110,9 @@ class PatientMemorySession(BaseModel):
     capture_count: int = Field(alias="captureCount")
     complete: bool
     needs_input: bool = Field(alias="needsInput")
+    # Author attribution on the timeline (AES-901).
+    created_by_user_id: str | None = Field(default=None, alias="createdByUserId")
+    created_by: dict[str, Any] | None = Field(default=None, alias="createdBy")
     group_label: str = Field(alias="groupLabel")
     sort_date: str | None = Field(default=None, alias="sortDate")
     captured_at: str | None = Field(default=None, alias="capturedAt")
@@ -275,6 +278,24 @@ class PatientShareCreate(BaseModel):
     media: list[PatientShareMediaInput] = Field(default_factory=list)
     aftercare: PatientShareAftercareInput | None = None
     expires_in_days: int | None = Field(default=None, alias="expiresInDays", ge=1, le=365)
+
+    model_config = {"populate_by_name": True}
+
+
+class WorklistEntryCreate(BaseModel):
+    """Line a patient up for a clinician (AES-903)."""
+
+    patient_id: str = Field(alias="patientId")
+    clinician_user_id: str = Field(alias="clinicianUserId")
+    note: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class WorklistEntryResolve(BaseModel):
+    """Mark a worklist entry seen — optionally linking the session the clinician started."""
+
+    session_id: str | None = Field(default=None, alias="sessionId")
 
     model_config = {"populate_by_name": True}
 

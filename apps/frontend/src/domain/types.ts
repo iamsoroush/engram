@@ -17,6 +17,10 @@ export type SessionStatus =
 
 export type CaptureItemType = "audio" | "voice" | "photo" | "note";
 
+/** Author attribution (AES-901): who created something, resolved server-side from
+ * `created_by_user_id`. `displayName` is null when the user can't be resolved. */
+export type Attribution = { userId: string; displayName: string | null };
+
 export type CaptureItem = {
   id: string;
   type: CaptureItemType;
@@ -40,6 +44,9 @@ export type CaptureItem = {
   patientId?: string | null;
   patientName?: string;
   assignmentSource?: "staff" | "ai_engine" | "ai-engine" | string | null;
+  /** AES-901 — who captured this. */
+  createdByUserId?: string | null;
+  createdBy?: Attribution | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -159,6 +166,10 @@ export type CaptureSession = {
   reviewReason?: string;
   patientId?: string;
   assignmentSource?: "staff" | "ai_engine" | "ai-engine" | string | null;
+  /** AES-901/902 — who created/owns this visit (owner = creator). */
+  createdByUserId?: string | null;
+  ownerUserId?: string | null;
+  createdBy?: Attribution | null;
   organizationSource?: string | null;
   generatedReport?: string | null;
   reportModel?: StructuredReportModel | null;

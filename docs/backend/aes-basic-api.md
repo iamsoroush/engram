@@ -265,6 +265,71 @@ are never reachable from the patient surface.
 
 ---
 
+## E9 — Multi-seat / multi-user (AES-901..906)
+
+> Both tiers. The clinic is a shared workspace; a visit is **owned by its creator** and edits/curation
+> are owner-only by default, with **tenant-configurable** per-role permission presets. Capture-first is
+> never blocked. Details: [`docs/ux/redesign-foundation.md`](../ux/redesign-foundation.md) §7.
+
+### Author attribution (AES-901) — additive fields, not new endpoints
+
+Session and capture payloads now carry, from `created_by_user_id` (deterministic, no AI):
+`createdByUserId` and `createdBy: { userId, displayName }`; sessions additionally carry
+`ownerUserId` (== creator). The patient-timeline sessions (`GET /patients/{id}/memory` →
+`sessions[]` / `groups[].sessions[]`) carry the same `createdBy` / `createdByUserId`.
+
+### Role permissions (AES-905) — on tenant settings
+
+The tenant profile (in `auth/dev-login`, `POST /auth/login`, `GET /me`, `PATCH /tenant/settings`)
+gains `rolePermissions: { <role>: "contribute" | "reassign" | "full" }` — the effective per
+non-owner-role preset (defaults merged with stored overrides). Owner and `admin` are always `full`
+and are not listed. Presets are ordered: `contribute` (append only) < `reassign` (+ change the
+patient) < `full` (+ edit/curate the visit).
+
+`PATCH /tenant/settings` accepts `rolePermissions` (a partial map, merged) **admin-only** (`403`
+otherwise); only the configurable roles `assistant` / `doctor` and valid presets are accepted (`400`
+otherwise). Permissive zero-config default: `{ "assistant": "reassign", "doctor": "contribute" }`.
+
+### Ownership enforcement (AES-902)
+
+- `PATCH /sessions/{id}` (edit/curate) requires the **edit** right: owner, or a role with the `full`
+  preset (admins are blocked at the existing staff-only write gate). `403` otherwise.
+- `POST /sessions/{id}/assign-patient` requires the **reassign** right *only when changing an
+  already-assigned visit* to a different patient (or clearing it). Initial filing of an unassigned
+  visit is the capture-first / assign-later floor — open to all staff. `403` otherwise.
+
+### Policy-aware intent (AES-906, Pro)
+
+In the capture-processing job, an **explicit reassignment** of an already-assigned visit auto-applies
+only if the *capturer's* role may reassign (above); otherwise it is routed to the owner as a
+suggestion (`patient_match_candidate.decision = "suggested_reassignment"`, `policyDeferred: true`) —
+never applied silently, never blocked.
+
+### Worklist + clinic directory (AES-903)
+
+A soft "line a patient up for a clinician" lane (a list, **not** a scheduler). Capture-first is
+unaffected. All `staff_or_admin` to read, `staff` to write; tenant-scoped. `status` ∈
+`waiting | seen | cancelled`.
+
+| Method | Path | Role | Notes |
+| --- | --- | --- | --- |
+| `GET` | `/clinic/members` | staff_or_admin | Active staff: `{ items: [{ userId, displayName, role, isClinician }] }`. |
+| `GET` | `/worklist` | staff_or_admin | Query: `scope` (`mine`\|`clinic`, default `mine`), `status` (default `waiting`), `clinicianId`. Oldest first. |
+| `POST` | `/worklist` | staff | Body `{ patientId, clinicianUserId, note? }`. Idempotent per `(patient, clinician)` while waiting. |
+| `POST` | `/worklist/{id}/seen` | staff | Body `{ sessionId? }` — clears as seen, optionally linking the started session. |
+| `DELETE` | `/worklist/{id}` | staff | Cancels (removes) the entry. |
+
+Worklist entry shape: `{ id, status, note, patientId, patientName, clinicianUserId, clinician,
+linedUpBy, sessionId, createdAt, updatedAt, resolvedAt }` where `clinician` / `linedUpBy` are
+`{ userId, displayName }` attribution objects.
+
+### "Mine vs Clinic" (AES-904)
+
+`GET /sessions` and `GET /patient-memory` accept `clinicianId` — pass the caller's own id for the
+"Mine" view (sessions/patients they own), omit for "Clinic" (the whole shared base).
+
+---
+
 ## Notes for the frontend tracks
 
 - **Search vs. list:** `GET /patients/search` is the smart, ranked, match-annotated search for the

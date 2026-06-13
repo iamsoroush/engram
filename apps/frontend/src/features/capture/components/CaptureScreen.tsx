@@ -45,6 +45,8 @@ export function CaptureScreen({
   onUseAsNote,
   offline = false,
   sessionOrdinal = null,
+  currentUserId = null,
+  readOnly = false,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -84,6 +86,10 @@ export function CaptureScreen({
   offline?: boolean;
   /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
   sessionOrdinal?: number | null;
+  /** AES-901 — the signed-in user's id, so capture attribution can read "by you". */
+  currentUserId?: string | null;
+  /** AES-902 — the viewer doesn't own this visit and their role can't edit it: read-only. */
+  readOnly?: boolean;
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
@@ -190,6 +196,16 @@ export function CaptureScreen({
           ) : null}
         </div>
       </div>
+      {readOnly && activeSession ? (
+        <div className="session-readonly-banner" role="note">
+          <span aria-hidden="true">🔒</span>
+          <span>
+            {activeSession.createdBy?.displayName
+              ? `Started by ${activeSession.createdBy.displayName} — read-only for you. You can still add captures.`
+              : "Owned by another clinician — read-only for you. You can still add captures."}
+          </span>
+        </div>
+      ) : null}
       <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
         <span className="patient-context-avatar" aria-hidden="true">
           <PatientIcon />
@@ -289,6 +305,7 @@ export function CaptureScreen({
               isPro={isPro}
               offline={offline}
               session={activeSession}
+              currentUserId={currentUserId}
               onApplyRelevant={onMarkRelevant}
               onAssignPatient={onAssignPatient}
               onDeleteCapture={onDeleteCapture}
@@ -728,6 +745,7 @@ function LiveDraftReport({
   isPro,
   offline = false,
   session,
+  currentUserId = null,
   onApplyRelevant,
   onAssignPatient,
   onDeleteCapture,
@@ -742,6 +760,7 @@ function LiveDraftReport({
   isPro: boolean;
   offline?: boolean;
   session: CaptureSession | null;
+  currentUserId?: string | null;
   onApplyRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
@@ -810,6 +829,7 @@ function LiveDraftReport({
           onToggleMenu={() => setOpenMenuId((current) => (current === item.id ? "" : item.id))}
           rootRef={index === session.items.length - 1 ? newestCaptureRef : undefined}
           sequence={index + 1}
+          currentUserId={currentUserId}
         />
       ))}
       {isPro && session.processingStatus?.state === "processing" ? (
@@ -853,6 +873,7 @@ function LiveDraftCaptureItem({
   onToggleMenu,
   rootRef,
   sequence,
+  currentUserId = null,
 }: {
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate: AssignmentCandidate | null;
@@ -874,6 +895,7 @@ function LiveDraftCaptureItem({
   onToggleMenu: () => void;
   rootRef?: React.Ref<HTMLElement>;
   sequence: number;
+  currentUserId?: string | null;
 }) {
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
@@ -949,7 +971,15 @@ function LiveDraftCaptureItem({
                 <CaptureAssignmentBadge info={assignmentInfo} />
                 <CaptureReportBadge isPro={isPro} item={item} outOfContext={outOfContext} />
               </span>
-              <time>{item.time}</time>
+              <time>
+                {item.time}
+                {item.createdBy ? (
+                  <span className="capture-attribution">
+                    {" · by "}
+                    {currentUserId && item.createdBy.userId === currentUserId ? "you" : item.createdBy.displayName || "another clinician"}
+                  </span>
+                ) : null}
+              </time>
             </div>
             <CaptureInlineStatus status={item.status} isPro={isPro} offline={offline} />
             <CapturePatientBadges

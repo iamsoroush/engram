@@ -16,7 +16,25 @@ from app.services.patient_assignment_timeline import (
     apply_active_patient_assignment,
     patient_assignment_event,
 )
+from app.services.permissions import (
+    can_edit,
+    can_reassign,
+    session_permission_for_roles,
+    tenant_role_permissions,
+)
 from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
+
+
+def session_permission_for_principal(db: DbSession, principal: CurrentPrincipal, session: Session) -> str:
+    """The viewer's effective preset on a session (owner → full, else by tenant role policy).
+
+    Uses ``principal.roles`` from the token, so no extra membership query is needed.
+    """
+    return session_permission_for_roles(
+        is_owner=session.created_by_user_id == principal.user_id,
+        roles=principal.roles,
+        role_permissions=tenant_role_permissions(db, principal.tenant_id),
+    )
 
 
 def parse_datetime(value: str | None) -> datetime | None:
@@ -133,6 +151,7 @@ def list_sessions(
     principal: CurrentPrincipal,
     status_filter: str | None,
     limit: int = 50,
+    clinician_id: str | None = None,
 ) -> list[dict[str, Any]]:
     statement = select(Session).where(Session.tenant_id == principal.tenant_id)
     if status_filter:
@@ -140,6 +159,9 @@ def list_sessions(
             statement = statement.where(Session.status == SessionStatus(status_filter))
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status") from exc
+    if clinician_id:
+        # AES-904 "Mine vs Clinic": a session belongs to the clinician who created (owns) it.
+        statement = statement.where(Session.created_by_user_id == parse_uuid(clinician_id, "clinician_id"))
     sessions = db.execute(statement.order_by(Session.updated_at.desc()).limit(min(limit, 100))).scalars()
     return [session_payload(session, db) for session in sessions]
 
@@ -151,6 +173,14 @@ def get_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> 
 
 def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionUpdate) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    # AES-902: editing/curating a session is the owner's by default. A non-owner may edit only when
+    # the tenant's policy grants their role the "full" preset (admins always can). We refuse with
+    # 403 rather than silently no-op, so a read-only viewer sees the attributed/read-only state.
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't edit it.",
+        )
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     if request.title is not None:
         session.title = request.title
@@ -212,6 +242,15 @@ def assign_session_patient(
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
     previous = session.patient_id
     next_patient_id = require_patient(db, principal.tenant_id, request.patient_id)
+    # AES-902: *changing* an already-assigned visit to a different patient (or clearing it) is a
+    # reassignment and needs the reassign permission. Initial filing of an unassigned visit is the
+    # capture-first / assign-later floor — open to all staff, never blocked.
+    is_reassignment = previous is not None and (next_patient_id is None or str(previous) != str(next_patient_id))
+    if is_reassignment and not can_reassign(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role can't reassign a visit owned by another clinician.",
+        )
     patient = (
         db.execute(
             select(Patient).where(Patient.id == next_patient_id, Patient.tenant_id == principal.tenant_id)
@@ -291,7 +330,7 @@ def list_session_captures(db: DbSession, principal: CurrentPrincipal, session_id
         )
         .order_by(Capture.created_at)
     ).scalars()
-    payloads = [capture_payload(capture) for capture in captures]
+    payloads = [capture_payload(capture, db=db) for capture in captures]
     if db.dirty:
         db.commit()
     return payloads

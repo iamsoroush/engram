@@ -1,4 +1,9 @@
-import type { CaptureItem, CaptureItemType, CaptureSession } from "./types";
+import type { Attribution, CaptureItem, CaptureItemType, CaptureSession } from "./types";
+
+/** AES-905 role-permission presets, ordered low → high (each includes the one below). */
+export type RolePreset = "contribute" | "reassign" | "full";
+/** Effective per non-owner role preset, e.g. { assistant: "reassign", doctor: "contribute" }. */
+export type RolePermissions = Record<string, RolePreset | string>;
 
 export type CaptureDraft = {
   kind: Extract<CaptureItemType, "audio" | "photo" | "note">;
@@ -73,6 +78,8 @@ export type AuthTenant = {
   /** A0 — vertical ("clinic" today) + the presentation label for its work-unit ("Session"). */
   vertical?: string;
   encounterLabel?: string;
+  /** AES-905 — effective per non-owner role presets (defaults merged with tenant overrides). */
+  rolePermissions?: RolePermissions;
 };
 
 export type AuthMembership = {
@@ -162,6 +169,9 @@ export type PatientMemoryTimelineSession = {
   captureCount: number;
   complete: boolean;
   needsInput: boolean;
+  /** AES-901 — who ran this visit (for "by X" on the timeline). */
+  createdByUserId?: string | null;
+  createdBy?: Attribution | null;
   groupLabel: string;
   sortDate?: string | null;
   capturedAt?: string | null;
@@ -345,6 +355,40 @@ export type PatientShare = {
   expiresAt: string | null;
   revokedAt: string | null;
   preview?: PatientSharePreview | null;
+};
+
+// --- E9 multi-seat: worklist + clinic directory (AES-903) ---
+
+/** One active staff member of the clinic (for the worklist line-up picker + name display). */
+export type ClinicMember = {
+  userId: string;
+  displayName: string;
+  role: string;
+  isClinician: boolean;
+};
+
+/** A soft "line a patient up for a clinician" worklist entry (AES-903). */
+export type WorklistEntry = {
+  id: string;
+  status: "waiting" | "seen" | "cancelled" | string;
+  note: string | null;
+  patientId: string;
+  patientName: string | null;
+  clinicianUserId: string;
+  clinician: Attribution | null;
+  /** Who lined this patient up (AES-901 attribution on the worklist). */
+  linedUpBy: Attribution | null;
+  sessionId: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  resolvedAt: string | null;
+};
+
+export type WorklistResponse = {
+  scope: "mine" | "clinic" | string;
+  clinicianId: string | null;
+  status: string;
+  items: WorklistEntry[];
 };
 
 export type PatientAssignmentDraft = {

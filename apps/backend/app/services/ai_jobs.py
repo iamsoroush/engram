@@ -39,6 +39,7 @@ from app.services.patient_matching import (
     match_patient_from_patient_information,
 )
 from app.services.patients import create_patient_from_patient_information, patient_information_has_explicit_identity
+from app.services.permissions import user_can_reassign_session
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
     empty_report_model,
@@ -311,12 +312,17 @@ def suggested_reassignment_candidate(
     tenant_id: uuid.UUID,
     session: Session,
     patient_information: dict[str, Any],
+    policy_deferred: bool = False,
 ) -> dict[str, Any] | None:
     """Build an actionable but unapplied reassignment suggestion for an already-assigned visit.
 
     Used when a later capture only implicitly mentions a *different* patient: the assignment is not
     changed, but staff can apply the suggestion in one tap. A dominant fuzzy candidate is
     promoted to `patientId` so Apply reassigns to the existing patient rather than creating one.
+
+    ``policy_deferred`` marks the AES-906 case: the capture *explicitly* asked to reassign, but the
+    capturer's role isn't permitted to (AES-905), so it is routed to the owner as a suggestion
+    rather than applied — never blocked. It carries `policyDeferred: True` + an owner-facing reason.
 
     Returns None when the implicit mention resolves to the patient already assigned to this visit:
     that is a confirmation/append, not a reassignment, so there is nothing to suggest. (This also
@@ -334,18 +340,25 @@ def suggested_reassignment_candidate(
             matched_name = dominant.get("displayName")
     if patient_id is not None and session.patient_id is not None and str(patient_id) == str(session.patient_id):
         return None
+    reason = (
+        "A colleague's capture asked to reassign this visit, but their role can't reassign — "
+        "suggested for the owner to apply."
+        if policy_deferred
+        else "Implicit patient mention on an already-assigned visit; suggested for review, not applied."
+    )
     return {
         **match,
         "schemaVersion": "2026-06-02.patient-match-candidate.v1",
         "decision": "suggested_reassignment",
         "status": "suggested_reassignment",
         "appliedAutomatically": False,
+        "policyDeferred": policy_deferred,
         "currentPatientId": str(session.patient_id) if session.patient_id else None,
         "patientId": patient_id,
         "displayName": matched_name,
         "matchedName": matched_name,
         "spokenName": spoken_name_from_information(patient_information),
-        "reason": "Implicit patient mention on an already-assigned visit; suggested for review, not applied.",
+        "reason": reason,
         "patientInformation": patient_information,
     }
 
@@ -1700,14 +1713,26 @@ def complete_worker_job(
         assignment_basis = assignment_intent_basis(output)
         strictness = tenant_match_strictness(db, job.tenant_id)
         has_existing_patient = session is not None and session.patient_id is not None
-        # First identity on an unassigned visit is always applied; once a patient is
-        # assigned, only an explicit (re)assignment instruction overrides it. An implicit
-        # mention on an assigned visit becomes a suggestion, not a silent change.
-        if should_apply_identity_assignment(
+        wants_apply = should_apply_identity_assignment(
             has_session=session is not None,
             has_existing_patient=has_existing_patient,
             assignment_basis=assignment_basis,
-        ):
+        )
+        # AES-906 (policy-aware intent): an explicit reassignment of an already-assigned visit
+        # auto-applies only if the *capturer's* role is permitted to reassign (AES-905). If not, it
+        # is routed to the owner as a suggestion (`policy_deferred`) — never applied silently, never
+        # blocked. Initial filing of an unassigned visit is the capture-first floor and is not gated.
+        reassignment_blocked_by_policy = (
+            wants_apply
+            and has_existing_patient
+            and session is not None
+            and not user_can_reassign_session(db, session=session, user_id=capture.created_by_user_id)
+        )
+        # First identity on an unassigned visit is always applied; once a patient is
+        # assigned, only an explicit (re)assignment instruction the capturer is permitted to make
+        # overrides it. An implicit mention — or a reassignment the capturer's role can't make —
+        # becomes a suggestion, not a silent change.
+        if wants_apply and not reassignment_blocked_by_policy:
             patient_match_candidate = match_patient_from_patient_information(
                 db,
                 tenant_id=job.tenant_id,
@@ -1796,6 +1821,7 @@ def complete_worker_job(
                 tenant_id=job.tenant_id,
                 session=session,
                 patient_information=patient_information,
+                policy_deferred=reassignment_blocked_by_policy,
             )
     output_with_match = (
         {**output, "patient_match_candidate": patient_match_candidate, "ai_patient_action": ai_patient_action}

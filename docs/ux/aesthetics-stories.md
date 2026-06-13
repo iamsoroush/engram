@@ -359,7 +359,8 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 ---
 
 ## E9 — Multi-seat / multi-user
-*Details [foundation §7](redesign-foundation.md). **A later increment — NOT in the in-flight Basic build (tracks ②/③).***
+*Details [foundation §7](redesign-foundation.md). **Built** (finishes the Basic tier) — contracts in
+[docs/backend/aes-basic-api.md](../backend/aes-basic-api.md) §E9.*
 
 ### AES-901 — Author attribution 〔Both · All · new〕
 As **any clinician**, I want every capture/visit/note/photo to show **who created it and when**, so that in a multi-seat clinic it's clear who did what.

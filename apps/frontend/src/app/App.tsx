@@ -11,10 +11,12 @@ import type {
   PatientSummary,
   PendingOperation,
   Persona,
+  RolePermissions,
   SyncHealth,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
+import { isSessionReadOnly } from "../shared/lib/multiseat";
 import {
   assignSessionPatient,
   unassignSessionPatient,
@@ -26,9 +28,14 @@ import {
   deleteCapture,
   fetchAiModels,
   fetchAssignmentSuggestion,
+  cancelWorklistEntry,
+  createWorklistEntry,
+  fetchClinicMembers,
   fetchLastVisit,
+  fetchWorklist,
   getPatient,
   listAftercareTemplates,
+  markWorklistEntrySeen,
   revokePatientShare,
   searchPatientsSmart,
   updateAftercareTemplate,
@@ -1346,10 +1353,27 @@ export function App() {
     [apiFetch],
   );
   const listPatientMemory = React.useCallback(
-    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }): Promise<PatientMemoryListResponse> =>
+    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }): Promise<PatientMemoryListResponse> =>
       fetchPatientMemory(apiFetch, params),
     [apiFetch],
   );
+
+  // E9 multi-seat (AES-903): the soft worklist + clinic directory.
+  const listWorklist = React.useCallback(
+    (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) =>
+      fetchWorklist(apiFetch, options),
+    [apiFetch],
+  );
+  const lineUpPatient = React.useCallback(
+    (input: { patientId: string; clinicianUserId: string; note?: string }) => createWorklistEntry(apiFetch, input),
+    [apiFetch],
+  );
+  const markWorklistSeen = React.useCallback(
+    (entryId: string, sessionId?: string) => markWorklistEntrySeen(apiFetch, entryId, sessionId),
+    [apiFetch],
+  );
+  const cancelWorklist = React.useCallback((entryId: string) => cancelWorklistEntry(apiFetch, entryId), [apiFetch]);
+  const listClinicMembers = React.useCallback(() => fetchClinicMembers(apiFetch), [apiFetch]);
 
   const confirmSessionSummary = React.useCallback(
     async (sessionId: string, summary: string) => {
@@ -1464,10 +1488,16 @@ export function App() {
   };
 
   const handleUpdateTenantSettings = React.useCallback(
-    async (settings: { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string }) => {
+    async (settings: {
+      transcriptionLanguage?: string;
+      reportLanguage?: string | null;
+      matchStrictness?: string;
+      rolePermissions?: RolePermissions;
+    }) => {
       const currentAuth = authRef.current;
       if (!currentAuth) return;
       const changingStrictness = "matchStrictness" in settings;
+      const changingPermissions = "rolePermissions" in settings;
       try {
         const updated = await updateTenantSettings(apiFetch, settings);
         commitAuth({
@@ -1477,11 +1507,25 @@ export function App() {
             transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
             reportLanguage: updated.reportLanguage ?? null,
             matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,
+            // AES-905: the response carries the full effective preset map (defaults + overrides).
+            rolePermissions: updated.rolePermissions ?? currentAuth.tenant.rolePermissions,
           },
         });
-        setToast(changingStrictness ? "Patient-matching preference updated." : "Language preferences updated.");
+        setToast(
+          changingPermissions
+            ? "Role permissions updated."
+            : changingStrictness
+              ? "Patient-matching preference updated."
+              : "Language preferences updated.",
+        );
       } catch {
-        setToast(changingStrictness ? "Could not update matching preference." : "Could not update language preferences.");
+        setToast(
+          changingPermissions
+            ? "Could not update role permissions."
+            : changingStrictness
+              ? "Could not update matching preference."
+              : "Could not update language preferences.",
+        );
       }
     },
     [apiFetch, commitAuth],
@@ -1685,6 +1729,8 @@ export function App() {
           onUseAsNote={composeNoteFromText}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
+          currentUserId={auth?.user.id ?? null}
+          readOnly={activeSession ? isSessionReadOnly(activeSession, auth) : false}
         />
       );
     }
@@ -1694,6 +1740,7 @@ export function App() {
     return (
       <PatientsHome
         activeSession={activeSession}
+        auth={auth}
         initialPatientId={clinicalMemoryReturnContext?.patientId}
         initialTab={clinicalMemoryReturnContext?.tab}
         onAssignPatient={assignPatientToSession}
@@ -1701,6 +1748,11 @@ export function App() {
         onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
+        onListWorklist={listWorklist}
+        onLineUpPatient={lineUpPatient}
+        onMarkWorklistSeen={markWorklistSeen}
+        onCancelWorklistEntry={cancelWorklist}
+        onListClinicMembers={listClinicMembers}
         onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
