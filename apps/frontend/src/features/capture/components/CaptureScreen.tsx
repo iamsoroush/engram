@@ -979,11 +979,11 @@ function LiveDraftCaptureItem({
           ) : null}
         </header>
         {isAudio ? (
-          isPro ? (
-            <>
-              <div className="live-draft-audio-player">
-                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-              </div>
+          // Both tiers use the compact custom player (much better than native <audio> on mobile).
+          // Pro adds the AI transcript section below it; Basic keeps it a plain voice memo. (AES-101/102/802)
+          <>
+            <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
+            {isPro ? (
               <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
                 {generatedText ? (
                   <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
@@ -994,12 +994,8 @@ function LiveDraftCaptureItem({
                   </>
                 )}
               </section>
-            </>
-          ) : (
-            // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. Sync
-            // state is shown by the inline status only when there's a problem. (AES-101/802)
-            <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
-          )
+            ) : null}
+          </>
         ) : null}
         {isPhoto ? (
           isPro ? (
