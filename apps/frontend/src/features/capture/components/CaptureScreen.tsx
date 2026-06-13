@@ -103,6 +103,13 @@ export function CaptureScreen({
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
+  // Pro keeps its status chip + meta, but the title gets the same meaningful naming as Basic — a
+  // real AI report title when there is one, otherwise "{patient}'s Nth session" / the date+time
+  // (instead of a raw "Session <timestamp>" label).
+  const proTitle =
+    !isHistorical && (sessionTitle === "Current session" || /^session\s/i.test(sessionTitle))
+      ? lightSessionTitle(activeSession, sessionOrdinal)
+      : sessionTitle;
   const patientName = sessionPatientName(activeSession);
   const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
@@ -159,7 +166,7 @@ export function CaptureScreen({
           ) : (
             <>
               <div className="session-summary-heading">
-                <h1>{sessionTitle}</h1>
+                <h1 dir={textDirection(proTitle)}>{proTitle}</h1>
                 <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
                   <span aria-hidden="true" />
                   {sessionStatusChip.label}
