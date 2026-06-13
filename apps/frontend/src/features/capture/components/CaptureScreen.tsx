@@ -1,5 +1,5 @@
 import React from "react";
-import type { PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
+import type { LastVisitInfo, PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
 import type {
   CaptureItem,
   CaptureSession,
@@ -12,6 +12,9 @@ import { assignmentSourceLabel, metadataDisplay, metadataRecord, metadataText } 
 import { sessionUxState } from "../../../domain/status";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
+import { TryProTeaser } from "../../aesthetics/TryProTeaser";
+import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
+import { VoiceMemoPlayer } from "../../aesthetics/VoiceMemoPlayer";
 import { SourcePreviewDialog, CaptureRawPreview } from "./SourcePreview";
 
 export function CaptureScreen({
@@ -21,6 +24,7 @@ export function CaptureScreen({
   onRenameCapture,
   onUpdateCaptureCaption,
   onUpdateCaptureTranscript,
+  onUpdateNote,
   onDeleteCapture,
   mode = "active",
   onBack,
@@ -36,6 +40,11 @@ export function CaptureScreen({
   onMarkRelevant,
   onFetchPatient,
   tier,
+  lastVisit,
+  onOpenVisit,
+  onUseAsNote,
+  offline = false,
+  sessionOrdinal = null,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -45,6 +54,7 @@ export function CaptureScreen({
   onRenameCapture?: (sessionId: string, captureId: string, title: string) => Promise<void>;
   onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
+  onUpdateNote?: (sessionId: string, captureId: string, text: string) => Promise<void>;
   onDeleteCapture?: (sessionId: string, captureId: string) => Promise<void>;
   mode?: "active" | "historical";
   onBack?: () => void;
@@ -66,12 +76,26 @@ export function CaptureScreen({
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
+  /** AES-106 — the returning patient's prior visit (note + photos), surfaced at capture (Basic). */
+  lastVisit?: LastVisitInfo | null;
+  onOpenVisit?: (sessionId: string) => void;
+  onUseAsNote?: (text: string) => void;
+  /** No connection / backend unreachable — gates the only sync indicators we show. */
+  offline?: boolean;
+  /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
+  sessionOrdinal?: number | null;
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
+  // Basic active visits get a lightweight header — no "Complete" badge, no raw "Session <time>"
+  // name. Title = the patient's Nth session when assigned, else the session date+time. Sync state
+  // only shows when offline/unreachable (calm when everything is fine).
+  const lightHeader = !isPro && !isHistorical;
+  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
+  const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
   // The live report regenerates automatically as captures land (Epic E); "updating" is a calm
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
@@ -117,16 +141,33 @@ export function CaptureScreen({
           {backLabel}
         </button>
       ) : null}
-      <div className="active-session-summary">
+      <div className={`active-session-summary${lightHeader ? " light" : ""}`}>
         <div className="session-summary-copy">
-          <div className="session-summary-heading">
-            <h1>{sessionTitle}</h1>
-            <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
-              <span aria-hidden="true" />
-              {sessionStatusChip.label}
-            </span>
-          </div>
-          <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+          {lightHeader ? (
+            <>
+              <div className="session-summary-heading">
+                <span className="session-live-dot" aria-hidden="true" />
+                <h1 dir={textDirection(lightTitle)}>{lightTitle}</h1>
+              </div>
+              <p>
+                {captureCountLabel}
+                {offline && sessionPending ? (
+                  <span className="session-sync-pending"><SyncIcon /> Trying to sync the session</span>
+                ) : null}
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="session-summary-heading">
+                <h1>{sessionTitle}</h1>
+                <span className={`status-chip ${sessionStatusChip.tone} ${sessionStatusChip.checked ? "checked" : ""}`}>
+                  <span aria-hidden="true" />
+                  {sessionStatusChip.label}
+                </span>
+              </div>
+              <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+            </>
+          )}
         </div>
         <div className="workspace-header-actions">
           {isHistorical && onResumeCapture ? (
@@ -142,27 +183,43 @@ export function CaptureScreen({
           ) : null}
         </div>
       </div>
-      <Card className="patient-context-card">
+      <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
         <span className="patient-context-avatar" aria-hidden="true">
           <PatientIcon />
         </span>
-        <div>
-          <strong>{patientName}</strong>
+        <div className="patient-context-copy">
+          <strong dir={textDirection(patientName)}>{patientName}</strong>
           <p>
-            {activeSession?.patientId
+            {activeSession?.patientId || activeSession?.patientName
               ? activeSession.assignmentSource
                 ? assignmentSourceLabel(activeSession.assignmentSource)
                 : "Assigned manually"
-              : "No patient assigned"}
+              : "Capture-first — assign when ready"}
           </p>
         </div>
         {onAssignPatient ? (
-          <Button className="edit-patient-button" onClick={onCloseAssignment} size="sm" type="button" variant="secondary">
-            <EditIcon />
-            Edit patient
-          </Button>
+          <button
+            className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
+            onClick={onCloseAssignment}
+            type="button"
+          >
+            {activeSession?.patientId || activeSession?.patientName ? (
+              <>
+                <EditIcon />
+                Change
+              </>
+            ) : (
+              <>
+                <AddPatientIcon />
+                Assign
+              </>
+            )}
+          </button>
         ) : null}
       </Card>
+      {!isPro && !isHistorical && activeSession?.patientId && lastVisit ? (
+        <LastVisitStrip lastVisit={lastVisit} onOpenVisit={onOpenVisit} onUseAsNote={onUseAsNote} onResolveFile={onResolveFile} />
+      ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
         <AiCreatedPatientPanel
           action={aiPatientAction}
@@ -223,6 +280,7 @@ export function CaptureScreen({
           ) : (
             <LiveDraftReport
               isPro={isPro}
+              offline={offline}
               session={activeSession}
               onApplyRelevant={onMarkRelevant}
               onAssignPatient={onAssignPatient}
@@ -233,6 +291,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onUpdateCaptureCaption={onUpdateCaptureCaption}
               onUpdateCaptureTranscript={onUpdateCaptureTranscript}
+              onUpdateNote={onUpdateNote}
             />
           )}
         </div>
@@ -240,7 +299,7 @@ export function CaptureScreen({
           <div className="workspace-report-footer-copy">
             {isUpdatingReport ? (
               <span>{reportUpdatingLabel(activeSession)}</span>
-            ) : activeSession?.complete ? (
+            ) : isPro && activeSession?.complete ? (
               <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
             ) : null}
           </div>
@@ -248,6 +307,7 @@ export function CaptureScreen({
       </Card>
       <SourcePreviewDialog
         item={selectedCapture}
+        isPro={isPro}
         onClose={() => setSelectedCapture(null)}
         onResolveFile={onResolveFile}
         onUpdateCaption={
@@ -659,6 +719,7 @@ function formatLastVisit(value?: string | null) {
 
 function LiveDraftReport({
   isPro,
+  offline = false,
   session,
   onApplyRelevant,
   onAssignPatient,
@@ -669,8 +730,10 @@ function LiveDraftReport({
   onResolveFile,
   onUpdateCaptureCaption,
   onUpdateCaptureTranscript,
+  onUpdateNote,
 }: {
   isPro: boolean;
+  offline?: boolean;
   session: CaptureSession | null;
   onApplyRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
@@ -681,6 +744,7 @@ function LiveDraftReport({
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateCaptureCaption?: (sessionId: string, captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
+  onUpdateNote?: (sessionId: string, captureId: string, text: string) => Promise<void>;
 }) {
   const [openMenuId, setOpenMenuId] = React.useState("");
   const activePatientAction = activePatientAssignmentActionForSession(session);
@@ -721,6 +785,7 @@ function LiveDraftReport({
           activePatientAction={activePatientAction}
           alternateCandidate={alternateCandidateForCapture(candidates, item.id)}
           isPro={isPro}
+          offline={offline}
           item={item}
           key={item.sourceUrl || item.id}
           menuOpen={openMenuId === item.id}
@@ -731,6 +796,7 @@ function LiveDraftReport({
           onDeleteCapture={onDeleteCapture ? () => onDeleteCapture(session.id, item.id) : undefined}
           onEditCaption={onUpdateCaptureCaption ? (text) => onUpdateCaptureCaption(session.id, item.id, text).then(() => undefined) : undefined}
           onEditTranscript={onUpdateCaptureTranscript ? (text) => onUpdateCaptureTranscript(session.id, item.id, text).then(() => undefined) : undefined}
+          onEditNote={onUpdateNote ? (text) => onUpdateNote(session.id, item.id, text) : undefined}
           onOpenCapture={() => onOpenCapture(item)}
           onRenameCapture={onRenameCapture ? (title) => onRenameCapture(session.id, item.id, title) : undefined}
           onResolveFile={onResolveFile}
@@ -742,6 +808,19 @@ function LiveDraftReport({
       {isPro && session.processingStatus?.state === "processing" ? (
         <div className="live-draft-processing">Memara is refining the live report. Your captures stay reviewable while it updates.</div>
       ) : null}
+      {!isPro ? (
+        // One consolidated Try Pro for the whole capture surface (the per-capture badges are gone).
+        <TryProTeaser
+          className="capture-feed-teaser"
+          title="Do more with Pro"
+          subtitle="Basic captures fast and stays AI-free. Pro adds the understanding layer to the same captures."
+          features={[
+            "Dictate the visit — your audio is transcribed",
+            "Photos auto-captioned & paired before/after with a slider",
+            "A structured treatment report (area · product · units · lot), extracted from your dictation",
+          ]}
+        />
+      ) : null}
     </div>
   );
 }
@@ -750,6 +829,7 @@ function LiveDraftCaptureItem({
   activePatientAction,
   alternateCandidate,
   isPro,
+  offline = false,
   item,
   menuOpen,
   onApplyReassignment,
@@ -759,6 +839,7 @@ function LiveDraftCaptureItem({
   onDeleteCapture,
   onEditCaption,
   onEditTranscript,
+  onEditNote,
   onOpenCapture,
   onRenameCapture,
   onResolveFile,
@@ -769,6 +850,7 @@ function LiveDraftCaptureItem({
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate: AssignmentCandidate | null;
   isPro: boolean;
+  offline?: boolean;
   item: CaptureItem;
   menuOpen: boolean;
   onApplyReassignment?: (draft: PatientAssignmentDraft) => Promise<void>;
@@ -778,6 +860,7 @@ function LiveDraftCaptureItem({
   onDeleteCapture?: () => Promise<void>;
   onEditCaption?: (text: string) => Promise<void>;
   onEditTranscript?: (text: string) => Promise<void>;
+  onEditNote?: (text: string) => Promise<void>;
   onOpenCapture: () => void;
   onRenameCapture?: (title: string) => Promise<void>;
   onResolveFile: (endpoint: string) => Promise<string>;
@@ -795,6 +878,8 @@ function LiveDraftCaptureItem({
     isPro && item.status !== "processed" && item.status !== "ready" && item.status !== "needsReview";
   const fallbackText = draftCaptureText(item);
   const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
+  // Basic note text: the staff-edited note, else the raw typed note. (No AI "decoration".)
+  const noteBasicText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
   const textAttribution = captureTextAttribution(item);
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
@@ -859,7 +944,7 @@ function LiveDraftCaptureItem({
               </span>
               <time>{item.time}</time>
             </div>
-            <CaptureInlineStatus status={item.status} />
+            <CaptureInlineStatus status={item.status} isPro={isPro} offline={offline} />
             <CapturePatientBadges
               activePatientAction={activePatientAction}
               alternateCandidate={alternateCandidate}
@@ -894,58 +979,145 @@ function LiveDraftCaptureItem({
           ) : null}
         </header>
         {isAudio ? (
-          <>
-            <div className="live-draft-audio-player">
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </div>
-            <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
-              {generatedText ? (
-                <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
-              ) : (
-                <>
-                  <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
-                  <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
-                </>
-              )}
-            </section>
-          </>
-        ) : null}
-        {isPhoto ? (
-          <div className="live-draft-photo-row">
-            <div className="live-draft-photo-thumb">
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </div>
-            <div className="live-draft-photo-copy">
-              <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
+          isPro ? (
+            <>
+              <div className="live-draft-audio-player">
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </div>
+              <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
                 {generatedText ? (
-                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
-                ) : captionStillProcessing ? (
-                  <>
-                    <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
-                    <CaptureWorkingPlaceholder label="Reading image" />
-                  </>
+                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
                 ) : (
-                  // Processed with no AI caption (Basic, or captioning unavailable) → manual add.
-                  <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
+                  <>
+                    <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
+                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                  </>
                 )}
               </section>
+            </>
+          ) : (
+            // Basic: audio is a voice memo — compact custom player, no transcript, no AI job. Sync
+            // state is shown by the inline status only when there's a problem. (AES-101/802)
+            <VoiceMemoPlayer item={item} onResolveFile={onResolveFile} />
+          )
+        ) : null}
+        {isPhoto ? (
+          isPro ? (
+            <div className="live-draft-photo-row">
+              <div className="live-draft-photo-thumb">
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </div>
+              <div className="live-draft-photo-copy">
+                <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
+                  {generatedText ? (
+                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
+                  ) : captionStillProcessing ? (
+                    <>
+                      <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
+                      <CaptureWorkingPlaceholder label="Reading image" />
+                    </>
+                  ) : (
+                    <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
+                  )}
+                </section>
+              </div>
             </div>
-          </div>
+          ) : (
+            // Basic: the photo is filed to the patient and shown whole — no tagging, no AI caption.
+            // (AES-103); the upsell is the single consolidated Try Pro at the foot of the feed.
+            <div className="live-draft-photo-basic">
+              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+            </div>
+          )
         ) : null}
         {!isPhoto && !isAudio ? (
-          <>
-            <section className="capture-generated-section ready">
-              <h4>Decorated text</h4>
-              <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
-            </section>
-            <details className="capture-raw-note">
-              <summary>Raw note</summary>
-              <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-            </details>
-          </>
+          isPro ? (
+            <>
+              <section className="capture-generated-section ready">
+                <h4>Decorated text</h4>
+                <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
+              </section>
+              <details className="capture-raw-note">
+                <summary>Raw note</summary>
+                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
+              </details>
+            </>
+          ) : (
+            // Basic: a note is just the doctor's words — tap the text to edit it inline. (AES-101)
+            <BasicNoteEditor text={noteBasicText} onSave={onEditNote} />
+          )
         ) : null}
       </div>
     </article>
+  );
+}
+
+/**
+ * AES-101 — a Basic note: tap the text to edit it inline (no Edit button), blur to save. The note
+ * is the doctor's own words — no AI "decoration", no transcript.
+ */
+function BasicNoteEditor({ text, onSave }: { text: string; onSave?: (text: string) => Promise<void> }) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(text);
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!editing) setDraft(text);
+  }, [text, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (!onSave || !next || next === text.trim()) return;
+    setSaving(true);
+    void onSave(next).finally(() => setSaving(false));
+  };
+
+  if (editing) {
+    return (
+      <textarea
+        autoFocus
+        className="basic-note-input"
+        dir={textDirection(draft)}
+        disabled={saving}
+        onBlur={commit}
+        onChange={(event) => setDraft(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        rows={Math.min(8, Math.max(2, Math.ceil((draft.length || 1) / 42)))}
+        value={draft}
+      />
+    );
+  }
+
+  const empty = !text.trim();
+  return (
+    <p
+      className={`basic-note-text${onSave ? " editable" : ""}${empty ? " empty" : ""}`}
+      dir={textDirection(text || "")}
+      onClick={
+        onSave
+          ? (event) => {
+              event.stopPropagation();
+              setEditing(true);
+            }
+          : undefined
+      }
+      onKeyDown={
+        onSave
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                event.stopPropagation();
+                setEditing(true);
+              }
+            }
+          : undefined
+      }
+      role={onSave ? "button" : undefined}
+      tabIndex={onSave ? 0 : undefined}
+    >
+      {text.trim() || (onSave ? "Tap to add a note" : "—")}
+    </p>
   );
 }
 
@@ -1210,24 +1382,20 @@ function AiCreatedPatientPanel({
   );
 }
 
-function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
-  if (status === "saved" || status === "syncing") {
+function CaptureInlineStatus({ status, isPro = true, offline = false }: { status?: CaptureItem["status"]; isPro?: boolean; offline?: boolean }) {
+  // When connected and healthy, a capture shows no status — it just syncs. The only sync indicator
+  // appears when we're offline / the backend is unreachable and this capture isn't synced yet.
+  const notSynced = captureNotSynced(status);
+  if (offline && notSynced) {
     return (
-      <span className="capture-inline-status active syncing">
-        <span aria-hidden="true" />
-        Syncing
+      <span className="capture-inline-status syncing-offline">
+        <SyncIcon />
+        Trying to sync
       </span>
     );
   }
-  if (status === "uploading") {
-    return (
-      <span className="capture-inline-status active syncing">
-        <span aria-hidden="true" />
-        Uploading
-      </span>
-    );
-  }
-  if (status === "uploaded" || status === "processing") {
+  // Pro AI states (online only) keep their markers.
+  if (isPro && (status === "uploaded" || status === "processing")) {
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
@@ -1235,8 +1403,7 @@ function CaptureInlineStatus({ status }: { status?: CaptureItem["status"] }) {
       </span>
     );
   }
-  if (status === "failed") return <span className="capture-inline-status issue">Needs attention</span>;
-  if (status === "needsReview") return <span className="capture-inline-status issue">Needs attention</span>;
+  if (isPro && (status === "failed" || status === "needsReview")) return <span className="capture-inline-status issue">Needs attention</span>;
   return null;
 }
 
@@ -1519,6 +1686,13 @@ function BasicLiveReport({
           <p className="report-doc-status">Captures will appear here, in order, as the session develops.</p>
         )}
       </section>
+      {items.length ? (
+        <TryProTeaser
+          className="report-teaser"
+          title="Try Pro — turn your notes into a structured treatment report"
+          subtitle="Visit summary, assessment, and a Treatment-performed table extracted from your words — no form-filling."
+        />
+      ) : null}
     </div>
   );
 }
@@ -1677,6 +1851,11 @@ function draftCaptureText(item: CaptureItem) {
 
 function generatedTextForReport(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
+  // A staff-edited Basic note wins for notes (it's the doctor's own words, no AI involved).
+  if (item.type === "note") {
+    const editedNote = metadataText(metadataRecord(metadata.note).text);
+    if (editedNote) return editedNote;
+  }
   const generated =
     item.type === "audio" || item.type === "voice"
       ? metadata.transcript
@@ -1780,6 +1959,37 @@ function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boole
   const title = (session?.report?.title || session?.label || "").trim();
   if (title && session && !isLocalSessionId(session.id)) return title;
   return "Current session";
+}
+
+const ORDINAL_WORDS = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+function ordinalWord(n: number) {
+  if (!n || n <= 0) return "";
+  return ORDINAL_WORDS[n] || `${n}th`;
+}
+
+/** Basic light-header title: "{patient}'s {Nth} session" when assigned, else the session date+time. */
+function lightSessionTitle(session: CaptureSession | null, ordinal: number | null) {
+  if (!session) return "New session";
+  if (session.patientName || session.patientId) {
+    const name = session.patientName || "Patient";
+    const word = ordinal ? ordinalWord(ordinal) : "";
+    return word ? `${name}'s ${word} session` : `${name}'s session`;
+  }
+  return sessionDateTimeLabel(session.capturedAt || session.createdAt, session.time) || "New session";
+}
+
+/** A capture not yet confirmed on the backend (queued, in-flight, or failed). */
+function captureNotSynced(status?: CaptureItem["status"]) {
+  return status === "saved" || status === "syncing" || status === "uploading" || status === "failed";
+}
+
+function SyncIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M20 11a8 8 0 0 0-14.4-4.3M4 13a8 8 0 0 0 14.4 4.3" />
+      <path d="M20 4.5V9h-4.5M4 19.5V15h4.5" />
+    </svg>
+  );
 }
 
 function sessionPatientName(session: CaptureSession | null) {

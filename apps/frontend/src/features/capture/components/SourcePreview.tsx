@@ -99,12 +99,15 @@ export function CaptureRawPreview({
  */
 export function SourcePreviewDialog({
   item,
+  isPro = true,
   onClose,
   onResolveFile,
   onUpdateCaption,
   onUpdateTranscript,
 }: {
   item: CaptureItem | null;
+  /** Basic is zero-AI: no "AI-generated"/transcript framing, no technical processing metadata. */
+  isPro?: boolean;
   onClose: () => void;
   onResolveFile: (endpoint: string) => Promise<string>;
   onUpdateCaption?: (captureId: string, caption: string) => Promise<CaptureItem | null>;
@@ -205,6 +208,7 @@ export function SourcePreviewDialog({
         closeButtonRef={closeButtonRef}
         generated={generated}
         generatedText={generatedText}
+        isPro={isPro}
         item={item}
         noteText={noteText}
         onClose={onClose}
@@ -217,31 +221,42 @@ export function SourcePreviewDialog({
     );
   }
 
+  // Basic note: the doctor's own words — no file name, no processing/status, no metadata table.
+  const basicNoteText = noteText || item.detail || "";
   return (
     <Dialog onClose={onClose} open title={item.title}>
       <div className="source-viewer">
         {previewError ? <div className="alert alert-red">{previewError}</div> : null}
         {item.type === "note" ? (
           <Card className="source-note">
-            <p>{generatedText || noteText || item.detail}</p>
+            <p dir={noteDirection(generatedText || basicNoteText)}>{generatedText || basicNoteText}</p>
           </Card>
         ) : null}
-        <div className="source-info-panel">
-          <div className="source-info-header">
-            <small>{item.time} · File: {sourceName}</small>
-            <StatusBadge status={item.status} />
+        {isPro ? (
+          <div className="source-info-panel">
+            <div className="source-info-header">
+              <small>{item.time} · File: {sourceName}</small>
+              <StatusBadge status={item.status} />
+            </div>
+            <CaptureMetadataSummary item={item} />
           </div>
-          <CaptureMetadataSummary item={item} />
-        </div>
+        ) : null}
       </div>
     </Dialog>
   );
+}
+
+function noteDirection(text: string): "rtl" | "ltr" {
+  const rtl = (text.match(/[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/g) || []).length;
+  const ltr = (text.match(/[A-Za-z]/g) || []).length;
+  return rtl > ltr ? "rtl" : "ltr";
 }
 
 function CaptureDetailSheet({
   closeButtonRef,
   generated,
   generatedText,
+  isPro,
   item,
   noteText,
   onClose,
@@ -254,6 +269,7 @@ function CaptureDetailSheet({
   closeButtonRef: React.RefObject<HTMLButtonElement | null>;
   generated: Record<string, unknown>;
   generatedText: string;
+  isPro: boolean;
   item: CaptureItem;
   noteText: string;
   onClose: () => void;
@@ -267,7 +283,9 @@ function CaptureDetailSheet({
   const generatedSource = generatedSourceFor(item);
   const isStaffEdited = generatedSource.source === "staff_edit";
   const editorName = generatedSource.editorName;
-  const text = captureGeneratedText(item, generated, generatedText, noteText);
+  // Basic is zero-AI: photo caption starts as the real caption only (no fake placeholder text),
+  // and audio has no transcript at all (it's a voice memo).
+  const text = isPro ? captureGeneratedText(item, generated, generatedText, noteText) : isAudio ? "" : item.caption || generatedText || "";
   const [textDraft, setTextDraft] = React.useState(text);
   const [savingText, setSavingText] = React.useState(false);
   const [textError, setTextError] = React.useState("");
@@ -347,55 +365,59 @@ function CaptureDetailSheet({
 
         <dl className="capture-detail-metadata">
           <DetailRow icon={<CalendarIcon />} label="Captured" value={captured} />
-          <DetailRow icon={<FileIcon />} label="File name" value={fileName} />
-          <DetailRow icon={isAudio ? <BadgeCheckIcon /> : <CheckCircleIcon />} label="Status" value={<span className="detail-status-pill">{status}</span>} />
+          {isPro ? <DetailRow icon={<FileIcon />} label="File name" value={fileName} /> : null}
+          {isPro ? <DetailRow icon={isAudio ? <BadgeCheckIcon /> : <CheckCircleIcon />} label="Status" value={<span className="detail-status-pill">{status}</span>} /> : null}
           {isAudio ? <DetailRow icon={<ClockIcon />} label="Duration" value={duration} /> : null}
         </dl>
 
         {isAudio ? (
-          <div className="capture-text-editor-card audio-transcript">
-            <div className="capture-editor-heading">
-              <label htmlFor="capture-transcript-editor">{isStaffEdited ? "Transcript" : "AI transcript"}</label>
-              <button
-                aria-label="Copy transcript"
-                className={`capture-transcript-copy ${copyState}`}
-                disabled={!textDraft.trim()}
-                onClick={copyText}
-                type="button"
-              >
-                <ClipboardIcon />
-                {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
-              </button>
+          // Basic audio is a voice memo — no transcript section (Pro only).
+          isPro ? (
+            <div className="capture-text-editor-card audio-transcript">
+              <div className="capture-editor-heading">
+                <label htmlFor="capture-transcript-editor">{isStaffEdited ? "Transcript" : "AI transcript"}</label>
+                <button
+                  aria-label="Copy transcript"
+                  className={`capture-transcript-copy ${copyState}`}
+                  disabled={!textDraft.trim()}
+                  onClick={copyText}
+                  type="button"
+                >
+                  <ClipboardIcon />
+                  {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
+                </button>
+              </div>
+              <textarea
+                disabled={!canUpdateText || savingText}
+                id="capture-transcript-editor"
+                onBlur={saveText}
+                onChange={(event) => setTextDraft(event.target.value)}
+                rows={8}
+                value={textDraft}
+              />
+              <div className="capture-editor-save-row">
+                <span>{savingText ? "Saving transcript..." : textError || editAttributionText(editorName, "Transcript") || "Edits save when you leave the field."}</span>
+                <button disabled={!canUpdateText || savingText || !textDraft.trim() || textDraft.trim() === text} onClick={saveText} type="button">
+                  Save
+                </button>
+              </div>
             </div>
-            <textarea
-              disabled={!canUpdateText || savingText}
-              id="capture-transcript-editor"
-              onBlur={saveText}
-              onChange={(event) => setTextDraft(event.target.value)}
-              rows={8}
-              value={textDraft}
-            />
-            <div className="capture-editor-save-row">
-              <span>{savingText ? "Saving transcript..." : textError || editAttributionText(editorName, "Transcript") || "Edits save when you leave the field."}</span>
-              <button disabled={!canUpdateText || savingText || !textDraft.trim() || textDraft.trim() === text} onClick={saveText} type="button">
-                Save
-              </button>
-            </div>
-          </div>
+          ) : null
         ) : (
           <div className="capture-text-editor-card">
-            <label htmlFor="capture-caption-editor">{isStaffEdited ? "Caption" : "AI-generated caption"}</label>
+            <label htmlFor="capture-caption-editor">{isPro ? (isStaffEdited ? "Caption" : "AI-generated caption") : "Caption"}</label>
             <textarea
               disabled={!canUpdateText || savingText}
               id="capture-caption-editor"
               onBlur={saveText}
               onChange={(event) => setTextDraft(event.target.value)}
+              placeholder={isPro ? undefined : "Add a caption (optional)"}
               rows={4}
               value={textDraft}
             />
             <div className="capture-editor-save-row">
-              <span>{savingText ? "Saving caption..." : textError || editAttributionText(editorName, "Caption") || "Edits save when you leave the field."}</span>
-              <button disabled={!canUpdateText || savingText || !textDraft.trim() || textDraft.trim() === text} onClick={saveText} type="button">
+              <span>{savingText ? "Saving caption..." : textError || (isPro ? editAttributionText(editorName, "Caption") : "") || "Edits save when you leave the field."}</span>
+              <button disabled={!canUpdateText || savingText || textDraft.trim() === text.trim()} onClick={saveText} type="button">
                 Save
               </button>
             </div>

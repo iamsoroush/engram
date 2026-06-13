@@ -7,20 +7,24 @@ export function TextCaptureSheet({
   open,
   onClose,
   onSave,
+  initialValue = "",
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
+  /** AES-106 "same as last time": seed the note from the prior visit's typed note (editable). */
+  initialValue?: string;
 }) {
   const [value, setValue] = React.useState("");
 
   React.useEffect(() => {
-    if (open) setValue("");
-  }, [open]);
+    if (open) setValue(initialValue);
+  }, [open, initialValue]);
 
   return (
     <Sheet leading={<NoteLeadingIcon />} onClose={onClose} open={open} title="Write note">
       <div className="sheet-stack">
+        {initialValue ? <p className="note-prefill-hint">Pre-filled from last visit — edit before saving.</p> : null}
         <Textarea
           autoFocus
           onChange={(event) => setValue(event.target.value)}
@@ -87,15 +91,19 @@ export function AddPhotoSheet({
   open,
   onClose,
   onSave,
+  ghostPhotoUrl = "",
 }: {
   open: boolean;
   onClose: () => void;
   onSave: (draft: CaptureDraft, intoNew?: boolean) => Promise<void>;
+  /** AES-105 — a prior photo to faintly overlay as an alignment aid (no Before/After taxonomy, no AI). */
+  ghostPhotoUrl?: string;
 }) {
   const [file, setFile] = React.useState<File | null>(null);
   const [error, setError] = React.useState("");
   const [previewUrl, setPreviewUrl] = React.useState("");
   const [source, setSource] = React.useState<PhotoSource | null>(null);
+  const [ghostOn, setGhostOn] = React.useState(false);
   const cameraInputId = React.useId();
   const libraryInputId = React.useId();
   const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -116,6 +124,7 @@ export function AddPhotoSheet({
     setError("");
     setFile(null);
     setSource(null);
+    setGhostOn(false);
   }, [open]);
 
   const makePhotoDraft = (selectedFile: File): CaptureDraft => ({
@@ -203,9 +212,21 @@ export function AddPhotoSheet({
           ref={libraryInputRef}
           type="file"
         />
+        {ghostPhotoUrl ? (
+          <button
+            aria-pressed={ghostOn}
+            className={`add-photo-ghost-toggle${ghostOn ? " active" : ""}`}
+            onClick={() => setGhostOn((value) => !value)}
+            type="button"
+          >
+            <span aria-hidden="true">⊕</span>
+            {ghostOn ? "Aligning to last photo" : "Align to last photo"}
+          </button>
+        ) : null}
         {previewUrl ? (
           <div className="add-photo-preview">
             <img alt="Selected capture" className="photo-image-preview" src={previewUrl} />
+            {ghostPhotoUrl && ghostOn ? <img alt="" aria-hidden="true" className="add-photo-ghost-overlay" src={ghostPhotoUrl} /> : null}
             <button
               aria-label="Remove selected photo"
               className="add-photo-remove"
@@ -221,6 +242,9 @@ export function AddPhotoSheet({
           </div>
         ) : (
           <div className="add-photo-empty">
+            {ghostPhotoUrl && ghostOn ? (
+              <img alt="" aria-hidden="true" className="add-photo-ghost-overlay" src={ghostPhotoUrl} />
+            ) : null}
             <span className="add-photo-empty-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
                 <path d="M12 16V7M8.5 10.5 12 7l3.5 3.5M5 19h14" />
@@ -228,7 +252,7 @@ export function AddPhotoSheet({
             </span>
             <span className="add-photo-empty-copy">
               <strong>No photo yet</strong>
-              <small>Take a new photo or pick one from your device.</small>
+              <small>{ghostPhotoUrl ? "Line the new shot up with the faint previous photo." : "Take a new photo or pick one from your device."}</small>
             </span>
           </div>
         )}

@@ -4,6 +4,7 @@ import type {
   ApiFetch,
   AuthSession,
   CaptureDraft,
+  LastVisitInfo,
   PatientAssignmentDraft,
   PatientMemoryFilter,
   PatientMemoryListResponse,
@@ -17,10 +18,20 @@ import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import {
   assignSessionPatient,
   unassignSessionPatient,
+  checkDuplicatePatient,
+  createAftercareTemplate,
   createPatient,
+  createPatientShare,
+  deleteAftercareTemplate,
   deleteCapture,
   fetchAiModels,
+  fetchAssignmentSuggestion,
+  fetchLastVisit,
   getPatient,
+  listAftercareTemplates,
+  revokePatientShare,
+  searchPatientsSmart,
+  updateAftercareTemplate,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
   fetchSession,
@@ -36,6 +47,7 @@ import {
   searchPatients,
   storeBackendMappings,
   updateCaptureCaption,
+  updateCaptureNote,
   updateCaptureTitle,
   updateCaptureTranscript,
   updatePatient,
@@ -117,8 +129,12 @@ export function App() {
   const [backendReachable, setBackendReachable] = React.useState<boolean | null>(null);
   const [syncError, setSyncError] = React.useState("");
   const [textOpen, setTextOpen] = React.useState(false);
+  const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [audioOpen, setAudioOpen] = React.useState(false);
+  // AES-106 — the active patient's prior visit (note + photos), surfaced at capture in Basic.
+  const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
+  const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
@@ -495,6 +511,44 @@ export function App() {
     return () => window.clearTimeout(refreshTimer);
   }, [activeSession, refreshVisibleSession]);
 
+  // AES-106 — for a Basic returning patient, fetch the prior visit (note + photos) so the capture
+  // strip can surface "last visit · same as last time", and resolve the first photo as a ghost
+  // overlay (AES-105) for the next shot. Deterministic retrieval — no AI.
+  const patientId = activeSession?.patientId;
+  const activeSessionId = activeSession?.id;
+  React.useEffect(() => {
+    if (auth?.tenant.tier !== "basic" || !patientId || isLocalAssignmentPatient(patientId)) {
+      setLastVisit(null);
+      setGhostPhotoUrl("");
+      return;
+    }
+    let cancelled = false;
+    void fetchLastVisit(apiFetch, patientId, activeSessionId && !isLocalSessionId(activeSessionId) ? activeSessionId : undefined)
+      .then((info) => {
+        if (cancelled) return;
+        setLastVisit(info);
+        const ghostEndpoint = info.visit?.media?.[0]?.contentEndpoint || info.visit?.media?.[0]?.fileEndpoint;
+        if (ghostEndpoint) {
+          void resolveCaptureFileUrl(apiFetch, ghostEndpoint)
+            .then((url) => {
+              if (!cancelled) setGhostPhotoUrl(url);
+            })
+            .catch(() => undefined);
+        } else {
+          setGhostPhotoUrl("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLastVisit(null);
+          setGhostPhotoUrl("");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, auth?.tenant.tier, patientId, activeSessionId]);
+
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
       PROCESSING_REFRESH_DELAYS.forEach((delay) => {
@@ -744,6 +798,13 @@ export function App() {
     if (kind === "note") setTextOpen(true);
     if (kind === "photo") setPhotoOpen(true);
     if (kind === "audio") setAudioOpen(true);
+  };
+
+  // AES-106 "same as last time": seed an editable note from the prior visit's typed note (never
+  // auto-saved — the doctor confirms with an edit/save).
+  const composeNoteFromText = (text: string) => {
+    setTextSeed(text);
+    setTextOpen(true);
   };
 
   const beginCapture = (kind: CaptureDraft["kind"]) => {
@@ -1331,6 +1392,57 @@ export function App() {
 
   const resolveSourceFile = React.useCallback((endpoint: string) => resolveCaptureFileUrl(apiFetch, endpoint), [apiFetch]);
 
+  // Stable callbacks for the aesthetics-Basic surfaces. These feed child effects (smart search,
+  // gallery, share sheet, resolvers), so they MUST be memoized — an inline `() => fn(apiFetch, …)`
+  // is a new reference every render and would re-fire those effects (the "refreshing every few
+  // seconds" symptom). apiFetch is itself stable.
+  const getPatientMemoryDetail = React.useCallback((patientId: string) => fetchPatientMemoryDetail(apiFetch, patientId), [apiFetch]);
+  const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
+  const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
+  const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
+  const loadLastVisitForPatient = React.useCallback((patientId: string) => fetchLastVisit(apiFetch, patientId), [apiFetch]);
+  const listAftercare = React.useCallback(() => listAftercareTemplates(apiFetch), [apiFetch]);
+  const createShare = React.useCallback((input: Parameters<typeof createPatientShare>[1]) => createPatientShare(apiFetch, input), [apiFetch]);
+  const revokeShare = React.useCallback((id: string) => revokePatientShare(apiFetch, id), [apiFetch]);
+  const loadAssignmentSuggestion = React.useCallback((sessionId: string) => fetchAssignmentSuggestion(apiFetch, sessionId), [apiFetch]);
+  const createAftercare = React.useCallback((draft: Parameters<typeof createAftercareTemplate>[1]) => createAftercareTemplate(apiFetch, draft), [apiFetch]);
+  const updateAftercare = React.useCallback((id: string, draft: Parameters<typeof updateAftercareTemplate>[2]) => updateAftercareTemplate(apiFetch, id, draft), [apiFetch]);
+  const deleteAftercare = React.useCallback((id: string) => deleteAftercareTemplate(apiFetch, id), [apiFetch]);
+
+  // AES-101 — edit a (Basic) note's text inline. Persisted as a staff-edited note metadata field so
+  // it survives reloads; local (unsynced) notes update their pending capture in place.
+  const editCaptureNote = React.useCallback(
+    async (sessionId: string, captureId: string, text: string) => {
+      const editedAt = new Date().toISOString();
+      const editorName = authRef.current?.user.displayName || authRef.current?.user.email || "You";
+      const applyItem = (item: CaptureItem): CaptureItem =>
+        item.id === captureId
+          ? {
+              ...item,
+              detail: text,
+              metadata: { ...(item.metadata || {}), note: { text, source: "staff_edit", edited_at: editedAt, edited_by_name: editorName } },
+            }
+          : item;
+      const applySession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? { ...session, items: session.items.map(applyItem) } : session;
+      if (captureId.startsWith("local-capture-")) {
+        setSessions((current) => current.map(applySession));
+        setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
+        await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
+        setToast("Note updated.");
+        return;
+      }
+      const updated = await updateCaptureNote(apiFetch, captureId, text);
+      const merge = (item: CaptureItem): CaptureItem => (item.id === captureId ? { ...item, ...updated, detail: text } : item);
+      const mergeSession = (session: CaptureSession): CaptureSession =>
+        session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
+      setSessions((current) => current.map(mergeSession));
+      setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
+      setToast("Note updated.");
+    },
+    [apiFetch],
+  );
+
   const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
     setAuthError("");
     try {
@@ -1402,6 +1514,10 @@ export function App() {
     syncing,
     lastError: syncError || undefined,
   };
+  // Offline = no connection OR the backend is known-unreachable. Used to gate the only sync
+  // indicators we show (header + per-capture "Trying to sync"); everything else stays badge-free.
+  const offline = !online || backendReachable === false;
+  const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
   const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
     setClinicalMemoryReturnContext(returnContext || null);
@@ -1476,6 +1592,10 @@ export function App() {
           onUpdateSettings={handleUpdateTenantSettings}
           onListAiModels={() => fetchAiModels(apiFetch)}
           onUpdateAiModels={(models) => updateAiModels(apiFetch, models)}
+          onListAftercareTemplates={listAftercare}
+          onCreateAftercareTemplate={createAftercare}
+          onUpdateAftercareTemplate={updateAftercare}
+          onDeleteAftercareTemplate={deleteAftercare}
         />
       );
     }
@@ -1517,9 +1637,11 @@ export function App() {
           onRenameCapture={renameCapture}
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
+          onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
+          offline={offline}
         />
       );
     }
@@ -1554,9 +1676,15 @@ export function App() {
           onRenameCapture={renameCapture}
           onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
           onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
+          onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           tier={auth?.tenant.tier}
+          lastVisit={lastVisit}
+          onOpenVisit={(sessionId) => openMemorySession(sessionId)}
+          onUseAsNote={composeNoteFromText}
+          offline={offline}
+          sessionOrdinal={activeSessionOrdinal}
         />
       );
     }
@@ -1573,12 +1701,21 @@ export function App() {
         onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
-        onGetPatientMemory={(patientId) => fetchPatientMemoryDetail(apiFetch, patientId)}
+        onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
         onCreatePatient={createNewPatient}
         onExportCaptures={exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
+        onSmartSearch={smartSearchPatients}
+        onDuplicateCheck={duplicateCheckPatient}
+        onLoadSessionCaptures={loadSessionCaptures}
+        onResolveFile={resolveSourceFile}
+        onLoadLastVisit={loadLastVisitForPatient}
+        onListAftercareTemplates={listAftercare}
+        onCreateShare={createShare}
+        onRevokeShare={revokeShare}
+        onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
         syncHealth={syncHealth}
         tier={auth?.tenant.tier}
@@ -1638,14 +1775,20 @@ export function App() {
         {renderCurrentScreen()}
       </Shell>
       <TextCaptureSheet
-        onClose={() => setTextOpen(false)}
+        initialValue={textSeed}
+        onClose={() => {
+          setTextOpen(false);
+          setTextSeed("");
+        }}
         onSave={async (draft, intoNew) => {
           await saveDraft(draft, intoNew);
           setTextOpen(false);
+          setTextSeed("");
         }}
         open={textOpen}
       />
       <AddPhotoSheet
+        ghostPhotoUrl={ghostPhotoUrl}
         onClose={() => {
           setPhotoOpen(false);
         }}
@@ -1688,4 +1831,24 @@ function captureContextLabel(session: CaptureSession | null) {
 
 function createClientSideId() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * This session's 1-based chronological rank among its patient's sessions (so the capture header can
+ * read "Sara's third session"). Best-effort from the loaded sessions; null when unassigned.
+ */
+function computeSessionOrdinal(session: CaptureSession | null, sessions: CaptureSession[]): number | null {
+  if (!session || (!session.patientId && !session.patientName)) return null;
+  const matches = sessions.filter((candidate) =>
+    session.patientId ? candidate.patientId === session.patientId : Boolean(session.patientName) && candidate.patientName === session.patientName,
+  );
+  const pool = matches.some((candidate) => candidate.id === session.id) ? matches : [...matches, session];
+  const timeOf = (candidate: CaptureSession) => {
+    const value = candidate.capturedAt || candidate.createdAt || candidate.updatedAt;
+    const ms = value ? new Date(value).getTime() : NaN;
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+  const sorted = [...pool].sort((left, right) => timeOf(left) - timeOf(right));
+  const index = sorted.findIndex((candidate) => candidate.id === session.id);
+  return index >= 0 ? index + 1 : sorted.length;
 }

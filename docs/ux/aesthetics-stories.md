@@ -15,6 +15,11 @@
 > Traceability: each epic cites the agreed [foundation §3](redesign-foundation.md) Basic/Pro item it
 > details. **Build order:** aesthetics-**Basic** first ([foundation §6](redesign-foundation.md)) — the
 > `Basic` + `Both` stories are P1; `Pro` stories follow.
+>
+> **Status:** the `Basic` / `Both` stories' **frontend** is implemented on `build/aes-frontend`
+> (against the deterministic backend in [`../backend/aes-basic-api.md`](../backend/aes-basic-api.md)).
+> As-built notes + the manual test script: [redesign-aesthetics.md](redesign-aesthetics.md) header and
+> [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md). `Pro` stories remain unbuilt.
 
 Legend in each story line: **`〔Tier · Persona · Build〕`**.
 

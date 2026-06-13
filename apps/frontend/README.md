@@ -83,7 +83,15 @@ npm run preview
 
 - `src/app`: root app orchestration, navigation, and session state helpers.
 - `src/domain`: shared frontend types and UX status mapping.
-- `src/features`: auth, capture, memory, and shell feature modules.
+- `src/features`: auth, capture, memory, patient, account, shell, and `aesthetics` feature modules.
+  - `src/features/aesthetics`: the aesthetics-**Basic** surfaces (tier-gated, zero-AI) — the
+    last-visit / "same as last time" strip + ghost-overlay (AES-106/105), per-patient photo gallery
+    (AES-202), smart search (AES-204), duplicate-patient guard register form (AES-205/601),
+    deterministic assign-later suggestion (AES-301/603), curate-&-share sheet (AES-303/304/403),
+    aftercare-template settings (AES-702), the voice-memo player, and the consolidated "Try Pro"
+    teaser. These are presentational; API orchestration is threaded from `src/app`. See
+    [`../../docs/ux/redesign-aesthetics.md`](../../docs/ux/redesign-aesthetics.md) and the manual test
+    script [`../../docs/qa/aes-frontend-scenarios.md`](../../docs/qa/aes-frontend-scenarios.md).
 - `src/services`: API client/normalizers and browser storage adapters.
 - `src/shared`: reusable UI primitives and small environment helpers.
 

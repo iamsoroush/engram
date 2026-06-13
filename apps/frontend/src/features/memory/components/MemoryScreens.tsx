@@ -1,6 +1,12 @@
 import React from "react";
 import type {
+  AftercareTemplate,
+  AssignmentSuggestionResponse,
   CaptureDraft,
+  CreatePatientShareInput,
+  DuplicateCandidate,
+  DuplicateCheckResponse,
+  LastVisitInfo,
   PatientAssignmentDraft,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
@@ -8,13 +14,20 @@ import type {
   PatientMemoryListResponse,
   PatientMemoryTimelineSession,
   PatientMemoryRow as ApiPatientMemoryRow,
+  PatientShare,
   PatientSummary,
+  SmartPatientMatch,
+  SmartPatientSearchResponse,
   SyncHealth,
 } from "../../../domain/appTypes";
-import type { CaptureItemType, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
+import type { CaptureItem, CaptureItemType, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
+import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
+import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
+import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
+import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { SessionStatusBadge } from "../../capture/components/StatusBadges";
 
 const PATIENT_PAGE_SIZE = 25;
@@ -36,6 +49,15 @@ export function PatientsHome({
   onConfirmSummary,
   onAssignPatient,
   onExportCaptures,
+  onSmartSearch,
+  onDuplicateCheck,
+  onLoadSessionCaptures,
+  onResolveFile,
+  onLoadLastVisit,
+  onListAftercareTemplates,
+  onCreateShare,
+  onRevokeShare,
+  onLoadAssignmentSuggestion,
   tier,
   memoryRefreshSignal = 0,
 }: {
@@ -58,6 +80,16 @@ export function PatientsHome({
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
+  // Aesthetics-Basic deterministic services
+  onSmartSearch?: (query: string) => Promise<SmartPatientSearchResponse>;
+  onDuplicateCheck?: (body: { displayName?: string; nationalId?: string; phone?: string }) => Promise<DuplicateCheckResponse>;
+  onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+  onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
+  onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
+  onCreateShare?: (input: CreatePatientShareInput) => Promise<PatientShare>;
+  onRevokeShare?: (id: string) => Promise<PatientShare>;
+  onLoadAssignmentSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
@@ -69,6 +101,12 @@ export function PatientsHome({
   const [patientLoadingMore, setPatientLoadingMore] = React.useState(false);
   const [patientListVersion, setPatientListVersion] = React.useState(0);
   const [creatingPatient, setCreatingPatient] = React.useState(false);
+  // AES-204 — deterministic, Persian-aware smart search (shown while there is a query).
+  const [smartResults, setSmartResults] = React.useState<SmartPatientMatch[] | null>(null);
+  const [smartSearching, setSmartSearching] = React.useState(false);
+  // AES-303 — the patient whose curated share sheet is open (carrying their recent visits so the
+  // sheet can build a real before/after photo pool to curate from).
+  const [sharePatient, setSharePatient] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
@@ -155,6 +193,33 @@ export function PatientsHome({
     };
   }, [activeTab, onListPatientMemory, patientListVersion, memoryRefreshSignal]);
 
+  // AES-204 — run the deterministic smart search whenever the Patients tab has a query.
+  React.useEffect(() => {
+    if (activeTab !== "patients" || !onSmartSearch || !query.trim()) {
+      setSmartResults(null);
+      setSmartSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSmartSearching(true);
+    const timer = window.setTimeout(() => {
+      void onSmartSearch(query.trim())
+        .then((response) => {
+          if (!cancelled) setSmartResults(response.items);
+        })
+        .catch(() => {
+          if (!cancelled) setSmartResults(null);
+        })
+        .finally(() => {
+          if (!cancelled) setSmartSearching(false);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeTab, onSmartSearch, query]);
+
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
     setPatientLoadingMore(true);
@@ -216,7 +281,15 @@ export function PatientsHome({
     ? sessions.find((session) => session.id === summaryReviewSessionId) || (activeSession?.id === summaryReviewSessionId ? activeSession : null)
     : null;
   const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
-  const selectedPatient = selectedPatientId ? patientRows.find((patient) => patient.id === selectedPatientId) : null;
+  // Resolve a selected patient from the loaded rows, or synthesize one from a smart-search match
+  // (so opening a result that is not on the current page still loads the detail by id).
+  const selectedPatient = selectedPatientId
+    ? patientRows.find((patient) => patient.id === selectedPatientId) ||
+      (() => {
+        const match = smartResults?.find((result) => result.id === selectedPatientId);
+        return match ? patientRowFromSmartMatch(match) : undefined;
+      })()
+    : null;
   const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
 
   // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
@@ -333,6 +406,20 @@ export function PatientsHome({
         />
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
+      {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile && onLoadSessionCaptures ? (
+        <SharePatientSheet
+          patientId={sharePatient.id}
+          patientName={sharePatient.name}
+          visits={sharePatient.visits}
+          onLoadLastVisit={onLoadLastVisit}
+          onLoadSessionCaptures={onLoadSessionCaptures}
+          onListAftercareTemplates={onListAftercareTemplates}
+          onResolveFile={onResolveFile}
+          onCreateShare={onCreateShare}
+          onRevokeShare={onRevokeShare}
+          onClose={() => setSharePatient(null)}
+        />
+      ) : null}
       {assignmentSession && onAssignPatient ? (
         decisionActionForSession(assignmentSession) === "choose-patient" || decisionActionForSession(assignmentSession) === "resolve-conflict" ? (
           <ChoosePatientResolver
@@ -364,6 +451,7 @@ export function PatientsHome({
               setAssignmentSessionId("");
             }}
             onSearchPatients={onSearchPatients}
+            onLoadSuggestion={onLoadAssignmentSuggestion}
           />
         )
       ) : null}
@@ -383,6 +471,9 @@ export function PatientsHome({
           onFetchPatient={onFetchPatient}
           onAssignPatient={(sessionId) => setAssignmentSessionId(sessionId)}
           onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
+          onLoadSessionCaptures={onLoadSessionCaptures}
+          onResolveFile={onResolveFile}
+          onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
         />
       ) : (
         <>
@@ -407,9 +498,14 @@ export function PatientsHome({
       <label className="clinical-search">
         <SearchIcon />
         <Input
-          aria-label="Search clinical memory"
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search patients, visits, notes..."
+          aria-label="Search patients"
+          onChange={(event) => {
+            // The search drives patient results, so typing jumps to the Patients tab where it acts
+            // (rather than sitting inert on Today / Needs input).
+            setQuery(event.target.value);
+            if (event.target.value.trim() && activeTab !== "patients") setActiveTab("patients");
+          }}
+          placeholder="Search patients by name, phone, or ID..."
           value={query}
         />
         <span aria-hidden="true" className="clinical-search-filter">
@@ -541,9 +637,50 @@ export function PatientsHome({
           </div>
           {creatingPatient && onCreatePatient ? (
             <section className="patient-edit-card" aria-label="Create a new patient">
-              <PatientForm onCancel={() => setCreatingPatient(false)} onSubmit={submitNewPatient} submitLabel="Create patient" />
+              {onDuplicateCheck ? (
+                <RegisterPatientForm
+                  initialName={query.trim()}
+                  onDuplicateCheck={onDuplicateCheck}
+                  onCancel={() => setCreatingPatient(false)}
+                  onSubmit={submitNewPatient}
+                  onUseExisting={(candidate) => {
+                    setCreatingPatient(false);
+                    setSelectedPatientId(candidate.patientId);
+                  }}
+                />
+              ) : (
+                <PatientForm onCancel={() => setCreatingPatient(false)} onSubmit={submitNewPatient} submitLabel="Create patient" />
+              )}
             </section>
           ) : null}
+          {smartResults ? (
+            <div className="clinical-list">
+              <p className="smart-search-note">
+                <SearchIcon /> Deterministic, Persian-aware match · {smartSearching ? "searching…" : `${smartResults.length} result${smartResults.length === 1 ? "" : "s"}`}
+              </p>
+              {smartResults.length ? (
+                smartResults.map((match) => (
+                  <PatientRow
+                    actionLabel="View history"
+                    badges={smartMatchBadges(match)}
+                    latestVisitLabel={match.lastVisit ? `Last visit ${formatPatientLastVisit(match.lastVisit)}` : null}
+                    key={match.id}
+                    patientName={match.displayName}
+                    summary={match.reason || "Matched patient record."}
+                    isPro={isPro}
+                    tone="green"
+                    onAction={() => setSelectedPatientId(match.id)}
+                    onSelect={() => setSelectedPatientId(match.id)}
+                  />
+                ))
+              ) : (
+                <EmptyClinicalState
+                  title="No matching patients found."
+                  copy={/^\d{1,3}$/.test(query.trim()) ? "Enter at least 4 digits of a phone or national ID — or search by name." : "Try another name, phone, or national ID."}
+                />
+              )}
+            </div>
+          ) : (
           <div className="clinical-list">
             {patientRowsError ? (
               <p className="clinical-offline-note"><InfoIcon /> Patient memory is showing saved items from this device.</p>
@@ -573,7 +710,8 @@ export function PatientsHome({
               />
             )}
           </div>
-          {backendRowsActive && filteredPatients.length ? (
+          )}
+          {!smartResults && backendRowsActive && filteredPatients.length ? (
             <div className="patients-pagination">
               <span className="patients-count">Showing {filteredPatients.length} of {patientTotal}</span>
               {filteredPatients.length < patientTotal ? (
@@ -983,6 +1121,39 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
     activeSessionId: row.activeSessionId || null,
     sessionCount: row.sessionCount,
   };
+}
+
+// AES-204 — a smart-search match rendered as a minimal patient row (so it can open the detail by id).
+function patientRowFromSmartMatch(match: SmartPatientMatch): PatientRowModel {
+  return {
+    id: match.id,
+    name: match.displayName,
+    summary: match.reason || "Matched patient record.",
+    memoryStatus: "ready",
+    badges: smartMatchBadges(match),
+    action: "open-memory",
+    actionLabel: "View history",
+    isActive: false,
+    needsInput: false,
+    needsInputItems: [],
+    latestVisitLabel: match.lastVisit ? `Last visit ${formatPatientLastVisit(match.lastVisit)}` : null,
+    latestSessionId: null,
+    activeSessionId: null,
+    sessionCount: 0,
+  };
+}
+
+function smartMatchBadges(match: SmartPatientMatch): string[] {
+  const labels: Record<string, string> = {
+    national_id: "✓ national ID",
+    phone: "✓ phone",
+    email: "✓ email",
+    name: "✓ name",
+    name_prefix: "name prefix",
+    name_fuzzy: "fuzzy name",
+    contact_partial: "partial contact",
+  };
+  return match.matchedOn.map((key) => labels[key] || key).slice(0, 3);
 }
 
 function patientPrimaryAction({
@@ -1451,26 +1622,29 @@ function VisitMetadata({ session, tone }: { session: CaptureSession; tone: Clini
   );
 }
 
+// The edit-patient form (controlled open). The "Edit details" trigger lives in the patient-detail
+// action row so it sits beside "Share with patient" with matched styling.
 function PatientIdentityEditor({
   patient,
+  open,
+  onClose,
   onUpdatePatient,
   onFetchPatient,
 }: {
   patient: PatientRowModel;
+  open: boolean;
+  onClose: () => void;
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
 }) {
-  const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [initial, setInitial] = React.useState<Partial<{ displayName: string; nationalId: string; phone: string; dateOfBirth: string; sex: string; notes: string }>>({ displayName: patient.name || "" });
+  const loadedRef = React.useRef(false);
 
-  if (!onUpdatePatient) return null;
-
-  const openEditor = () => {
-    setOpen(true);
-    if (!onFetchPatient) return;
-    // Pre-fill the form with the patient's current values (reuses GET /patients/{id}).
+  React.useEffect(() => {
+    if (!open || loadedRef.current || !onFetchPatient) return;
+    loadedRef.current = true;
     setLoading(true);
     void onFetchPatient(patient.id)
       .then((info) => {
@@ -1485,17 +1659,9 @@ function PatientIdentityEditor({
         });
       })
       .finally(() => setLoading(false));
-  };
+  }, [open, onFetchPatient, patient.id, patient.name]);
 
-  if (!open) {
-    return (
-      <div className="patient-edit-row">
-        <button className="patient-edit-toggle" onClick={openEditor} type="button">
-          Edit details
-        </button>
-      </div>
-    );
-  }
+  if (!open || !onUpdatePatient) return null;
 
   return (
     <section className="patient-edit-card" aria-label="Edit patient details">
@@ -1503,7 +1669,7 @@ function PatientIdentityEditor({
         busy={saving}
         initial={initial}
         loading={loading}
-        onCancel={() => setOpen(false)}
+        onCancel={onClose}
         onSubmit={(values) => {
           setSaving(true);
           // Pre-filled = WYSIWYG, so send every field (a cleared field clears it).
@@ -1515,7 +1681,7 @@ function PatientIdentityEditor({
             sex: values.sex,
             notes: values.notes,
           })
-            .then(() => setOpen(false))
+            .then(onClose)
             .finally(() => setSaving(false));
         }}
         submitLabel="Save details"
@@ -1539,6 +1705,9 @@ function PatientTimelineDetail({
   onReviewSummary,
   onUpdatePatient,
   onFetchPatient,
+  onLoadSessionCaptures,
+  onResolveFile,
+  onShare,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1554,11 +1723,24 @@ function PatientTimelineDetail({
   onReviewSummary: (sessionId: string) => void;
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+  onShare?: (visits: GalleryVisit[]) => void;
 }) {
+  const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
   const timelineGroups = buildTimelineGroups(detail, localSessions);
   const sessionCount = detail?.patient.sessionCount || patient.sessionCount || localSessions.length;
   const firstSeen = firstSeenLabel(detail?.sessions, localSessions);
+  // AES-202 — recent visits, most-recent first, fed to the visit-grouped photo gallery (Basic).
+  const galleryVisits: GalleryVisit[] = timelineGroups
+    .flatMap((group) => group.sessions)
+    .map((session) => ({
+      sessionId: session.sessionId,
+      title: sanitizeSessionLabel(session.title) || (session.localSession ? sessionVisitTitle(session.localSession) : "Visit"),
+      dateLabel: timelineSessionTimeLabel(session, session.localSession),
+    }))
+    .filter((visit) => visit.sessionId);
 
   return (
     <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
@@ -1575,9 +1757,31 @@ function PatientTimelineDetail({
             <span>{visitCountLabel(sessionCount)}</span>
             {firstSeen ? <span>First seen {firstSeen}</span> : null}
           </div>
-          <PatientIdentityEditor patient={patient} onUpdatePatient={onUpdatePatient} onFetchPatient={onFetchPatient} />
         </div>
       </section>
+
+      {(onUpdatePatient || onShare) && !editingPatient ? (
+        <div className="patient-detail-actions">
+          {onUpdatePatient ? (
+            <button className="patient-detail-action" onClick={() => setEditingPatient(true)} type="button">
+              <EditPatientIcon /> Edit details
+            </button>
+          ) : null}
+          {onShare ? (
+            <button className="patient-detail-action" onClick={() => onShare(galleryVisits)} type="button">
+              <ShareSmallIcon /> Share with patient
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      <PatientIdentityEditor
+        patient={patient}
+        open={editingPatient}
+        onClose={() => setEditingPatient(false)}
+        onUpdatePatient={onUpdatePatient}
+        onFetchPatient={onFetchPatient}
+      />
 
       <PatientHistoryBlock
         history={detail?.history}
@@ -1585,6 +1789,23 @@ function PatientTimelineDetail({
         loading={loading}
         fallbackSnapshot={detail?.patient.summary || patient.summary}
       />
+
+      {!isPro ? (
+        <TryProTeaser
+          className="patient-file-teaser"
+          title={'Try Pro — AI history & "what did we use last time?"'}
+          subtitle="Basic lists the facts. Pro synthesizes the story and recalls products / units / lot."
+        />
+      ) : null}
+
+      {onLoadSessionCaptures && onResolveFile && galleryVisits.length ? (
+        <PatientPhotoGallery
+          visits={galleryVisits}
+          onLoadSessionCaptures={onLoadSessionCaptures}
+          onResolveFile={onResolveFile}
+          onOpenVisit={(sessionId) => onOpenSession(sessionId, { tab: "patients", patientId: patient.id })}
+        />
+      ) : null}
 
       {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
       {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
@@ -2303,6 +2524,7 @@ function AssignPatientResolver({
   onKeepUnassigned,
   onOpenVisit,
   onSearchPatients,
+  onLoadSuggestion,
 }: {
   session: CaptureSession;
   onAssign: (draft: PatientAssignmentDraft) => Promise<void>;
@@ -2310,6 +2532,8 @@ function AssignPatientResolver({
   onKeepUnassigned: () => void;
   onOpenVisit: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+  /** AES-301/603 — the deterministic "Assign to …?" suggestion (active/recent patient). */
+  onLoadSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
   const [query, setQuery] = React.useState("");
   const [patients, setPatients] = React.useState<PatientSummary[]>([]);
@@ -2317,9 +2541,23 @@ function AssignPatientResolver({
   const [searching, setSearching] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [searchError, setSearchError] = React.useState(false);
+  const [suggestion, setSuggestion] = React.useState<AssignmentSuggestionResponse | null>(null);
   const trimmedQuery = query.trim();
   const canCreate = Boolean(trimmedQuery);
   const visiblePatients = React.useMemo(() => filterPatientMatches(patients, trimmedQuery), [patients, trimmedQuery]);
+
+  React.useEffect(() => {
+    if (!onLoadSuggestion || session.id.startsWith("local-session-")) return;
+    let cancelled = false;
+    void onLoadSuggestion(session.id)
+      .then((result) => {
+        if (!cancelled) setSuggestion(result);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [onLoadSuggestion, session.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2384,6 +2622,32 @@ function AssignPatientResolver({
           </div>
           {summary ? <p>{summary}</p> : null}
         </div>
+
+        {suggestion?.suggestion ? (
+          <div className="assign-suggestion" aria-label="Suggested patient">
+            <p className="assign-suggestion-label">
+              Suggested {suggestion.suggestion.basis === "active_patient" ? "— in chair now" : "— recently seen"}
+              <span className="det-note">deterministic</span>
+            </p>
+            <div className="assign-suggestion-row">
+              <span className="assign-patient-initials" aria-hidden="true">{avatarInitials(suggestion.suggestion.displayName)}</span>
+              <div className="assign-suggestion-copy">
+                <strong>{suggestion.suggestion.displayName}</strong>
+                <small>{suggestion.suggestion.reason}</small>
+              </div>
+              <Button
+                disabled={saving}
+                onClick={() =>
+                  assignDraft({ patientId: suggestion.suggestion!.patientId, displayName: suggestion.suggestion!.displayName })
+                }
+                size="sm"
+                type="button"
+              >
+                Assign
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <label className="assign-search-field">
           <SearchIcon />
@@ -2576,6 +2840,26 @@ function CalendarIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M7 3.5v3M17 3.5v3M4.5 9h15M6.5 5h11a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+    </svg>
+  );
+}
+
+function EditPatientIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M4.5 17.8 4 21l3.2-.5 10.9-10.9-2.7-2.7L4.5 17.8Z" />
+      <path d="m15.4 6.9 1.4-1.4a1.9 1.9 0 0 1 2.7 2.7l-1.4 1.4" />
+    </svg>
+  );
+}
+
+function ShareSmallIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="6" cy="12" r="2.2" />
+      <circle cx="18" cy="6" r="2.2" />
+      <circle cx="18" cy="18" r="2.2" />
+      <path d="m8 11 8-4M8 13l8 4" />
     </svg>
   );
 }

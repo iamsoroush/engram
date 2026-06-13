@@ -1,6 +1,7 @@
 import React from "react";
-import type { AiModelConfig, AuthSession } from "../../domain/appTypes";
+import type { AftercareTemplate, AftercareTemplateDraft, AiModelConfig, AuthSession } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
+import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
 
 type TenantSettingsUpdate = { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string };
 
@@ -104,12 +105,20 @@ export function SettingsScreen({
   onUpdateSettings,
   onListAiModels,
   onUpdateAiModels,
+  onListAftercareTemplates,
+  onCreateAftercareTemplate,
+  onUpdateAftercareTemplate,
+  onDeleteAftercareTemplate,
 }: {
   auth: AuthSession;
   onBack: () => void;
   onUpdateSettings: (settings: TenantSettingsUpdate) => Promise<void> | void;
   onListAiModels?: () => Promise<AiModelConfig>;
   onUpdateAiModels?: (models: Record<string, string>) => Promise<AiModelConfig>;
+  onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
+  onCreateAftercareTemplate?: (draft: AftercareTemplateDraft) => Promise<AftercareTemplate>;
+  onUpdateAftercareTemplate?: (id: string, draft: Partial<AftercareTemplateDraft>) => Promise<AftercareTemplate>;
+  onDeleteAftercareTemplate?: (id: string) => Promise<void>;
 }) {
   const [saving, setSaving] = React.useState(false);
   const save = (settings: TenantSettingsUpdate) => {
@@ -172,6 +181,15 @@ export function SettingsScreen({
           <span className="profile-value">{capitalize(auth.tenant.vertical || "clinic")}</span>
         </SettingRow>
       </Card>
+
+      {onListAftercareTemplates && onCreateAftercareTemplate && onUpdateAftercareTemplate && onDeleteAftercareTemplate ? (
+        <AftercareTemplatesSettings
+          onList={onListAftercareTemplates}
+          onCreate={onCreateAftercareTemplate}
+          onUpdate={onUpdateAftercareTemplate}
+          onDelete={onDeleteAftercareTemplate}
+        />
+      ) : null}
 
       {onListAiModels && onUpdateAiModels ? (
         <AiModelsSettings onListAiModels={onListAiModels} onUpdateAiModels={onUpdateAiModels} />

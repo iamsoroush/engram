@@ -4,21 +4,33 @@ export function CaptureActions({
   compact,
   contextLabel,
   onAction,
+  tier,
 }: {
   compact?: boolean;
   contextLabel?: string;
   onAction: (kind: CaptureDraft["kind"]) => void;
+  /** Footer order encodes the tier: Basic leads with Note (audio = voice memo); Pro leads with Audio (dictate). */
+  tier?: string | null;
 }) {
+  const isBasic = tier === "basic";
+  // Basic (aesthetics): Note is primary, audio is a labelled voice memo. Pro: Audio-first dictation.
   const actions: Array<{
     kind: CaptureDraft["kind"];
     label: string;
+    sub?: string;
     tone: "primary" | "secondary";
     icon: "audio" | "photo" | "note";
-  }> = [
-    { kind: "audio", label: "Record", tone: "primary", icon: "audio" },
-    { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
-    { kind: "note", label: "Note", tone: "secondary", icon: "note" },
-  ];
+  }> = isBasic
+    ? [
+        { kind: "note", label: "Note", sub: "memo", tone: "primary", icon: "note" },
+        { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
+        { kind: "audio", label: "Audio", sub: "memo", tone: "secondary", icon: "audio" },
+      ]
+    : [
+        { kind: "audio", label: "Record", sub: "dictate", tone: "primary", icon: "audio" },
+        { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
+        { kind: "note", label: "Note", tone: "secondary", icon: "note" },
+      ];
 
   const actionButtons = actions.map((action) => (
     <button
@@ -32,6 +44,7 @@ export function CaptureActions({
       </span>
       <span className="capture-action-copy">
         <strong>{action.label}</strong>
+        {action.sub ? <small>{action.sub}</small> : null}
       </span>
     </button>
   ));

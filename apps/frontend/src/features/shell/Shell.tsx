@@ -108,7 +108,7 @@ export function Shell({
       </header>
       {isOffline ? <p className="global-offline-status">Offline · Captures are saved on this device</p> : null}
       {children}
-      <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} />
+      <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} tier={auth.tenant.tier} />
       <footer className="app-version">MVP v2</footer>
     </main>
   );

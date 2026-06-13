@@ -23,6 +23,7 @@ export function PatientForm({
   submitLabel,
   onSubmit,
   onCancel,
+  onChange,
 }: {
   initial?: Partial<PatientFormValues>;
   loading?: boolean;
@@ -30,6 +31,8 @@ export function PatientForm({
   submitLabel: string;
   onSubmit: (values: PatientFormValues) => void;
   onCancel?: () => void;
+  /** Observe the live values (e.g. to run the AES-205 duplicate-guard as fields are typed). */
+  onChange?: (values: PatientFormValues) => void;
 }) {
   const [values, setValues] = React.useState<PatientFormValues>({ ...EMPTY, ...initial });
   const seededRef = React.useRef(false);
@@ -39,6 +42,10 @@ export function PatientForm({
     setValues({ ...EMPTY, ...initial });
     seededRef.current = true;
   }, [loading, initial]);
+
+  React.useEffect(() => {
+    onChange?.(values);
+  }, [values, onChange]);
 
   const set = (key: keyof PatientFormValues) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setValues((current) => ({ ...current, [key]: event.target.value }));
