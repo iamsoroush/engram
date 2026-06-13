@@ -1214,12 +1214,23 @@ def regenerate_session_report(db: DbSession, *, session: Session) -> None:
     the capture chain is idle — so it is always current for the latest capture. Pro additionally
     records each folded-in capture's `report_contribution` and the included/set-aside meta counts.
     """
-    synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     captures = sorted(
         _reportable_captures(db, tenant_id=session.tenant_id, session_id=session.id),
         key=lambda capture: (capture.captured_at or capture.created_at or utc_now()),
     )
     generated_at = utc_now()
+    # Therapy branch: narrative-first, two-plane synthesis (DAP/SOAP/BIRP + private plane +
+    # "Session so far") instead of the aesthetics by-type grouping. Kept fully isolated here so the
+    # aesthetics path below is untouched. See app/services/therapy_reporting.py.
+    from app.services.caseload import tenant_vertical
+
+    if tenant_vertical(db, session.tenant_id) == "therapy":
+        from app.services.therapy_reporting import apply_therapy_synthesis
+
+        apply_therapy_synthesis(session, captures, db=db, generated_at=generated_at.isoformat())
+        session.updated_at = generated_at
+        return
+    synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     model = build_session_report_model(session, captures, grouped=synthesized)
     session.report_model = model
     session.generated_report = render_report_body_markdown(model, db=db, session=session)

@@ -82,7 +82,13 @@ def _current_national_id(patient: Patient) -> str | None:
 
 
 def search_patients(db: DbSession, principal: CurrentPrincipal, query: str | None, limit: int = 50) -> list[dict[str, Any]]:
+    from app.services.caseload import caseload_patient_condition
+
     statement = select(Patient).where(Patient.tenant_id == principal.tenant_id)
+    # Federated caseloads (therapy): a clinician only searches their own clients (no-op elsewhere).
+    caseload = caseload_patient_condition(db, principal)
+    if caseload is not None:
+        statement = statement.where(caseload)
     if query:
         pattern = f"%{query.strip()}%"
         search_keys = search_keys_for_query(query) or [normalize_identifier(query)]

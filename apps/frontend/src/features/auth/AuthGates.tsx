@@ -1,5 +1,5 @@
 import React from "react";
-import type { AuthSession, Persona } from "../../domain/appTypes";
+import type { AuthSession, DevTier, Persona } from "../../domain/appTypes";
 import { IS_DEV } from "../../shared/lib/config";
 import { Badge, Button, Card, Input } from "../../shared/ui/primitives";
 
@@ -12,19 +12,27 @@ export function LoginGate({
   error: string;
   pendingCount: number;
   onLogin: (email: string, password: string) => Promise<void>;
-  onPersonaLogin: (persona: Persona, tier: "pro" | "basic") => Promise<void>;
+  onPersonaLogin: (persona: Persona, tier: DevTier) => Promise<void>;
 }) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [busyPersona, setBusyPersona] = React.useState<Persona | null>(null);
-  const [devTier, setDevTier] = React.useState<"pro" | "basic">("pro");
+  const [devTier, setDevTier] = React.useState<DevTier>("pro");
   const [submitting, setSubmitting] = React.useState(false);
-  const personas: Array<{ value: Persona; label: string }> = [
-    { value: "doctor", label: "Doctor" },
-    { value: "assistant", label: "Assistant" },
-    { value: "admin", label: "Admin" },
-    { value: "patient-preview", label: "Patient preview" },
-  ];
+  // Therapy is a single-plan vertical with its own demo tenant + a second therapist persona so the
+  // federated caseload (a clinician sees only their own clients) is visible side-by-side.
+  const personas: Array<{ value: Persona; label: string }> =
+    devTier === "therapy"
+      ? [
+          { value: "doctor", label: "Therapist (Dr. Demo)" },
+          { value: "therapist-b", label: "Therapist B (Dr. Rava)" },
+        ]
+      : [
+          { value: "doctor", label: "Doctor" },
+          { value: "assistant", label: "Assistant" },
+          { value: "admin", label: "Admin" },
+          { value: "patient-preview", label: "Patient preview" },
+        ];
 
   const submitLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -61,7 +69,7 @@ export function LoginGate({
         {IS_DEV ? (
           <div className="dev-tier-switch" role="radiogroup" aria-label="Development tenant tier">
             <span>Tier</span>
-            {(["pro", "basic"] as const).map((tier) => (
+            {(["pro", "basic", "therapy"] as const).map((tier) => (
               <button
                 aria-checked={devTier === tier}
                 className={devTier === tier ? "active" : ""}
@@ -71,7 +79,7 @@ export function LoginGate({
                 role="radio"
                 type="button"
               >
-                {tier === "pro" ? "Pro" : "Basic"}
+                {tier === "pro" ? "Pro" : tier === "basic" ? "Basic" : "Therapy"}
               </button>
             ))}
           </div>

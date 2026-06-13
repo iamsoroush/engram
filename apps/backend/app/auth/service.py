@@ -30,9 +30,13 @@ DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
 # A second dev tenant on the Basic tier so Pro and Basic can be exercised side-by-side
 # (dev-login `tier` selects which one). Mirrors production, where tier is a tenant attribute.
 DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
+# A therapy dev tenant (single plan, vertical = therapy) so the therapy vertical's note-first
+# capture, two-plane synthesis, and federated caseloads are testable end-to-end.
+DEV_TENANT_THERAPY_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-therapy")
 DEV_TENANTS = {
     "pro": {"id": DEV_TENANT_ID, "name": "Memara Demo Clinic", "slug": "notari-demo", "tier": "pro", "vertical": "aesthetics"},
     "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memara Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic", "vertical": "aesthetics"},
+    "therapy": {"id": DEV_TENANT_THERAPY_ID, "name": "Memara Therapy Demo", "slug": "notari-demo-therapy", "tier": "pro", "vertical": "therapy"},
 }
 
 DEV_PERSONAS = {
@@ -53,6 +57,12 @@ DEV_PERSONAS = {
         "email": "admin@notari.local",
         "full_name": "Memara Admin",
         "role": MembershipRole.admin,
+    },
+    "therapist-b": {
+        "id": uuid.uuid5(DEV_NAMESPACE, "user:therapist-b"),
+        "email": "therapist-b@notari.local",
+        "full_name": "Dr. Rava (Therapist B)",
+        "role": MembershipRole.doctor,
     },
     "patient-preview": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:patient-preview"),
@@ -117,7 +127,73 @@ def ensure_dev_seed(db: Session) -> None:
     # Each tenant gets its own distinct demo patient so it's obvious which tier you're in.
     _ensure_dev_patient(db, tenant_id=DEV_TENANT_ID, key="patient:sara-n", display_name="Sara N.", first="Sara", last="N.", phone="+1 555 0100")
     _ensure_dev_patient(db, tenant_id=DEV_TENANT_BASIC_ID, key="patient:basic-bita", display_name="Bita B.", first="Bita", last="B.", phone="+1 555 0200")
+    _ensure_therapy_caseload(db)
     db.commit()
+
+
+def _ensure_therapy_caseload(db: Session) -> None:
+    """Seed two therapy clients owned by *different* therapists so federated caseloads are visible.
+
+    Maryam K. belongs to Dr. Demo (the `doctor` persona); Hassan R. belongs to Dr. Rava
+    (`therapist-b`). Each clinician sees only their own client in the therapy tenant.
+    """
+    _ensure_dev_client(
+        db,
+        key="patient:therapy-maryam",
+        display_name="Maryam K.",
+        first="Maryam",
+        last="K.",
+        phone="+1 555 0300",
+        owner_user_id=DEV_PERSONAS["doctor"]["id"],
+    )
+    _ensure_dev_client(
+        db,
+        key="patient:therapy-hassan",
+        display_name="Hassan R.",
+        first="Hassan",
+        last="R.",
+        phone="+1 555 0400",
+        owner_user_id=DEV_PERSONAS["therapist-b"]["id"],
+    )
+
+
+def _ensure_dev_client(
+    db: Session,
+    *,
+    key: str,
+    display_name: str,
+    first: str,
+    last: str,
+    phone: str,
+    owner_user_id: uuid.UUID,
+) -> None:
+    """Seed one therapy client (by deterministic id) owned by a specific clinician, if absent."""
+    patient_id = uuid.uuid5(DEV_NAMESPACE, key)
+    if db.get(Patient, patient_id) is not None:
+        return
+    db.add(
+        Patient(
+            id=patient_id,
+            tenant_id=DEV_TENANT_THERAPY_ID,
+            display_name=display_name,
+            legal_first_name=first,
+            legal_last_name=last,
+            status=PatientStatus.active,
+            created_by_user_id=owner_user_id,
+        )
+    )
+    db.add_all(
+        [
+            PatientIdentifier(tenant_id=DEV_TENANT_THERAPY_ID, patient_id=patient_id, **spec)
+            for spec in deterministic_identifier_specs(
+                display_name=display_name,
+                legal_first_name=first,
+                legal_last_name=last,
+                phone=phone,
+                source="dev-seed",
+            )
+        ]
+    )
 
 
 def _ensure_dev_patient(db: Session, *, tenant_id: uuid.UUID, key: str, display_name: str, first: str, last: str, phone: str) -> None:

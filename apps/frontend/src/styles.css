@@ -9768,3 +9768,29 @@ small {
   font-family: inherit;
   resize: vertical;
 }
+
+/* --- Therapy vertical (Spine A) ------------------------------------------------------------- */
+.therapy-app { min-height: 100vh; background: var(--color-bg, #f6f7fb); }
+.therapy-main { max-width: 820px; margin: 0 auto; padding: var(--space-5, 20px); }
+.therapy-screen { gap: var(--space-4, 16px); }
+.therapy-client-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4, 16px); cursor: pointer;
+}
+.therapy-client-row:hover { border-color: var(--color-primary, #075eff); }
+.therapy-note {
+  border: 1px solid var(--color-border, #e4e8f0); border-radius: var(--radius-md, 10px);
+  padding: var(--space-3, 12px); background: #fff;
+}
+.therapy-note p { margin: 4px 0 0; }
+.therapy-section { padding: var(--space-2, 8px) 0; border-top: 1px solid var(--color-border, #e4e8f0); }
+.therapy-section h3 { margin: 0 0 4px; font-size: 0.9rem; color: var(--color-muted, #52617e); }
+.therapy-risk-dialog { border: 1px solid var(--color-danger, #b42318); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-end { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-3, 12px); }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, 12px); flex-wrap: wrap; }
+.link-button {
+  background: none; border: none; padding: 0; color: var(--color-muted, #52617e);
+  cursor: pointer; font: inherit;
+}
+.link-button:hover { color: var(--color-primary, #075eff); }

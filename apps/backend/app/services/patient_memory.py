@@ -291,7 +291,7 @@ def _coerce_clinician_id(value: str | None) -> uuid.UUID | None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid clinicianId") from exc
 
 
-def _patient_base_statement(principal: CurrentPrincipal, query: str | None, clinician_id: uuid.UUID | None):
+def _patient_base_statement(db: DbSession, principal: CurrentPrincipal, query: str | None, clinician_id: uuid.UUID | None):
     latest_session_at = func.max(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at)).label(
         "latest_session_at"
     )
@@ -305,6 +305,12 @@ def _patient_base_statement(principal: CurrentPrincipal, query: str | None, clin
         )
         .where(Patient.tenant_id == principal.tenant_id, Patient.status == PatientStatus.active)
     )
+    # Federated caseloads (therapy): the clinician only sees their own clients (no-op for aesthetics).
+    from app.services.caseload import caseload_patient_condition
+
+    caseload = caseload_patient_condition(db, principal)
+    if caseload is not None:
+        statement = statement.where(caseload)
     if clinician_id is not None:
         statement = statement.where(Session.created_by_user_id == clinician_id)
     if query:
@@ -346,7 +352,7 @@ def list_patient_memory(
     if memory_filter not in {"recent", "active", "all", "needs-input"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filter")
     clinician_uuid = _coerce_clinician_id(clinician_id)
-    base = _patient_base_statement(principal, query, clinician_uuid)
+    base = _patient_base_statement(db, principal, query, clinician_uuid)
     if memory_filter == "recent":
         base = base.having(func.count(Session.id) > 0)
     if memory_filter == "active":
@@ -445,7 +451,12 @@ def _timeline_group_label(value: datetime | None) -> str:
 
 def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patient_id: str) -> dict[str, Any]:
     """Return one patient memory summary with timeline sessions."""
+    from app.services.caseload import patient_in_caseload
+
     patient = get_patient(db, principal.tenant_id, patient_id)
+    # Federated caseloads (therapy): a clinician cannot open another clinician's client.
+    if not patient_in_caseload(db, principal, patient):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
     sessions = db.execute(
         select(Session)
         .where(Session.tenant_id == principal.tenant_id, Session.patient_id == parse_uuid(patient_id, "patient_id"))
