@@ -120,6 +120,10 @@ class AiJobType(str, enum.Enum):
     session_organize = "session_organize"
     # Combined patient summary + history (Pro). Patient-scoped (uses `patient_id`, not capture/session).
     patient_memory = "patient_memory"
+    # Post-session patient↔clinic Q&A reply draft (Pro, AES-402). Patient-scoped (uses `patient_id`);
+    # the target Q&A message/thread is carried in `AiJob.result_metadata` so no ai_jobs schema change
+    # is needed. See `app/services/qa.py`.
+    qa_draft = "qa_draft"
 
 
 class Tenant(Base):
@@ -140,6 +144,10 @@ class Tenant(Base):
     # preserves prior behavior); "balanced"/"lenient" auto-apply a single high-confidence
     # fuzzy match on an explicit reassignment instruction (high/lower threshold).
     match_strictness: Mapped[str] = mapped_column(String(20), nullable=False, server_default="strict")
+    # Post-session Q&A routing policy (Pro, AES-402; foundation §7). "ai_default" = a new patient
+    # Q&A thread auto-routes to the patient's treating doctor (most recent/frequent); "manual" = the
+    # thread starts unrouted and staff route it. Manual re-route is always available either way.
+    qa_routing_mode: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ai_default")
     # Vertical (A0): the kind of clinic/lab this tenant runs. The report-required work-unit
     # (today's Session) is the generic Encounter; its presentation label and per-type
     # `Session.attributes` are derived from this. "clinic" for v1; "radiology"/"pathology" later.
@@ -499,6 +507,81 @@ class PatientShare(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class QaThread(Base):
+    """A post-session patient↔clinic Q&A channel (Pro payload of the patient surface; AES-402).
+
+    The shared clinic→patient primitive ([foundation §4]): a single long-lived, tokenized,
+    revocable thread per patient. The patient reaches it via ``token`` (the capability) with no
+    login and sees ONLY their own questions + the doctor-verified replies (AES-403); drafts,
+    routing, and every other patient are withheld. A thread routes to a treating doctor
+    (``assigned_doctor_user_id``) per the tenant's ``qa_routing_mode``; ``routing_source`` records
+    how (``ai_default`` / ``manual`` / ``unrouted``). Messages live in ``QaMessage``.
+    """
+
+    __tablename__ = "qa_threads"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_qa_threads_token"),
+        # One Q&A channel per patient — created/reused idempotently.
+        UniqueConstraint("tenant_id", "patient_id", name="uq_qa_threads_tenant_id_patient_id"),
+        Index("ix_qa_threads_tenant_id_assigned_doctor", "tenant_id", "assigned_doctor_user_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    patient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    token: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "active" | "revoked" — plain String to match patient_shares / tier / vertical (no enum DDL).
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    assigned_doctor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    # "ai_default" (auto-routed to the treating doctor) | "manual" (re-routed by staff) | "unrouted".
+    routing_source: Mapped[str] = mapped_column(String(20), nullable=False, server_default="ai_default")
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+
+class QaMessage(Base):
+    """One message in a Q&A thread: a patient question or a doctor-verified reply (AES-402).
+
+    A patient question carries the AI-drafted ``draft`` (the doctor's *suggested reply*, never shown
+    to the patient) until a doctor approves it; sending creates a separate ``role="doctor"`` reply
+    linked back via ``in_reply_to_id`` and flips the question's ``status`` to ``answered``. The draft
+    is produced by a backend-owned ``qa_draft`` AI job (``draft_job_id``); a stale/failed draft is
+    silent and self-healing, never a needs-input item.
+    """
+
+    __tablename__ = "qa_messages"
+    __table_args__ = (
+        Index("ix_qa_messages_tenant_id_thread_id", "tenant_id", "thread_id"),
+        Index("ix_qa_messages_tenant_id_role_status", "tenant_id", "role", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    thread_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("qa_threads.id", ondelete="CASCADE"), nullable=False)
+    # "patient" (a question) | "doctor" (a verified, sent reply).
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # Question lifecycle: "pending" → "answered" | "dismissed". A doctor reply is "sent".
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    in_reply_to_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("qa_messages.id", ondelete="SET NULL"))
+    # AI-suggested reply for a patient question (doctor-only; withheld from the patient surface).
+    draft: Mapped[str | None] = mapped_column(Text)
+    # "none" | "pending" (draft job in flight) | "ready" | "failed".
+    draft_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
+    draft_source: Mapped[str | None] = mapped_column(String(80))
+    draft_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
 
 
 class AuthRefreshToken(Base):

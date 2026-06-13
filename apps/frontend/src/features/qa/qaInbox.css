@@ -1,0 +1,186 @@
+/* Doctor Q&A inbox (AES-402). Authenticated clinic surface. */
+
+.qa-inbox {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 16px 16px 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qa-inbox-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qa-inbox-head h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.qa-inbox-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qa-scope {
+  display: inline-flex;
+  border: 1px solid var(--border, #d8dde6);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.qa-scope button {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5b6472;
+  cursor: pointer;
+}
+
+.qa-scope button.active {
+  background: #3753e6;
+  color: #fff;
+}
+
+.qa-routing {
+  font-size: 13px;
+  color: #5b6472;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qa-routing select {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #d8dde6);
+  background: #fff;
+}
+
+.qa-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.qa-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qa-patient {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.qa-asked {
+  font-size: 12px;
+  color: #97a1b0;
+}
+
+.qa-question {
+  background: #f5f7fb;
+  border: 1px solid #e6e9ef;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.qa-draft-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.qa-draft-hint {
+  font-weight: 500;
+  color: #8a93a2;
+  font-style: italic;
+}
+
+.qa-reply-input {
+  min-height: 96px;
+}
+
+.qa-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qa-card-actions .qa-spacer {
+  flex: 1;
+}
+
+.qa-reroute {
+  border: 1px solid var(--border, #d8dde6);
+  border-radius: 10px;
+  padding: 0;
+}
+
+.qa-reroute > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3753e6;
+}
+
+.qa-reroute[open] > summary {
+  border-bottom: 1px solid var(--border, #eef0f4);
+}
+
+.qa-reroute-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  gap: 4px;
+}
+
+.qa-reroute-list button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.qa-reroute-list button:hover {
+  background: #f1f4fb;
+}
+
+.qa-reroute-list .qa-current {
+  color: #97a1b0;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.qa-empty {
+  text-align: center;
+  color: #8a93a2;
+  padding: 40px 0;
+}

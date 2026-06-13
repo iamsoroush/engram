@@ -8,12 +8,23 @@ const root = ReactDOM.createRoot(document.getElementById("root")!);
 // clinic app. Imports are dynamic so the public page never pulls in the clinic bundle/styles, and the
 // clinic app never pulls in the patient-surface code.
 const shareMatch = window.location.pathname.match(/^\/share\/([^/]+)\/?$/);
+const qaMatch = window.location.pathname.match(/^\/qa\/([^/]+)\/?$/);
 
 if (shareMatch) {
   void import("./features/patient-surface/PatientSharePage").then(({ PatientSharePage }) => {
     root.render(
       <React.StrictMode>
         <PatientSharePage token={decodeURIComponent(shareMatch[1])} />
+      </React.StrictMode>,
+    );
+  });
+} else if (qaMatch) {
+  // `/qa/{token}` — the PUBLIC post-session Q&A surface (AES-402). Same isolated, login-free area as
+  // the share page; never pulls in the clinic bundle/styles.
+  void import("./features/patient-surface/PatientQaPage").then(({ PatientQaPage }) => {
+    root.render(
+      <React.StrictMode>
+        <PatientQaPage token={decodeURIComponent(qaMatch[1])} />
       </React.StrictMode>,
     );
   });

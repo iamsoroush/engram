@@ -7,10 +7,12 @@
 | `/` | Active Session, after login | Defaults to the active session workspace. |
 | `/#active-session` | Active Session | Current session feed and capture dialogs. |
 | `/#patients` | Clinical Memory | Today, Patients, and Needs input tabs. Patient rows open patient detail/timeline; the main view does not nest sessions under patients. |
+| `/#qa-inbox` | Q&A inbox (Pro) | **Pro only** — the nav entry is hidden on Basic (capability `post_session_qa`). Pending post-session patient questions, each with an AI-suggested reply the doctor can Send / edit / Dismiss (AES-402); a `Mine`/`Clinic` scope toggle and a routing-mode control, plus per-question **Re-route** to one of the patient's treating doctors. |
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
 | `/#settings` | Settings | Tenant preferences: transcription/report language, patient-match strictness, and plan/tier (read-only). Reached from the account menu; has a Back action. |
 | `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |
 | `/share/<token>` | Patient surface (public) | **Separate public area, not the staff shell.** A real path (not a hash), no login — the token is the capability. Read-only curated report + aftercare (AES-401); revocable/expirable, and an unknown/revoked/expired token shows one graceful "no longer available" screen (AES-403). Served by its own page bundle, without the clinic stylesheet. |
+| `/qa/<token>` | Patient Q&A (public, Pro) | **Separate public area, not the staff shell.** A real path (not a hash), no login — the token is the capability. The patient asks questions and reads doctor-verified replies (AES-402); they see **only their own thread** — drafts, routing, and other patients are withheld (AES-403). Unknown/revoked tokens show the same graceful "no longer available" screen. Served by its own page bundle, without the clinic stylesheet. |
 
 ## Entry Points
 
@@ -41,6 +43,7 @@
 - Admin can access read-oriented staff/admin APIs but the current frontend still shows the staff shell; write operations may fail if attempted.
 - Patient preview is blocked from staff screens by `PatientPreviewGate`.
 - The public patient surface (`/share/<token>`) requires **no** auth — the token in the URL is the capability. It serves only the curated snapshot and returns a graceful "no longer available" screen when the token is unknown, revoked, or expired; raw clinic internals are never reachable from it (AES-403).
+- The public patient Q&A (`/qa/<token>`) likewise requires **no** auth — the token is the capability. It serves only that patient's own questions + the doctor-verified replies; AI reply drafts, routing, and every other patient are never sent to it (AES-403). The Q&A inbox + all `patient-qa/*` staff APIs are gated on the Pro `post_session_qa` capability (403 on Basic).
 
 ## Fallback Behavior
 

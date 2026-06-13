@@ -37,9 +37,14 @@ export function Shell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "A";
+  // Q&A inbox is a Pro feature (AES-402) — only show it for Pro tenants; Basic never sees it.
+  const isPro = auth.tenant.tier !== "basic";
   const navigationItems: Array<{ screen: Screen; label: string; shortLabel: string; icon: React.ReactNode }> = [
     { screen: "active-session", label: "Active Session", shortLabel: "Session", icon: <ActiveSessionNavIcon /> },
     { screen: "patients", label: "Clinical Memory", shortLabel: "Memory", icon: <ClinicalMemoryNavIcon /> },
+    ...(isPro
+      ? [{ screen: "qa-inbox" as Screen, label: "Q&A inbox", shortLabel: "Q&A", icon: <QaInboxNavIcon /> }]
+      : []),
   ];
 
   return (
@@ -166,6 +171,15 @@ function SearchNavIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M16.8 16.8 20 20" />
       <path d="M18 11.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+    </svg>
+  );
+}
+
+function QaInboxNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5.75 5.75h12.5a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5H10l-3.5 3v-3H5.75a1.5 1.5 0 0 1-1.5-1.5v-7.5a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M9 10.25h6M9 12.75h3.5" />
     </svg>
   );
 }

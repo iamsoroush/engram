@@ -75,6 +75,7 @@ import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
 import { Shell } from "../features/shell/Shell";
 import {
   bindPendingSession,
@@ -1687,6 +1688,10 @@ export function App() {
           sessionOrdinal={activeSessionOrdinal}
         />
       );
+    }
+    if (screen === "qa-inbox" && auth && auth.tenant.tier !== "basic") {
+      // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
+      return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} />;
     }
     if (screen === "search") {
       return <SearchHome onOpenSession={openMemorySession} sessions={sessions} syncHealth={syncHealth} />;

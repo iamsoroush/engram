@@ -1,4 +1,4 @@
-export type Screen = "active-session" | "patients" | "search" | "settings" | "profile";
+export type Screen = "active-session" | "patients" | "qa-inbox" | "search" | "settings" | "profile";
 
 export type CaptureStatus = "saved" | "syncing" | "uploaded" | "processing" | "processed" | "needsReview" | "failed";
 

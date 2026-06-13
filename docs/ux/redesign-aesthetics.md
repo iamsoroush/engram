@@ -215,6 +215,12 @@ accrues as data ([foundation §3 Pro 8](redesign-foundation.md), [research §3](
   approval** — verification is the gate that matters here ([spines §2](../spines.md): don't inherit the
   never-gate default where a human must sign off). Every exchange is captured into patient memory.
 
+> **As built (`build/pro-qa`).** Public patient surface at `/qa/{token}` (composer + verified-reply
+> thread; withholding per AES-403) and a Pro-gated **Q&A inbox** screen (`#qa-inbox`, Mine/Clinic
+> scope + per-question Re-route). Routing is admin-configurable (`qa_routing_mode`, default
+> AI-routes-to-treating-doctor). The reply draft is a backend-owned `qa_draft` AI job (deterministic
+> fallback when no gateway). Contract: [`../backend/aes-pro-qa-api.md`](../backend/aes-pro-qa-api.md).
+
 ## 7 · Front desk / reception
 *Prototype: [`aesthetics-frontdesk.html`](../../apps/frontend/design-prototypes/aesthetics-frontdesk.html).
 Designs the receptionist persona **inside** aesthetics ([foundation §2](redesign-foundation.md)).*

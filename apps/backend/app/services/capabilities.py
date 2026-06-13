@@ -31,6 +31,7 @@ PATIENT_MATCHING = "patient_matching"            # AI auto match / create / reas
 OUT_OF_CONTEXT = "out_of_context"                # AI out-of-context detection
 CROSS_VISIT_SYNTHESIS = "cross_visit_synthesis"  # AI patient memory (summary + history)
 LIVE_REPORT_SYNTHESIS = "live_report_synthesis"  # synthesized/grouped live report (vs chronological)
+POST_SESSION_QA = "post_session_qa"              # AI-drafted, doctor-verified patient Q&A (AES-402)
 
 ALL_CAPABILITIES: frozenset[str] = frozenset(
     {
@@ -41,6 +42,7 @@ ALL_CAPABILITIES: frozenset[str] = frozenset(
         OUT_OF_CONTEXT,
         CROSS_VISIT_SYNTHESIS,
         LIVE_REPORT_SYNTHESIS,
+        POST_SESSION_QA,
     }
 )
 
