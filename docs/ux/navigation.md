@@ -7,7 +7,7 @@
 | `/` | Active Session, after login | Defaults to the active session workspace. |
 | `/#active-session` | Active Session | Current session feed and capture dialogs. |
 | `/#patients` | Clinical Memory | Today, Patients, and Needs input tabs. Patient rows open patient detail/timeline; the main view does not nest sessions under patients. |
-| `/#qa-inbox` | Q&A inbox (Pro) | **Pro only** — the nav entry is hidden on Basic (capability `post_session_qa`). Pending post-session patient questions, each with an AI-suggested reply the doctor can Send / edit / Dismiss (AES-402); a `Mine`/`Clinic` scope toggle and a routing-mode control, plus per-question **Re-route** to one of the patient's treating doctors. |
+| `/#qa-inbox` | Q&A inbox (Pro) | **Pro only** — reached from a top-bar icon + pending-count badge beside Search (not the primary nav pill); hidden on Basic (capability `post_session_qa`). **Thread-centric**: one patient conversation per entry (chat bubbles + interleaved visit markers), threads awaiting approval first. Each pending question shows an AI-suggested reply the doctor can Send / edit / Dismiss (AES-402); `Mine`/`Clinic` scope, a routing-mode control, and **Re-route** to one of the patient's treating doctors. |
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
 | `/#settings` | Settings | Tenant preferences: transcription/report language, patient-match strictness, and plan/tier (read-only). Reached from the account menu; has a Back action. |
 | `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |

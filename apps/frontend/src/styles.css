@@ -1394,7 +1394,9 @@ small {
   display: flex;
   grid-column: 1;
   min-width: 0;
-  flex-wrap: wrap;
+  /* Keep the navigator + Search + Q&A on one row so the centered user menu stays aligned with the
+     nav tabs (wrapping dropped the menu to a second line). On ≤620px the topbar restacks anyway. */
+  flex-wrap: nowrap;
   align-items: center;
   gap: 10px;
 }

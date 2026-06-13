@@ -118,7 +118,21 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
         </header>
 
         <main className="ps-body">
-          <section className="ps-sec" aria-label="Ask a question">
+          <section className="ps-sec" aria-label="Your conversation">
+            <h2>Your conversation</h2>
+            {payload.exchanges.length ? (
+              <div className="psqa-thread">
+                {payload.exchanges.map((exchange) => (
+                  <ExchangeView key={exchange.id} exchange={exchange} />
+                ))}
+              </div>
+            ) : (
+              <p className="psqa-empty">No questions yet. Ask your care team below.</p>
+            )}
+          </section>
+
+          {/* Composer pinned at the bottom — newest at the end, like a chat thread. */}
+          <section className="ps-sec psqa-ask" aria-label="Ask a question">
             <h2>Ask your care team</h2>
             <p className="psqa-intro">
               Have a question between visits? Send it here and your clinic will reply. Replies are reviewed by your
@@ -145,19 +159,6 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
                 </div>
               ) : null}
             </div>
-          </section>
-
-          <section className="ps-sec" aria-label="Your conversation">
-            <h2>Your conversation</h2>
-            {payload.exchanges.length ? (
-              <div className="psqa-thread">
-                {payload.exchanges.map((exchange) => (
-                  <ExchangeView key={exchange.id} exchange={exchange} />
-                ))}
-              </div>
-            ) : (
-              <p className="psqa-empty">No questions yet. Ask your first one above.</p>
-            )}
           </section>
         </main>
 

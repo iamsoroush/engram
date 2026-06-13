@@ -6,7 +6,6 @@ import {
   dismissQaQuestion,
   fetchQaInbox,
   fetchQaSettings,
-  fetchQaThreadDetail,
   fetchTreatingDoctors,
   routeQaThread,
   sendQaReply,
@@ -15,15 +14,17 @@ import {
   type QaSettings,
   type QaThreadMessage,
   type QaTreatingDoctor,
+  type QaVisitMarker,
 } from "./qaClient";
 
 /**
- * Doctor Q&A inbox (AES-402).
+ * Doctor Q&A inbox — thread-centric (AES-402).
  *
- * Pending patient questions with an AI-suggested reply the doctor can Send / edit / Dismiss —
- * nothing sends without the doctor approving it. Routing defaults to the patient's treating doctor
- * and is manually re-routable from that patient's treating-doctor list (foundation §7). Pro-gated
- * (the parent only mounts this for Pro tenants; the API also enforces the capability).
+ * One entry per patient conversation; threads awaiting the doctor's approval sort first (the badge
+ * counts them), the rest follow by recent activity — a triaged message list, not a flat all-patients
+ * chat. Each entry shows the whole conversation with visit markers interleaved, and (when a question
+ * is pending) the AI-suggested reply the doctor can Send / edit / Dismiss inline. Nothing sends
+ * without the doctor approving it. Pro-gated (the parent only mounts this for Pro tenants).
  */
 export function DoctorQaInbox({
   apiFetch,
@@ -46,9 +47,7 @@ export function DoctorQaInbox({
   React.useEffect(() => {
     let cancelled = false;
     fetchQaSettings(apiFetch)
-      .then((next) => {
-        if (!cancelled) setSettings(next);
-      })
+      .then((next) => !cancelled && setSettings(next))
       .catch(() => undefined);
     return () => {
       cancelled = true;
@@ -78,8 +77,7 @@ export function DoctorQaInbox({
 
   const handleRoutingMode = async (mode: "ai_default" | "manual") => {
     try {
-      const next = await setQaRoutingMode(apiFetch, mode);
-      setSettings(next);
+      setSettings(await setQaRoutingMode(apiFetch, mode));
       onToast?.(mode === "manual" ? "New questions now wait for manual routing." : "New questions now auto-route to the treating doctor.");
     } catch {
       onToast?.("Couldn’t update routing.");
@@ -87,14 +85,15 @@ export function DoctorQaInbox({
   };
 
   const handleSend = async (item: QaInboxItem, reply: string) => {
+    const messageId = item.pendingQuestion?.messageId;
     const text = reply.trim();
-    if (!text) {
+    if (!messageId || !text) {
       onToast?.("Add a reply before sending.");
       return;
     }
     if (!window.confirm(`Send this reply to ${item.patientName}? They will see it on their private link.`)) return;
     try {
-      await sendQaReply(apiFetch, item.messageId, text);
+      await sendQaReply(apiFetch, messageId, text);
       onToast?.("Reply sent and captured into the patient’s memory.");
       reload();
     } catch {
@@ -103,9 +102,11 @@ export function DoctorQaInbox({
   };
 
   const handleDismiss = async (item: QaInboxItem) => {
+    const messageId = item.pendingQuestion?.messageId;
+    if (!messageId) return;
     if (!window.confirm(`Dismiss ${item.patientName}’s question without replying?`)) return;
     try {
-      await dismissQaQuestion(apiFetch, item.messageId);
+      await dismissQaQuestion(apiFetch, messageId);
       onToast?.("Question dismissed.");
       reload();
     } catch {
@@ -116,10 +117,10 @@ export function DoctorQaInbox({
   const handleReroute = async (item: QaInboxItem, doctorUserId: string) => {
     try {
       await routeQaThread(apiFetch, item.threadId, doctorUserId);
-      onToast?.("Question re-routed.");
+      onToast?.("Conversation re-routed.");
       reload();
     } catch {
-      onToast?.("Couldn’t re-route this question.");
+      onToast?.("Couldn’t re-route this conversation.");
     }
   };
 
@@ -159,11 +160,11 @@ export function DoctorQaInbox({
           <Skeleton className="h-12" />
         </Card>
       ) : items.length === 0 ? (
-        <p className="qa-empty">All caught up — no pending questions{scope === "mine" ? " routed to you" : ""}.</p>
+        <p className="qa-empty">No conversations yet{scope === "mine" ? " routed to you" : ""}.</p>
       ) : (
         items.map((item) => (
-          <QaInboxCard
-            key={item.messageId}
+          <QaThreadCard
+            key={item.threadId}
             item={item}
             apiFetch={apiFetch}
             onSend={handleSend}
@@ -176,7 +177,25 @@ export function DoctorQaInbox({
   );
 }
 
-function QaInboxCard({
+type TimelineEntry =
+  | { kind: "message"; at: number; message: QaThreadMessage }
+  | { kind: "visit"; at: number; visit: QaVisitMarker };
+
+/** Merge messages + visit markers into one chronological timeline (Telegram-style with visit chips). */
+function buildTimeline(messages: QaThreadMessage[], visits: QaVisitMarker[]): TimelineEntry[] {
+  const ms = (iso: string | null): number => {
+    if (!iso) return 0;
+    const t = new Date(iso).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  };
+  const entries: TimelineEntry[] = [
+    ...messages.map((message): TimelineEntry => ({ kind: "message", at: ms(message.createdAt), message })),
+    ...visits.map((visit): TimelineEntry => ({ kind: "visit", at: ms(visit.date), visit })),
+  ];
+  return entries.sort((a, b) => a.at - b.at);
+}
+
+function QaThreadCard({
   item,
   apiFetch,
   onSend,
@@ -189,14 +208,20 @@ function QaInboxCard({
   onDismiss: (item: QaInboxItem) => void;
   onReroute: (item: QaInboxItem, doctorUserId: string) => void;
 }) {
-  const [reply, setReply] = React.useState(item.suggestedReply || "");
+  const [reply, setReply] = React.useState(item.pendingQuestion?.suggestedReply || "");
   const [doctors, setDoctors] = React.useState<QaTreatingDoctor[] | null>(null);
-  const [history, setHistory] = React.useState<QaThreadMessage[] | null>(null);
+  const convoRef = React.useRef<HTMLDivElement>(null);
 
-  // Keep the editable reply in sync when the draft finishes after the card first rendered.
+  // Re-seed the editable reply if the draft finishes after the card first rendered.
   React.useEffect(() => {
-    setReply((current) => (current.trim() ? current : item.suggestedReply || ""));
-  }, [item.suggestedReply]);
+    setReply((current) => (current.trim() ? current : item.pendingQuestion?.suggestedReply || ""));
+  }, [item.pendingQuestion?.suggestedReply]);
+
+  // Open on the newest message (the pending question sits right above the reply box).
+  React.useEffect(() => {
+    const el = convoRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [item.messages.length]);
 
   const loadDoctors = () => {
     if (doctors !== null) return;
@@ -205,118 +230,128 @@ function QaInboxCard({
       .catch(() => setDoctors([]));
   };
 
-  const loadHistory = () => {
-    if (history !== null) return;
-    fetchQaThreadDetail(apiFetch, item.threadId)
-      // Everything in the thread except the question being answered right now (shown above).
-      .then((detail) => setHistory(detail.messages.filter((message) => message.id !== item.messageId)))
-      .catch(() => setHistory([]));
-  };
-
-  const draftReady = item.draftStatus === "ready";
-  const draftPending = item.draftStatus === "pending" || item.draftStatus === "none";
+  const timeline = buildTimeline(item.messages, item.visits);
+  const pending = item.pendingQuestion;
+  const draftPending = pending?.draftStatus === "pending" || pending?.draftStatus === "none";
+  const draftReady = pending?.draftStatus === "ready";
 
   return (
-    <Card className="qa-card">
+    <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""}`}>
       <div className="qa-card-top">
         <span className="qa-patient" dir="auto">
-          {item.patientName} asks
+          {item.patientName}
         </span>
         <span className="qa-asked">
+          {item.needsApproval ? <Badge tone="amber">needs reply</Badge> : null}{" "}
           {item.assignedDoctor ? (
             <Badge tone="blue">
               {item.routingSource === "manual" ? "re-routed" : "treating"} · {item.assignedDoctor.name}
             </Badge>
           ) : (
             <Badge tone="amber">unrouted</Badge>
-          )}{" "}
-          {formatDateTime(item.askedAt)}
+          )}
         </span>
       </div>
 
-      <div className="qa-question" dir="auto">
-        {item.question}
-      </div>
-
-      <details className="qa-history" onToggle={(event) => (event.currentTarget as HTMLDetailsElement).open && loadHistory()}>
-        <summary>Conversation so far</summary>
-        <div className="qa-history-list">
-          {history === null ? (
-            <span className="qa-current">Loading…</span>
-          ) : history.length === 0 ? (
-            <span className="qa-current">This is the first message in the thread.</span>
+      <div className="qa-convo" ref={convoRef}>
+        {timeline.map((entry, index) =>
+          entry.kind === "visit" ? (
+            <div className="qa-visit" key={`v-${entry.visit.sessionId}-${index}`}>
+              <span dir="auto">🗓 Visit · {entry.visit.title}</span>
+              <span className="qa-visit-date">{formatDateTime(entry.visit.date)}</span>
+            </div>
           ) : (
-            history.map((message) => (
-              <div key={message.id} className={`qa-history-msg ${message.role === "doctor" ? "doctor" : "patient"}`}>
-                <div className="qa-history-role">
-                  {message.role === "doctor" ? "Clinic" : item.patientName}
-                  {message.status === "dismissed" ? " · dismissed" : ""}
-                  <span className="qa-history-time"> · {formatDateTime(message.createdAt)}</span>
-                </div>
-                <div className="qa-history-body" dir="auto">
-                  {message.body}
-                </div>
+            <div
+              key={entry.message.id}
+              className={`qa-msg ${entry.message.role === "doctor" ? "clinic" : "patient"} ${
+                pending && entry.message.id === pending.messageId ? "awaiting" : ""
+              }`}
+            >
+              <div className="qa-msg-meta">
+                {entry.message.role === "doctor" ? "Clinic" : item.patientName}
+                <span className="qa-msg-time"> · {formatDateTime(entry.message.createdAt)}</span>
+                {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · dismissed</span> : null}
               </div>
-            ))
-          )}
-        </div>
-      </details>
-
-      <div className="qa-draft-label">
-        Suggested reply
-        {draftReady ? (
-          <Badge tone="green">AI draft · verify before send</Badge>
-        ) : draftPending ? (
-          <span className="qa-draft-hint">drafting a suggestion…</span>
-        ) : (
-          <span className="qa-draft-hint">no draft — type a reply</span>
+              <div dir="auto">{entry.message.body}</div>
+            </div>
+          ),
         )}
       </div>
 
-      <Textarea
-        className="qa-reply-input"
-        dir="auto"
-        value={reply}
-        placeholder={draftPending ? "Drafting… you can type a reply now too." : "Type your reply…"}
-        onChange={(event) => setReply(event.target.value)}
-        aria-label={`Reply to ${item.patientName}`}
-      />
-
-      <div className="qa-card-actions">
-        <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim()}>
-          Send
-        </Button>
-        <Button variant="ghost" onClick={() => onDismiss(item)}>
-          Dismiss
-        </Button>
-        <span className="qa-spacer" />
-        <details className="qa-reroute" onToggle={(event) => (event.currentTarget as HTMLDetailsElement).open && loadDoctors()}>
-          <summary>Re-route</summary>
-          <div className="qa-reroute-list">
-            {doctors === null ? (
-              <span className="qa-current">Loading…</span>
-            ) : doctors.length === 0 ? (
-              <span className="qa-current">No treating doctors on record yet.</span>
+      {item.needsApproval ? (
+        <div className="qa-approve">
+          <div className="qa-draft-label">
+            Suggested reply
+            {draftReady ? (
+              <Badge tone="green">AI draft · verify before send</Badge>
+            ) : draftPending ? (
+              <span className="qa-draft-hint">drafting a suggestion…</span>
             ) : (
-              doctors.map((doctor) => {
-                const isCurrent = item.assignedDoctor?.userId === doctor.userId;
-                return (
-                  <button
-                    key={doctor.userId}
-                    type="button"
-                    disabled={isCurrent}
-                    onClick={() => onReroute(item, doctor.userId)}
-                  >
-                    {doctor.name} · {doctor.sessionCount} visit{doctor.sessionCount === 1 ? "" : "s"}
-                    {isCurrent ? " (current)" : ""}
-                  </button>
-                );
-              })
+              <span className="qa-draft-hint">no draft — type a reply</span>
             )}
           </div>
-        </details>
-      </div>
+          <Textarea
+            className="qa-reply-input"
+            dir="auto"
+            value={reply}
+            placeholder={draftPending ? "Drafting… you can type a reply now too." : "Type your reply…"}
+            onChange={(event) => setReply(event.target.value)}
+            aria-label={`Reply to ${item.patientName}`}
+          />
+          <div className="qa-card-actions">
+            <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim()}>
+              Send
+            </Button>
+            <Button variant="ghost" onClick={() => onDismiss(item)}>
+              Dismiss
+            </Button>
+            <span className="qa-spacer" />
+            <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
+          </div>
+        </div>
+      ) : (
+        <div className="qa-card-actions">
+          <span className="qa-resolved">No open question — patient has been replied to.</span>
+          <span className="qa-spacer" />
+          <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
+        </div>
+      )}
     </Card>
+  );
+}
+
+function Rerouter({
+  item,
+  doctors,
+  onOpen,
+  onReroute,
+}: {
+  item: QaInboxItem;
+  doctors: QaTreatingDoctor[] | null;
+  onOpen: () => void;
+  onReroute: (item: QaInboxItem, doctorUserId: string) => void;
+}) {
+  return (
+    <details className="qa-reroute" onToggle={(event) => (event.currentTarget as HTMLDetailsElement).open && onOpen()}>
+      <summary>Re-route</summary>
+      <div className="qa-reroute-list">
+        {doctors === null ? (
+          <span className="qa-current">Loading…</span>
+        ) : doctors.length === 0 ? (
+          <span className="qa-current">No treating doctors on record yet.</span>
+        ) : (
+          doctors.map((doctor) => {
+            const isCurrent = item.assignedDoctor?.userId === doctor.userId;
+            return (
+              <button key={doctor.userId} type="button" disabled={isCurrent} onClick={() => onReroute(item, doctor.userId)}>
+                {doctor.name} · {doctor.sessionCount} visit{doctor.sessionCount === 1 ? "" : "s"}
+                {isCurrent ? " (current)" : ""}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </details>
   );
 }
 

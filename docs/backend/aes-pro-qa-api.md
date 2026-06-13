@@ -79,29 +79,37 @@ Staff thread payload:
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/patient-qa/inbox` | staff_or_admin | Query `scope` = `mine` (default; routed to me **+** unrouted) \| `all` (whole clinic). Self-heals a missing/failed draft on read. |
+| `GET` | `/patient-qa/inbox` | staff_or_admin | **Thread-centric**: one entry per patient conversation; threads awaiting approval sort first, then by recent activity. Query `scope` = `mine` (default; routed to me **+** unrouted) \| `all` (whole clinic). `total` counts threads awaiting approval (the badge). Self-heals a missing/failed draft on read. |
 | `POST` | `/patient-qa/messages/{id}/send` | staff | Body `{ "reply"? }` — the approved text (the draft as-is, or an edit; omit to send the current draft). Creates the doctor reply, marks the question answered, and **captures the exchange into patient memory**. `409` if the question is no longer pending. Returns the staff thread payload. |
 | `POST` | `/patient-qa/messages/{id}/dismiss` | staff | Dismiss without replying. |
 
-Inbox payload:
+Inbox payload (thread-centric):
 ```jsonc
 {
   "schemaVersion": "2026-06-13.patient-qa.v1",
   "scope": "mine",
-  "total": 1,
+  "total": 1,                                    // threads awaiting approval (the badge)
   "items": [
     {
-      "messageId": "uuid", "threadId": "uuid",
-      "patientId": "uuid", "patientName": "Sara N.",
-      "question": "Is the swelling normal?", "askedAt": "iso",
-      "suggestedReply": "…" | null,              // the AI draft, doctor-only
-      "draftStatus": "ready|pending|failed|none",
+      "threadId": "uuid", "patientId": "uuid", "patientName": "Sara N.",
       "assignedDoctor": { "userId": "uuid", "name": "Dr. Demo" } | null,
-      "routingSource": "ai_default|manual|unrouted"
+      "routingSource": "ai_default|manual|unrouted",
+      "needsApproval": true,
+      "pendingQuestion": {                         // the question to approve a reply to (or null)
+        "messageId": "uuid", "question": "…", "askedAt": "iso",
+        "suggestedReply": "…" | null,              // the AI draft, doctor-only
+        "draftStatus": "ready|pending|failed|none"
+      },
+      "messages": [ { "id": "uuid", "role": "patient|doctor", "body": "…", "status": "…", "createdAt": "iso" } ],
+      "visits": [ { "sessionId": "uuid", "title": "Botox follow-up", "date": "iso" } ],  // interleaved as markers
+      "lastActivityAt": "iso"
     }
   ]
 }
 ```
+
+The reply-draft model is selectable like every other task via `PUT /ai-config/models` (task key
+`qa_draft`) — it shows in the same Settings model list as transcription/caption/patient_memory.
 
 ---
 

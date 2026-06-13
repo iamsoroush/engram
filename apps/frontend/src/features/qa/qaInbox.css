@@ -75,6 +75,92 @@
   padding: 16px;
 }
 
+.qa-card.qa-needs {
+  border-color: #f4d9a8;
+  box-shadow: 0 0 0 1px #f7e6c4 inset;
+}
+
+/* Thread conversation (Telegram-style: incoming patient left, clinic right, visit chips centered) */
+.qa-convo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.qa-msg {
+  max-width: 86%;
+  border-radius: 14px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.qa-msg.patient {
+  align-self: flex-start;
+  background: #f5f7fb;
+  border: 1px solid #e6e9ef;
+  border-bottom-left-radius: 5px;
+}
+
+.qa-msg.clinic {
+  align-self: flex-end;
+  background: #eef2ff;
+  border: 1px solid #dfe4ff;
+  border-bottom-right-radius: 5px;
+}
+
+.qa-msg.awaiting {
+  box-shadow: 0 0 0 2px #f4d9a8;
+}
+
+.qa-msg-meta {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.qa-msg-time {
+  font-weight: 500;
+  color: #aab2c0;
+}
+
+.qa-visit {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #6b7280;
+  background: #eef1f6;
+  border: 1px solid #e2e6ee;
+  border-radius: 999px;
+  padding: 3px 12px;
+  margin: 2px 0;
+}
+
+.qa-visit-date {
+  color: #aab2c0;
+}
+
+.qa-approve {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #eef0f4;
+  padding-top: 10px;
+}
+
+.qa-resolved {
+  font-size: 12.5px;
+  color: #8a93a2;
+}
+
 .qa-card-top {
   display: flex;
   align-items: baseline;

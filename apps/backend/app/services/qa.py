@@ -444,60 +444,93 @@ def revoke_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str) ->
 # --- Doctor inbox + reply/dismiss (staff) ---------------------------------------------------------
 
 
-def _inbox_item(db: DbSession, *, message: QaMessage, thread: QaThread, patient: Patient) -> dict[str, Any]:
+def _patient_visits(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> list[dict[str, Any]]:
+    """The patient's visits (id · title · date), oldest first — interleaved as markers in the thread."""
+    rows = db.execute(
+        select(Session.id, Session.title, func.coalesce(Session.captured_at, Session.updated_at, Session.created_at))
+        .where(Session.tenant_id == tenant_id, Session.patient_id == patient_id)
+        .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at))
+    ).all()
+    return [{"sessionId": str(sid), "title": title or "Visit", "date": _iso(date)} for sid, title, date in rows]
+
+
+def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dict[str, Any]:
+    """Build one thread-centric inbox entry: the whole conversation + the pending question (if any)."""
+    messages = _staff_messages(db, thread)
+    pending = next((m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING), None)
     assigned_name = _doctor_name(db, thread.assigned_doctor_user_id)
+    last_activity = messages[-1]["createdAt"] if messages else _iso(thread.updated_at)
     return {
-        "messageId": str(message.id),
         "threadId": str(thread.id),
         "patientId": str(patient.id),
         "patientName": patient.display_name,
-        "question": message.body,
-        "askedAt": _iso(message.created_at),
-        "suggestedReply": message.draft,
-        "draftStatus": message.draft_status,
         "assignedDoctor": (
             {"userId": str(thread.assigned_doctor_user_id), "name": assigned_name or "Doctor"}
             if thread.assigned_doctor_user_id
             else None
         ),
         "routingSource": thread.routing_source,
+        "needsApproval": pending is not None,
+        "pendingQuestion": (
+            {
+                "messageId": pending["id"],
+                "question": pending["body"],
+                "askedAt": pending["createdAt"],
+                "suggestedReply": pending["draft"],
+                "draftStatus": pending["draftStatus"],
+            }
+            if pending
+            else None
+        ),
+        "messages": messages,
+        "visits": _patient_visits(db, tenant_id=thread.tenant_id, patient_id=patient.id),
+        "lastActivityAt": last_activity,
     }
 
 
 def qa_inbox(db: DbSession, principal: CurrentPrincipal, *, scope: str = "mine") -> dict[str, Any]:
-    """The doctor Q&A inbox: pending patient questions + their AI-suggested replies (oldest first).
+    """The doctor Q&A inbox — **thread-centric**: one patient conversation per entry (AES-402).
 
-    ``scope="mine"`` (default) = threads routed to me, plus unrouted threads (so nothing falls
-    through); ``scope="all"`` = the whole clinic's pending Q&A (the shared-workspace 'Clinic' lens,
-    foundation §7). Self-heals a missing/failed draft on read (silent, never a needs-input item).
+    Threads that need the doctor's approval (a pending question) sort first; the rest follow by most
+    recent activity, so it reads like a triaged message list, not a flat all-patients chat. Each entry
+    carries the whole conversation (the UI interleaves visit markers) + the pending question's
+    AI-suggested reply. ``scope="mine"`` (default) = threads routed to me plus unrouted (nothing falls
+    through); ``scope="all"`` = the whole clinic (foundation §7). Self-heals a missing/failed draft on
+    read (silent, never a needs-input item). ``total`` counts threads awaiting approval (the badge).
     """
     require_qa_capability(db, principal.tenant_id)
     normalized_scope = scope if scope in {"mine", "all"} else "mine"
-    rows = db.execute(
-        select(QaMessage, QaThread, Patient)
-        .join(QaThread, QaThread.id == QaMessage.thread_id)
+    pairs = db.execute(
+        select(QaThread, Patient)
         .join(Patient, Patient.id == QaThread.patient_id)
-        .where(
-            QaMessage.tenant_id == principal.tenant_id,
-            QaMessage.role == ROLE_PATIENT,
-            QaMessage.status == Q_PENDING,
-            QaThread.status == THREAD_ACTIVE,
-        )
-        .order_by(QaMessage.created_at)
+        .where(QaThread.tenant_id == principal.tenant_id, QaThread.status == THREAD_ACTIVE)
     ).all()
 
-    items: list[dict[str, Any]] = []
-    healed = False
-    for message, thread, patient in rows:
-        if normalized_scope == "mine" and thread.assigned_doctor_user_id is not None:
-            if thread.assigned_doctor_user_id != principal.user_id:
-                continue
-        if _ensure_draft_job(db, thread=thread, question=message):
-            healed = True
-        items.append(_inbox_item(db, message=message, thread=thread, patient=patient))
-    if healed:
-        db.commit()
-    return {"schemaVersion": QA_SCHEMA_VERSION, "scope": normalized_scope, "items": items, "total": len(items)}
+    # Pass 1: self-heal any pending question that never got (or lost) its draft. Dispatch commits.
+    in_scope: list[tuple[QaThread, Patient]] = []
+    for thread, patient in pairs:
+        if normalized_scope == "mine" and thread.assigned_doctor_user_id is not None and thread.assigned_doctor_user_id != principal.user_id:
+            continue
+        in_scope.append((thread, patient))
+        for question in db.execute(
+            select(QaMessage).where(
+                QaMessage.thread_id == thread.id, QaMessage.role == ROLE_PATIENT, QaMessage.status == Q_PENDING
+            )
+        ).scalars():
+            _ensure_draft_job(db, thread=thread, question=question)
+
+    # Pass 2: build entries (reflecting any just-dispatched draft state), drop empty channels.
+    items = [_thread_inbox_item(db, thread, patient) for thread, patient in in_scope]
+    items = [item for item in items if item["messages"]]
+    # Most-recent first, then float the threads awaiting approval to the top (stable two-key sort).
+    items.sort(key=lambda item: item["lastActivityAt"] or "", reverse=True)
+    items.sort(key=lambda item: 0 if item["needsApproval"] else 1)
+    return {
+        "schemaVersion": QA_SCHEMA_VERSION,
+        "scope": normalized_scope,
+        "items": items,
+        "total": sum(1 for item in items if item["needsApproval"]),
+    }
 
 
 def _get_question(db: DbSession, tenant_id: uuid.UUID, message_id: str) -> QaMessage:

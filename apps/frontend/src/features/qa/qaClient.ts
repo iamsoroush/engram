@@ -11,17 +11,32 @@ export interface QaAssignedDoctor {
   name: string;
 }
 
-export interface QaInboxItem {
+export interface QaPendingQuestion {
   messageId: string;
-  threadId: string;
-  patientId: string;
-  patientName: string;
   question: string;
   askedAt: string | null;
   suggestedReply: string | null;
   draftStatus: "none" | "pending" | "ready" | "failed" | string;
+}
+
+export interface QaVisitMarker {
+  sessionId: string;
+  title: string;
+  date: string | null;
+}
+
+/** A thread-centric inbox entry: one patient conversation (Telegram-style), needs-approval first. */
+export interface QaInboxItem {
+  threadId: string;
+  patientId: string;
+  patientName: string;
   assignedDoctor: QaAssignedDoctor | null;
   routingSource: string;
+  needsApproval: boolean;
+  pendingQuestion: QaPendingQuestion | null;
+  messages: QaThreadMessage[];
+  visits: QaVisitMarker[];
+  lastActivityAt: string | null;
 }
 
 export interface QaInboxResponse {

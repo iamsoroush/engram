@@ -24,6 +24,7 @@ AI_MODEL_TASKS: list[tuple[str, str]] = [
     ("caption", "Photo caption (Pro)"),
     ("note_decoration", "Note decoration (Pro)"),
     ("patient_memory", "Patient summary + history (Pro)"),
+    ("qa_draft", "Patient Q&A reply draft (Pro)"),
 ]
 _VALID_TASKS = {task for task, _ in AI_MODEL_TASKS}
 
