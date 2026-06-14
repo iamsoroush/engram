@@ -38,8 +38,8 @@ PGUSER="${POSTGRES_USER:-notari}"
 # the running notari-infra-minio volume). These are used both to provision each stack's bucket
 # (ensure_bucket) and to pin the app's object-storage keys (ensure_env); a mismatch fails uploads
 # with InvalidAccessKeyId — a capture stuck "trying to sync".
-MINIO_USER="${MINIO_ROOT_USER:-aesmem-dev}"
-MINIO_PASS="${MINIO_ROOT_PASSWORD:-aesmem-dev-secret}"
+MINIO_USER="${MINIO_ROOT_USER:-notari-dev}"
+MINIO_PASS="${MINIO_ROOT_PASSWORD:-notari-dev-secret}"
 
 CANONICAL_DB="notari"
 CANONICAL_BUCKET="notari-captures"
