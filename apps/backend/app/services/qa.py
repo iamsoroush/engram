@@ -460,6 +460,9 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
     pending = next((m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING), None)
     assigned_name = _doctor_name(db, thread.assigned_doctor_user_id)
     last_activity = messages[-1]["createdAt"] if messages else _iso(thread.updated_at)
+    # Re-route is only meaningful for a multi-provider patient (≥2 treating doctors to choose between);
+    # the UI hides the control otherwise so a single-doctor clinic isn't shown a no-op.
+    treating_doctor_count = len(treating_doctors(db, tenant_id=thread.tenant_id, patient_id=patient.id))
     return {
         "threadId": str(thread.id),
         "patientId": str(patient.id),
@@ -470,6 +473,7 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
             else None
         ),
         "routingSource": thread.routing_source,
+        "treatingDoctorCount": treating_doctor_count,
         "needsApproval": pending is not None,
         "pendingQuestion": (
             {

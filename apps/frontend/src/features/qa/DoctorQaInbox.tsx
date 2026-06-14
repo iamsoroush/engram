@@ -239,9 +239,15 @@ function QaThreadCard({
   const draftReady = pending?.draftStatus === "ready";
   const lastMessage = item.messages[item.messages.length - 1];
 
+  // Re-route only makes sense when the patient has more than one treating doctor to choose between.
+  const canReroute = item.treatingDoctorCount >= 2;
+  // Earlier messages that are hidden when collapsed (open shows the pending question; resolved shows
+  // a one-line preview), so the disclosure can name how many there are.
+  const hiddenCount = item.needsApproval ? item.messages.length - 1 : item.messages.length;
+
   return (
     <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""}`}>
-      <button className="qa-card-head" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+      <div className="qa-card-head">
         <span className="qa-patient" dir="auto">
           {item.patientName}
         </span>
@@ -254,9 +260,8 @@ function QaThreadCard({
           ) : (
             <Badge tone="amber">unrouted</Badge>
           )}
-          <Chevron open={expanded} />
         </span>
-      </button>
+      </div>
 
       {expanded ? (
         <div className="qa-convo" ref={convoRef}>
@@ -293,15 +298,23 @@ function QaThreadCard({
           <div dir="auto">{pending.question}</div>
         </div>
       ) : (
-        // Collapsed resolved conversation: one-line preview; click the header to read it all.
-        <button className="qa-preview" type="button" onClick={() => setExpanded(true)}>
+        // Collapsed resolved conversation: one-line preview of the latest message.
+        <div className="qa-preview">
           <span className="qa-preview-role">{lastMessage?.role === "doctor" ? "Clinic" : item.patientName}:</span>{" "}
           <span className="qa-preview-text" dir="auto">
             {lastMessage?.body}
           </span>
           <span className="qa-msg-time"> · {formatDateTime(item.lastActivityAt)}</span>
-        </button>
+        </div>
       )}
+
+      {/* Explicit, labelled disclosure for the full thread (replaces the easy-to-miss chevron). */}
+      {hiddenCount > 0 ? (
+        <button className="qa-expand-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+          <Chevron open={expanded} />
+          {expanded ? "Hide full conversation" : `View full conversation · ${item.messages.length} messages`}
+        </button>
+      ) : null}
 
       {item.needsApproval ? (
         <div className="qa-approve">
@@ -330,13 +343,17 @@ function QaThreadCard({
             <Button variant="ghost" onClick={() => onDismiss(item)}>
               Dismiss
             </Button>
-            <span className="qa-spacer" />
-            <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
+            {canReroute ? (
+              <>
+                <span className="qa-spacer" />
+                <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
+              </>
+            ) : null}
           </div>
         </div>
-      ) : expanded ? (
+      ) : expanded && canReroute ? (
         <div className="qa-card-actions">
-          <span className="qa-resolved">No open question — patient has been replied to.</span>
+          <span className="qa-resolved">Replied — re-route future questions if needed.</span>
           <span className="qa-spacer" />
           <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
         </div>

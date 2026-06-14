@@ -32,6 +32,7 @@ export interface QaInboxItem {
   patientName: string;
   assignedDoctor: QaAssignedDoctor | null;
   routingSource: string;
+  treatingDoctorCount: number;
   needsApproval: boolean;
   pendingQuestion: QaPendingQuestion | null;
   messages: QaThreadMessage[];

@@ -812,6 +812,28 @@ small {
 .report-meta-counts {
   margin-left: auto;
 }
+
+/* Explicit "what this report is based on" status (Pro). */
+.report-freshness {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+.report-freshness.current {
+  color: var(--color-success, #0f766e);
+}
+.report-freshness.updating {
+  color: #2456d6;
+}
+.report-freshness-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: capture-status-pulse 1.45s ease-out infinite;
+}
 .report-doc-status {
   color: var(--color-muted);
   font-size: 0.82rem;
