@@ -113,6 +113,16 @@ import {
   resolveRestoredSession,
 } from "./sessionState";
 
+// E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
+// reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
+function defaultScreenForAuth(auth: AuthSession): Screen {
+  const roles = auth.memberships.filter((m) => m.tenantId === auth.tenant.id).map((m) => m.role);
+  const effective = roles.length ? roles : auth.user.persona ? [String(auth.user.persona)] : [];
+  if (effective.includes("doctor")) return "active-session";
+  if (effective.includes("assistant") || effective.includes("admin")) return "patients";
+  return "active-session";
+}
+
 function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
   if (!session) return false;
   if (session.processingStatus?.state === "processing" || session.report?.status === "generating") return true;
@@ -1497,8 +1507,9 @@ export function App() {
   const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
     setAuthError("");
     try {
-      commitAuth(await loginWithPersona(persona, tier));
-      navigateScreen("active-session");
+      const next = await loginWithPersona(persona, tier);
+      commitAuth(next);
+      navigateScreen(defaultScreenForAuth(next));
     } catch {
       setAuthError("Could not sign in with that persona.");
     }
@@ -1507,8 +1518,9 @@ export function App() {
   const handlePasswordLogin = async (email: string, password: string) => {
     setAuthError("");
     try {
-      commitAuth(await loginWithPassword(email, password));
-      navigateScreen("active-session");
+      const next = await loginWithPassword(email, password);
+      commitAuth(next);
+      navigateScreen(defaultScreenForAuth(next));
     } catch {
       setAuthError("Invalid email or password.");
     }

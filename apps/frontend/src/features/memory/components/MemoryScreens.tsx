@@ -579,6 +579,8 @@ export function PatientsHome({
               onListClinicMembers={onListClinicMembers}
               onSearchPatients={onSearchPatients}
               onStartVisit={onStartVisit}
+              onLoadLastVisit={onLoadLastVisit}
+              onResolveFile={onResolveFile}
               onOpenPatient={(patientId, patientName) => {
                 // Open the patient file in place — stay on Today so Back returns here (not Patients).
                 setPendingPatientStub(patientName ? { id: patientId, name: patientName } : null);
