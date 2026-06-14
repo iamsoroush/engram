@@ -117,6 +117,39 @@ export async function fetchQaInbox(apiFetch: ApiFetch, scope: "mine" | "all" = "
   return { scope: payload.scope ?? scope, total: payload.total ?? 0, items: Array.isArray(payload.items) ? payload.items : [] };
 }
 
+export interface QaMessageDraft {
+  messageId: string;
+  status: string;
+  draft: string | null;
+  draftStatus: "none" | "pending" | "ready" | "failed" | "revising" | string;
+  draftSource: string | null;
+  draftMode: "revise" | "replace" | null;
+}
+
+/** Send the doctor's voice note to revise/replace the reply draft; the AI decides which (AES-402). */
+export async function requestQaVoiceEdit(
+  apiFetch: ApiFetch,
+  messageId: string,
+  audio: Blob,
+  currentDraft: string,
+): Promise<{ messageId: string; draftStatus: string }> {
+  const ext = audio.type.includes("mp4") || audio.type.includes("mpeg") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
+  const form = new FormData();
+  form.append("file", audio, `voice.${ext}`);
+  form.append("draft", currentDraft);
+  // No explicit Content-Type — the browser sets the multipart boundary; apiFetch adds auth.
+  const response = await apiFetch(`${API_BASE}/patient-qa/messages/${messageId}/voice-edit`, { method: "POST", body: form });
+  if (!response.ok) throw new Error("Could not send the voice note");
+  return (await response.json()) as { messageId: string; draftStatus: string };
+}
+
+/** Poll a question's draft state (used while a voice edit / initial draft is running). */
+export async function fetchQaMessageDraft(apiFetch: ApiFetch, messageId: string): Promise<QaMessageDraft> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/messages/${messageId}/draft`);
+  if (!response.ok) throw new Error("Could not load the draft");
+  return (await response.json()) as QaMessageDraft;
+}
+
 export async function sendQaReply(apiFetch: ApiFetch, messageId: string, reply: string): Promise<void> {
   const response = await apiFetch(`${API_BASE}/patient-qa/messages/${messageId}/send`, {
     method: "POST",

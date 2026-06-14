@@ -16,6 +16,7 @@ import {
   type QaTreatingDoctor,
   type QaVisitMarker,
 } from "./qaClient";
+import { useVoiceEdit } from "./useVoiceEdit";
 
 /**
  * Doctor Q&A inbox — thread-centric (AES-402).
@@ -216,6 +217,33 @@ function QaThreadCard({
   const [expanded, setExpanded] = React.useState(false);
   const convoRef = React.useRef<HTMLDivElement>(null);
 
+  // Voice edit: the doctor speaks a change; the AI revises or replaces the draft (it decides which).
+  const [voiceMode, setVoiceMode] = React.useState<"revise" | "replace" | null>(null);
+  const [voiceError, setVoiceError] = React.useState("");
+  const replyRef = React.useRef(reply);
+  replyRef.current = reply;
+  const preVoiceRef = React.useRef("");
+  const voice = useVoiceEdit({
+    apiFetch,
+    messageId: pending?.messageId,
+    getDraft: () => replyRef.current,
+    onApplied: (text, mode) => {
+      setReply(text);
+      setVoiceMode(mode);
+    },
+    onError: setVoiceError,
+  });
+  const startVoice = () => {
+    preVoiceRef.current = reply;
+    setVoiceError("");
+    setVoiceMode(null);
+    void voice.start();
+  };
+  const undoVoice = () => {
+    setReply(preVoiceRef.current);
+    setVoiceMode(null);
+  };
+
   React.useEffect(() => {
     setReply((current) => (current.trim() ? current : item.pendingQuestion?.suggestedReply || ""));
   }, [item.pendingQuestion?.suggestedReply]);
@@ -328,21 +356,39 @@ function QaThreadCard({
               <span className="qa-draft-hint">no draft — type a reply</span>
             )}
           </div>
-          <Textarea
-            className="qa-reply-input"
-            dir="auto"
-            value={reply}
-            placeholder={draftPending ? "Drafting… you can type a reply now too." : "Type your reply…"}
-            onChange={(event) => setReply(event.target.value)}
-            aria-label={`Reply to ${item.patientName}`}
-          />
+          {voiceMode ? (
+            <div className="qa-voice-note">
+              ✨ {voiceMode === "replace" ? "Rewrote" : "Revised"} from your voice note ·{" "}
+              <button type="button" className="qa-voice-undo" onClick={undoVoice}>
+                Undo
+              </button>
+            </div>
+          ) : null}
+          <div className="qa-reply-wrap">
+            <Textarea
+              className={`qa-reply-input ${voice.state === "applying" ? "is-applying" : ""}`}
+              dir="auto"
+              value={reply}
+              placeholder={draftPending ? "Drafting… you can type a reply now too." : "Type your reply…"}
+              onChange={(event) => setReply(event.target.value)}
+              disabled={voice.state === "applying"}
+              aria-label={`Reply to ${item.patientName}`}
+            />
+            {voice.state === "applying" ? (
+              <div className="qa-reply-overlay">
+                <span className="qa-voice-spinner" aria-hidden="true" /> Applying your voice note…
+              </div>
+            ) : null}
+          </div>
+          {voiceError ? <div className="qa-voice-error">{voiceError}</div> : null}
           <div className="qa-card-actions">
-            <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim()}>
+            <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim() || voice.state !== "idle"}>
               Send
             </Button>
-            <Button variant="ghost" onClick={() => onDismiss(item)}>
+            <Button variant="ghost" onClick={() => onDismiss(item)} disabled={voice.state === "applying"}>
               Dismiss
             </Button>
+            <VoiceControl voice={voice} onStart={startVoice} />
             {canReroute ? (
               <>
                 <span className="qa-spacer" />
@@ -378,6 +424,44 @@ function Chevron({ open }: { open: boolean }) {
       style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
     >
       <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
+function VoiceControl({ voice, onStart }: { voice: ReturnType<typeof useVoiceEdit>; onStart: () => void }) {
+  if (voice.state === "recording") {
+    return (
+      <span className="qa-voice-live">
+        <span className="qa-voice-dot" aria-hidden="true" />
+        {formatSeconds(voice.seconds)}
+        <button type="button" className="qa-voice-stop" onClick={voice.stop}>
+          Stop
+        </button>
+        <button type="button" className="qa-voice-cancel" onClick={voice.cancel}>
+          Cancel
+        </button>
+      </span>
+    );
+  }
+  if (voice.state === "applying") return null; // the textarea overlay shows the applying state
+  return (
+    <button type="button" className="qa-voice-btn" onClick={onStart} title="Edit this reply by voice">
+      <MicIcon /> Voice edit
+    </button>
+  );
+}
+
+function formatSeconds(total: number): string {
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function MicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
     </svg>
   );
 }

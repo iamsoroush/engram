@@ -22,6 +22,7 @@ This module is self-contained: all Q&A logic lives here; the only shared-file se
 """
 
 import secrets
+import io
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -51,9 +52,11 @@ from app.services.capabilities import POST_SESSION_QA, tenant_has_capability
 from app.services.patient_memory_intelligence import persisted_summary
 from app.services.patients import get_patient
 from app.services.sessions import parse_uuid
+from app.storage import ObjectStore
 
 QA_SCHEMA_VERSION = "2026-06-13.patient-qa.v1"
 QA_DRAFT_TASK_NAME = "ai_engine.process_qa_draft"
+QA_REVISE_TASK_NAME = "ai_engine.process_qa_revise"
 
 THREAD_ACTIVE = "active"
 THREAD_REVOKED = "revoked"
@@ -77,6 +80,7 @@ DRAFT_NONE = "none"
 DRAFT_PENDING = "pending"
 DRAFT_READY = "ready"
 DRAFT_FAILED = "failed"
+DRAFT_REVISING = "revising"  # a voice-edit job is rewriting/revising the current draft
 
 MAX_QUESTION_CHARS = 4000
 MAX_REPLY_CHARS = 8000
@@ -945,6 +949,208 @@ def complete_qa_draft_worker_job(db: DbSession, *, job: AiJob, output: dict[str,
         target_type="qa_message",
         target_id=question.id if question is not None else None,
         details={"job_id": str(job.id), "job_type": job.job_type.value},
+    )
+    db.commit()
+    db.refresh(job)
+    return {"job": ai_job_payload(job)}
+
+
+# --- Voice edit of a reply draft (qa_revise; AES-402) ---------------------------------------------
+
+
+def _voice_object_key(tenant_id: uuid.UUID, message_id: uuid.UUID, job_id: uuid.UUID) -> str:
+    return f"tenants/{tenant_id}/qa/{message_id}/voice/{job_id}"
+
+
+def request_voice_edit(
+    db: DbSession,
+    principal: CurrentPrincipal,
+    *,
+    object_store: ObjectStore,
+    message_id: str,
+    audio: bytes,
+    content_type: str,
+    current_draft: str | None,
+) -> dict[str, Any]:
+    """Store the doctor's voice note and dispatch a job to revise/replace the reply draft (AES-402).
+
+    The current editable draft is sent as the base; the AI decides whether the voice note revises it
+    or is an entirely new reply. The audio is transient (deleted once the job completes).
+    """
+    require_qa_capability(db, principal.tenant_id)
+    if not audio:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The voice note is empty")
+    question = _get_question(db, principal.tenant_id, message_id)
+    if question.status != Q_PENDING:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This question is no longer pending")
+    thread = _get_thread(db, principal.tenant_id, str(question.thread_id))
+
+    job = AiJob(
+        tenant_id=principal.tenant_id,
+        patient_id=thread.patient_id,
+        job_type=AiJobType.qa_revise,
+        status=AiJobStatus.queued,
+        generated_by="ai-engine",
+        created_by_user_id=principal.user_id,
+        result_metadata={"queue": "ai_jobs", "qa_thread_id": str(thread.id), "qa_message_id": str(question.id)},
+    )
+    db.add(job)
+    db.flush()
+    object_key = _voice_object_key(principal.tenant_id, question.id, job.id)
+    object_store.put_object(
+        object_key=object_key,
+        data=io.BytesIO(audio),
+        length=len(audio),
+        content_type=content_type or "application/octet-stream",
+        metadata={"tenant-id": str(principal.tenant_id), "qa-message-id": str(question.id)},
+    )
+    job.result_metadata = {
+        **(job.result_metadata or {}),
+        "voice_object_key": object_key,
+        "voice_content_type": content_type or "application/octet-stream",
+        "current_draft": (current_draft or "")[:MAX_REPLY_CHARS],
+    }
+    question.draft_status = DRAFT_REVISING
+    question.draft_job_id = job.id
+    audit(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        action="qa.reply.voice_edit",
+        target_type="qa_message",
+        target_id=question.id,
+        details={"job_id": str(job.id)},
+    )
+    db.commit()
+    db.refresh(job)
+    dispatch_qa_revise_job(db, job)
+    return {"messageId": str(question.id), "draftStatus": DRAFT_REVISING, "jobId": str(job.id)}
+
+
+def dispatch_qa_revise_job(db: DbSession, job: AiJob) -> None:
+    """Send a committed qa_revise job to Celery, marking broker failures (mirrors qa_draft)."""
+    from app.celery_app import celery_app
+
+    now = _utc_now()
+    job.last_dispatched_at = now
+    job.result_metadata = {**(job.result_metadata or {}), "last_dispatched_at": now.isoformat(), "queue": "ai_jobs"}
+    try:
+        celery_app.send_task(QA_REVISE_TASK_NAME, args=[str(job.id)], task_id=str(job.id), queue="ai_jobs")
+        db.commit()
+    except Exception as exc:  # noqa: BLE001 — broker down: persist a retryable state, recovery re-dispatches.
+        schedule_retry(job, now=_utc_now(), error_message=str(exc), retry_reason="broker_unavailable")
+        job.result_metadata = {**(job.result_metadata or {}), "queue_error": str(exc)}
+        db.commit()
+
+
+def get_message_draft(db: DbSession, principal: CurrentPrincipal, message_id: str) -> dict[str, Any]:
+    """Lightweight draft state for the inbox to poll while a voice edit (or initial draft) runs."""
+    require_qa_capability(db, principal.tenant_id)
+    question = _get_question(db, principal.tenant_id, message_id)
+    return {
+        "messageId": str(question.id),
+        "status": question.status,
+        "draft": question.draft,
+        "draftStatus": question.draft_status,
+        "draftSource": question.draft_source,
+        "draftMode": (question.draft_source or "").split(":")[-1] if (question.draft_source or "").startswith("ai-voice:") else None,
+    }
+
+
+def internal_qa_voice_bytes(db: DbSession, *, object_store: ObjectStore, job_id: str) -> dict[str, Any]:
+    """INTERNAL: stream a qa_revise job's stored voice note to the trusted worker."""
+    job = db.execute(select(AiJob).where(AiJob.id == parse_uuid(job_id, "job_id"))).scalar_one_or_none()
+    if job is None or job.job_type != AiJobType.qa_revise:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice note not found")
+    metadata = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    object_key = metadata.get("voice_object_key")
+    if not object_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice note not found")
+    return {
+        "content": object_store.get_object_bytes(str(object_key)),
+        "media_type": metadata.get("voice_content_type") or "application/octet-stream",
+        "filename": f"qa-voice-{job_id}",
+    }
+
+
+def qa_revise_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]) -> dict[str, Any]:
+    """Build the worker payload for a qa_revise job (current draft + question/grounding + audio path)."""
+    metadata = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    message_id = metadata.get("qa_message_id")
+    question = (
+        db.execute(
+            select(QaMessage).where(QaMessage.id == parse_uuid(str(message_id), "qa_message_id"), QaMessage.tenant_id == job.tenant_id)
+        ).scalar_one_or_none()
+        if message_id
+        else None
+    )
+    if question is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Q&A voice-edit target question is missing")
+    thread = db.get(QaThread, question.thread_id)
+    patient = db.get(Patient, job.patient_id)
+    doctor_user_id = thread.assigned_doctor_user_id if thread else None
+    doctor_name = _doctor_name(db, doctor_user_id) or CARE_TEAM_BYLINE
+    patient_context = _patient_qa_context(db, patient, tenant_id=job.tenant_id)
+    current_draft = metadata.get("current_draft") or question.draft or ""
+    return {
+        "job": ai_job_payload(job),
+        "aiModels": ai_models,
+        "qaRevise": {
+            "currentDraft": current_draft,
+            "patientQuestion": question.body,
+            "patientContext": patient_context,
+            "priorAnswers": _prior_doctor_answers(db, tenant_id=job.tenant_id, doctor_user_id=doctor_user_id),
+            "doctorName": doctor_name,
+            "voiceEndpoint": f"/internal/qa/voice/{job.id}",
+        },
+        # No gateway → keep the current draft unchanged (the doctor can still edit by hand).
+        "deterministicFallback": {"mode": "revise", "reply": current_draft, "source": "mock-deterministic"},
+    }
+
+
+def complete_qa_revise_worker_job(db: DbSession, *, job: AiJob, output: dict[str, Any]) -> dict[str, Any]:
+    """Persist a completed qa_revise job: write the revised/rewritten reply onto the pending question."""
+    completed_at = _utc_now()
+    metadata = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    message_id = metadata.get("qa_message_id")
+    question = (
+        db.execute(
+            select(QaMessage).where(QaMessage.id == parse_uuid(str(message_id), "qa_message_id"), QaMessage.tenant_id == job.tenant_id)
+        ).scalar_one_or_none()
+        if message_id
+        else None
+    )
+    reply_text = output.get("reply") or output.get("draft")
+    reply_text = reply_text.strip()[:MAX_REPLY_CHARS] if isinstance(reply_text, str) and reply_text.strip() else None
+    mode = output.get("mode") if output.get("mode") in {"revise", "replace"} else "revise"
+    if question is not None and question.status == Q_PENDING and reply_text:
+        question.draft = reply_text
+        question.draft_status = DRAFT_READY
+        question.draft_source = f"ai-voice:{mode}"
+    elif question is not None and question.status == Q_PENDING:
+        # Couldn't produce a revision — leave whatever draft was there, just clear the revising state.
+        question.draft_status = DRAFT_READY if question.draft else DRAFT_FAILED
+    # The voice note was transient — delete it now that the edit is applied.
+    object_key = metadata.get("voice_object_key")
+    if object_key:
+        try:
+            from app.storage import get_object_store
+
+            get_object_store().delete_object(str(object_key))
+        except Exception:  # noqa: BLE001 — best-effort cleanup; a leftover object is harmless.
+            pass
+    job.status = AiJobStatus.succeeded
+    job.completed_at = completed_at
+    job.error_message = None
+    job.result_metadata = {**metadata, "completed_at": completed_at.isoformat(), "mode": mode, "source": output.get("source")}
+    audit(
+        db,
+        tenant_id=job.tenant_id,
+        actor_user_id=job.created_by_user_id,
+        action="ai_processing.complete",
+        target_type="qa_message",
+        target_id=question.id if question is not None else None,
+        details={"job_id": str(job.id), "job_type": job.job_type.value, "mode": mode},
     )
     db.commit()
     db.refresh(job)

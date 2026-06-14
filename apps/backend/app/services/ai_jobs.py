@@ -67,6 +67,8 @@ TASK_NAME_BY_JOB_TYPE = {
     # Post-session patient Q&A reply draft (AES-402). Logic lives in app/services/qa.py; recovery
     # re-dispatches it via the generic patient-scoped path (it carries patient_id).
     AiJobType.qa_draft: "ai_engine.process_qa_draft",
+    # Q&A reply voice edit (AES-402) — revise/replace the draft from the doctor's spoken note.
+    AiJobType.qa_revise: "ai_engine.process_qa_revise",
 }
 
 def utc_now() -> datetime:
@@ -1531,6 +1533,11 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         from app.services.qa import qa_draft_worker_payload
 
         return qa_draft_worker_payload(db, job, ai_models)
+    if job.job_type == AiJobType.qa_revise:
+        # Q&A reply voice edit (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import qa_revise_worker_payload
+
+        return qa_revise_worker_payload(db, job, ai_models)
     capture = None
     if job.capture_id:
         capture = db.execute(
@@ -1688,6 +1695,11 @@ def complete_worker_job(
         from app.services.qa import complete_qa_draft_worker_job
 
         return complete_qa_draft_worker_job(db, job=job, output=output)
+    if job.job_type == AiJobType.qa_revise:
+        # Q&A reply voice edit (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import complete_qa_revise_worker_job
+
+        return complete_qa_revise_worker_job(db, job=job, output=output)
     if job.capture_id is None:
         return complete_session_worker_job(db, job=job, output_key=output_key, output=output)
     capture = db.execute(

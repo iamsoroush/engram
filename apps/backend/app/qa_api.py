@@ -8,15 +8,19 @@ endpoints follow the same role gates as the rest of the API. All logic lives in
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, staff_required
 from app.db.session import get_db
 from app.services import qa
+from app.services.ai_jobs import require_ai_engine_token
+from app.storage import ObjectStore, get_object_store
 
 qa_api = APIRouter(prefix="/api/v1", tags=["patient-qa"])
+# Trusted internal callbacks (the worker fetches the stored voice note); same gate as the AI job API.
+qa_internal_api = APIRouter(prefix="/internal", dependencies=[Depends(require_ai_engine_token)], include_in_schema=False)
 
 
 # --- Request bodies (camelCase in, like the rest of the API) ---------------------------------------
@@ -167,6 +171,38 @@ def qa_dismiss(
     return qa.dismiss_question(db, principal, message_id)
 
 
+@qa_api.post("/patient-qa/messages/{message_id}/voice-edit")
+async def qa_voice_edit(
+    message_id: str,
+    file: UploadFile = File(...),
+    draft: str = Form(default=""),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+    object_store: ObjectStore = Depends(get_object_store),
+) -> dict[str, Any]:
+    """Edit the reply with a spoken note; the AI decides whether it revises the draft or replaces it."""
+    audio = await file.read()
+    return qa.request_voice_edit(
+        db,
+        principal,
+        object_store=object_store,
+        message_id=message_id,
+        audio=audio,
+        content_type=file.content_type or "application/octet-stream",
+        current_draft=draft,
+    )
+
+
+@qa_api.get("/patient-qa/messages/{message_id}/draft")
+def qa_message_draft(
+    message_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Poll the question's current draft state (used while a voice edit / initial draft runs)."""
+    return qa.get_message_draft(db, principal, message_id)
+
+
 # --- Public patient surface (no auth — the token is the capability) --------------------------------
 
 
@@ -180,3 +216,17 @@ def qa_public_thread(token: str, db: Session = Depends(get_db)) -> dict[str, Any
 def qa_public_ask(token: str, request: QaAskRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
     """PUBLIC: the patient asks a question; a reply draft is routed to the doctor's inbox."""
     return qa.ask_question(db, token, request.question)
+
+
+# --- Internal (AI engine worker) -------------------------------------------------------------------
+
+
+@qa_internal_api.get("/qa/voice/{job_id}")
+def qa_internal_voice(
+    job_id: str,
+    db: Session = Depends(get_db),
+    object_store: ObjectStore = Depends(get_object_store),
+) -> Response:
+    """INTERNAL: stream a qa_revise job's stored voice note to the worker."""
+    payload = qa.internal_qa_voice_bytes(db, object_store=object_store, job_id=job_id)
+    return Response(content=payload["content"], media_type=payload["media_type"])

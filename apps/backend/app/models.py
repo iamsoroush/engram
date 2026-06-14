@@ -124,6 +124,10 @@ class AiJobType(str, enum.Enum):
     # the target Q&A message/thread is carried in `AiJob.result_metadata` so no ai_jobs schema change
     # is needed. See `app/services/qa.py`.
     qa_draft = "qa_draft"
+    # Voice edit of a Q&A reply (Pro, AES-402): the doctor's spoken note revises the current draft or
+    # replaces it with a new reply — the job classifies which. Patient-scoped like `qa_draft`; the
+    # audio object key + current draft live in `AiJob.result_metadata`.
+    qa_revise = "qa_revise"
 
 
 class Tenant(Base):
