@@ -1,7 +1,7 @@
 // Therapy vertical API client (Spine A, therapy). Self-contained so it never disturbs the
 // aesthetics capture/client client. Reuses the auth-aware `apiFetch` and the shared backend
 // contracts; the therapy synthesis lives on `session.extractedMetadata.therapy`.
-import type { ApiFetch } from "../../domain/appTypes";
+import type { ApiFetch, CaptureDraft } from "../../domain/appTypes";
 import { API_BASE } from "../../shared/lib/config";
 
 export type TherapyFormat = "dap" | "soap" | "birp";
@@ -144,20 +144,24 @@ export async function listTherapySessionCaptures(apiFetch: ApiFetch, sessionId: 
   });
 }
 
-export async function uploadTherapyNote(
+// Upload any capture (note / audio / photo) into a therapy session — the shared aesthetics capture
+// dialogs hand back a CaptureDraft; we add patient_id on first capture so the new session is owned
+// by the selected client. Audio is normalized to WAV by the caller (audio.ts standardizeCaptureDraft).
+export async function uploadTherapyCapture(
   apiFetch: ApiFetch,
-  { text, sessionId, patientId }: { text: string; sessionId?: string; patientId?: string },
+  { draft, sessionId, patientId }: { draft: CaptureDraft; sessionId?: string; patientId?: string },
 ): Promise<{ sessionId: string }> {
   const form = new FormData();
-  form.append("capture_type", "note");
-  form.append("detail", text);
+  form.append("capture_type", draft.kind);
+  form.append("detail", draft.detail ?? "");
   form.append("new_session", String(!sessionId));
   form.append("client_capture_id", `th-${(crypto as Crypto).randomUUID?.() || Date.now()}`);
+  if (draft.metadata) form.append("metadata", JSON.stringify(draft.metadata));
   if (sessionId) form.append("session_id", sessionId);
   if (patientId && !sessionId) form.append("patient_id", patientId);
-  form.append("file", new Blob([text], { type: "text/plain" }), `note-${Date.now()}.txt`);
+  form.append("file", draft.file, draft.filename);
   const response = await apiFetch(`${API_BASE}/captures`, { method: "POST", body: form });
-  if (!response.ok) throw new Error("Could not save note");
+  if (!response.ok) throw new Error("Could not save capture");
   const payload = (await response.json()) as { session?: Record<string, unknown> };
   return { sessionId: String(payload.session?.id || sessionId || "") };
 }
