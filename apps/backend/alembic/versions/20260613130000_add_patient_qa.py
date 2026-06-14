@@ -6,16 +6,16 @@ question) — plus the tenant ``qa_routing_mode`` policy column, and the ``qa_dr
 existing ``ai_job_type`` enum (the Q&A reply-draft job reuses the patient-scoped AiJob with the
 target message carried in ``result_metadata`` — no ai_jobs schema change).
 
-Revision ID: 20260613120000
-Revises: 20260612130000
-Create Date: 2026-06-13 12:00:00.000000
+Revision ID: 20260613130000
+Revises: 20260613120000
+Create Date: 2026-06-13 13:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "20260613120000"
-down_revision = "20260612130000"
+revision = "20260613130000"
+down_revision = "20260613120000"
 branch_labels = None
 depends_on = None
 
