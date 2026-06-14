@@ -29,6 +29,7 @@ import {
   fetchAiModels,
   fetchAssignmentSuggestion,
   cancelWorklistEntry,
+  createSession,
   createWorklistEntry,
   fetchClinicMembers,
   fetchLastVisit,
@@ -851,6 +852,32 @@ export function App() {
     navigateScreen("active-session");
     setToast("New session ready.");
   };
+
+  // AES-903 — worklist "Start visit": open a fresh session already assigned to the patient, mark the
+  // worklist entry seen (linking the session), and drop into the capture screen. Capture-first is
+  // untouched — this is just a shortcut past the patient card for a queued patient.
+  const startVisitForPatient = React.useCallback(
+    async (patientId: string, worklistEntryId?: string) => {
+      try {
+        const session = await createSession(apiFetch, patientId);
+        if (worklistEntryId) {
+          try {
+            await markWorklistEntrySeen(apiFetch, worklistEntryId, session.id);
+          } catch {
+            /* a stale/seen entry shouldn't block the visit */
+          }
+        }
+        upsertSession(session);
+        setActiveSession(session);
+        setSelectedSessionId(session.id);
+        setAssignmentSessionId("");
+        navigateScreen("active-session");
+      } catch {
+        setToast("Could not start the visit.");
+      }
+    },
+    [apiFetch],
+  );
 
   const clearLocalPendingCaptures = async () => {
     if (!window.confirm("Clear captures saved only on this device? This cannot be undone.")) return;
@@ -1753,6 +1780,7 @@ export function App() {
         onMarkWorklistSeen={markWorklistSeen}
         onCancelWorklistEntry={cancelWorklist}
         onListClinicMembers={listClinicMembers}
+        onStartVisit={startVisitForPatient}
         onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}

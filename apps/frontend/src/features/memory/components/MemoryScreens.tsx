@@ -70,6 +70,7 @@ export function PatientsHome({
   onMarkWorklistSeen,
   onCancelWorklistEntry,
   onListClinicMembers,
+  onStartVisit,
   tier,
   memoryRefreshSignal = 0,
 }: {
@@ -96,6 +97,9 @@ export function PatientsHome({
   onMarkWorklistSeen?: (entryId: string, sessionId?: string) => Promise<WorklistEntry>;
   onCancelWorklistEntry?: (entryId: string) => Promise<WorklistEntry>;
   onListClinicMembers?: () => Promise<ClinicMember[]>;
+  /** AES-903 — start a fresh visit assigned to the patient (worklist quick action); marks the
+   *  entry seen + navigates to the capture screen. */
+  onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
@@ -135,6 +139,9 @@ export function PatientsHome({
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
   const [selectedPatientId, setSelectedPatientId] = React.useState(initialPatientId || "");
+  // A {id,name} hint when a patient is opened by id from outside the loaded list (the worklist), so
+  // the timeline detail renders immediately while its memory loads. Cleared on back.
+  const [pendingPatientStub, setPendingPatientStub] = React.useState<{ id: string; name: string } | null>(null);
   const [patientDetailCache, setPatientDetailCache] = React.useState<Record<string, PatientMemoryDetailResponse>>({});
   const [patientDetailLoading, setPatientDetailLoading] = React.useState(false);
   const [patientDetailError, setPatientDetailError] = React.useState(false);
@@ -307,14 +314,20 @@ export function PatientsHome({
   const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
   // Resolve a selected patient from the loaded rows, or synthesize one from a smart-search match
   // (so opening a result that is not on the current page still loads the detail by id).
+  const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
   const selectedPatient = selectedPatientId
     ? patientRows.find((patient) => patient.id === selectedPatientId) ||
       (() => {
         const match = smartResults?.find((result) => result.id === selectedPatientId);
         return match ? patientRowFromSmartMatch(match) : undefined;
-      })()
+      })() ||
+      // Opened by id from a surface that isn't the loaded list (e.g. the worklist): resolve from the
+      // fetched detail, or a lightweight stub (its name) so the detail renders without a tab flash.
+      (selectedPatientDetail ? patientRowFromApi(selectedPatientDetail.patient) : undefined) ||
+      (pendingPatientStub && pendingPatientStub.id === selectedPatientId
+        ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name)
+        : undefined)
     : null;
-  const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
 
   // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
   // updating→ready). Cached content keeps showing during a background re-fetch (no skeleton flash);
@@ -565,9 +578,11 @@ export function PatientsHome({
               onCancelWorklistEntry={onCancelWorklistEntry}
               onListClinicMembers={onListClinicMembers}
               onSearchPatients={onSearchPatients}
-              onOpenPatient={(patientId) => {
+              onStartVisit={onStartVisit}
+              onOpenPatient={(patientId, patientName) => {
+                // Open the patient file in place — stay on Today so Back returns here (not Patients).
+                setPendingPatientStub(patientName ? { id: patientId, name: patientName } : null);
                 setSelectedPatientId(patientId);
-                setActiveTab("patients");
               }}
               refreshSignal={memoryRefreshSignal}
             />
@@ -1180,6 +1195,26 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
 }
 
 // AES-204 — a smart-search match rendered as a minimal patient row (so it can open the detail by id).
+/** Minimal placeholder row used while a patient opened by id (e.g. from the worklist) loads. */
+function patientRowStub(id: string, name: string): PatientRowModel {
+  return {
+    id,
+    name,
+    summary: "Loading patient…",
+    memoryStatus: "ready",
+    badges: [],
+    action: "open-memory",
+    actionLabel: "View history",
+    isActive: false,
+    needsInput: false,
+    needsInputItems: [],
+    latestVisitLabel: null,
+    latestSessionId: null,
+    activeSessionId: null,
+    sessionCount: 0,
+  };
+}
+
 function patientRowFromSmartMatch(match: SmartPatientMatch): PatientRowModel {
   return {
     id: match.id,

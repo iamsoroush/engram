@@ -1,12 +1,14 @@
 import React from "react";
 import type { AuthSession, ClinicMember, PatientSummary, WorklistEntry } from "../../../domain/appTypes";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
-import { attributionName } from "../../../shared/lib/multiseat";
+import { attributionName, currentUserRoles } from "../../../shared/lib/multiseat";
 
-// AES-903 — the soft "Today / up next" worklist. Reception lines a patient up for a clinician; the
-// clinician sees them here and taps through to the patient (history + before/after) to start a
-// session. A convenience lane, never a gate — capture-first still starts a fresh session from the
-// footer regardless of anything here. A soft list, NOT a scheduler.
+// AES-903 — the soft "Today / up next" worklist. Role-aware (foundation §7):
+//  • Reception (assistant/admin) is the *creator*: they line a patient up FOR a doctor.
+//  • The doctor is the *consumer*: they see a read-only queue of who's lined up for them and start
+//    the visit in one tap.
+// A convenience lane, never a gate — capture-first still starts a fresh session from the footer. A
+// soft list, NOT a scheduler.
 
 type WorklistScope = "mine" | "clinic";
 
@@ -18,6 +20,7 @@ export function WorklistSection({
   onCancelWorklistEntry,
   onListClinicMembers,
   onSearchPatients,
+  onStartVisit,
   onOpenPatient,
   refreshSignal = 0,
 }: {
@@ -28,10 +31,16 @@ export function WorklistSection({
   onCancelWorklistEntry: (entryId: string) => Promise<WorklistEntry>;
   onListClinicMembers: () => Promise<ClinicMember[]>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
-  onOpenPatient: (patientId: string) => void;
+  onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
+  onOpenPatient: (patientId: string, patientName?: string) => void;
   refreshSignal?: number;
 }) {
-  const [scope, setScope] = React.useState<WorklistScope>("mine");
+  const roles = currentUserRoles(auth);
+  const viewerIsDoctor = roles.includes("doctor");
+  // Assistant is the reception/intake seat here; admin manages the clinic. Both create line-ups.
+  const viewerIsReception = roles.includes("assistant") || roles.includes("admin");
+
+  const [scope, setScope] = React.useState<WorklistScope>(viewerIsDoctor ? "mine" : "clinic");
   const [entries, setEntries] = React.useState<WorklistEntry[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [version, setVersion] = React.useState(0);
@@ -64,16 +73,26 @@ export function WorklistSection({
   const cancel = (entry: WorklistEntry) => {
     void onCancelWorklistEntry(entry.id).then(reload).catch(() => undefined);
   };
+  const startVisit = (entry: WorklistEntry) => {
+    if (!onStartVisit) return;
+    void onStartVisit(entry.patientId, entry.id).catch(() => undefined);
+  };
+
+  const subtitle =
+    scope === "mine"
+      ? "Patients reception lined up for you — start the visit in one tap. The footer always starts a fresh capture too."
+      : "Everyone lined up across the clinic. Line a patient up for a doctor, or open their file.";
+  const emptyCopy =
+    scope === "mine"
+      ? "No one is waiting for you. Reception lines patients up here."
+      : "No one is lined up right now.";
 
   return (
     <Card className="worklist-section">
       <div className="worklist-head">
         <div className="worklist-head-copy">
           <h3>Up next</h3>
-          <p className="worklist-subtle">
-            {scope === "mine" ? "Patients reception lined up for you." : "Everyone lined up across the clinic."} Tap a patient to open
-            their file — you can always start a fresh capture from the footer instead.
-          </p>
+          <p className="worklist-subtle">{subtitle}</p>
         </div>
         <div className="mine-clinic-toggle" role="group" aria-label="Worklist scope">
           {(["mine", "clinic"] as WorklistScope[]).map((value) => (
@@ -93,51 +112,68 @@ export function WorklistSection({
       {loading && entries.length === 0 ? (
         <p className="worklist-empty">Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="worklist-empty">No one waiting{scope === "mine" ? " for you" : ""} right now.</p>
+        <p className="worklist-empty">{emptyCopy}</p>
       ) : (
         <ul className="worklist-list">
-          {entries.map((entry) => (
-            <li key={entry.id} className="worklist-item">
-              <button type="button" className="worklist-item-main" onClick={() => onOpenPatient(entry.patientId)}>
-                <span className="worklist-item-name">{entry.patientName || "Unnamed patient"}</span>
-                <span className="worklist-item-meta">
-                  {scope === "clinic" && entry.clinician ? `for ${attributionName(entry.clinician, auth?.user.id)} · ` : ""}
-                  lined up {entry.linedUpBy ? `by ${attributionName(entry.linedUpBy, auth?.user.id)}` : ""}
-                  {entry.note ? ` · ${entry.note}` : ""}
+          {entries.map((entry) => {
+            const mine = Boolean(auth && entry.clinicianUserId === auth.user.id);
+            return (
+              <li key={entry.id} className="worklist-item">
+                <button
+                  type="button"
+                  className="worklist-item-main"
+                  onClick={() => onOpenPatient(entry.patientId, entry.patientName || undefined)}
+                >
+                  <span className="worklist-item-name">{entry.patientName || "Unnamed patient"}</span>
+                  <span className="worklist-item-meta">
+                    {!mine && entry.clinician ? `for ${attributionName(entry.clinician, auth?.user.id)} · ` : ""}
+                    lined up {entry.linedUpBy ? `by ${attributionName(entry.linedUpBy, auth?.user.id)}` : ""}
+                    {entry.note ? ` · ${entry.note}` : ""}
+                  </span>
+                </button>
+                <span className="worklist-item-actions">
+                  {mine && onStartVisit ? (
+                    <Button size="sm" type="button" onClick={() => startVisit(entry)}>
+                      Start visit
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="secondary" type="button" onClick={() => onOpenPatient(entry.patientId, entry.patientName || undefined)}>
+                    Open
+                  </Button>
+                  {mine ? (
+                    <Button size="sm" variant="ghost" type="button" onClick={() => markSeen(entry)}>
+                      Done
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" type="button" onClick={() => cancel(entry)} aria-label="Remove from worklist">
+                      ✕
+                    </Button>
+                  )}
                 </span>
-              </button>
-              <span className="worklist-item-actions">
-                <Button size="sm" variant="secondary" type="button" onClick={() => onOpenPatient(entry.patientId)}>
-                  Open
-                </Button>
-                <Button size="sm" variant="ghost" type="button" onClick={() => markSeen(entry)}>
-                  Done
-                </Button>
-                <Button size="sm" variant="ghost" type="button" onClick={() => cancel(entry)} aria-label="Remove from worklist">
-                  ✕
-                </Button>
-              </span>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 
-      {onSearchPatients ? (
+      {/* Reception creates line-ups (for a doctor); doctors only consume their queue. */}
+      {viewerIsReception && onSearchPatients ? (
         adding ? (
           <LineUpForm
-            auth={auth}
             members={members}
             onLoadMembers={() => onListClinicMembers().then(setMembers)}
             onSearchPatients={onSearchPatients}
-            onSubmit={(input) => onLineUpPatient(input).then(() => {
-              setAdding(false);
-              reload();
-            })}
+            onSubmit={(input) =>
+              onLineUpPatient(input).then(() => {
+                setAdding(false);
+                reload();
+              })
+            }
             onCancel={() => setAdding(false)}
           />
         ) : (
           <Button size="sm" variant="secondary" type="button" className="worklist-add" onClick={() => setAdding(true)}>
-            + Line up a patient
+            + Line up a patient for a doctor
           </Button>
         )
       ) : null}
@@ -146,14 +182,12 @@ export function WorklistSection({
 }
 
 function LineUpForm({
-  auth,
   members,
   onLoadMembers,
   onSearchPatients,
   onSubmit,
   onCancel,
 }: {
-  auth: AuthSession | null;
   members: ClinicMember[];
   onLoadMembers: () => Promise<void>;
   onSearchPatients: (query: string) => Promise<PatientSummary[]>;
@@ -172,13 +206,12 @@ function LineUpForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const clinicians = members.filter((m) => m.isClinician);
+  // You line a patient up *for a doctor* — only doctors are valid targets (never reception itself).
+  const doctors = members.filter((m) => m.role === "doctor");
   React.useEffect(() => {
-    if (clinicianId || clinicians.length === 0) return;
-    // Default to the current user if they're a clinician, else the first clinician.
-    const self = auth ? clinicians.find((c) => c.userId === auth.user.id) : undefined;
-    setClinicianId((self || clinicians[0]).userId);
-  }, [clinicians, clinicianId, auth]);
+    if (clinicianId || doctors.length === 0) return;
+    setClinicianId(doctors[0].userId);
+  }, [doctors, clinicianId]);
 
   React.useEffect(() => {
     if (!query.trim()) {
@@ -240,12 +273,12 @@ function LineUpForm({
         </>
       )}
       <label className="worklist-lineup-field">
-        <span>For</span>
-        <select aria-label="Clinician" value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
-          {clinicians.map((member) => (
+        <span>For Dr.</span>
+        <select aria-label="Doctor" value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
+          {doctors.length === 0 ? <option value="">No doctors in this clinic</option> : null}
+          {doctors.map((member) => (
             <option key={member.userId} value={member.userId}>
               {member.displayName}
-              {auth && member.userId === auth.user.id ? " (you)" : ""}
             </option>
           ))}
         </select>

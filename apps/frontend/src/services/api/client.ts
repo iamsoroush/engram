@@ -86,6 +86,17 @@ export async function fetchSession(apiFetch: ApiFetch, sessionId: string) {
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+/** AES-903 — start a fresh visit assigned to a patient (the worklist "Start visit" quick action). */
+export async function createSession(apiFetch: ApiFetch, patientId: string, title?: string) {
+  const response = await apiFetch(`${API_BASE}/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ patientId, title }),
+  });
+  if (!response.ok) throw new Error("Could not start the visit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function uploadCapture(apiFetch: ApiFetch, clientCaptureId: string, draft: CaptureDraft, sessionId?: string, intoNew = false) {
   const form = new FormData();
   form.append("capture_type", draft.kind);
