@@ -737,15 +737,20 @@ small {
   margin-top: 2px;
 }
 /* Epic E — report contribution + live report chrome */
-.effect-chip.is-report.added {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-  border-color: #c7ebd5;
+/* In-progress "Adding to report…" — an active status (like syncing/processing), not a success
+   badge. A capture shows this only while it's being folded in; once added it carries no badge. */
+.effect-chip.is-report.adding {
+  background: #eef3ff;
+  color: #2456d6;
+  border-color: #d3e0ff;
 }
-.effect-chip.is-report.pending {
-  background: var(--color-surface-soft);
-  color: var(--color-muted);
-  border-color: var(--color-border);
+
+.effect-chip.is-report.adding .effect-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: capture-status-pulse 1.45s ease-out infinite;
 }
 .report-tier-badge {
   display: inline-flex;

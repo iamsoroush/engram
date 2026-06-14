@@ -1,7 +1,12 @@
 /* Doctor Q&A inbox (AES-402). Authenticated clinic surface. */
 
 .qa-inbox {
+  width: 100%;
   max-width: 760px;
+  /* The shell is a CSS grid; min-width:0 stops this item from sizing its track to its own
+     max-content (which made it ~760px wide and overflow the viewport on mobile). */
+  min-width: 0;
+  box-sizing: border-box;
   margin: 0 auto;
   padding: 16px 16px 96px;
   display: flex;
@@ -73,6 +78,8 @@
   flex-direction: column;
   gap: 10px;
   padding: 16px;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .qa-card.qa-needs {
@@ -87,6 +94,8 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
   border: none;
   background: transparent;
   padding: 0;
@@ -110,6 +119,10 @@
 .qa-preview {
   display: block;
   width: 100%;
+  /* Flex item: allow it to shrink below its nowrap min-content so the ellipsis truncates
+     instead of forcing the card wider than the viewport. */
+  min-width: 0;
+  max-width: 100%;
   text-align: left;
   border: none;
   background: transparent;
@@ -229,6 +242,10 @@
 .qa-patient {
   font-weight: 700;
   font-size: 15px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qa-asked {
@@ -263,6 +280,8 @@
 
 .qa-reply-input {
   min-height: 96px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .qa-card-actions {

@@ -1271,13 +1271,16 @@ function CapturePatientBadges({
   );
 }
 
-/** Report-contribution status (Pro), shown as a quiet badge beside the capture title. */
+/** Report-contribution status (Pro): an in-progress badge ONLY while the capture is being folded
+ * into the live report. Once it's in (`added`), the capture carries no badge — a capture with no
+ * status chip is one that's uploaded, processed, and already in the report. */
 function CaptureReportBadge({ isPro, item, outOfContext }: { isPro?: boolean; item: CaptureItem; outOfContext?: boolean }) {
   const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
-  if (!isPro || outOfContext || !["added", "updating", "pending"].includes(status)) return null;
+  if (!isPro || outOfContext || !["updating", "pending"].includes(status)) return null;
   return (
-    <span className={`capture-title-badge effect-chip is-report ${status === "added" ? "added" : "pending"}`}>
-      {status === "added" ? "✓ Added to report" : "Adding to report…"}
+    <span className="capture-title-badge effect-chip is-report adding">
+      <span className="effect-chip-dot" aria-hidden="true" />
+      Adding to report…
     </span>
   );
 }
