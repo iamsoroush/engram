@@ -81,6 +81,34 @@ export async function fetchQaThreadDetail(apiFetch: ApiFetch, threadId: string):
   return { ...payload, messages: Array.isArray(payload.messages) ? payload.messages : [] };
 }
 
+export interface QaThreadSummary {
+  threadId: string;
+  token: string;
+  publicPath: string;
+  status: string;
+  assignedDoctor: QaAssignedDoctor | null;
+  routingSource: string;
+}
+
+/** Open (or idempotently reuse) the patient's Q&A channel; returns the tokenized public link. */
+export async function openQaChannel(apiFetch: ApiFetch, patientId: string): Promise<QaThreadSummary> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/threads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ patientId }),
+  });
+  if (!response.ok) throw new Error("Could not open the Q&A channel");
+  const payload = (await response.json()) as Record<string, unknown>;
+  return {
+    threadId: String(payload.id || ""),
+    token: String(payload.token || ""),
+    publicPath: String(payload.publicPath || ""),
+    status: String(payload.status || "active"),
+    assignedDoctor: (payload.assignedDoctor as QaAssignedDoctor | null) ?? null,
+    routingSource: String(payload.routingSource || ""),
+  };
+}
+
 export async function fetchQaInbox(apiFetch: ApiFetch, scope: "mine" | "all" = "mine"): Promise<QaInboxResponse> {
   const response = await apiFetch(`${API_BASE}/patient-qa/inbox?scope=${encodeURIComponent(scope)}`);
   if (!response.ok) throw new Error("Could not load the Q&A inbox");

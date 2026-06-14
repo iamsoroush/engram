@@ -27,6 +27,8 @@ import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
+import { QaChannelButton } from "../../qa/QaChannelButton";
+import type { QaThreadSummary } from "../../qa/qaClient";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { SessionStatusBadge } from "../../capture/components/StatusBadges";
 
@@ -57,6 +59,8 @@ export function PatientsHome({
   onListAftercareTemplates,
   onCreateShare,
   onRevokeShare,
+  onOpenQaChannel,
+  onToast,
   onLoadAssignmentSuggestion,
   tier,
   memoryRefreshSignal = 0,
@@ -89,6 +93,9 @@ export function PatientsHome({
   onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
   onCreateShare?: (input: CreatePatientShareInput) => Promise<PatientShare>;
   onRevokeShare?: (id: string) => Promise<PatientShare>;
+  // Pro: open (or reuse) the patient's Q&A channel and return its tokenized public link (AES-402).
+  onOpenQaChannel?: (patientId: string) => Promise<QaThreadSummary>;
+  onToast?: (message: string) => void;
   onLoadAssignmentSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
@@ -474,6 +481,8 @@ export function PatientsHome({
           onLoadSessionCaptures={onLoadSessionCaptures}
           onResolveFile={onResolveFile}
           onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
+          onOpenQaChannel={onOpenQaChannel}
+          onToast={onToast}
         />
       ) : (
         <>
@@ -1708,6 +1717,8 @@ function PatientTimelineDetail({
   onLoadSessionCaptures,
   onResolveFile,
   onShare,
+  onOpenQaChannel,
+  onToast,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1726,6 +1737,8 @@ function PatientTimelineDetail({
   onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
   onResolveFile?: (endpoint: string) => Promise<string>;
   onShare?: (visits: GalleryVisit[]) => void;
+  onOpenQaChannel?: (patientId: string) => Promise<QaThreadSummary>;
+  onToast?: (message: string) => void;
 }) {
   const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
@@ -1771,6 +1784,9 @@ function PatientTimelineDetail({
             <button className="patient-detail-action" onClick={() => onShare(galleryVisits)} type="button">
               <ShareSmallIcon /> Share with patient
             </button>
+          ) : null}
+          {isPro && onOpenQaChannel ? (
+            <QaChannelButton patientName={patient.name} onOpen={() => onOpenQaChannel(patient.id)} onToast={onToast} />
           ) : null}
         </div>
       ) : null}

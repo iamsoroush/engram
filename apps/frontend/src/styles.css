@@ -5036,6 +5036,17 @@ small {
     max-width: 190px;
   }
 
+  /* Icon-only primary nav on phones so the navigator + Search + Q&A + user menu fit one row with
+     clear spacing (with labels the row overflowed and the user menu was clipped). */
+  .nav-label {
+    display: none;
+  }
+
+  .app-navigator button {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
   .report-heading {
     grid-template-columns: 1fr;
     gap: 10px;

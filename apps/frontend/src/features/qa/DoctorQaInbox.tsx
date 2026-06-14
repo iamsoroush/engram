@@ -208,20 +208,24 @@ function QaThreadCard({
   onDismiss: (item: QaInboxItem) => void;
   onReroute: (item: QaInboxItem, doctorUserId: string) => void;
 }) {
-  const [reply, setReply] = React.useState(item.pendingQuestion?.suggestedReply || "");
+  const pending = item.pendingQuestion;
+  const [reply, setReply] = React.useState(pending?.suggestedReply || "");
   const [doctors, setDoctors] = React.useState<QaTreatingDoctor[] | null>(null);
+  // Collapsed by default: an open conversation shows just its latest question + the suggested reply;
+  // a resolved one shows a one-line preview. Clicking the header reveals the full history either way.
+  const [expanded, setExpanded] = React.useState(false);
   const convoRef = React.useRef<HTMLDivElement>(null);
 
-  // Re-seed the editable reply if the draft finishes after the card first rendered.
   React.useEffect(() => {
     setReply((current) => (current.trim() ? current : item.pendingQuestion?.suggestedReply || ""));
   }, [item.pendingQuestion?.suggestedReply]);
 
-  // Open on the newest message (the pending question sits right above the reply box).
+  // When the full conversation is open, scroll it to the newest message.
   React.useEffect(() => {
+    if (!expanded) return;
     const el = convoRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [item.messages.length]);
+  }, [expanded, item.messages.length]);
 
   const loadDoctors = () => {
     if (doctors !== null) return;
@@ -231,18 +235,18 @@ function QaThreadCard({
   };
 
   const timeline = buildTimeline(item.messages, item.visits);
-  const pending = item.pendingQuestion;
   const draftPending = pending?.draftStatus === "pending" || pending?.draftStatus === "none";
   const draftReady = pending?.draftStatus === "ready";
+  const lastMessage = item.messages[item.messages.length - 1];
 
   return (
     <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""}`}>
-      <div className="qa-card-top">
+      <button className="qa-card-head" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
         <span className="qa-patient" dir="auto">
           {item.patientName}
         </span>
-        <span className="qa-asked">
-          {item.needsApproval ? <Badge tone="amber">needs reply</Badge> : null}{" "}
+        <span className="qa-head-right">
+          {item.needsApproval ? <Badge tone="amber">needs reply</Badge> : null}
           {item.assignedDoctor ? (
             <Badge tone="blue">
               {item.routingSource === "manual" ? "re-routed" : "treating"} · {item.assignedDoctor.name}
@@ -250,33 +254,54 @@ function QaThreadCard({
           ) : (
             <Badge tone="amber">unrouted</Badge>
           )}
+          <Chevron open={expanded} />
         </span>
-      </div>
+      </button>
 
-      <div className="qa-convo" ref={convoRef}>
-        {timeline.map((entry, index) =>
-          entry.kind === "visit" ? (
-            <div className="qa-visit" key={`v-${entry.visit.sessionId}-${index}`}>
-              <span dir="auto">🗓 Visit · {entry.visit.title}</span>
-              <span className="qa-visit-date">{formatDateTime(entry.visit.date)}</span>
-            </div>
-          ) : (
-            <div
-              key={entry.message.id}
-              className={`qa-msg ${entry.message.role === "doctor" ? "clinic" : "patient"} ${
-                pending && entry.message.id === pending.messageId ? "awaiting" : ""
-              }`}
-            >
-              <div className="qa-msg-meta">
-                {entry.message.role === "doctor" ? "Clinic" : item.patientName}
-                <span className="qa-msg-time"> · {formatDateTime(entry.message.createdAt)}</span>
-                {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · dismissed</span> : null}
+      {expanded ? (
+        <div className="qa-convo" ref={convoRef}>
+          {timeline.map((entry, index) =>
+            entry.kind === "visit" ? (
+              <div className="qa-visit" key={`v-${entry.visit.sessionId}-${index}`}>
+                <span dir="auto">🗓 Visit · {entry.visit.title}</span>
+                <span className="qa-visit-date">{formatDateTime(entry.visit.date)}</span>
               </div>
-              <div dir="auto">{entry.message.body}</div>
-            </div>
-          ),
-        )}
-      </div>
+            ) : (
+              <div
+                key={entry.message.id}
+                className={`qa-msg ${entry.message.role === "doctor" ? "clinic" : "patient"} ${
+                  pending && entry.message.id === pending.messageId ? "awaiting" : ""
+                }`}
+              >
+                <div className="qa-msg-meta">
+                  {entry.message.role === "doctor" ? "Clinic" : item.patientName}
+                  <span className="qa-msg-time"> · {formatDateTime(entry.message.createdAt)}</span>
+                  {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · dismissed</span> : null}
+                </div>
+                <div dir="auto">{entry.message.body}</div>
+              </div>
+            ),
+          )}
+        </div>
+      ) : item.needsApproval && pending ? (
+        // Collapsed open conversation: just the question awaiting a reply.
+        <div className="qa-msg patient awaiting qa-msg-flush">
+          <div className="qa-msg-meta">
+            {item.patientName}
+            <span className="qa-msg-time"> · {formatDateTime(pending.askedAt)}</span>
+          </div>
+          <div dir="auto">{pending.question}</div>
+        </div>
+      ) : (
+        // Collapsed resolved conversation: one-line preview; click the header to read it all.
+        <button className="qa-preview" type="button" onClick={() => setExpanded(true)}>
+          <span className="qa-preview-role">{lastMessage?.role === "doctor" ? "Clinic" : item.patientName}:</span>{" "}
+          <span className="qa-preview-text" dir="auto">
+            {lastMessage?.body}
+          </span>
+          <span className="qa-msg-time"> · {formatDateTime(item.lastActivityAt)}</span>
+        </button>
+      )}
 
       {item.needsApproval ? (
         <div className="qa-approve">
@@ -309,14 +334,34 @@ function QaThreadCard({
             <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
           </div>
         </div>
-      ) : (
+      ) : expanded ? (
         <div className="qa-card-actions">
           <span className="qa-resolved">No open question — patient has been replied to.</span>
           <span className="qa-spacer" />
           <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
         </div>
-      )}
+      ) : null}
     </Card>
+  );
+}
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className="qa-chevron"
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   );
 }
 

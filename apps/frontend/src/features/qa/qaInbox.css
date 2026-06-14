@@ -80,6 +80,63 @@
   box-shadow: 0 0 0 1px #f7e6c4 inset;
 }
 
+/* Collapsible header (the whole row toggles the conversation) */
+.qa-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.qa-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.qa-chevron {
+  color: #97a1b0;
+}
+
+/* One-line preview for a collapsed, resolved conversation */
+.qa-preview {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13.5px;
+  color: #5b6472;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.qa-preview-role {
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.qa-preview-text {
+  color: #5b6472;
+}
+
+.qa-msg-flush {
+  align-self: stretch;
+  max-width: 100%;
+}
+
 /* Thread conversation (Telegram-style: incoming patient left, clinic right, visit chips centered) */
 .qa-convo {
   display: flex;

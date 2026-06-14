@@ -34,8 +34,12 @@ INFRA_FILE="$MAIN_ROOT/docker-compose.shared-infra.yml"
 APP_FILE="$MAIN_ROOT/docker-compose.app.yml"
 
 PGUSER="${POSTGRES_USER:-notari}"
-MINIO_USER="${MINIO_ROOT_USER:-notari-dev}"
-MINIO_PASS="${MINIO_ROOT_PASSWORD:-notari-dev-secret}"
+# MUST match the shared infra MinIO's actual root credentials (docker-compose.shared-infra.yml /
+# the running notari-infra-minio volume). These are used both to provision each stack's bucket
+# (ensure_bucket) and to pin the app's object-storage keys (ensure_env); a mismatch fails uploads
+# with InvalidAccessKeyId — a capture stuck "trying to sync".
+MINIO_USER="${MINIO_ROOT_USER:-aesmem-dev}"
+MINIO_PASS="${MINIO_ROOT_PASSWORD:-aesmem-dev-secret}"
 
 CANONICAL_DB="notari"
 CANONICAL_BUCKET="notari-captures"
@@ -206,6 +210,16 @@ ensure_env() {
   # .env.example). Compose derives the DB from STACK_DB regardless; these are for clarity.
   set_env_var "$ENV_FILE" BACKEND_DATABASE_URL "postgresql+psycopg://notari:notari@postgres:5432/${STACK_DB}"
   set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_BUCKET "$STACK_BUCKET"
+  # Object storage MUST point at the shared infra MinIO with its real credentials. A worktree's .env
+  # (copied from .env.example) can carry stale keys that don't match the shared MinIO, which fails
+  # uploads with InvalidAccessKeyId — surfacing as a capture stuck "trying to sync". Re-pin them here
+  # so every `up` self-heals, regardless of what the worktree's .env currently holds.
+  local mport; mport="$(get_env_var "$ENV_FILE" MINIO_API_PORT)"; [[ -n "$mport" ]] || mport=9010
+  set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_ENDPOINT "http://minio:9000"
+  set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT "http://localhost:${mport}"
+  set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_ACCESS_KEY "$MINIO_USER"
+  set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_SECRET_KEY "$MINIO_PASS"
+  set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_SECURE "false"
   FRONTEND_PORT_RESOLVED="$fport"; BACKEND_PORT_RESOLVED="$bport"
 }
 

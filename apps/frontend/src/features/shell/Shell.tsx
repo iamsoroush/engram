@@ -63,7 +63,7 @@ export function Shell({
                   type="button"
                 >
                   <span aria-hidden="true">{item.icon}</span>
-                  <span>{item.shortLabel}</span>
+                  <span className="nav-label">{item.shortLabel}</span>
                 </button>
               ))}
             </nav>

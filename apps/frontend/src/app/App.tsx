@@ -76,7 +76,7 @@ import { StorageGuardDialog } from "../features/capture/components/StorageGuardD
 import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
-import { fetchQaInbox } from "../features/qa/qaClient";
+import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import {
   bindPendingSession,
@@ -1738,6 +1738,8 @@ export function App() {
         onListAftercareTemplates={listAftercare}
         onCreateShare={createShare}
         onRevokeShare={revokeShare}
+        onOpenQaChannel={auth && auth.tenant.tier !== "basic" ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
+        onToast={setToast}
         onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
         syncHealth={syncHealth}
