@@ -386,6 +386,44 @@ As an **admin**, I want to set what assistants and receptionists may do (**contr
 As a **doctor**, I want a colleague's capture to **add** to my session, but a **reassign/edit they're not permitted** to become a **suggestion** for me rather than apply silently, so that permissions never block and never surprise.
 - **Acceptance:** the intent gate applies append/reassign/edit **iff** the capturer's role is permitted (AES-905); else → **suggest-to-owner** (reuse `suggested_reassignment`); never blocks the capture. Pro (intents from transcription).
 
+### E9 — as-built notes (deviations & additions beyond the plan, with rationale)
+
+These were decided during build/review, not in the original AES-901..906 acceptance notes. Both tiers
+unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes-basic-api.md) §E9.
+
+- **No `receptionist` role — Assistant is the reception/intake seat.** The codebase models only
+  `doctor`/`assistant`/`admin`; the design (§2/§7) names a receptionist but it was never added.
+  *Why:* a new role means an enum migration + persona/seed/login wiring; deferred by decision. Assistant
+  therefore carries the receptionist's permissive default (`assistant: reassign`, `doctor: contribute`).
+  Adding a real receptionist later is the clean follow-up (slots into the same preset map + worklist roles).
+- **Worklist is role-aware (creator vs. consumer), beyond AES-903's "soft list".** Reception
+  (assistant/admin) **creates** line-ups *for a doctor* (the target picker lists doctors only, never
+  self); doctors **consume** a read-only queue. *Why:* review feedback — doctors lining patients up for
+  themselves / self-assigning was wrong; reception is the natural creator.
+- **"Start visit" quick action** on a doctor's queue card → creates a session already assigned to the
+  patient + marks the entry seen. *Why:* skip the patient-page → back → capture round-trip.
+- **"Up next" recap popup** (replaces inline text): tapping a queued patient opens a sheet with
+  tier-aware patient **history** (Pro AI sections / Basic structural recap, via the shared history
+  block) + the prior visit's **before/after**, plus Start visit and "Open full timeline". *Why:* a
+  glanceable recap before starting; "last visit note" was ambiguous (a visit has many notes), so we use
+  the proper history brief. The box is **hidden entirely for a doctor with an empty queue**, and its
+  description sits behind an ⓘ toggle — keep Today uncluttered.
+- **Context-aware capture target.** While a patient's file is open in Clinical Memory, the footer
+  captures **for that patient** (a new visit); the session is created only on the capture action, so
+  merely viewing never changes the target, and leaving reverts to the active session. *Why:* "capture
+  for who I'm looking at" without breaking capture-first.
+- **Next-patient on the capture screen (AES-301 tie-in).** An unassigned active visit surfaces the
+  doctor's next lined-up patient by name with **Assign this visit** (files it onto them + clears the
+  entry) and **Start their visit**. *Why:* file a capture-first visit onto the queued patient without
+  leaving capture.
+- **Role-based default landing screen.** Reception (assistant) + admins land on **Clinical Memory**;
+  doctors land on the **Session** workspace. *Why:* reception coordinates, doctors capture-first.
+- **New primitives to support the above:** `worklist_entries` table + `GET /clinic/members` (the
+  line-up store + clinician picker) and `POST /sessions` reused for "Start visit". *Why:* AES-903 needs
+  a stored "lined up for" record + a directory; neither existed.
+- **Attribution verified on both tiers** (it's deterministic, no AI): session/capture/timeline
+  `createdBy`, shown as "by X". *Why:* confirm AES-901 is not Pro-gated.
+
 ---
 
 ## Coverage check — every agreed feature is detailed

@@ -47,6 +47,7 @@ export function WorklistSection({
   const [version, setVersion] = React.useState(0);
   const [adding, setAdding] = React.useState(false);
   const [members, setMembers] = React.useState<ClinicMember[]>([]);
+  const [showInfo, setShowInfo] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -83,17 +84,29 @@ export function WorklistSection({
     scope === "mine"
       ? "Patients reception lined up for you. Tap one to see their recap, then start. The footer always starts a fresh capture too."
       : "Everyone lined up across the clinic. Line a patient up for a doctor, or tap to see their recap.";
-  const emptyCopy =
-    scope === "mine"
-      ? "No one is waiting for you. Reception lines patients up here."
-      : "No one is lined up right now.";
+  const emptyCopy = "No one is lined up right now.";
+
+  // A pure consumer (doctor, not reception) with an empty queue gets *no box at all* — the worklist
+  // only appears once reception has lined someone up. Reception always sees it (they add to it).
+  if (!viewerIsReception && entries.length === 0) return null;
 
   return (
     <Card className="worklist-section">
       <div className="worklist-head">
         <div className="worklist-head-copy">
-          <h3>Up next</h3>
-          <p className="worklist-subtle">{subtitle}</p>
+          <div className="worklist-title-row">
+            <h3>Up next</h3>
+            <button
+              type="button"
+              className="worklist-info-btn"
+              aria-label="About the worklist"
+              aria-expanded={showInfo}
+              onClick={() => setShowInfo((v) => !v)}
+            >
+              ⓘ
+            </button>
+          </div>
+          {showInfo ? <p className="worklist-subtle">{subtitle}</p> : null}
         </div>
         <div className="mine-clinic-toggle" role="group" aria-label="Worklist scope">
           {(["mine", "clinic"] as WorklistScope[]).map((value) => (

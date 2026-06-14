@@ -87,15 +87,3 @@ export function attributionName(attribution: Attribution | null | undefined, cur
   if (currentUserId && attribution.userId === currentUserId) return "you";
   return attribution.displayName || "another clinician";
 }
-
-/** "by Dr. Demo · 14:32" — attribution + an optional time label. */
-export function attributionWithTime(
-  attribution: Attribution | null | undefined,
-  time: string | null | undefined,
-  currentUserId?: string | null,
-): string {
-  const name = attributionName(attribution, currentUserId);
-  const who = name ? `by ${name}` : "";
-  if (who && time) return `${who} · ${time}`;
-  return who || time || "";
-}

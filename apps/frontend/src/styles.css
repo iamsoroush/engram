@@ -6335,11 +6335,37 @@ small {
   gap: 12px;
 }
 
+.worklist-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .worklist-head-copy h3 {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 850;
   color: #1f2a44;
+}
+
+.worklist-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #4e5d93;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worklist-info-btn[aria-expanded="true"] {
+  background: #075eff;
+  color: #ffffff;
 }
 
 .worklist-subtle {
@@ -6374,11 +6400,6 @@ small {
   background: #ffffff;
 }
 
-.worklist-item.expanded {
-  border-color: #cdd9ea;
-  background: #fbfdff;
-}
-
 .worklist-item-header {
   display: flex;
   align-items: flex-start;
@@ -6411,43 +6432,10 @@ small {
   line-height: 1.35;
 }
 
-.worklist-item-chev {
-  flex-shrink: 0;
-  color: #8a96ad;
-  font-size: 1rem;
-  line-height: 1;
-  transition: transform 0.15s ease;
-}
-
-.worklist-item-chev.open {
-  transform: rotate(180deg);
-}
-
-.worklist-recap {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border: 1px solid #e9eef6;
-  border-radius: 10px;
-  background: #ffffff;
-}
-
 .worklist-recap-note {
   margin: 0;
   font-size: 0.8rem;
   color: #6b7794;
-}
-
-.worklist-recap-fulllink {
-  align-self: flex-start;
-  border: none;
-  background: transparent;
-  color: #075eff;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
-  padding: 0;
 }
 
 .worklist-item-actions {
