@@ -10135,3 +10135,64 @@ small {
   font-family: inherit;
   resize: vertical;
 }
+
+/* --- Therapy vertical (Spine A) — reuses the aesthetics design system; only therapy-specific bits here */
+.therapy-page { display: flex; flex-direction: column; gap: 16px; }
+
+/* Privacy banner (present on the session workspace) — calm slate/indigo "lock" tone. */
+.therapy-privacy-banner {
+  margin: 0; padding: 10px 12px; font-size: var(--text-sm, 0.8rem);
+  color: var(--color-text-soft, #263451); background: #eef1fb;
+  border: 1px solid #d8defa; border-radius: var(--radius-md, 10px);
+}
+
+/* Risk banner — assisted (amber) vs. clinician-confirmed (red). */
+.therapy-risk-banner {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border-radius: var(--radius-md, 10px); border: 1px solid;
+}
+.therapy-risk-banner p { margin: 4px 0; }
+.therapy-risk-banner .muted { font-size: var(--text-sm, 0.8rem); }
+.therapy-risk-banner.suggested { background: #fff7ec; border-color: #f0d39a; color: var(--color-warning, #995c00); }
+.therapy-risk-banner.active { background: #fdecec; border-color: #f0b4ad; color: var(--color-danger, #b42318); }
+
+/* "Session so far" — the live running synthesis strip inside the report card. */
+.therapy-sofar {
+  padding: 12px 14px; border-radius: var(--radius-md, 10px);
+  background: #f3f7ff; border: 1px solid #d9e6fb;
+}
+.therapy-sofar-head { display: flex; align-items: center; gap: 8px; font-size: var(--text-sm, 0.8rem); }
+.therapy-sofar-line { margin: 8px 0 4px; font-weight: 700; }
+.therapy-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.therapy-thread-chip {
+  font-size: var(--text-sm, 0.78rem); padding: 3px 9px; border-radius: var(--radius-pill, 999px);
+  background: #eef2f8; color: var(--color-muted, #52617e); border: 1px solid var(--color-border, #dce6f2);
+}
+.therapy-thread-chip.covered { background: #e7f6ee; color: var(--color-success, #16834a); border-color: #bfe6cf; }
+
+/* Capture feed cards. */
+.therapy-capture {
+  border: 1px solid var(--color-border, #dce6f2); border-radius: var(--radius-md, 10px);
+  padding: 12px 14px; background: var(--color-surface, #fff);
+}
+.therapy-capture-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.therapy-capture p { margin: 0; }
+.therapy-capture-raw { margin-top: 6px !important; font-size: var(--text-sm, 0.8rem); color: var(--color-muted, #52617e); }
+.therapy-empty { color: var(--color-muted, #52617e); padding: 8px 0; }
+
+/* Two-plane summary sections + format/plane controls. */
+.therapy-section { padding: 12px 0; border-top: 1px solid var(--color-border, #dce6f2); }
+.therapy-section:first-child { border-top: none; padding-top: 0; }
+.therapy-section h3 { margin: 0 0 6px; font-size: var(--text-md, 0.9rem); color: var(--color-text, #080d2d); }
+.therapy-section p { margin: 0; }
+.therapy-format-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.therapy-format-group { display: inline-flex; gap: 6px; }
+.therapy-format-btn {
+  font-size: var(--text-sm, 0.8rem); font-weight: 700; padding: 5px 12px; cursor: pointer;
+  border-radius: var(--radius-pill, 999px); border: 1px solid var(--color-border, #dce6f2);
+  background: var(--color-surface, #fff); color: var(--color-muted, #52617e);
+}
+.therapy-format-btn.active { background: var(--color-primary, #075eff); border-color: var(--color-primary, #075eff); color: #fff; }
+.therapy-plane-switch { margin-bottom: 4px; }
+.therapy-released { display: inline-flex; align-items: center; gap: 8px; }
+.memory-updating-pill { font-size: var(--text-sm, 0.78rem); color: var(--color-muted, #52617e); }

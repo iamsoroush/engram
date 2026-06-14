@@ -181,14 +181,21 @@ def smart_search_patients(
         patient payload plus ``score`` (0–1), ``matchedOn`` (the winning field(s)), and ``reason``.
         Items are sorted by score, then most-recently-updated.
     """
+    from app.services.caseload import caseload_patient_condition
+
     capped_limit = max(1, min(limit, 100))
     cleaned = (query or "").strip()
+    # Federated caseloads (therapy): scope smart search to the clinician's own clients (no-op elsewhere).
+    caseload = caseload_patient_condition(db, principal)
     if not cleaned:
-        patients = db.execute(
+        recent_statement = (
             select(Patient)
             .where(Patient.tenant_id == principal.tenant_id, Patient.status == PatientStatus.active)
-            .order_by(Patient.updated_at.desc())
-            .limit(capped_limit)
+        )
+        if caseload is not None:
+            recent_statement = recent_statement.where(caseload)
+        patients = db.execute(
+            recent_statement.order_by(Patient.updated_at.desc()).limit(capped_limit)
         ).scalars().all()
         items = [{**patient_payload(patient), "score": None, "matchedOn": [], "reason": "Recent patient."} for patient in patients]
         return {"schemaVersion": SEARCH_SCHEMA_VERSION, "query": cleaned, "items": items, "total": len(items)}
@@ -199,13 +206,14 @@ def smart_search_patients(
         return {"schemaVersion": SEARCH_SCHEMA_VERSION, "query": cleaned, "items": [], "total": 0}
 
     candidate_id_list = list(candidate_ids)[:MAX_SCORED_CANDIDATES]
-    patients = db.execute(
-        select(Patient).where(
-            Patient.tenant_id == principal.tenant_id,
-            Patient.status == PatientStatus.active,
-            Patient.id.in_(candidate_id_list),
-        )
-    ).scalars().all()
+    candidate_statement = select(Patient).where(
+        Patient.tenant_id == principal.tenant_id,
+        Patient.status == PatientStatus.active,
+        Patient.id.in_(candidate_id_list),
+    )
+    if caseload is not None:
+        candidate_statement = candidate_statement.where(caseload)
+    patients = db.execute(candidate_statement).scalars().all()
     identifiers_by_patient: dict[uuid.UUID, list[PatientIdentifier]] = {}
     for identifier in db.execute(
         select(PatientIdentifier).where(

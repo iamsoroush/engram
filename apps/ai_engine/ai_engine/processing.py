@@ -261,24 +261,44 @@ def normalize_intents(raw: Any) -> dict[str, Any] | None:
     return intents or None
 
 
+def domain_framing(context: dict[str, Any] | None) -> tuple[str, list[str], list[str]]:
+    """Extract vertical-aware prompt framing from a job context/payload.
+
+    Vertical-AGNOSTIC by contract: the backend supplies a `domain` descriptor
+    (`app/services/verticals.py:domain_descriptor`) carrying the setting `label` and optional
+    `vocabulary` / `captionFindings` hints. When it is absent this returns a neutral "clinic"
+    default with no vocabulary — so a worker prompt NEVER hardcodes or assumes a vertical. Any
+    vertical-specific wording must come through this descriptor (i.e. be optional + data-driven).
+    """
+    domain = context.get("domain") if isinstance(context, dict) and isinstance(context.get("domain"), dict) else {}
+    raw_label = domain.get("label")
+    label = raw_label.strip() if isinstance(raw_label, str) and raw_label.strip() else "clinic"
+    vocabulary = [value for value in (domain.get("vocabulary") or []) if isinstance(value, str)]
+    caption_findings = [value for value in (domain.get("captionFindings") or []) if isinstance(value, str)]
+    return label, vocabulary, caption_findings
+
+
 def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
     """Build the rich instruction prompt for the OpenAI-compatible gateway."""
     context = transcription_context if isinstance(transcription_context, dict) else {}
     configured_prompt = settings.transcription_prompt.strip()
     language_directive = transcription_language_directive(context)
+    # Vertical-aware framing supplied by the backend; neutral "clinic" + no vocabulary when absent.
+    label, vocabulary, _ = domain_framing(context)
+    vocab_line = f"Common {label} vocabulary may include {', '.join(vocabulary)}. " if vocabulary else ""
     return "\n\n".join(
         part
         for part in (
             configured_prompt if configured_prompt and configured_prompt != "Transcribe this audio." else None,
             (
-                "You are transcribing and extracting clinical identity details for Memara, an aesthetics clinic memory system. "
+                f"You are transcribing and extracting clinical identity details for Memara, a clinical memory system. The clinical setting is a {label}. "
                 "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
                 f"{language_directive} "
                 "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
                 "Iranian national IDs and phone numbers may be spoken digit by digit in Persian, Arabic, or English numerals; normalize them to digit strings when explicitly present. "
-                "Aesthetics-clinic vocabulary may include filler, Botox, laser, injection, cannula, hyaluronic acid, aftercare, asymmetry, touch-up, swelling, bruising, and follow-up. "
+                f"{vocab_line}"
                 "Use the provided context ONLY to spell/transliterate a name that is actually spoken in THIS audio clip — never to introduce or confirm an identity. Set raw_mentioned_name and standardized_display_name ONLY to a patient name spoken in this clip; if no name or identifier is spoken here, both MUST be null with confidence 0, even when the assigned-patient/session context names someone. Never copy the patient's name from context, history, or a previous capture. "
-                "Also classify intent in `intents`: set assignment.present=true only when THIS audio clip itself states or mentions which patient the visit is about (a spoken name or identifier) — not based on the provided context. Set basis='explicit' ONLY for a clear instruction to change or correct an existing assignment (for example 'change the patient to X', 'this is actually X not Y', or 'wrong patient, it's X'). Treat any statement of who the patient is as basis='implicit' — this includes a name simply stated or fronted and identity declarations (for example 'Ms. Ghasemi, forehead botox', 'the patient is X', 'this is X', or 'I am X'). When unsure, prefer 'implicit'. Set out_of_context.present=true when the audio has no clinical or visit content; set append.present=true when it only adds incremental detail to an ongoing note; use null for any intent you cannot determine. "
+                "Also classify intent in `intents`: set assignment.present=true only when THIS audio clip itself states or mentions which patient the visit is about (a spoken name or identifier) — not based on the provided context. Set basis='explicit' ONLY for a clear instruction to change or correct an existing assignment (for example 'change the patient to X', 'this is actually X not Y', or 'wrong patient, it's X'). Treat any statement of who the patient is as basis='implicit' — this includes a name simply stated or fronted and identity declarations (for example 'Ms. Ghasemi, follow-up', 'the patient is X', 'this is X', or 'I am X'). When unsure, prefer 'implicit'. Set out_of_context.present=true when the audio has no clinical or visit content; set append.present=true when it only adds incremental detail to an ongoing note; use null for any intent you cannot determine. "
                 "Return only strict JSON with no markdown."
             ),
             (
@@ -425,14 +445,16 @@ def enrichment_language_directive(enrichment_context: dict[str, Any] | None) -> 
 def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
     """Build the instruction prompt for clinical photo captioning."""
     context = enrichment_context if isinstance(enrichment_context, dict) else {}
+    # Vertical-aware framing; neutral "clinic" + no finding examples when absent.
+    label, _, caption_findings = domain_framing(context)
+    findings_hint = f" (e.g. {', '.join(caption_findings)})" if caption_findings else ""
     return "\n\n".join(
         (
-            "You are a clinical photo captioner for Memara, an aesthetics clinic memory system.",
+            f"You are a clinical photo captioner for Memara, a clinical memory system. The clinical setting is a {label}.",
             (
                 "Describe only what is clinically visible in the image in one or two sentences: the anatomical "
-                "area, observable findings (e.g. asymmetry, swelling, bruising, erythema, filler/Botox effect, "
-                "pre- vs post-correction state), and relevant aesthetic-procedure context. Do NOT invent patient "
-                "identity, measurements, dates, or anything not visible in the image. "
+                f"area, observable clinically relevant findings{findings_hint}, and relevant clinical context. "
+                "Do NOT invent patient identity, measurements, dates, or anything not visible in the image. "
                 f"{enrichment_language_directive(context)} "
                 "Return only the caption text, with no preamble, labels, or markdown."
             ),
@@ -444,9 +466,10 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
 def note_decoration_prompt(enrichment_context: dict[str, Any] | None) -> str:
     """Build the instruction prompt for clinical note decoration."""
     context = enrichment_context if isinstance(enrichment_context, dict) else {}
+    label, _, _ = domain_framing(context)  # vertical-aware; neutral "clinic" when absent
     return "\n\n".join(
         (
-            "You are cleaning up a clinician's quick free-text note for Memara, an aesthetics clinic memory system.",
+            f"You are cleaning up a clinician's quick free-text note for Memara, a clinical memory system. The clinical setting is a {label}.",
             (
                 "Lightly decorate the note for readability: fix obvious typos, expand clinical shorthand, and "
                 "organize it into clear clinical phrasing. Preserve EVERY clinical detail, number, product, dose, "
@@ -1290,6 +1313,7 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     """Build the prompt for the combined patient summary + history (incremental, grounded)."""
     patient = payload.get("patient") if isinstance(payload.get("patient"), dict) else {}
     language = payload.get("language")
+    label, _, _ = domain_framing(payload)  # vertical-aware; neutral "clinic" when absent
     language_directive = (
         f"Write all text in {language}."
         if isinstance(language, str) and language.strip()
@@ -1297,8 +1321,8 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     )
     return "\n\n".join(
         (
-            "You are Memara, a calm clinical assistant that maintains a patient's longitudinal memory "
-            "for an aesthetics clinic.",
+            "You are Memara, a calm clinical assistant that maintains a patient's longitudinal memory. "
+            f"The clinical setting is a {label}.",
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
                 "Produce a warm, assistant-voiced brief — natural sentences, never a form or bullet dump. "

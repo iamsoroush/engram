@@ -90,6 +90,17 @@ class CaptureEnrichmentContextTests(unittest.TestCase):
         self.assertIsNone(context["assignedPatient"])
         self.assertEqual(context["captureType"], "note")
 
+    def test_context_carries_vertical_domain(self):
+        # The vertical-aware `domain` rides on the context so the worker prompt stays vertical-agnostic.
+        context = capture_enrichment_context_from_inputs(
+            clinic={"name": "Memara Clinic"},
+            assigned_patient=None,
+            preferred_language="auto",
+            capture_type="note",
+            domain={"vertical": "therapy", "label": "psychotherapy practice"},
+        )
+        self.assertEqual(context["domain"]["label"], "psychotherapy practice")
+
 
 if __name__ == "__main__":
     unittest.main()

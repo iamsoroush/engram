@@ -169,6 +169,15 @@ Pro enrichment gating (photo captions + note decoration):
   stays stable. A gateway error propagates as a retryable worker failure (self-healing); an empty
   gateway response falls back to the placeholder so the capture still completes.
 
+**Vertical-agnostic prompts (all capture + memory jobs).** No processor hardcodes a vertical. The
+backend resolves the tenant's vertical to a `domain` descriptor (`label` + optional `vocabulary` /
+`captionFindings` — `app/services/verticals.py:domain_descriptor`) and includes it in the
+transcription/enrichment context and the patient-memory payload. Each prompt builder reads it via
+`processing.domain_framing()`, which falls back to a neutral `"clinic"` with no vocabulary when the
+descriptor is absent — so the same worker serves aesthetics, therapy, and future verticals, and a
+tenant is never told it is the wrong kind of clinic. Add a vertical's wording by extending
+`domain_descriptor`, never by editing the prompts. See the README caution.
+
 The deterministic QA fixture under `test_data/` is recognized by capture
 filename/content. Uploading those captures produces predictable transcript,
 caption, decorated text, session structured report sections, and rendered

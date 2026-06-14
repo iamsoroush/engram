@@ -190,6 +190,32 @@ class SessionSaveRequest(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TherapyFormatRequest(BaseModel):
+    """Switch the therapy shareable-plane note format (DAP/SOAP/BIRP)."""
+
+    format: str = Field(pattern="^(dap|soap|birp)$")
+
+
+class TherapyReleaseRequest(BaseModel):
+    """Explicitly release (or withdraw) the shareable therapy summary to the client."""
+
+    released: bool = True
+
+
+class TherapyRiskRequest(BaseModel):
+    """Clinician-confirm (or clear) a dated risk flag (assisted detection only suggests)."""
+
+    active: bool = True
+    level: str | None = None
+    note: str | None = None
+
+
+class TherapyReflectionsRequest(BaseModel):
+    """Private-plane reflections text (therapist-only; never exported)."""
+
+    reflections: str | None = None
+
+
 class CaptureUpdate(BaseModel):
     status: str | None = None
     metadata: dict[str, Any] | None = None

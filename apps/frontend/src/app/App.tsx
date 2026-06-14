@@ -4,6 +4,7 @@ import type {
   ApiFetch,
   AuthSession,
   CaptureDraft,
+  DevTier,
   LastVisitInfo,
   PatientAssignmentDraft,
   PatientMemoryFilter,
@@ -78,6 +79,7 @@ import {
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
+import { TherapyApp } from "../features/therapy/TherapyApp";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
@@ -1582,7 +1584,7 @@ export function App() {
     [apiFetch],
   );
 
-  const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
+  const handlePersonaLogin = async (persona: Persona, tier: DevTier = "pro") => {
     setAuthError("");
     try {
       const next = await loginWithPersona(persona, tier);
@@ -1928,6 +1930,12 @@ export function App() {
 
   if (auth.user.persona === "patient-preview") {
     return <PatientPreviewGate auth={auth} onLogout={handleLogout} />;
+  }
+
+  // Therapy vertical is a greenfield surface (note-first capture, two-plane synthesis, federated
+  // caseloads) — render its own self-contained app rather than the aesthetics capture shell.
+  if (auth.tenant.vertical === "therapy") {
+    return <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />;
   }
 
   return (

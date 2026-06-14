@@ -59,7 +59,10 @@ export type SyncHealth = {
   lastError?: string;
 };
 
-export type Persona = "doctor" | "assistant" | "admin" | "patient-preview";
+export type Persona = "doctor" | "assistant" | "admin" | "patient-preview" | "therapist-b";
+
+// Dev-login tenant selector: aesthetics Pro/Basic, or the single-plan therapy demo tenant.
+export type DevTier = "pro" | "basic" | "therapy";
 
 export type AuthUser = {
   id: string;

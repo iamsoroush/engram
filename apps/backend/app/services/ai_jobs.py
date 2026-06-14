@@ -20,6 +20,8 @@ from app.services.capabilities import (
     tenant_has_capability,
 )
 from app.services.capture_storage import get_capture_for_tenant
+from app.services.caseload import tenant_vertical
+from app.services.verticals import domain_descriptor
 from app.services.patient_memory_intelligence import (
     apply_patient_memory_output,
     build_patient_memory_job_input,
@@ -865,6 +867,7 @@ def transcription_context_from_inputs(
     captures: list[Capture],
     current_capture_id: uuid.UUID,
     preferred_language: str = "auto",
+    domain: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the stable tenant-scoped context sent to audio transcription."""
     previous_transcripts: list[dict[str, Any]] = []
@@ -901,6 +904,9 @@ def transcription_context_from_inputs(
     return {
         "schemaVersion": "2026-06-02.audio-transcription-context.v1",
         "clinic": clinic,
+        # Vertical-aware prompt framing (label + optional vocabulary). The worker reads this and
+        # falls back to a neutral "clinic" when absent — it never hardcodes a vertical.
+        "domain": domain,
         "preferredLanguage": preferred_language,
         "assignedPatient": assigned_patient,
         "patientSummarizedHistory": patient_history_summary,
@@ -935,13 +941,14 @@ def build_transcription_context(db: DbSession, *, session: Session, capture: Cap
             .order_by(Capture.created_at)
         ).scalars()
     )
+    domain = domain_descriptor(tenant_vertical(db, session.tenant_id))
     return transcription_context_from_inputs(
         session=session,
         clinic={
             "name": template.clinic_name,
             "information": list(template.clinic_information),
             "assumptions": [
-                "Aesthetics clinic context.",
+                f"{domain['label'].capitalize()} context.",
                 "Persian/Iranian patient names, identifiers, phone numbers, and mixed Persian-English visit language are common.",
             ],
         },
@@ -950,6 +957,7 @@ def build_transcription_context(db: DbSession, *, session: Session, capture: Cap
         captures=captures,
         current_capture_id=capture.id,
         preferred_language=tenant_transcription_language(db, session.tenant_id),
+        domain=domain,
     )
 
 
@@ -959,11 +967,14 @@ def capture_enrichment_context_from_inputs(
     assigned_patient: dict[str, Any] | None,
     preferred_language: str,
     capture_type: str,
+    domain: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the Pro-only context for photo captioning / note decoration."""
     return {
         "schemaVersion": "2026-06-06.capture-enrichment-context.v1",
         "clinic": clinic,
+        # Vertical-aware prompt framing; the worker falls back to a neutral "clinic" when absent.
+        "domain": domain,
         "assignedPatient": assigned_patient,
         "preferredLanguage": preferred_language,
         "captureType": capture_type,
@@ -981,15 +992,17 @@ def build_capture_enrichment_context(db: DbSession, *, session: Session, capture
     template = get_report_template(session.report_template_key)
     patient_information = patient_information_from_assignment(db, session)
     assigned_patient = patient_information if patient_information.get("status") == "assigned" else None
+    domain = domain_descriptor(tenant_vertical(db, session.tenant_id))
     return capture_enrichment_context_from_inputs(
         clinic={
             "name": template.clinic_name,
             "information": list(template.clinic_information),
-            "assumptions": ["Aesthetics clinic context."],
+            "assumptions": [f"{domain['label'].capitalize()} context."],
         },
         assigned_patient=assigned_patient,
         preferred_language=tenant_transcription_language(db, session.tenant_id),
         capture_type=capture.capture_type.value,
+        domain=domain,
     )
 
 
@@ -1232,12 +1245,21 @@ def regenerate_session_report(db: DbSession, *, session: Session) -> None:
     the capture chain is idle — so it is always current for the latest capture. Pro additionally
     records each folded-in capture's `report_contribution` and the included/set-aside meta counts.
     """
-    synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     captures = sorted(
         _reportable_captures(db, tenant_id=session.tenant_id, session_id=session.id),
         key=lambda capture: (capture.captured_at or capture.created_at or utc_now()),
     )
     generated_at = utc_now()
+    # Therapy branch: narrative-first, two-plane synthesis (DAP/SOAP/BIRP + private plane +
+    # "Session so far") instead of the aesthetics by-type grouping. Kept fully isolated here so the
+    # aesthetics path below is untouched. See app/services/therapy_reporting.py.
+    if tenant_vertical(db, session.tenant_id) == "therapy":
+        from app.services.therapy_reporting import apply_therapy_synthesis
+
+        apply_therapy_synthesis(session, captures, db=db, generated_at=generated_at.isoformat())
+        session.updated_at = generated_at
+        return
+    synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     model = build_session_report_model(session, captures, grouped=synthesized)
     session.report_model = model
     session.generated_report = render_report_body_markdown(model, db=db, session=session)
@@ -1461,7 +1483,11 @@ def patient_memory_job_payload(db: DbSession, job: AiJob, ai_models: dict[str, s
     )
     tier = tenant_tier(db, job.tenant_id)
     job_input = build_patient_memory_job_input(
-        patient, sessions, tier, language=tenant_report_language(db, job.tenant_id)
+        patient,
+        sessions,
+        tier,
+        language=tenant_report_language(db, job.tenant_id),
+        domain=domain_descriptor(tenant_vertical(db, job.tenant_id)),
     )
     return {"job": ai_job_payload(job), "aiModels": ai_models, **job_input}
 

@@ -6,12 +6,15 @@ from ai_engine.processing import (
     caption_prompt,
     decorate_note_content,
     caption_image_content,
+    domain_framing,
     enrichment_language_directive,
     image_to_data_url,
     is_fixture_capture,
     note_decoration_prompt,
+    patient_memory_prompt,
     raw_note_text_for_decoration,
     run_capture_processing_job,
+    transcription_prompt,
 )
 
 
@@ -33,18 +36,66 @@ class EnrichmentPromptTests(unittest.TestCase):
         self.assertIn("Persian (Farsi)", directive)
         self.assertIn("native script", directive)
 
-    def test_caption_prompt_has_aesthetics_context_and_no_invention(self):
+    def test_caption_prompt_is_vertical_driven_not_hardcoded(self):
+        # The vertical comes from the passed `domain` descriptor — never hardcoded in the worker.
+        aesthetics = caption_prompt({"domain": {"label": "aesthetics clinic", "captionFindings": ["filler/Botox effect"]}, "preferredLanguage": "auto"})
+        self.assertIn("aesthetics clinic", aesthetics.lower())
+        self.assertIn("filler/Botox effect", aesthetics)
+        therapy = caption_prompt({"domain": {"label": "psychotherapy practice"}, "preferredLanguage": "auto"})
+        self.assertIn("psychotherapy practice", therapy.lower())
+        self.assertNotIn("aesthetic", therapy.lower())  # no aesthetics phrasing leaks into therapy
+        self.assertNotIn("botox", therapy.lower())
+
+    def test_caption_prompt_neutral_fallback_when_no_domain(self):
         prompt = caption_prompt({"clinic": {"name": "Memara Clinic"}, "preferredLanguage": "auto"})
-        self.assertIn("aesthetics clinic", prompt.lower())
+        self.assertIn("clinical setting is a clinic", prompt.lower())  # neutral default
+        self.assertNotIn("aesthetic", prompt.lower())
         self.assertIn("Do NOT invent", prompt)
-        self.assertIn("Memara Clinic", prompt)
         self.assertIn("never romanize", prompt.lower())
 
-    def test_note_decoration_prompt_preserves_details(self):
-        prompt = note_decoration_prompt({"preferredLanguage": "fa"})
+    def test_note_decoration_prompt_preserves_details_and_is_vertical_driven(self):
+        prompt = note_decoration_prompt({"domain": {"label": "psychotherapy practice"}, "preferredLanguage": "fa"})
         self.assertIn("Preserve EVERY clinical detail", prompt)
         self.assertIn("do NOT add facts", prompt)
         self.assertIn("Persian (Farsi)", prompt)
+        self.assertIn("psychotherapy practice", prompt.lower())
+        self.assertNotIn("aesthetic", prompt.lower())
+        # Neutral fallback when no domain is supplied — the worker never assumes a vertical.
+        neutral = note_decoration_prompt({"preferredLanguage": "fa"})
+        self.assertIn("clinical setting is a clinic", neutral.lower())
+        self.assertNotIn("aesthetic", neutral.lower())
+
+
+class VerticalNeutralPromptTests(unittest.TestCase):
+    """The worker prompts must be vertical-agnostic — driven by the passed `domain`, neutral otherwise."""
+
+    def test_domain_framing_neutral_fallback(self):
+        label, vocab, findings = domain_framing({})
+        self.assertEqual(label, "clinic")
+        self.assertEqual(vocab, [])
+        self.assertEqual(findings, [])
+        label, vocab, _ = domain_framing({"domain": {"label": "psychotherapy practice", "vocabulary": ["affect", "boundaries"]}})
+        self.assertEqual(label, "psychotherapy practice")
+        self.assertEqual(vocab, ["affect", "boundaries"])
+
+    def test_transcription_prompt_is_vertical_driven(self):
+        therapy = transcription_prompt({"domain": {"label": "psychotherapy practice", "vocabulary": ["affect", "boundaries", "safety plan"]}})
+        self.assertIn("psychotherapy practice", therapy.lower())
+        self.assertIn("boundaries", therapy.lower())
+        self.assertNotIn("aesthetic", therapy.lower())
+        self.assertNotIn("botox", therapy.lower())
+        # Neutral fallback — no domain, no assumed vertical, no vocabulary line.
+        neutral = transcription_prompt({})
+        self.assertIn("clinical setting is a clinic", neutral.lower())
+        self.assertNotIn("aesthetic", neutral.lower())
+
+    def test_patient_memory_prompt_is_vertical_driven(self):
+        therapy = patient_memory_prompt({"domain": {"label": "psychotherapy practice"}, "patient": {}})
+        self.assertIn("psychotherapy practice", therapy.lower())
+        self.assertNotIn("aesthetic", therapy.lower())
+        neutral = patient_memory_prompt({"patient": {}})
+        self.assertIn("clinical setting is a clinic", neutral.lower())
+        self.assertNotIn("aesthetic", neutral.lower())
 
 
 class EnrichmentHelperTests(unittest.TestCase):

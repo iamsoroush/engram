@@ -153,7 +153,13 @@ def list_sessions(
     limit: int = 50,
     clinician_id: str | None = None,
 ) -> list[dict[str, Any]]:
+    from app.services.caseload import is_federated_caseload
+
     statement = select(Session).where(Session.tenant_id == principal.tenant_id)
+    # Therapy: the active session is user-scoped (foundation §7) — a clinician lists only their own
+    # sessions. Aesthetics is a shared workspace, so no owner scoping there.
+    if is_federated_caseload(db, principal.tenant_id):
+        statement = statement.where(Session.created_by_user_id == principal.user_id)
     if status_filter:
         try:
             statement = statement.where(Session.status == SessionStatus(status_filter))

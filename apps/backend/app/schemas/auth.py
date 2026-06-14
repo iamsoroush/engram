@@ -2,9 +2,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DevLoginRequest(BaseModel):
-    persona: str = Field(pattern="^(doctor|assistant|admin|patient-preview)$")
-    # Dev-only tier selector so Pro and Basic tenants are testable side-by-side.
-    tier: str = Field(default="pro", pattern="^(basic|pro)$")
+    # `therapist-b` is a second therapist persona so the therapy tenant's federated caseloads
+    # (a clinician sees only their own clients) are demonstrable side-by-side.
+    persona: str = Field(pattern="^(doctor|assistant|admin|patient-preview|therapist-b)$")
+    # Dev-only tenant selector: tier picks the aesthetics Pro/Basic demo tenants; `therapy` selects
+    # the single-plan therapy demo tenant (vertical = therapy).
+    tier: str = Field(default="pro", pattern="^(basic|pro|therapy)$")
 
 
 class TenantSettingsUpdate(BaseModel):

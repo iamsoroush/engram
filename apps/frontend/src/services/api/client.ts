@@ -2,6 +2,7 @@ import type {
   ApiFetch,
   AuthSession,
   CaptureDraft,
+  DevTier,
   PatientAssignmentDraft,
   AiModelConfig,
   AftercareTemplate,
@@ -31,7 +32,7 @@ import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
 
-export async function loginWithPersona(persona: Persona, tier: "pro" | "basic" = "pro") {
+export async function loginWithPersona(persona: Persona, tier: DevTier = "pro") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

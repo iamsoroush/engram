@@ -11,6 +11,18 @@
 > value (single tier); the patient-facing surface is one shared primitive (§4). **Added here, therapy-
 > specific:** privacy is structural (two visibility planes), and risk/safety is a first-class element of
 > memory.
+>
+> **Build status — slice 1 (the core loop) is BUILT** (`build/therapy-core`, 2026-06-13). Shipped:
+> note-first capture (B2), the live **"Session so far"** synthesis (B2a), the **two-plane** session
+> summary with DAP/SOAP/BIRP switch + explicit Release + clinician-confirmed risk (B3/E1/C3), a
+> minimal **client file** (sessions list + per-session note/report), and **federated private
+> caseloads** (foundation §7 — a therapist sees only their own clients). Backend: `vertical=='therapy'`
+> branch in the report-synthesis path (`app/services/therapy_reporting.py`, deterministic v1 that
+> assembles the AI-enriched capture text; `THERAPY_SYNTHESIS_PROMPTS` is the drop-in contract for a
+> real LLM synthesizer) + `app/services/caseload.py`. Frontend: `apps/frontend/src/features/therapy/`,
+> rendered by `App.tsx` when `tenant.vertical=='therapy'` (the aesthetics CaptureScreen is untouched).
+> Not yet built (designed-for, later slices): the pre-session brief (B1), arc strip, intake/consent +
+> patient surface (D1/D2), recall/ask-the-memory (C5), and MBC.
 
 ---
 

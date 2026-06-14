@@ -27,6 +27,10 @@ from app.schemas.api import (
     SessionCreate,
     SessionSaveRequest,
     SessionUpdate,
+    TherapyFormatRequest,
+    TherapyReflectionsRequest,
+    TherapyReleaseRequest,
+    TherapyRiskRequest,
     WorklistEntryCreate,
     WorklistEntryResolve,
 )
@@ -72,6 +76,12 @@ from app.services.patient_surface import (
     public_share_media,
     public_share_payload,
     revoke_patient_share,
+)
+from app.services.therapy_reporting import (
+    update_therapy_format,
+    update_therapy_reflections,
+    update_therapy_release,
+    update_therapy_risk,
 )
 from app.services.sessions import (
     assign_session_patient,
@@ -537,6 +547,50 @@ def start_review_route(
 ) -> dict[str, Any]:
     """Move an organized session into human review."""
     return start_review(db, principal, session_id)
+
+
+@api_v1.post("/sessions/{session_id}/therapy/format")
+def therapy_set_format_route(
+    session_id: str,
+    request: TherapyFormatRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Switch the therapy shareable-plane note format (DAP/SOAP/BIRP); re-projects the same content."""
+    return update_therapy_format(db, principal, session_id, request.format)
+
+
+@api_v1.post("/sessions/{session_id}/therapy/release")
+def therapy_release_route(
+    session_id: str,
+    request: TherapyReleaseRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Explicitly release (or withdraw) the shareable summary to the client — a deliberate act."""
+    return update_therapy_release(db, principal, session_id, request.released)
+
+
+@api_v1.post("/sessions/{session_id}/therapy/risk")
+def therapy_risk_route(
+    session_id: str,
+    request: TherapyRiskRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Clinician-confirm (or clear) a dated risk flag; assisted detection only suggests."""
+    return update_therapy_risk(db, principal, session_id, active=request.active, level=request.level, note=request.note)
+
+
+@api_v1.post("/sessions/{session_id}/therapy/reflections")
+def therapy_reflections_route(
+    session_id: str,
+    request: TherapyReflectionsRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Save the private-plane reflections (therapist-only; never exported)."""
+    return update_therapy_reflections(db, principal, session_id, request.reflections)
 
 
 @api_v1.get("/sessions/{session_id}/captures")
