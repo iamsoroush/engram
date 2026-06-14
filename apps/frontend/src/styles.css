@@ -6294,6 +6294,309 @@ small {
   color: #075eff;
 }
 
+/* --- E9 multi-seat: Mine/Clinic toggle, worklist, attribution, read-only (AES-901..906) --- */
+.mine-clinic-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #dce6f2;
+  border-radius: 999px;
+  background: #f6f9fd;
+}
+
+.mine-clinic-toggle button {
+  min-height: 28px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #4e5d93;
+  padding: 0 14px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mine-clinic-toggle button.active {
+  background: #075eff;
+  color: #ffffff;
+}
+
+.worklist-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.worklist-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.worklist-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.worklist-head-copy h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 850;
+  color: #1f2a44;
+}
+
+.worklist-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #4e5d93;
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.worklist-info-btn[aria-expanded="true"] {
+  background: #075eff;
+  color: #ffffff;
+}
+
+.worklist-subtle {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: #6b7794;
+}
+
+.worklist-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #6b7794;
+}
+
+.worklist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Mobile-first: the card stacks — header (tap to peek the recap) · recap · actions row. */
+.worklist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e4ebf4;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.worklist-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.worklist-item-headcopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.worklist-item-name {
+  font-weight: 800;
+  color: #1f2a44;
+  font-size: 0.9rem;
+}
+
+.worklist-item-meta {
+  font-size: 0.74rem;
+  color: #6b7794;
+  line-height: 1.35;
+}
+
+.worklist-recap-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #6b7794;
+}
+
+.worklist-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.worklist-item-actions > * {
+  white-space: nowrap;
+}
+
+.worklist-item-peek {
+  flex-shrink: 0;
+  align-self: center;
+  color: #075eff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.worklist-add {
+  align-self: flex-start;
+}
+
+/* Next-patient recap popup (AES-903) — reuses .resolver-backdrop/.resolver-sheet. */
+.patient-recap-sheet {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.patient-recap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.patient-recap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.patient-recap-actions > * {
+  white-space: nowrap;
+}
+
+.worklist-lineup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed #cdd9ea;
+  border-radius: 12px;
+  background: #f9fbfe;
+}
+
+.worklist-lineup-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.worklist-lineup-results button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e4ebf4;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.worklist-lineup-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #4e5d93;
+  font-weight: 700;
+}
+
+.worklist-lineup-field select {
+  flex: 1;
+}
+
+.worklist-lineup-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 800;
+  color: #1f2a44;
+}
+
+.worklist-lineup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.next-lined-up {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid #d8e4fa;
+  border-radius: 12px;
+  background: #f3f7ff;
+  font-size: 0.82rem;
+  color: #1f2a44;
+}
+
+.next-lined-up-copy strong {
+  color: #075eff;
+}
+
+.next-lined-up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.next-lined-up-actions > * {
+  white-space: nowrap;
+}
+
+.session-readonly-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid #f6ddb0;
+  border-radius: 12px;
+  background: #fff8e8;
+  color: #8a5a00;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.capture-attribution {
+  color: #6b7794;
+  font-weight: 700;
+}
+
+.visit-metadata-attribution strong {
+  color: #4e5d93;
+}
+
 .patient-memory-badges {
   margin-top: 3px;
 }

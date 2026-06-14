@@ -27,6 +27,8 @@ from app.schemas.api import (
     SessionCreate,
     SessionSaveRequest,
     SessionUpdate,
+    WorklistEntryCreate,
+    WorklistEntryResolve,
 )
 from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest, TenantSettingsUpdate
 from app.services.ai_model_config import ai_model_settings_payload, set_ai_model_overrides
@@ -82,6 +84,12 @@ from app.services.sessions import (
     save_session,
     start_review,
     update_session,
+)
+from app.services.worklist import (
+    create_worklist_entry,
+    list_clinic_members,
+    list_worklist,
+    resolve_worklist_entry,
 )
 from app.storage import ObjectStore, get_object_store
 from sqlalchemy.orm import Session
@@ -436,11 +444,15 @@ def patients_update(
 def get_sessions(
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
+    clinician_id: str | None = Query(default=None, alias="clinicianId"),
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
-    """List sessions in the current tenant, optionally filtered by status."""
-    return list_sessions(db, principal, status, limit)
+    """List sessions in the current tenant, optionally filtered by status or owning clinician.
+
+    Pass ``clinicianId`` (e.g. the caller's own id) for the AES-904 "Mine" view; omit for "Clinic".
+    """
+    return list_sessions(db, principal, status, limit, clinician_id)
 
 
 @api_v1.post("/sessions")
@@ -575,6 +587,65 @@ def get_ai_job_route(
 ) -> dict[str, Any]:
     """Return one AI processing job and its current lifecycle state."""
     return get_ai_job(db, principal, job_id)
+
+
+@api_v1.get("/clinic/members")
+def clinic_members_route(
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """List the clinic's active staff members (for the worklist line-up picker; AES-903)."""
+    return list_clinic_members(db, principal)
+
+
+@api_v1.get("/worklist")
+def list_worklist_route(
+    scope: str = Query(default="mine", pattern="^(mine|clinic)$"),
+    status: str = Query(default="waiting", pattern="^(waiting|seen|cancelled|all)$"),
+    clinician_id: str | None = Query(default=None, alias="clinicianId"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """A clinician's "Today / up next" worklist (AES-903). Default: the caller's waiting entries."""
+    return list_worklist(db, principal, scope=scope, status_filter=status, clinician_id=clinician_id)
+
+
+@api_v1.post("/worklist")
+def create_worklist_route(
+    request: WorklistEntryCreate,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Line a patient up for a clinician (AES-903). A soft lane — capture-first is never blocked."""
+    return create_worklist_entry(
+        db,
+        principal,
+        patient_id=request.patient_id,
+        clinician_user_id=request.clinician_user_id,
+        note=request.note,
+    )
+
+
+@api_v1.post("/worklist/{entry_id}/seen")
+def worklist_entry_seen_route(
+    entry_id: str,
+    request: WorklistEntryResolve | None = None,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Clear a worklist entry as seen, optionally linking the session the clinician started."""
+    body = request or WorklistEntryResolve()
+    return resolve_worklist_entry(db, principal, entry_id, new_status="seen", session_id=body.session_id)
+
+
+@api_v1.delete("/worklist/{entry_id}")
+def cancel_worklist_entry_route(
+    entry_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Cancel (remove) a worklist entry that no longer applies."""
+    return resolve_worklist_entry(db, principal, entry_id, new_status="cancelled")
 
 
 @api_v1.post("/captures")

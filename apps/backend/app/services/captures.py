@@ -17,11 +17,11 @@ from app.services.sessions import parse_uuid
 def get_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
     capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
-    payload = capture_payload(capture, artifact)
+    payload = capture_payload(capture, artifact, db)
     if db.is_modified(capture, include_collections=True):
         db.commit()
         db.refresh(capture)
-        payload = capture_payload(capture, artifact)
+        payload = capture_payload(capture, artifact, db)
     return payload
 
 
@@ -80,7 +80,7 @@ def update_capture(
         )
         db.refresh(capture)
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
-    return capture_payload(capture, artifact)
+    return capture_payload(capture, artifact, db)
 
 
 def merged_capture_metadata_for_staff_edit(
@@ -279,7 +279,7 @@ def assign_capture_patient(
     db.commit()
     db.refresh(capture)
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
-    return capture_payload(capture, artifact)
+    return capture_payload(capture, artifact, db)
 
 
 def capture_metadata(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:

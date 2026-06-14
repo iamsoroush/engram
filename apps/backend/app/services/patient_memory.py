@@ -16,6 +16,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
+from app.services.attribution import attribution_payload
 from app.services.patient_identity import normalize_identifier, search_keys_for_query
 from app.services.patient_memory_intelligence import (
     can_finalize_on_read,
@@ -489,6 +490,9 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
                 "captureCount": capture_count,
                 "complete": session_is_complete(session),
                 "needsInput": _session_needs_input_item(session) is not None,
+                # Author attribution on the patient timeline (AES-901): who ran this visit.
+                "createdByUserId": str(session.created_by_user_id) if session.created_by_user_id else None,
+                "createdBy": attribution_payload(db, session.created_by_user_id),
                 "groupLabel": _timeline_group_label(sort_date),
                 "sortDate": _iso(sort_date),
                 "capturedAt": _iso(session.captured_at),

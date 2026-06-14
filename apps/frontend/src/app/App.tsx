@@ -11,10 +11,12 @@ import type {
   PatientSummary,
   PendingOperation,
   Persona,
+  RolePermissions,
   SyncHealth,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
+import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import {
   assignSessionPatient,
   unassignSessionPatient,
@@ -26,9 +28,15 @@ import {
   deleteCapture,
   fetchAiModels,
   fetchAssignmentSuggestion,
+  cancelWorklistEntry,
+  createSession,
+  createWorklistEntry,
+  fetchClinicMembers,
   fetchLastVisit,
+  fetchWorklist,
   getPatient,
   listAftercareTemplates,
+  markWorklistEntrySeen,
   revokePatientShare,
   searchPatientsSmart,
   updateAftercareTemplate,
@@ -105,6 +113,16 @@ import {
   resolveRestoredSession,
 } from "./sessionState";
 
+// E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
+// reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
+function defaultScreenForAuth(auth: AuthSession): Screen {
+  const roles = auth.memberships.filter((m) => m.tenantId === auth.tenant.id).map((m) => m.role);
+  const effective = roles.length ? roles : auth.user.persona ? [String(auth.user.persona)] : [];
+  if (effective.includes("doctor")) return "active-session";
+  if (effective.includes("assistant") || effective.includes("admin")) return "patients";
+  return "active-session";
+}
+
 function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
   if (!session) return false;
   if (session.processingStatus?.state === "processing" || session.report?.status === "generating") return true;
@@ -138,6 +156,10 @@ export function App() {
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  // E9 — the patient whose file is open in Clinical Memory. While set (and on the patients screen),
+  // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
+  // screen changes, so the target naturally reverts to the active session.
+  const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
@@ -815,6 +837,13 @@ export function App() {
       setStorageGuardOpen(true);
       return;
     }
+    // On a patient's file → capture *for that patient* (start their visit + open the recorder),
+    // skipping the destination chooser. The session is created only now (on the capture action),
+    // so merely viewing a patient never changes the target.
+    if (screen === "patients" && viewedPatient) {
+      void startVisitForPatient(viewedPatient.id, undefined, kind);
+      return;
+    }
     if (screen !== "active-session") {
       setPendingCaptureKind(kind);
       return;
@@ -844,6 +873,64 @@ export function App() {
     navigateScreen("active-session");
     setToast("New session ready.");
   };
+
+  // AES-903 — worklist "Start visit": open a fresh session already assigned to the patient, mark the
+  // worklist entry seen (linking the session), and drop into the capture screen. Capture-first is
+  // untouched — this is just a shortcut past the patient card for a queued patient.
+  const startVisitForPatient = React.useCallback(
+    async (patientId: string, worklistEntryId?: string, openCaptureKind?: CaptureDraft["kind"]) => {
+      try {
+        const session = await createSession(apiFetch, patientId);
+        if (worklistEntryId) {
+          try {
+            await markWorklistEntrySeen(apiFetch, worklistEntryId, session.id);
+          } catch {
+            /* a stale/seen entry shouldn't block the visit */
+          }
+        }
+        upsertSession(session);
+        setActiveSession(session);
+        setSelectedSessionId(session.id);
+        setAssignmentSessionId("");
+        navigateScreen("active-session");
+        // Capture-for-patient: drop straight into the recorder/photo/note for the new visit.
+        if (openCaptureKind) openCaptureDialog(openCaptureKind);
+      } catch {
+        setToast("Could not start the visit.");
+      }
+    },
+    [apiFetch],
+  );
+
+  // AES-903/AES-301 — the doctor's next lined-up patient, surfaced on the capture screen so an
+  // unassigned visit can be filed to them (or a fresh one started) without leaving capture.
+  const [nextLinedUpPatient, setNextLinedUpPatient] = React.useState<{ patientId: string; patientName: string; entryId: string } | null>(null);
+  const [worklistRefresh, setWorklistRefresh] = React.useState(0);
+  React.useEffect(() => {
+    const current = authRef.current;
+    if (!current || !currentUserRoles(current).includes("doctor")) {
+      setNextLinedUpPatient(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchWorklist(apiFetch, { scope: "mine", status: "waiting" })
+      .then((result) => {
+        if (cancelled) return;
+        const top = result.items[0];
+        setNextLinedUpPatient(top ? { patientId: top.patientId, patientName: top.patientName || "Patient", entryId: top.id } : null);
+      })
+      .catch(() => {
+        if (!cancelled) setNextLinedUpPatient(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, auth, memoryRefreshSignal, worklistRefresh]);
+
+  const startNextLinedUpVisit = React.useCallback(() => {
+    if (!nextLinedUpPatient) return;
+    void startVisitForPatient(nextLinedUpPatient.patientId, nextLinedUpPatient.entryId).then(() => setWorklistRefresh((v) => v + 1));
+  }, [nextLinedUpPatient, startVisitForPatient]);
 
   const clearLocalPendingCaptures = async () => {
     if (!window.confirm("Clear captures saved only on this device? This cannot be undone.")) return;
@@ -1287,6 +1374,22 @@ export function App() {
     [apiFetch, ensurePatient],
   );
 
+  // AES-301/903 — file the current unassigned visit onto the doctor's next lined-up patient.
+  const assignActiveVisitToNext = React.useCallback(async () => {
+    if (!activeSession || !nextLinedUpPatient) return;
+    await assignPatientToSession(
+      activeSession.id,
+      { patientId: nextLinedUpPatient.patientId, displayName: nextLinedUpPatient.patientName },
+      { successMessage: `Visit assigned to ${nextLinedUpPatient.patientName}.` },
+    );
+    try {
+      await markWorklistEntrySeen(apiFetch, nextLinedUpPatient.entryId, activeSession.id);
+    } catch {
+      /* non-fatal */
+    }
+    setWorklistRefresh((v) => v + 1);
+  }, [activeSession, nextLinedUpPatient, assignPatientToSession, apiFetch]);
+
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
   const fetchAssignedPatientDetails = React.useCallback(
     (patientId: string) => (isLocalAssignmentPatient(patientId) ? Promise.resolve(null) : getPatient(apiFetch, patientId).catch(() => null)),
@@ -1346,10 +1449,27 @@ export function App() {
     [apiFetch],
   );
   const listPatientMemory = React.useCallback(
-    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }): Promise<PatientMemoryListResponse> =>
+    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }): Promise<PatientMemoryListResponse> =>
       fetchPatientMemory(apiFetch, params),
     [apiFetch],
   );
+
+  // E9 multi-seat (AES-903): the soft worklist + clinic directory.
+  const listWorklist = React.useCallback(
+    (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) =>
+      fetchWorklist(apiFetch, options),
+    [apiFetch],
+  );
+  const lineUpPatient = React.useCallback(
+    (input: { patientId: string; clinicianUserId: string; note?: string }) => createWorklistEntry(apiFetch, input),
+    [apiFetch],
+  );
+  const markWorklistSeen = React.useCallback(
+    (entryId: string, sessionId?: string) => markWorklistEntrySeen(apiFetch, entryId, sessionId),
+    [apiFetch],
+  );
+  const cancelWorklist = React.useCallback((entryId: string) => cancelWorklistEntry(apiFetch, entryId), [apiFetch]);
+  const listClinicMembers = React.useCallback(() => fetchClinicMembers(apiFetch), [apiFetch]);
 
   const confirmSessionSummary = React.useCallback(
     async (sessionId: string, summary: string) => {
@@ -1446,8 +1566,9 @@ export function App() {
   const handlePersonaLogin = async (persona: Persona, tier: "pro" | "basic" = "pro") => {
     setAuthError("");
     try {
-      commitAuth(await loginWithPersona(persona, tier));
-      navigateScreen("active-session");
+      const next = await loginWithPersona(persona, tier);
+      commitAuth(next);
+      navigateScreen(defaultScreenForAuth(next));
     } catch {
       setAuthError("Could not sign in with that persona.");
     }
@@ -1456,18 +1577,25 @@ export function App() {
   const handlePasswordLogin = async (email: string, password: string) => {
     setAuthError("");
     try {
-      commitAuth(await loginWithPassword(email, password));
-      navigateScreen("active-session");
+      const next = await loginWithPassword(email, password);
+      commitAuth(next);
+      navigateScreen(defaultScreenForAuth(next));
     } catch {
       setAuthError("Invalid email or password.");
     }
   };
 
   const handleUpdateTenantSettings = React.useCallback(
-    async (settings: { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string }) => {
+    async (settings: {
+      transcriptionLanguage?: string;
+      reportLanguage?: string | null;
+      matchStrictness?: string;
+      rolePermissions?: RolePermissions;
+    }) => {
       const currentAuth = authRef.current;
       if (!currentAuth) return;
       const changingStrictness = "matchStrictness" in settings;
+      const changingPermissions = "rolePermissions" in settings;
       try {
         const updated = await updateTenantSettings(apiFetch, settings);
         commitAuth({
@@ -1477,11 +1605,25 @@ export function App() {
             transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
             reportLanguage: updated.reportLanguage ?? null,
             matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,
+            // AES-905: the response carries the full effective preset map (defaults + overrides).
+            rolePermissions: updated.rolePermissions ?? currentAuth.tenant.rolePermissions,
           },
         });
-        setToast(changingStrictness ? "Patient-matching preference updated." : "Language preferences updated.");
+        setToast(
+          changingPermissions
+            ? "Role permissions updated."
+            : changingStrictness
+              ? "Patient-matching preference updated."
+              : "Language preferences updated.",
+        );
       } catch {
-        setToast(changingStrictness ? "Could not update matching preference." : "Could not update language preferences.");
+        setToast(
+          changingPermissions
+            ? "Could not update role permissions."
+            : changingStrictness
+              ? "Could not update matching preference."
+              : "Could not update language preferences.",
+        );
       }
     },
     [apiFetch, commitAuth],
@@ -1685,6 +1827,11 @@ export function App() {
           onUseAsNote={composeNoteFromText}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
+          currentUserId={auth?.user.id ?? null}
+          readOnly={activeSession ? isSessionReadOnly(activeSession, auth) : false}
+          nextLinedUpPatient={nextLinedUpPatient ? { patientName: nextLinedUpPatient.patientName } : null}
+          onAssignActiveToNext={assignActiveVisitToNext}
+          onStartNextVisit={startNextLinedUpVisit}
         />
       );
     }
@@ -1694,6 +1841,7 @@ export function App() {
     return (
       <PatientsHome
         activeSession={activeSession}
+        auth={auth}
         initialPatientId={clinicalMemoryReturnContext?.patientId}
         initialTab={clinicalMemoryReturnContext?.tab}
         onAssignPatient={assignPatientToSession}
@@ -1701,6 +1849,13 @@ export function App() {
         onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
         onListPatientMemory={listPatientMemory}
+        onListWorklist={listWorklist}
+        onLineUpPatient={lineUpPatient}
+        onMarkWorklistSeen={markWorklistSeen}
+        onCancelWorklistEntry={cancelWorklist}
+        onListClinicMembers={listClinicMembers}
+        onStartVisit={startVisitForPatient}
+        onViewingPatientChange={setViewedPatient}
         onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
@@ -1754,7 +1909,7 @@ export function App() {
     <>
       <Shell
         auth={auth}
-        captureContextLabel={captureContextLabel(activeSession)}
+        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient)}
         onCapture={beginCapture}
         onLogout={handleLogout}
         screen={screen}
@@ -1824,7 +1979,11 @@ function isLocalAssignmentPatient(patientId: string) {
   return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
 }
 
-function captureContextLabel(session: CaptureSession | null) {
+function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null) {
+  // On a patient's file the footer captures for *them* (a new visit) — make that explicit.
+  if (screen === "patients" && viewedPatient) {
+    return `Capturing for: ${viewedPatient.name} · new visit`;
+  }
   const patient = session?.patientName || "Unassigned visit";
   return `Capturing for: ${patient} · Today's visit`;
 }

@@ -1,9 +1,66 @@
 import React from "react";
-import type { AftercareTemplate, AftercareTemplateDraft, AiModelConfig, AuthSession } from "../../domain/appTypes";
+import type { AftercareTemplate, AftercareTemplateDraft, AiModelConfig, AuthSession, RolePermissions } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
+import { isAdmin as isAdminViewer } from "../../shared/lib/multiseat";
 import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
 
-type TenantSettingsUpdate = { transcriptionLanguage?: string; reportLanguage?: string | null; matchStrictness?: string };
+type TenantSettingsUpdate = {
+  transcriptionLanguage?: string;
+  reportLanguage?: string | null;
+  matchStrictness?: string;
+  rolePermissions?: RolePermissions;
+};
+
+// AES-905 — the non-owner roles an admin can configure + the ordered presets.
+const CONFIGURABLE_ROLES: Array<{ role: string; label: string; hint: string }> = [
+  { role: "assistant", label: "Assistants / reception", hint: "What an assistant may do on a visit they don't own." },
+  { role: "doctor", label: "Other doctors", hint: "What another doctor may do on a colleague's visit." },
+];
+const PERMISSION_PRESETS: Array<{ value: string; label: string }> = [
+  { value: "contribute", label: "Contribute — add captures only" },
+  { value: "reassign", label: "Reassign — add + change the patient" },
+  { value: "full", label: "Full — add, reassign + edit the visit" },
+];
+const PRESET_DEFAULTS: RolePermissions = { assistant: "reassign", doctor: "contribute" };
+
+function RolePermissionsSettings({
+  auth,
+  saving,
+  onSave,
+}: {
+  auth: AuthSession;
+  saving: boolean;
+  onSave: (settings: TenantSettingsUpdate) => void;
+}) {
+  const resolved = auth.tenant.rolePermissions || {};
+  return (
+    <Card className="settings-group">
+      <div className="settings-group-head">
+        <h2>Role permissions</h2>
+        <p>
+          A visit is owned by whoever started it; editing it is owner-only by default. Set what other roles may do — the
+          owner and admins are always allowed. Contributing (adding captures) is always open.
+        </p>
+      </div>
+      {CONFIGURABLE_ROLES.map(({ role, label, hint }) => (
+        <SettingRow key={role} label={label} hint={hint}>
+          <select
+            aria-label={`${label} permission`}
+            disabled={saving}
+            onChange={(event) => onSave({ rolePermissions: { [role]: event.target.value } })}
+            value={String(resolved[role] || PRESET_DEFAULTS[role] || "contribute")}
+          >
+            {PERMISSION_PRESETS.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
+      ))}
+    </Card>
+  );
+}
 
 const capitalize = (value: string) => (value ? value[0].toUpperCase() + value.slice(1) : value);
 
@@ -181,6 +238,8 @@ export function SettingsScreen({
           <span className="profile-value">{capitalize(auth.tenant.vertical || "clinic")}</span>
         </SettingRow>
       </Card>
+
+      {isAdminViewer(auth) ? <RolePermissionsSettings auth={auth} saving={saving} onSave={save} /> : null}
 
       {onListAftercareTemplates && onCreateAftercareTemplate && onUpdateAftercareTemplate && onDeleteAftercareTemplate ? (
         <AftercareTemplatesSettings

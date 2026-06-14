@@ -2,6 +2,8 @@ import React from "react";
 import type {
   AftercareTemplate,
   AssignmentSuggestionResponse,
+  AuthSession,
+  ClinicMember,
   CaptureDraft,
   CreatePatientShareInput,
   DuplicateCandidate,
@@ -19,13 +21,18 @@ import type {
   SmartPatientMatch,
   SmartPatientSearchResponse,
   SyncHealth,
+  WorklistEntry,
+  WorklistResponse,
 } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureItemType, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Badge, Button, Card, Input } from "../../../shared/ui/primitives";
+import { attributionName } from "../../../shared/lib/multiseat";
+import { WorklistSection } from "./WorklistSection";
 import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
+import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { SessionStatusBadge } from "../../capture/components/StatusBadges";
@@ -34,6 +41,7 @@ const PATIENT_PAGE_SIZE = 25;
 
 export function PatientsHome({
   activeSession,
+  auth,
   initialPatientId,
   initialTab,
   sessions,
@@ -58,10 +66,18 @@ export function PatientsHome({
   onCreateShare,
   onRevokeShare,
   onLoadAssignmentSuggestion,
+  onListWorklist,
+  onLineUpPatient,
+  onMarkWorklistSeen,
+  onCancelWorklistEntry,
+  onListClinicMembers,
+  onStartVisit,
+  onViewingPatientChange,
   tier,
   memoryRefreshSignal = 0,
 }: {
   activeSession: CaptureSession | null;
+  auth?: AuthSession | null;
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
   sessions: CaptureSession[];
@@ -75,8 +91,19 @@ export function PatientsHome({
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   onCreatePatient?: (draft: PatientAssignmentDraft) => Promise<PatientSummary | null>;
-  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number }) => Promise<PatientMemoryListResponse>;
+  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }) => Promise<PatientMemoryListResponse>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
+  // E9 multi-seat worklist (AES-903).
+  onListWorklist?: (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) => Promise<WorklistResponse>;
+  onLineUpPatient?: (input: { patientId: string; clinicianUserId: string; note?: string }) => Promise<WorklistEntry>;
+  onMarkWorklistSeen?: (entryId: string, sessionId?: string) => Promise<WorklistEntry>;
+  onCancelWorklistEntry?: (entryId: string) => Promise<WorklistEntry>;
+  onListClinicMembers?: () => Promise<ClinicMember[]>;
+  /** AES-903 — start a fresh visit assigned to the patient (worklist quick action); marks the
+   *  entry seen + navigates to the capture screen. */
+  onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
+  /** Reports which patient's file is open (or null), so the footer can capture for them. */
+  onViewingPatientChange?: (patient: { id: string; name: string } | null) => void;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
@@ -94,6 +121,11 @@ export function PatientsHome({
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
+  // AES-904 "Mine vs Clinic" on the patients list. Default Clinic (the whole shared base); Mine
+  // filters to the patients the signed-in clinician has worked with (their owned sessions).
+  const [ownershipScope, setOwnershipScope] = React.useState<"mine" | "clinic">("clinic");
+  const myUserId = auth?.user.id;
+  const patientClinicianId = ownershipScope === "mine" && myUserId ? myUserId : undefined;
   const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
   const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
   const [patientRowsError, setPatientRowsError] = React.useState(false);
@@ -111,6 +143,11 @@ export function PatientsHome({
   const [summaryReviewSessionId, setSummaryReviewSessionId] = React.useState("");
   const [decisionListPatientId, setDecisionListPatientId] = React.useState("");
   const [selectedPatientId, setSelectedPatientId] = React.useState(initialPatientId || "");
+  // A {id,name} hint when a patient is opened by id from outside the loaded list (the worklist), so
+  // the timeline detail renders immediately while its memory loads. Cleared on back.
+  const [pendingPatientStub, setPendingPatientStub] = React.useState<{ id: string; name: string } | null>(null);
+  // AES-903 — the queued patient whose recap popup is open (history + before/after + Start visit).
+  const [recapPatient, setRecapPatient] = React.useState<{ id: string; name: string; entryId: string; canStart: boolean } | null>(null);
   const [patientDetailCache, setPatientDetailCache] = React.useState<Record<string, PatientMemoryDetailResponse>>({});
   const [patientDetailLoading, setPatientDetailLoading] = React.useState(false);
   const [patientDetailError, setPatientDetailError] = React.useState(false);
@@ -155,7 +192,7 @@ export function PatientsHome({
     let cancelled = false;
     setPatientRowsLoading(true);
     setPatientRowsError(false);
-    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: 0 })
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: 0, clinicianId: patientClinicianId })
       .then((result) => {
         if (cancelled) return;
         setBackendPatientRows(result.items);
@@ -171,7 +208,7 @@ export function PatientsHome({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion]);
+  }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
 
   // Needs input tab: fetch every patient with a critical decision (a high limit — this inbox is
   // small and not paginated). On failure we keep `needsInputRowsLoaded` false so the tab falls
@@ -223,7 +260,7 @@ export function PatientsHome({
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
     setPatientLoadingMore(true);
-    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: backendPatientRows.length })
+    void onListPatientMemory({ query, filter: patientFilter, limit: PATIENT_PAGE_SIZE, offset: backendPatientRows.length, clinicianId: patientClinicianId })
       .then((result) => {
         setBackendPatientRows((current) => [...current, ...result.items]);
         setPatientTotal(result.total);
@@ -283,14 +320,29 @@ export function PatientsHome({
   const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
   // Resolve a selected patient from the loaded rows, or synthesize one from a smart-search match
   // (so opening a result that is not on the current page still loads the detail by id).
+  const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
   const selectedPatient = selectedPatientId
     ? patientRows.find((patient) => patient.id === selectedPatientId) ||
       (() => {
         const match = smartResults?.find((result) => result.id === selectedPatientId);
         return match ? patientRowFromSmartMatch(match) : undefined;
-      })()
+      })() ||
+      // Opened by id from a surface that isn't the loaded list (e.g. the worklist): resolve from the
+      // fetched detail, or a lightweight stub (its name) so the detail renders without a tab flash.
+      (selectedPatientDetail ? patientRowFromApi(selectedPatientDetail.patient) : undefined) ||
+      (pendingPatientStub && pendingPatientStub.id === selectedPatientId
+        ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name)
+        : undefined)
     : null;
-  const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
+  const viewedPatientId = selectedPatient?.id;
+  const viewedPatientName = selectedPatient?.name;
+
+  // Report the open patient's file up to App so the global footer can capture *for them* (E9). On
+  // unmount (leaving Clinical Memory) clear it, so the capture target reverts to the active session.
+  React.useEffect(() => {
+    onViewingPatientChange?.(viewedPatientId ? { id: viewedPatientId, name: viewedPatientName || "Patient" } : null);
+  }, [viewedPatientId, viewedPatientName, onViewingPatientChange]);
+  React.useEffect(() => () => onViewingPatientChange?.(null), [onViewingPatientChange]);
 
   // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
   // updating→ready). Cached content keeps showing during a background re-fetch (no skeleton flash);
@@ -406,6 +458,25 @@ export function PatientsHome({
         />
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
+      {recapPatient ? (
+        <PatientRecapSheet
+          patientId={recapPatient.id}
+          patientName={recapPatient.name}
+          worklistEntryId={recapPatient.entryId}
+          canStartVisit={recapPatient.canStart}
+          isPro={isPro}
+          onGetPatientMemory={onGetPatientMemory}
+          onLoadLastVisit={onLoadLastVisit}
+          onResolveFile={onResolveFile}
+          onStartVisit={onStartVisit ? (patientId, entryId) => { setRecapPatient(null); void onStartVisit(patientId, entryId); } : undefined}
+          onOpenFullTimeline={() => {
+            setPendingPatientStub({ id: recapPatient.id, name: recapPatient.name });
+            setSelectedPatientId(recapPatient.id);
+            setRecapPatient(null);
+          }}
+          onClose={() => setRecapPatient(null)}
+        />
+      ) : null}
       {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile && onLoadSessionCaptures ? (
         <SharePatientSheet
           patientId={sharePatient.id}
@@ -474,6 +545,7 @@ export function PatientsHome({
           onLoadSessionCaptures={onLoadSessionCaptures}
           onResolveFile={onResolveFile}
           onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
+          currentUserId={myUserId}
         />
       ) : (
         <>
@@ -531,6 +603,22 @@ export function PatientsHome({
 
       {activeTab === "today" ? (
         <div className="clinical-tab-panel" role="tabpanel">
+          {onListWorklist && onLineUpPatient && onMarkWorklistSeen && onCancelWorklistEntry && onListClinicMembers ? (
+            <WorklistSection
+              auth={auth ?? null}
+              onListWorklist={onListWorklist}
+              onLineUpPatient={onLineUpPatient}
+              onMarkWorklistSeen={onMarkWorklistSeen}
+              onCancelWorklistEntry={onCancelWorklistEntry}
+              onListClinicMembers={onListClinicMembers}
+              onSearchPatients={onSearchPatients}
+              onStartVisit={onStartVisit}
+              onPeekPatient={(patientId, patientName, worklistEntryId, canStartVisit) =>
+                setRecapPatient({ id: patientId, name: patientName || "Patient", entryId: worklistEntryId, canStart: canStartVisit })
+              }
+              refreshSignal={memoryRefreshSignal}
+            />
+          ) : null}
           <ClinicalSection
             title="Active session"
             badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session) : undefined}
@@ -629,6 +717,21 @@ export function PatientsHome({
                 </button>
               ))}
             </div>
+            {myUserId ? (
+              <div className="mine-clinic-toggle" role="group" aria-label="Mine vs Clinic">
+                {(["mine", "clinic"] as const).map((value) => (
+                  <button
+                    key={value}
+                    aria-pressed={ownershipScope === value}
+                    className={ownershipScope === value ? "active" : ""}
+                    onClick={() => setOwnershipScope(value)}
+                    type="button"
+                  >
+                    {value === "mine" ? "Mine" : "Clinic"}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {onCreatePatient ? (
               <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
                 <span aria-hidden="true">+</span> New patient
@@ -1124,6 +1227,26 @@ function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
 }
 
 // AES-204 — a smart-search match rendered as a minimal patient row (so it can open the detail by id).
+/** Minimal placeholder row used while a patient opened by id (e.g. from the worklist) loads. */
+function patientRowStub(id: string, name: string): PatientRowModel {
+  return {
+    id,
+    name,
+    summary: "Loading patient…",
+    memoryStatus: "ready",
+    badges: [],
+    action: "open-memory",
+    actionLabel: "View history",
+    isActive: false,
+    needsInput: false,
+    needsInputItems: [],
+    latestVisitLabel: null,
+    latestSessionId: null,
+    activeSessionId: null,
+    sessionCount: 0,
+  };
+}
+
 function patientRowFromSmartMatch(match: SmartPatientMatch): PatientRowModel {
   return {
     id: match.id,
@@ -1708,6 +1831,7 @@ function PatientTimelineDetail({
   onLoadSessionCaptures,
   onResolveFile,
   onShare,
+  currentUserId,
 }: {
   activeSession: CaptureSession | null;
   detail?: PatientMemoryDetailResponse;
@@ -1726,6 +1850,7 @@ function PatientTimelineDetail({
   onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
   onResolveFile?: (endpoint: string) => Promise<string>;
   onShare?: (visits: GalleryVisit[]) => void;
+  currentUserId?: string;
 }) {
   const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
@@ -1822,6 +1947,7 @@ function PatientTimelineDetail({
                     key={session.sessionId}
                     localSession={session.localSession}
                     session={session}
+                    currentUserId={currentUserId}
                     onAssignPatient={onAssignPatient}
                     onContinueSession={onContinueSession}
                     onOpenSession={(sessionId) => onOpenSession(sessionId, { tab: "patients", patientId: patient.id })}
@@ -1851,6 +1977,7 @@ type TimelineGroupModel = {
 function PatientTimelineCard({
   localSession,
   session,
+  currentUserId,
   onAssignPatient,
   onContinueSession,
   onOpenSession,
@@ -1858,6 +1985,7 @@ function PatientTimelineCard({
 }: {
   localSession?: CaptureSession;
   session: TimelineSessionModel;
+  currentUserId?: string;
   onAssignPatient: (sessionId: string) => void;
   onContinueSession: (sessionId: string) => void;
   onOpenSession: (sessionId: string) => void;
@@ -1896,6 +2024,12 @@ function PatientTimelineCard({
             <div className={updatedLabel.startsWith("Updated today") ? "visit-metadata-success" : undefined}>
               {updatedLabel.startsWith("Updated today") ? null : <span>Updated:</span>}
               <strong>{updatedLabel}</strong>
+            </div>
+          ) : null}
+          {session.createdBy ? (
+            <div className="visit-metadata-attribution">
+              <span>By:</span>
+              <strong>{attributionName(session.createdBy, currentUserId)}</strong>
             </div>
           ) : null}
         </div>
@@ -2090,6 +2224,109 @@ function PatientHistoryBlock({
         <span className="memory-sweep" aria-hidden="true" />
       </div>
     </section>
+  );
+}
+
+// AES-903 — the "next patient" recap popup. A light glance before starting: tier-aware patient
+// history (Pro AI sections / Basic structural recap, via PatientHistoryBlock) + the prior visit's
+// before/after (LastVisitStrip), with Start visit + a link to the full timeline. Avoids the
+// open-patient-page → back → capture round-trip.
+function PatientRecapSheet({
+  patientId,
+  patientName,
+  worklistEntryId,
+  canStartVisit,
+  isPro,
+  onGetPatientMemory,
+  onLoadLastVisit,
+  onResolveFile,
+  onStartVisit,
+  onOpenFullTimeline,
+  onClose,
+}: {
+  patientId: string;
+  patientName: string;
+  worklistEntryId: string;
+  canStartVisit: boolean;
+  isPro: boolean;
+  onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
+  onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+  onStartVisit?: (patientId: string, worklistEntryId?: string) => void;
+  onOpenFullTimeline: () => void;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = React.useState<PatientMemoryDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = React.useState(true);
+  const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setDetailLoading(true);
+    if (onGetPatientMemory) {
+      void onGetPatientMemory(patientId)
+        .then((d) => {
+          if (!cancelled) setDetail(d);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false);
+        });
+    } else {
+      setDetailLoading(false);
+    }
+    if (onLoadLastVisit) {
+      void onLoadLastVisit(patientId)
+        .then((v) => {
+          if (!cancelled) setLastVisit(v);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, onGetPatientMemory, onLoadLastVisit]);
+
+  return (
+    <div className="resolver-backdrop patient-recap-backdrop" role="presentation">
+      <Card className="resolver-sheet patient-recap-sheet" role="dialog" aria-modal="true" aria-label={`${patientName} recap`}>
+        <div className="resolver-heading">
+          <div>
+            <p className="eyebrow">Up next</p>
+            <h2>{patientName}</h2>
+            <p>A quick recap before you start — {isPro ? "AI history" : "recent visits"} and before/after.</p>
+          </div>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+
+        <div className="patient-recap-body">
+          <PatientHistoryBlock
+            history={detail?.history}
+            isPro={isPro}
+            loading={detailLoading}
+            fallbackSnapshot={detail?.patient.summary}
+          />
+          {lastVisit?.hasPriorVisit && lastVisit.visit && onResolveFile ? (
+            <LastVisitStrip lastVisit={lastVisit} onResolveFile={onResolveFile} />
+          ) : !detailLoading ? (
+            <p className="worklist-recap-note">No prior photos yet — this looks like a first visit.</p>
+          ) : null}
+        </div>
+
+        <div className="patient-recap-actions">
+          {canStartVisit && onStartVisit ? (
+            <Button onClick={() => onStartVisit(patientId, worklistEntryId)} size="sm" type="button">
+              Start visit
+            </Button>
+          ) : null}
+          <Button onClick={onOpenFullTimeline} size="sm" type="button" variant="secondary">
+            Open full timeline
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }
 

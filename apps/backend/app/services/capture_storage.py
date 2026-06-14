@@ -78,6 +78,8 @@ def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid
 
 
 def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
+    from app.services.attribution import attribution_payload
+
     contracts = build_session_contracts(session)
     extracted_metadata = session.extracted_metadata or {}
     assignment_source = extracted_metadata.get("patient_assignment_source")
@@ -112,6 +114,12 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
         "patientId": str(session.patient_id) if session.patient_id else None,
         "patientName": patient_name,
         "assignmentSource": assignment_source if isinstance(assignment_source, str) else None,
+        # Author attribution + ownership (AES-901/902): deterministic, from created_by_user_id.
+        # The owner is the creator; viewer-relative edit/reassign rights are resolved client-side
+        # from the tenant's role permissions (and enforced server-side in the routes).
+        "createdByUserId": str(session.created_by_user_id) if session.created_by_user_id else None,
+        "ownerUserId": str(session.created_by_user_id) if session.created_by_user_id else None,
+        "createdBy": attribution_payload(db, session.created_by_user_id),
         "status": session.status.value,
         "complete": session_is_complete(session),
         "title": session.title,
@@ -136,7 +144,9 @@ def list_sessions_for_tenant(db: DbSession, tenant_id: uuid.UUID) -> list[dict[s
     return [session_payload(session, db) for session in sessions]
 
 
-def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[str, Any]:
+def capture_payload(capture: Capture, artifact: Artifact | None = None, db: DbSession | None = None) -> dict[str, Any]:
+    from app.services.attribution import attribution_payload
+
     metadata = capture.capture_metadata or {}
     return {
         "id": str(capture.id),
@@ -149,6 +159,10 @@ def capture_payload(capture: Capture, artifact: Artifact | None = None) -> dict[
         "clientCaptureId": capture.client_capture_id,
         "metadata": metadata,
         "assignmentSource": metadata.get("patient_assignment_source"),
+        # Author attribution (AES-901): who captured this, from created_by_user_id (deterministic).
+        # `createdBy.displayName` is None when `db` isn't passed; `createdByUserId` is always present.
+        "createdByUserId": str(capture.created_by_user_id) if capture.created_by_user_id else None,
+        "createdBy": attribution_payload(db, capture.created_by_user_id),
         "sourceArtifactId": str(capture.source_artifact_id) if capture.source_artifact_id else None,
         "artifact": artifact_payload(artifact) if artifact else None,
         "fileEndpoint": f"/api/v1/captures/{capture.id}/file" if capture.source_artifact_id else None,
@@ -229,7 +243,7 @@ async def upload_source_capture(
         if artifact is None or artifact.byte_size == 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Existing capture file is empty. Retake photo")
         session = get_session_for_tenant(db, principal.tenant_id, existing.session_id)
-        return {"session": session_payload(session, db), "item": capture_payload(existing, artifact)}
+        return {"session": session_payload(session, db), "item": capture_payload(existing, artifact, db)}
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Capture file is empty")
@@ -357,7 +371,7 @@ async def upload_source_capture(
 
         return {
             "session": session_payload(session, db),
-            "item": capture_payload(capture, artifact),
+            "item": capture_payload(capture, artifact, db),
             "processingJob": ai_job_payload(ai_job) if ai_job else None,
         }
     except Exception:

@@ -23,7 +23,23 @@ from app.models import (
 )
 from app.schemas.auth import AuthResponse, MembershipProfile, MeResponse, RefreshResponse, TenantProfile, UserProfile
 from app.services.patient_identity import deterministic_identifier_specs
+from app.services.permissions import CONFIGURABLE_ROLES, VALID_PRESETS, resolve_role_permissions
 from app.services.verticals import encounter_label
+
+
+def tenant_profile(tenant: Tenant) -> TenantProfile:
+    """Build the client-facing tenant profile (shared by login / me / settings responses)."""
+    return TenantProfile(
+        id=str(tenant.id),
+        name=tenant.name,
+        tier=tenant.tier,
+        transcriptionLanguage=tenant.transcription_language,
+        reportLanguage=tenant.report_language,
+        matchStrictness=tenant.match_strictness,
+        vertical=tenant.vertical,
+        encounterLabel=encounter_label(tenant.vertical),
+        rolePermissions=resolve_role_permissions(tenant.role_permissions),
+    )
 
 DEV_NAMESPACE = uuid.UUID("43e7c2ca-b3a2-40a1-a1c8-a0f64a1d2c22")
 DEV_TENANT_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo")
@@ -201,16 +217,7 @@ def profile_response(db: Session, user: User, tenant: Tenant, persona: str | Non
         accessToken=tokens[0],
         refreshToken=tokens[1],
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(
-            id=str(tenant.id),
-            name=tenant.name,
-            tier=tenant.tier,
-            transcriptionLanguage=tenant.transcription_language,
-            reportLanguage=tenant.report_language,
-            matchStrictness=tenant.match_strictness,
-            vertical=tenant.vertical,
-            encounterLabel=encounter_label(tenant.vertical),
-        ),
+        tenant=tenant_profile(tenant),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],
@@ -221,16 +228,7 @@ def me_response(db: Session, user: User, tenant: Tenant, persona: str | None = N
     memberships = active_memberships(db, user.id)
     return MeResponse(
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
-        tenant=TenantProfile(
-            id=str(tenant.id),
-            name=tenant.name,
-            tier=tenant.tier,
-            transcriptionLanguage=tenant.transcription_language,
-            reportLanguage=tenant.report_language,
-            matchStrictness=tenant.match_strictness,
-            vertical=tenant.vertical,
-            encounterLabel=encounter_label(tenant.vertical),
-        ),
+        tenant=tenant_profile(tenant),
         memberships=[
             MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
         ],
@@ -263,6 +261,25 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         if value not in MATCH_STRICTNESS_OPTIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported match strictness")
         tenant.match_strictness = value
+    if "rolePermissions" in provided:
+        # AES-905: admin-only — role permissions are the clinic's org policy, not a per-user pref.
+        if "admin" not in principal.roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can change role permissions")
+        # Merge the provided per-role presets over the stored map. Only configurable roles and valid
+        # presets are accepted (400 otherwise) — admin/owner are always full and can't be set here.
+        # Persisting the merged map keeps `resolve_role_permissions` the single source.
+        incoming = provided["rolePermissions"] or {}
+        if not isinstance(incoming, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid rolePermissions")
+        stored = dict(tenant.role_permissions or {})
+        for role, preset in incoming.items():
+            if role not in CONFIGURABLE_ROLES:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Role '{role}' is not configurable")
+            preset_value = str(preset or "").strip().lower()
+            if preset_value not in VALID_PRESETS:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported permission preset")
+            stored[role] = preset_value
+        tenant.role_permissions = stored
     audit(
         db,
         tenant_id=tenant.id,
@@ -274,20 +291,12 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
             "transcription_language": tenant.transcription_language,
             "report_language": tenant.report_language,
             "match_strictness": tenant.match_strictness,
+            "role_permissions": tenant.role_permissions,
         },
     )
     db.commit()
     db.refresh(tenant)
-    return TenantProfile(
-        id=str(tenant.id),
-        name=tenant.name,
-        tier=tenant.tier,
-        transcriptionLanguage=tenant.transcription_language,
-        reportLanguage=tenant.report_language,
-        matchStrictness=tenant.match_strictness,
-        vertical=tenant.vertical,
-        encounterLabel=encounter_label(tenant.vertical),
-    )
+    return tenant_profile(tenant)
 
 
 def issue_tokens(db: Session, user: User, tenant_id: uuid.UUID) -> tuple[str, str]:
