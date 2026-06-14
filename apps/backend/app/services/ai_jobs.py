@@ -65,6 +65,11 @@ TASK_NAME_BY_JOB_TYPE = {
     AiJobType.image_capture_process: "ai_engine.process_image_capture",
     AiJobType.session_organize: "ai_engine.process_session",
     AiJobType.patient_memory: "ai_engine.process_patient_memory",
+    # Post-session patient Q&A reply draft (AES-402). Logic lives in app/services/qa.py; recovery
+    # re-dispatches it via the generic patient-scoped path (it carries patient_id).
+    AiJobType.qa_draft: "ai_engine.process_qa_draft",
+    # Q&A reply voice edit (AES-402) — revise/replace the draft from the doctor's spoken note.
+    AiJobType.qa_revise: "ai_engine.process_qa_revise",
 }
 
 def utc_now() -> datetime:
@@ -1536,6 +1541,16 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     ai_models = get_ai_model_overrides(db)
     if job.job_type == AiJobType.patient_memory:
         return patient_memory_job_payload(db, job, ai_models)
+    if job.job_type == AiJobType.qa_draft:
+        # Post-session patient Q&A reply draft (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import qa_draft_worker_payload
+
+        return qa_draft_worker_payload(db, job, ai_models)
+    if job.job_type == AiJobType.qa_revise:
+        # Q&A reply voice edit (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import qa_revise_worker_payload
+
+        return qa_revise_worker_payload(db, job, ai_models)
     capture = None
     if job.capture_id:
         capture = db.execute(
@@ -1688,6 +1703,16 @@ def complete_worker_job(
     job = get_job_for_worker(db, job_id)
     if job.job_type == AiJobType.patient_memory:
         return complete_patient_memory_worker_job(db, job=job, output=output)
+    if job.job_type == AiJobType.qa_draft:
+        # Post-session patient Q&A reply draft (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import complete_qa_draft_worker_job
+
+        return complete_qa_draft_worker_job(db, job=job, output=output)
+    if job.job_type == AiJobType.qa_revise:
+        # Q&A reply voice edit (AES-402); logic localized in app/services/qa.py.
+        from app.services.qa import complete_qa_revise_worker_job
+
+        return complete_qa_revise_worker_job(db, job=job, output=output)
     if job.capture_id is None:
         return complete_session_worker_job(db, job=job, output_key=output_key, output=output)
     capture = db.execute(

@@ -916,3 +916,8 @@ def public_share_media_route(
 
 app.include_router(api_v1)
 app.include_router(internal_api)
+# Post-session patient Q&A (Pro payload of the patient surface; AES-402). Self-contained routers.
+from app.qa_api import qa_api, qa_internal_api  # noqa: E402
+
+app.include_router(qa_api)
+app.include_router(qa_internal_api)

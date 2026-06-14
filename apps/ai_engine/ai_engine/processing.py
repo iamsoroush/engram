@@ -1404,3 +1404,206 @@ def run_patient_memory_job(job_id: str, *, celery_task_id: str | None, retry_cou
     if job.get("status") == "succeeded":
         return
     client.complete_job(job_id, output_key="patient_memory", output=completed_patient_memory_output(payload))
+
+
+def qa_draft_prompt(payload: dict[str, Any]) -> str:
+    """Build the prompt for a post-session patient Q&A reply draft (AES-402).
+
+    The doctor reviews and approves the result before anything is sent, so the draft must be a warm,
+    clinically-cautious *suggestion* grounded in the doctor's prior answers + this patient's context,
+    inventing no clinical facts and escalating to the clinic when warranted.
+    """
+    qa = payload.get("qaDraft") if isinstance(payload.get("qaDraft"), dict) else {}
+    return "\n\n".join(
+        (
+            "You are Memara, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
+            "between-visits question. The doctor will review and edit before sending.",
+            (
+                "Write a warm, concise reply (2-4 sentences) in the patient's voice-appropriate register. "
+                "Ground it in the doctor's PRIOR ANSWERS and THIS PATIENT'S CONTEXT below; match the "
+                "doctor's tone. Do NOT invent clinical facts, doses, products, or diagnoses not present "
+                "in the context. Reassure when appropriate, reference the aftercare already given, and "
+                "tell the patient to contact the clinic if symptoms worsen or they are worried. Sign off "
+                f"as {qa.get('doctorName') or 'the clinic'}. Return ONLY the plain-text reply."
+            ),
+            f"Patient question:\n{qa.get('patientQuestion', '')}",
+            f"This patient's context:\n{json.dumps(qa.get('patientContext', {}), ensure_ascii=False, sort_keys=True)}",
+            f"The doctor's prior answers:\n{json.dumps(qa.get('priorAnswers', []), ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def parse_qa_draft_output(text: str) -> str | None:
+    """Return a usable plain-text reply draft from the model output, else None to fall back."""
+    if not text or not text.strip():
+        return None
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        parts = cleaned.split("```")
+        cleaned = parts[1] if len(parts) >= 2 else cleaned.strip("`")
+        cleaned = cleaned.strip()
+    return cleaned or None
+
+
+def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the Q&A reply-draft output, via the gateway when configured.
+
+    Falls back to the backend-provided deterministic draft when no gateway is configured or the
+    model returns nothing usable, so the job always completes and the inbox always has a suggestion.
+    """
+    fallback = payload.get("deterministicFallback") if isinstance(payload.get("deterministicFallback"), dict) else {}
+
+    def _fallback_output() -> dict[str, Any]:
+        return {
+            "draft": fallback.get("draft"),
+            "source": fallback.get("source") or "mock-deterministic",
+            "generated_by": "ai-engine",
+            "generated_at": utc_now().isoformat(),
+        }
+
+    if not transcription_is_configured():
+        return _fallback_output()
+
+    ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
+    model = resolve_model("qa_draft", ai_models)
+    client = gateway_client("qa_draft")
+    # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": qa_draft_prompt(payload)}],
+    )
+    draft = parse_qa_draft_output(response.choices[0].message.content or "")
+    if draft is None:
+        return _fallback_output()
+    return {
+        "draft": draft,
+        "source": f"ai:{model}",
+        "model": model,
+        "generated_by": "ai-engine",
+        "generated_at": utc_now().isoformat(),
+    }
+
+
+def run_qa_draft_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:
+    """Run a post-session patient Q&A reply-draft job through the backend API contract (AES-402)."""
+    client = BackendClient()
+    payload = client.start_job(job_id, celery_task_id=celery_task_id, retry_count=retry_count)
+    job = payload["job"]
+    if job.get("status") == "succeeded":
+        return
+    client.complete_job(job_id, output_key="qa_draft", output=completed_qa_draft_output(payload))
+
+
+def qa_revise_prompt(payload: dict[str, Any]) -> str:
+    """Prompt for a Q&A reply voice edit: classify revise-vs-replace and produce the reply (AES-402).
+
+    The doctor recorded a voice note while reviewing a draft reply. The model must decide whether the
+    note is a *revision* of the current draft or an *entirely new reply*, then output the resulting
+    reply. The doctor approves before anything is sent, so this is a suggestion — invent no clinical
+    facts beyond the draft + spoken note + context.
+    """
+    qa = payload.get("qaRevise") if isinstance(payload.get("qaRevise"), dict) else {}
+    return "\n\n".join(
+        (
+            "You are Memara, helping an aesthetics-clinic doctor edit a reply to a patient's question "
+            "using a voice note they just recorded. The doctor reviews and approves before sending.",
+            (
+                "Decide from the VOICE NOTE whether the doctor is REVISING the current draft (e.g. "
+                "'make it warmer', 'remove the part about ice', 'add that she should avoid sun') or "
+                "dictating an ENTIRELY NEW reply. Then produce the final reply text in the patient's "
+                "language. Keep the doctor's sign-off. Do NOT invent clinical facts, doses, or products "
+                "not present in the current draft, the spoken note, or the context. "
+                "Return STRICT JSON only: {\"mode\":\"revise\"|\"replace\",\"reply\":\"<final reply text>\"}."
+            ),
+            f"Patient question:\n{qa.get('patientQuestion', '')}",
+            f"Current draft reply:\n{qa.get('currentDraft', '')}",
+            f"This patient's context:\n{json.dumps(qa.get('patientContext', {}), ensure_ascii=False, sort_keys=True)}",
+            f"The doctor's prior answers:\n{json.dumps(qa.get('priorAnswers', []), ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def parse_qa_revise_output(text: str) -> dict[str, Any] | None:
+    """Parse the strict JSON {mode, reply} from the model; None to fall back."""
+    if not text or not text.strip():
+        return None
+    cleaned = text.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        cleaned = fenced.group(1).strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    reply = parsed.get("reply")
+    if not isinstance(reply, str) or not reply.strip():
+        return None
+    mode = parsed.get("mode") if parsed.get("mode") in {"revise", "replace"} else "revise"
+    return {"mode": mode, "reply": reply.strip()}
+
+
+def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[str, Any]:
+    """Revise/replace the reply from the doctor's voice note via the configured Q&A model.
+
+    Falls back to keeping the current draft unchanged when no gateway is configured or the model
+    returns nothing usable, so the job always completes (the doctor can still edit by hand).
+    """
+    fallback = payload.get("deterministicFallback") if isinstance(payload.get("deterministicFallback"), dict) else {}
+
+    def _fallback_output() -> dict[str, Any]:
+        return {
+            "mode": fallback.get("mode") or "revise",
+            "reply": fallback.get("reply"),
+            "source": fallback.get("source") or "mock-deterministic",
+            "generated_by": "ai-engine",
+            "generated_at": utc_now().isoformat(),
+        }
+
+    if not transcription_is_configured() or not audio:
+        return _fallback_output()
+
+    ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
+    model = resolve_model("qa_draft", ai_models)
+    base64_flac = audio_to_flac_mono_16khz_base64(audio)
+    client = gateway_client("qa_draft")
+    # A gateway/network error propagates and is retried by the task wrapper.
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": qa_revise_prompt(payload)},
+                    {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
+                ],
+            }
+        ],
+    )
+    parsed = parse_qa_revise_output(response.choices[0].message.content or "")
+    if parsed is None:
+        return _fallback_output()
+    return {
+        "mode": parsed["mode"],
+        "reply": parsed["reply"],
+        "source": f"ai:{model}",
+        "model": model,
+        "generated_by": "ai-engine",
+        "generated_at": utc_now().isoformat(),
+    }
+
+
+def run_qa_revise_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:
+    """Run a Q&A reply voice-edit job (revise/replace from the doctor's spoken note; AES-402)."""
+    client = BackendClient()
+    payload = client.start_job(job_id, celery_task_id=celery_task_id, retry_count=retry_count)
+    job = payload["job"]
+    if job.get("status") == "succeeded":
+        return
+    qa = payload.get("qaRevise") if isinstance(payload.get("qaRevise"), dict) else {}
+    audio = b""
+    endpoint = qa.get("voiceEndpoint")
+    if transcription_is_configured() and endpoint:
+        audio, _ = client.get_file(endpoint)
+    client.complete_job(job_id, output_key="qa_revise", output=completed_qa_revise_output(payload, audio))

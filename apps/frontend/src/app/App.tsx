@@ -83,6 +83,8 @@ import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
+import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import {
   bindPendingSession,
@@ -137,6 +139,7 @@ export function App() {
   const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
+  const [qaPendingCount, setQaPendingCount] = React.useState(0);
   const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
   const [activeSession, setActiveSession] = React.useState<CaptureSession | null>(null);
   const [selectedSessionId, setSelectedSessionId] = React.useState("");
@@ -245,6 +248,22 @@ export function App() {
     },
     [refreshAccessToken],
   );
+
+  // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
+  // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
+  const refreshQaPendingCount = React.useCallback(() => {
+    if (!auth || auth.tenant.tier === "basic") {
+      setQaPendingCount(0);
+      return;
+    }
+    fetchQaInbox(apiFetch, "mine")
+      .then((response) => setQaPendingCount(response.total))
+      .catch(() => undefined);
+  }, [apiFetch, auth]);
+
+  React.useEffect(() => {
+    refreshQaPendingCount();
+  }, [refreshQaPendingCount]);
 
   React.useEffect(() => {
     if (bootstrappedAuthRef.current) return;
@@ -1835,6 +1854,10 @@ export function App() {
         />
       );
     }
+    if (screen === "qa-inbox" && auth && auth.tenant.tier !== "basic") {
+      // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
+      return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshQaPendingCount} />;
+    }
     if (screen === "search") {
       return <SearchHome onOpenSession={openMemorySession} sessions={sessions} syncHealth={syncHealth} />;
     }
@@ -1870,6 +1893,8 @@ export function App() {
         onListAftercareTemplates={listAftercare}
         onCreateShare={createShare}
         onRevokeShare={revokeShare}
+        onOpenQaChannel={auth && auth.tenant.tier !== "basic" ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
+        onToast={setToast}
         onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
         syncHealth={syncHealth}
@@ -1915,6 +1940,7 @@ export function App() {
         screen={screen}
         syncHealth={syncHealth}
         onNavigate={handleShellNavigate}
+        qaPendingCount={qaPendingCount}
       >
         {pendingCaptureKind ? (
           <CaptureDestinationPanel

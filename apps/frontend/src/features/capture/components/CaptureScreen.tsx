@@ -1327,13 +1327,16 @@ function CapturePatientBadges({
   );
 }
 
-/** Report-contribution status (Pro), shown as a quiet badge beside the capture title. */
+/** Report-contribution status (Pro): an in-progress badge ONLY while the capture is being folded
+ * into the live report. Once it's in (`added`), the capture carries no badge — a capture with no
+ * status chip is one that's uploaded, processed, and already in the report. */
 function CaptureReportBadge({ isPro, item, outOfContext }: { isPro?: boolean; item: CaptureItem; outOfContext?: boolean }) {
   const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
-  if (!isPro || outOfContext || !["added", "updating", "pending"].includes(status)) return null;
+  if (!isPro || outOfContext || !["updating", "pending"].includes(status)) return null;
   return (
-    <span className={`capture-title-badge effect-chip is-report ${status === "added" ? "added" : "pending"}`}>
-      {status === "added" ? "✓ Added to report" : "Adding to report…"}
+    <span className="capture-title-badge effect-chip is-report adding">
+      <span className="effect-chip-dot" aria-hidden="true" />
+      Adding to report…
     </span>
   );
 }
@@ -1683,14 +1686,29 @@ function ProLiveReport({
   // without an LLM — render the structured sections (with their headers) so the grouping is visible.
   const sections = (session?.reportModel?.sections || []).filter((section) => section.blocks?.length);
   const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
-  const summary = reportContributionSummary(session);
   const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
+  // Explicit "what this report is based on" status (Pro): current = reflects all captures.
+  const freshness = reportFreshness(session, true);
   return (
     <div className="structured-report-view">
       <ReportDocHeader session={session} />
       <div className="report-meta-strip">
         <span className="report-meta-template">{templateLabel}</span>
-        {summary ? <span className="report-meta-counts">{summary}</span> : null}
+        {freshness ? (
+          <span className={`report-freshness ${freshness.current ? "current" : "updating"}`} aria-live="polite">
+            {freshness.current ? (
+              <>
+                ✓ Reflects all {freshness.included} capture{freshness.included === 1 ? "" : "s"}
+                {freshness.setAside > 0 ? ` · ${freshness.setAside} set aside` : ""}
+              </>
+            ) : (
+              <>
+                <span className="report-freshness-dot" aria-hidden="true" />
+                Updating · {freshness.pending} of {freshness.included + freshness.pending} captures not yet in this report
+              </>
+            )}
+          </span>
+        ) : null}
       </div>
       <section className="structured-report-section structured-report-body">
         {sections.length ? (
@@ -1783,13 +1801,30 @@ function BasicReportEntry({
   );
 }
 
-function reportContributionSummary(session: CaptureSession | null): string {
+/**
+ * Whether the live report currently reflects EVERY in-context capture (Pro), for an explicit
+ * freshness line so the doctor knows the report's basis. A capture is "in the report" once its
+ * report_contribution is `added` (the deterministic regen folds processed, in-context captures in
+ * and marks them added); anything else (still processing, or pending/updating) is not yet included.
+ */
+function reportFreshness(
+  session: CaptureSession | null,
+  isPro?: boolean,
+): { current: boolean; included: number; pending: number; setAside: number } | null {
+  if (!isPro) return null;
+  const inContext = (session?.items || []).filter((item) => !captureOutOfContext(item));
+  if (!inContext.length) return null;
+  const pending = inContext.filter(
+    (item) => metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status) !== "added",
+  );
   const summary = metadataRecord(metadataRecord(session?.extractedMetadata).report_contribution_summary);
-  const included = Number(summary.included);
   const setAside = Number(summary.set_aside);
-  if (!Number.isFinite(included) || included <= 0) return "";
-  const base = `Generated from ${included} capture${included === 1 ? "" : "s"}`;
-  return Number.isFinite(setAside) && setAside > 0 ? `${base} · ${setAside} set aside` : base;
+  return {
+    current: pending.length === 0,
+    included: inContext.length - pending.length,
+    pending: pending.length,
+    setAside: Number.isFinite(setAside) && setAside > 0 ? setAside : 0,
+  };
 }
 
 function reportUpdatingLabel(session: CaptureSession | null): string {

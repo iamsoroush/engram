@@ -1,0 +1,145 @@
+/* Post-session patient Q&A surface (AES-402). Layered on top of patientSurface.css (the ps- shell). */
+
+.psqa-intro {
+  margin: 0 0 6px;
+  color: var(--ps-muted, #5b6472);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.psqa-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.psqa-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.psqa-bubble {
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-size: 15px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.psqa-q {
+  align-self: flex-end;
+  max-width: 86%;
+  background: #eef2ff;
+  border: 1px solid #dfe4ff;
+  border-bottom-right-radius: 5px;
+  color: #1f2733;
+}
+
+.psqa-a {
+  align-self: flex-start;
+  max-width: 92%;
+  background: #ffffff;
+  border: 1px solid #e6e9ef;
+  border-bottom-left-radius: 5px;
+  color: #1f2733;
+}
+
+.psqa-role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.psqa-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #0f766e;
+  background: #e6fbf6;
+  border: 1px solid #c5f0e7;
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.psqa-time {
+  font-size: 11px;
+  color: #97a1b0;
+  margin-top: 6px;
+}
+
+.psqa-await {
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: #8a93a2;
+  font-style: italic;
+  padding-left: 4px;
+}
+
+/* Composer */
+.psqa-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.psqa-composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #d8dde6;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  color: #1f2733;
+  background: #fff;
+}
+
+.psqa-composer textarea:focus {
+  outline: none;
+  border-color: #9bb0ff;
+  box-shadow: 0 0 0 3px rgba(124, 152, 255, 0.18);
+}
+
+.psqa-send {
+  align-self: flex-end;
+  border: none;
+  border-radius: 999px;
+  background: #3753e6;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.psqa-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.psqa-sent {
+  font-size: 13px;
+  color: #0f766e;
+  background: #e6fbf6;
+  border: 1px solid #c5f0e7;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.psqa-empty {
+  color: #8a93a2;
+  font-size: 14px;
+  text-align: center;
+  padding: 8px 0 2px;
+}

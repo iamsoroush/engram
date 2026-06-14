@@ -10,6 +10,8 @@ from ai_engine.processing import (
     BackendClient,
     run_capture_processing_job,
     run_patient_memory_job,
+    run_qa_draft_job,
+    run_qa_revise_job,
     run_session_processing_job,
 )
 
@@ -127,3 +129,15 @@ def process_session_task(self, job_id: str) -> None:
 def process_patient_memory_task(self, job_id: str) -> None:
     """Run a combined patient summary + history job."""
     run_task_with_retries(self, job_id, run_patient_memory_job, "Patient memory")
+
+
+@celery_app.task(bind=True, name="ai_engine.process_qa_draft")
+def process_qa_draft_task(self, job_id: str) -> None:
+    """Run a post-session patient Q&A reply-draft job (AES-402)."""
+    run_task_with_retries(self, job_id, run_qa_draft_job, "Q&A draft")
+
+
+@celery_app.task(bind=True, name="ai_engine.process_qa_revise")
+def process_qa_revise_task(self, job_id: str) -> None:
+    """Run a Q&A reply voice-edit job (revise/replace from the doctor's spoken note; AES-402)."""
+    run_task_with_retries(self, job_id, run_qa_revise_job, "Q&A voice edit")

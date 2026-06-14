@@ -12,6 +12,7 @@ export function Shell({
   auth,
   syncHealth,
   onLogout,
+  qaPendingCount = 0,
 }: {
   screen: Screen;
   children: React.ReactNode;
@@ -21,6 +22,7 @@ export function Shell({
   auth: AuthSession;
   syncHealth: SyncHealth;
   onLogout: () => void;
+  qaPendingCount?: number;
 }) {
   const menuRef = React.useRef<HTMLDetailsElement>(null);
   const displayName = auth.user.displayName || auth.user.email;
@@ -37,6 +39,9 @@ export function Shell({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("") || "A";
+  // The primary navigator stays the two workspaces (Session, Memory). Q&A is a triage *inbox*, not a
+  // workspace — it lives as an icon + pending badge beside Search (Pro only), so the pill never crowds.
+  const isPro = auth.tenant.tier !== "basic";
   const navigationItems: Array<{ screen: Screen; label: string; shortLabel: string; icon: React.ReactNode }> = [
     { screen: "active-session", label: "Active Session", shortLabel: "Session", icon: <ActiveSessionNavIcon /> },
     { screen: "patients", label: "Clinical Memory", shortLabel: "Memory", icon: <ClinicalMemoryNavIcon /> },
@@ -58,7 +63,7 @@ export function Shell({
                   type="button"
                 >
                   <span aria-hidden="true">{item.icon}</span>
-                  <span>{item.shortLabel}</span>
+                  <span className="nav-label">{item.shortLabel}</span>
                 </button>
               ))}
             </nav>
@@ -72,6 +77,23 @@ export function Shell({
             >
               <SearchNavIcon />
             </button>
+            {isPro ? (
+              <button
+                aria-current={screen === "qa-inbox" ? "page" : undefined}
+                aria-label={qaPendingCount ? `Q&A inbox, ${qaPendingCount} waiting` : "Q&A inbox"}
+                className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
+                onClick={() => onNavigate("qa-inbox")}
+                title="Q&A inbox"
+                type="button"
+              >
+                <QaInboxNavIcon />
+                {qaPendingCount ? (
+                  <span className="app-qa-badge" aria-hidden="true">
+                    {qaPendingCount > 9 ? "9+" : qaPendingCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
           </div>
           <strong className="topbar-brand">Memara</strong>
           <details className="user-menu" ref={menuRef}>
@@ -166,6 +188,15 @@ function SearchNavIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M16.8 16.8 20 20" />
       <path d="M18 11.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+    </svg>
+  );
+}
+
+function QaInboxNavIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5.75 5.75h12.5a1.5 1.5 0 0 1 1.5 1.5v7.5a1.5 1.5 0 0 1-1.5 1.5H10l-3.5 3v-3H5.75a1.5 1.5 0 0 1-1.5-1.5v-7.5a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M9 10.25h6M9 12.75h3.5" />
     </svg>
   );
 }

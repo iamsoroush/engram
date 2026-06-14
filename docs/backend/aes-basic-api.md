@@ -196,6 +196,9 @@ aftercare). The withholding contract is structural: only curated content is copi
 create time, and the public read serves *that snapshot alone* — raw captures, internal notes, lots,
 national ID, and other visits are never copied, so they cannot leak.
 
+> The **Pro** payload on the same patient surface — the post-session patient↔clinic Q&A (AES-402) —
+> has its own contract: [`aes-pro-qa-api.md`](aes-pro-qa-api.md).
+
 ### Staff endpoints
 
 **`POST /patient-shares`** (staff) — create a curated share.
