@@ -416,12 +416,15 @@ def build_patient_memory_job_input(
     tier: str,
     *,
     language: str | None = None,
+    domain: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the worker payload for the combined patient-memory job.
 
     Incremental by design: the model gets the **prior** memory plus compact per-visit briefs (the
     session stage already distilled these), not raw transcripts — so cost stays ~flat as visits
     grow. A `deterministicFallback` is included so a gateway-less worker still returns valid content.
+    ``domain`` carries vertical-aware prompt framing (label); the worker falls back to a neutral
+    "clinic" when it is absent, so the prompt never hardcodes a vertical.
     """
     ordered = _ordered(sessions)
     prior = _memory(patient)
@@ -432,6 +435,7 @@ def build_patient_memory_job_input(
     return {
         "tier": tier,
         "language": language,
+        "domain": domain,
         "patient": {
             "displayName": patient.display_name,
             "visitCount": len(ordered),
