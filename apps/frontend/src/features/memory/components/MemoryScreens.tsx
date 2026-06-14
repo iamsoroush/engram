@@ -32,6 +32,7 @@ import { WorklistSection } from "./WorklistSection";
 import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
+import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { SessionStatusBadge } from "../../capture/components/StatusBadges";
@@ -71,6 +72,7 @@ export function PatientsHome({
   onCancelWorklistEntry,
   onListClinicMembers,
   onStartVisit,
+  onViewingPatientChange,
   tier,
   memoryRefreshSignal = 0,
 }: {
@@ -100,6 +102,8 @@ export function PatientsHome({
   /** AES-903 — start a fresh visit assigned to the patient (worklist quick action); marks the
    *  entry seen + navigates to the capture screen. */
   onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
+  /** Reports which patient's file is open (or null), so the footer can capture for them. */
+  onViewingPatientChange?: (patient: { id: string; name: string } | null) => void;
   onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
   onExportCaptures?: () => Promise<void> | void;
@@ -142,6 +146,8 @@ export function PatientsHome({
   // A {id,name} hint when a patient is opened by id from outside the loaded list (the worklist), so
   // the timeline detail renders immediately while its memory loads. Cleared on back.
   const [pendingPatientStub, setPendingPatientStub] = React.useState<{ id: string; name: string } | null>(null);
+  // AES-903 — the queued patient whose recap popup is open (history + before/after + Start visit).
+  const [recapPatient, setRecapPatient] = React.useState<{ id: string; name: string; entryId: string; canStart: boolean } | null>(null);
   const [patientDetailCache, setPatientDetailCache] = React.useState<Record<string, PatientMemoryDetailResponse>>({});
   const [patientDetailLoading, setPatientDetailLoading] = React.useState(false);
   const [patientDetailError, setPatientDetailError] = React.useState(false);
@@ -328,6 +334,15 @@ export function PatientsHome({
         ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name)
         : undefined)
     : null;
+  const viewedPatientId = selectedPatient?.id;
+  const viewedPatientName = selectedPatient?.name;
+
+  // Report the open patient's file up to App so the global footer can capture *for them* (E9). On
+  // unmount (leaving Clinical Memory) clear it, so the capture target reverts to the active session.
+  React.useEffect(() => {
+    onViewingPatientChange?.(viewedPatientId ? { id: viewedPatientId, name: viewedPatientName || "Patient" } : null);
+  }, [viewedPatientId, viewedPatientName, onViewingPatientChange]);
+  React.useEffect(() => () => onViewingPatientChange?.(null), [onViewingPatientChange]);
 
   // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
   // updating→ready). Cached content keeps showing during a background re-fetch (no skeleton flash);
@@ -443,6 +458,25 @@ export function PatientsHome({
         />
       ) : null}
       {storageReviewOpen ? <StorageReviewSheet onClose={() => setStorageReviewOpen(false)} onExport={onExportCaptures} storageWarning={storageWarning} /> : null}
+      {recapPatient ? (
+        <PatientRecapSheet
+          patientId={recapPatient.id}
+          patientName={recapPatient.name}
+          worklistEntryId={recapPatient.entryId}
+          canStartVisit={recapPatient.canStart}
+          isPro={isPro}
+          onGetPatientMemory={onGetPatientMemory}
+          onLoadLastVisit={onLoadLastVisit}
+          onResolveFile={onResolveFile}
+          onStartVisit={onStartVisit ? (patientId, entryId) => { setRecapPatient(null); void onStartVisit(patientId, entryId); } : undefined}
+          onOpenFullTimeline={() => {
+            setPendingPatientStub({ id: recapPatient.id, name: recapPatient.name });
+            setSelectedPatientId(recapPatient.id);
+            setRecapPatient(null);
+          }}
+          onClose={() => setRecapPatient(null)}
+        />
+      ) : null}
       {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile && onLoadSessionCaptures ? (
         <SharePatientSheet
           patientId={sharePatient.id}
@@ -579,13 +613,9 @@ export function PatientsHome({
               onListClinicMembers={onListClinicMembers}
               onSearchPatients={onSearchPatients}
               onStartVisit={onStartVisit}
-              onLoadLastVisit={onLoadLastVisit}
-              onResolveFile={onResolveFile}
-              onOpenPatient={(patientId, patientName) => {
-                // Open the patient file in place — stay on Today so Back returns here (not Patients).
-                setPendingPatientStub(patientName ? { id: patientId, name: patientName } : null);
-                setSelectedPatientId(patientId);
-              }}
+              onPeekPatient={(patientId, patientName, worklistEntryId, canStartVisit) =>
+                setRecapPatient({ id: patientId, name: patientName || "Patient", entryId: worklistEntryId, canStart: canStartVisit })
+              }
               refreshSignal={memoryRefreshSignal}
             />
           ) : null}
@@ -2194,6 +2224,109 @@ function PatientHistoryBlock({
         <span className="memory-sweep" aria-hidden="true" />
       </div>
     </section>
+  );
+}
+
+// AES-903 — the "next patient" recap popup. A light glance before starting: tier-aware patient
+// history (Pro AI sections / Basic structural recap, via PatientHistoryBlock) + the prior visit's
+// before/after (LastVisitStrip), with Start visit + a link to the full timeline. Avoids the
+// open-patient-page → back → capture round-trip.
+function PatientRecapSheet({
+  patientId,
+  patientName,
+  worklistEntryId,
+  canStartVisit,
+  isPro,
+  onGetPatientMemory,
+  onLoadLastVisit,
+  onResolveFile,
+  onStartVisit,
+  onOpenFullTimeline,
+  onClose,
+}: {
+  patientId: string;
+  patientName: string;
+  worklistEntryId: string;
+  canStartVisit: boolean;
+  isPro: boolean;
+  onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
+  onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+  onStartVisit?: (patientId: string, worklistEntryId?: string) => void;
+  onOpenFullTimeline: () => void;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = React.useState<PatientMemoryDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = React.useState(true);
+  const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setDetailLoading(true);
+    if (onGetPatientMemory) {
+      void onGetPatientMemory(patientId)
+        .then((d) => {
+          if (!cancelled) setDetail(d);
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false);
+        });
+    } else {
+      setDetailLoading(false);
+    }
+    if (onLoadLastVisit) {
+      void onLoadLastVisit(patientId)
+        .then((v) => {
+          if (!cancelled) setLastVisit(v);
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, onGetPatientMemory, onLoadLastVisit]);
+
+  return (
+    <div className="resolver-backdrop patient-recap-backdrop" role="presentation">
+      <Card className="resolver-sheet patient-recap-sheet" role="dialog" aria-modal="true" aria-label={`${patientName} recap`}>
+        <div className="resolver-heading">
+          <div>
+            <p className="eyebrow">Up next</p>
+            <h2>{patientName}</h2>
+            <p>A quick recap before you start — {isPro ? "AI history" : "recent visits"} and before/after.</p>
+          </div>
+          <Button onClick={onClose} size="sm" type="button" variant="ghost">
+            Close
+          </Button>
+        </div>
+
+        <div className="patient-recap-body">
+          <PatientHistoryBlock
+            history={detail?.history}
+            isPro={isPro}
+            loading={detailLoading}
+            fallbackSnapshot={detail?.patient.summary}
+          />
+          {lastVisit?.hasPriorVisit && lastVisit.visit && onResolveFile ? (
+            <LastVisitStrip lastVisit={lastVisit} onResolveFile={onResolveFile} />
+          ) : !detailLoading ? (
+            <p className="worklist-recap-note">No prior photos yet — this looks like a first visit.</p>
+          ) : null}
+        </div>
+
+        <div className="patient-recap-actions">
+          {canStartVisit && onStartVisit ? (
+            <Button onClick={() => onStartVisit(patientId, worklistEntryId)} size="sm" type="button">
+              Start visit
+            </Button>
+          ) : null}
+          <Button onClick={onOpenFullTimeline} size="sm" type="button" variant="secondary">
+            Open full timeline
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }
 

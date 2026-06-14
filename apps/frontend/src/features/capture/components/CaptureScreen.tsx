@@ -47,6 +47,9 @@ export function CaptureScreen({
   sessionOrdinal = null,
   currentUserId = null,
   readOnly = false,
+  nextLinedUpPatient = null,
+  onAssignActiveToNext,
+  onStartNextVisit,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -90,6 +93,10 @@ export function CaptureScreen({
   currentUserId?: string | null;
   /** AES-902 — the viewer doesn't own this visit and their role can't edit it: read-only. */
   readOnly?: boolean;
+  /** AES-903/301 — the doctor's next lined-up patient, to file an unassigned visit to them. */
+  nextLinedUpPatient?: { patientName: string } | null;
+  onAssignActiveToNext?: () => void;
+  onStartNextVisit?: () => void;
 }) {
   const isPro = tier !== "basic";
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
@@ -240,6 +247,25 @@ export function CaptureScreen({
           </button>
         ) : null}
       </Card>
+      {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
+        <div className="next-lined-up" role="note">
+          <span className="next-lined-up-copy">
+            Next in your list: <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
+          </span>
+          <span className="next-lined-up-actions">
+            {activeSession.items.length && onAssignActiveToNext ? (
+              <Button size="sm" type="button" onClick={onAssignActiveToNext}>
+                Assign this visit
+              </Button>
+            ) : null}
+            {onStartNextVisit ? (
+              <Button size="sm" variant="secondary" type="button" onClick={onStartNextVisit}>
+                Start their visit
+              </Button>
+            ) : null}
+          </span>
+        </div>
+      ) : null}
       {!isPro && !isHistorical && activeSession?.patientId && lastVisit ? (
         <LastVisitStrip lastVisit={lastVisit} onOpenVisit={onOpenVisit} onUseAsNote={onUseAsNote} onResolveFile={onResolveFile} />
       ) : null}

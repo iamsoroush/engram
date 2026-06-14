@@ -6460,8 +6460,44 @@ small {
   white-space: nowrap;
 }
 
+.worklist-item-peek {
+  flex-shrink: 0;
+  align-self: center;
+  color: #075eff;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .worklist-add {
   align-self: flex-start;
+}
+
+/* Next-patient recap popup (AES-903) — reuses .resolver-backdrop/.resolver-sheet. */
+.patient-recap-sheet {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.patient-recap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.patient-recap-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.patient-recap-actions > * {
+  white-space: nowrap;
 }
 
 .worklist-lineup {
@@ -6519,6 +6555,35 @@ small {
 .worklist-lineup-actions {
   display: flex;
   gap: 8px;
+}
+
+.next-lined-up {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid #d8e4fa;
+  border-radius: 12px;
+  background: #f3f7ff;
+  font-size: 0.82rem;
+  color: #1f2a44;
+}
+
+.next-lined-up-copy strong {
+  color: #075eff;
+}
+
+.next-lined-up-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.next-lined-up-actions > * {
+  white-space: nowrap;
 }
 
 .session-readonly-banner {

@@ -16,7 +16,7 @@ import type {
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
-import { isSessionReadOnly } from "../shared/lib/multiseat";
+import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import {
   assignSessionPatient,
   unassignSessionPatient,
@@ -156,6 +156,10 @@ export function App() {
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  // E9 — the patient whose file is open in Clinical Memory. While set (and on the patients screen),
+  // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
+  // screen changes, so the target naturally reverts to the active session.
+  const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
@@ -833,6 +837,13 @@ export function App() {
       setStorageGuardOpen(true);
       return;
     }
+    // On a patient's file → capture *for that patient* (start their visit + open the recorder),
+    // skipping the destination chooser. The session is created only now (on the capture action),
+    // so merely viewing a patient never changes the target.
+    if (screen === "patients" && viewedPatient) {
+      void startVisitForPatient(viewedPatient.id, undefined, kind);
+      return;
+    }
     if (screen !== "active-session") {
       setPendingCaptureKind(kind);
       return;
@@ -867,7 +878,7 @@ export function App() {
   // worklist entry seen (linking the session), and drop into the capture screen. Capture-first is
   // untouched — this is just a shortcut past the patient card for a queued patient.
   const startVisitForPatient = React.useCallback(
-    async (patientId: string, worklistEntryId?: string) => {
+    async (patientId: string, worklistEntryId?: string, openCaptureKind?: CaptureDraft["kind"]) => {
       try {
         const session = await createSession(apiFetch, patientId);
         if (worklistEntryId) {
@@ -882,12 +893,44 @@ export function App() {
         setSelectedSessionId(session.id);
         setAssignmentSessionId("");
         navigateScreen("active-session");
+        // Capture-for-patient: drop straight into the recorder/photo/note for the new visit.
+        if (openCaptureKind) openCaptureDialog(openCaptureKind);
       } catch {
         setToast("Could not start the visit.");
       }
     },
     [apiFetch],
   );
+
+  // AES-903/AES-301 — the doctor's next lined-up patient, surfaced on the capture screen so an
+  // unassigned visit can be filed to them (or a fresh one started) without leaving capture.
+  const [nextLinedUpPatient, setNextLinedUpPatient] = React.useState<{ patientId: string; patientName: string; entryId: string } | null>(null);
+  const [worklistRefresh, setWorklistRefresh] = React.useState(0);
+  React.useEffect(() => {
+    const current = authRef.current;
+    if (!current || !currentUserRoles(current).includes("doctor")) {
+      setNextLinedUpPatient(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchWorklist(apiFetch, { scope: "mine", status: "waiting" })
+      .then((result) => {
+        if (cancelled) return;
+        const top = result.items[0];
+        setNextLinedUpPatient(top ? { patientId: top.patientId, patientName: top.patientName || "Patient", entryId: top.id } : null);
+      })
+      .catch(() => {
+        if (!cancelled) setNextLinedUpPatient(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, auth, memoryRefreshSignal, worklistRefresh]);
+
+  const startNextLinedUpVisit = React.useCallback(() => {
+    if (!nextLinedUpPatient) return;
+    void startVisitForPatient(nextLinedUpPatient.patientId, nextLinedUpPatient.entryId).then(() => setWorklistRefresh((v) => v + 1));
+  }, [nextLinedUpPatient, startVisitForPatient]);
 
   const clearLocalPendingCaptures = async () => {
     if (!window.confirm("Clear captures saved only on this device? This cannot be undone.")) return;
@@ -1331,6 +1374,22 @@ export function App() {
     [apiFetch, ensurePatient],
   );
 
+  // AES-301/903 — file the current unassigned visit onto the doctor's next lined-up patient.
+  const assignActiveVisitToNext = React.useCallback(async () => {
+    if (!activeSession || !nextLinedUpPatient) return;
+    await assignPatientToSession(
+      activeSession.id,
+      { patientId: nextLinedUpPatient.patientId, displayName: nextLinedUpPatient.patientName },
+      { successMessage: `Visit assigned to ${nextLinedUpPatient.patientName}.` },
+    );
+    try {
+      await markWorklistEntrySeen(apiFetch, nextLinedUpPatient.entryId, activeSession.id);
+    } catch {
+      /* non-fatal */
+    }
+    setWorklistRefresh((v) => v + 1);
+  }, [activeSession, nextLinedUpPatient, assignPatientToSession, apiFetch]);
+
   const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
   const fetchAssignedPatientDetails = React.useCallback(
     (patientId: string) => (isLocalAssignmentPatient(patientId) ? Promise.resolve(null) : getPatient(apiFetch, patientId).catch(() => null)),
@@ -1770,6 +1829,9 @@ export function App() {
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}
           readOnly={activeSession ? isSessionReadOnly(activeSession, auth) : false}
+          nextLinedUpPatient={nextLinedUpPatient ? { patientName: nextLinedUpPatient.patientName } : null}
+          onAssignActiveToNext={assignActiveVisitToNext}
+          onStartNextVisit={startNextLinedUpVisit}
         />
       );
     }
@@ -1793,6 +1855,7 @@ export function App() {
         onCancelWorklistEntry={cancelWorklist}
         onListClinicMembers={listClinicMembers}
         onStartVisit={startVisitForPatient}
+        onViewingPatientChange={setViewedPatient}
         onGetPatientMemory={getPatientMemoryDetail}
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
@@ -1846,7 +1909,7 @@ export function App() {
     <>
       <Shell
         auth={auth}
-        captureContextLabel={captureContextLabel(activeSession)}
+        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient)}
         onCapture={beginCapture}
         onLogout={handleLogout}
         screen={screen}
@@ -1916,7 +1979,11 @@ function isLocalAssignmentPatient(patientId: string) {
   return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
 }
 
-function captureContextLabel(session: CaptureSession | null) {
+function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null) {
+  // On a patient's file the footer captures for *them* (a new visit) — make that explicit.
+  if (screen === "patients" && viewedPatient) {
+    return `Capturing for: ${viewedPatient.name} · new visit`;
+  }
   const patient = session?.patientName || "Unassigned visit";
   return `Capturing for: ${patient} · Today's visit`;
 }

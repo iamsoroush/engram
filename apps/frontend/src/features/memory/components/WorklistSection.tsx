@@ -1,15 +1,14 @@
 import React from "react";
-import type { AuthSession, ClinicMember, LastVisitInfo, PatientSummary, WorklistEntry } from "../../../domain/appTypes";
+import type { AuthSession, ClinicMember, PatientSummary, WorklistEntry } from "../../../domain/appTypes";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
 import { attributionName, currentUserRoles } from "../../../shared/lib/multiseat";
-import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 
 // AES-903 — the soft "Today / up next" worklist. Role-aware (foundation §7):
 //  • Reception (assistant/admin) is the *creator*: they line a patient up FOR a doctor.
-//  • The doctor is the *consumer*: a read-only queue of who's lined up for them, with a one-tap
-//    inline recap (last visit + before/after) and Start visit — no page round-trip.
+//  • The doctor is the *consumer*: a read-only queue. Tapping a card opens a recap popup (history +
+//    before/after) with Start visit + the full timeline — no page round-trip.
 // A convenience lane, never a gate — capture-first still starts a fresh session from the footer.
-// Both tiers (deterministic; the recap reuses the Basic AES-106 last-visit retrieval).
+// Both tiers (deterministic).
 
 type WorklistScope = "mine" | "clinic";
 
@@ -22,9 +21,7 @@ export function WorklistSection({
   onListClinicMembers,
   onSearchPatients,
   onStartVisit,
-  onOpenPatient,
-  onLoadLastVisit,
-  onResolveFile,
+  onPeekPatient,
   refreshSignal = 0,
 }: {
   auth: AuthSession | null;
@@ -35,9 +32,8 @@ export function WorklistSection({
   onListClinicMembers: () => Promise<ClinicMember[]>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
   onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
-  onOpenPatient: (patientId: string, patientName?: string) => void;
-  onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
-  onResolveFile?: (endpoint: string) => Promise<string>;
+  // Open the recap popup for a queued patient (history + before/after + Start visit + full timeline).
+  onPeekPatient: (patientId: string, patientName: string | undefined, worklistEntryId: string, canStartVisit: boolean) => void;
   refreshSignal?: number;
 }) {
   const roles = currentUserRoles(auth);
@@ -51,9 +47,6 @@ export function WorklistSection({
   const [version, setVersion] = React.useState(0);
   const [adding, setAdding] = React.useState(false);
   const [members, setMembers] = React.useState<ClinicMember[]>([]);
-  // Inline recap: which entry is expanded + a per-patient last-visit cache (undefined = loading).
-  const [expandedId, setExpandedId] = React.useState("");
-  const [recaps, setRecaps] = React.useState<Record<string, LastVisitInfo | null>>({});
 
   React.useEffect(() => {
     let cancelled = false;
@@ -75,16 +68,6 @@ export function WorklistSection({
 
   const reload = () => setVersion((v) => v + 1);
 
-  const toggleRecap = (entry: WorklistEntry) => {
-    const next = expandedId === entry.id ? "" : entry.id;
-    setExpandedId(next);
-    if (next && onLoadLastVisit && !(entry.patientId in recaps)) {
-      void onLoadLastVisit(entry.patientId)
-        .then((info) => setRecaps((current) => ({ ...current, [entry.patientId]: info })))
-        .catch(() => setRecaps((current) => ({ ...current, [entry.patientId]: null })));
-    }
-  };
-
   const markSeen = (entry: WorklistEntry) => {
     void onMarkWorklistSeen(entry.id).then(reload).catch(() => undefined);
   };
@@ -98,8 +81,8 @@ export function WorklistSection({
 
   const subtitle =
     scope === "mine"
-      ? "Patients reception lined up for you. Tap one to peek at last visit, then start. The footer always starts a fresh capture too."
-      : "Everyone lined up across the clinic. Line a patient up for a doctor, or open their file.";
+      ? "Patients reception lined up for you. Tap one to see their recap, then start. The footer always starts a fresh capture too."
+      : "Everyone lined up across the clinic. Line a patient up for a doctor, or tap to see their recap.";
   const emptyCopy =
     scope === "mine"
       ? "No one is waiting for you. Reception lines patients up here."
@@ -135,15 +118,12 @@ export function WorklistSection({
         <ul className="worklist-list">
           {entries.map((entry) => {
             const mine = Boolean(auth && entry.clinicianUserId === auth.user.id);
-            const expanded = expandedId === entry.id;
-            const recap = entry.patientId in recaps ? recaps[entry.patientId] : undefined;
             return (
-              <li key={entry.id} className={`worklist-item${expanded ? " expanded" : ""}`}>
+              <li key={entry.id} className="worklist-item">
                 <button
                   type="button"
                   className="worklist-item-header"
-                  aria-expanded={expanded}
-                  onClick={() => toggleRecap(entry)}
+                  onClick={() => onPeekPatient(entry.patientId, entry.patientName || undefined, entry.id, mine)}
                 >
                   <span className="worklist-item-headcopy">
                     <span className="worklist-item-name">{entry.patientName || "Unnamed patient"}</span>
@@ -153,25 +133,8 @@ export function WorklistSection({
                       {entry.note ? ` · ${entry.note}` : ""}
                     </span>
                   </span>
-                  <span className={`worklist-item-chev${expanded ? " open" : ""}`} aria-hidden="true">
-                    ⌄
-                  </span>
+                  <span className="worklist-item-peek">Recap ›</span>
                 </button>
-
-                {expanded ? (
-                  <div className="worklist-recap">
-                    {recap === undefined ? (
-                      <p className="worklist-recap-note">Loading last visit…</p>
-                    ) : recap?.hasPriorVisit && recap.visit && onResolveFile ? (
-                      <LastVisitStrip lastVisit={recap} onResolveFile={onResolveFile} />
-                    ) : (
-                      <p className="worklist-recap-note">First visit — no history yet.</p>
-                    )}
-                    <button type="button" className="worklist-recap-fulllink" onClick={() => onOpenPatient(entry.patientId, entry.patientName || undefined)}>
-                      See full patient file →
-                    </button>
-                  </div>
-                ) : null}
 
                 <div className="worklist-item-actions">
                   {mine && onStartVisit ? (
@@ -179,9 +142,6 @@ export function WorklistSection({
                       Start visit
                     </Button>
                   ) : null}
-                  <Button size="sm" variant="secondary" type="button" onClick={() => onOpenPatient(entry.patientId, entry.patientName || undefined)}>
-                    Open
-                  </Button>
                   {mine ? (
                     <Button size="sm" variant="ghost" type="button" onClick={() => markSeen(entry)}>
                       Done
