@@ -1,5 +1,7 @@
-import type { CaptureDraft, PendingCapture } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession } from "../../domain/types";
+import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
+import type { CaptureItem, CaptureSession, SessionProcessingStatus, StructuredPatientInformation } from "../../domain/types";
+import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
+import { sessionUxState } from "../../domain/status";
 
 export const titleByType: Record<CaptureDraft["kind"], string> = {
   audio: "Audio note",
@@ -239,4 +241,473 @@ export function sessionsFromPending(captures: PendingCapture[]) {
     );
   });
   return Array.from(grouped.values());
+}
+
+// --- Pure capture/report/assignment helpers (moved verbatim from components/CaptureScreen.tsx) ---
+export function patientDetailRows(info?: StructuredPatientInformation | null): Array<[string, string]> {
+  if (!info || info.status !== "assigned") return [];
+  return ([
+    ["National ID", info.nationalId],
+    ["Phone", info.phone],
+    ["Date of birth", info.dateOfBirth],
+  ] as Array<[string, string | null | undefined]>).filter((row): row is [string, string] => Boolean(row[1]));
+}
+
+export function detectedSessionPatients(session: CaptureSession, excludeId?: string): PatientSummary[] {
+  // Patients that surfaced in this session (assigned, matched, suggested, or candidate) — the
+  // "smart" suggestions to show first, instead of an arbitrary search list.
+  const out: PatientSummary[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, displayName: string, nationalId?: string) => {
+    if (!id || !displayName || id === excludeId || seen.has(id)) return;
+    seen.add(id);
+    out.push({ id, displayName, nationalId: nationalId || null, lastVisit: null });
+  };
+  const timeline = metadataRecord(session.extractedMetadata).patient_assignment_timeline;
+  if (Array.isArray(timeline)) {
+    for (const raw of timeline) {
+      const event = metadataRecord(raw);
+      push(metadataDisplay(event.patientId), metadataDisplay(event.displayName));
+    }
+  }
+  for (const item of session.items || []) {
+    const meta = metadataRecord(item.metadata);
+    const candidate = metadataRecord(meta.patient_match_candidate);
+    push(metadataDisplay(candidate.patientId), metadataDisplay(candidate.displayName) || suggestionNameFromInformation(candidate), suggestionNationalId(candidate));
+    if (Array.isArray(candidate.candidateSet)) {
+      for (const raw of candidate.candidateSet) {
+        const entry = metadataRecord(raw);
+        push(metadataDisplay(entry.patientId), metadataDisplay(entry.displayName));
+      }
+    }
+    const action = metadataRecord(meta.ai_patient_action);
+    push(metadataDisplay(action.patientId), metadataDisplay(action.displayName));
+  }
+  return out;
+}
+
+export function currentSessionPatient(session: CaptureSession) {
+  if (!session.patientName && !session.patientId) return [];
+  return [
+    {
+      id: session.patientId || "current-session-patient",
+      displayName: session.patientName || "Assigned patient",
+      nationalId: session.patientId || null,
+      lastVisit: session.report?.updatedAt || null,
+    },
+  ];
+}
+
+export function filterPatientMatches(patients: PatientSummary[], query: string) {
+  if (!query) return patients;
+  const normalizedQuery = query.toLowerCase();
+  return patients.filter((patient) =>
+    [patient.displayName, patient.nationalId || "", patient.phone || ""].some((value) => value.toLowerCase().includes(normalizedQuery)),
+  );
+}
+
+export function mergePatientMatches(primary: PatientSummary[], secondary: PatientSummary[]) {
+  const seen = new Set<string>();
+  return [...primary, ...secondary].filter((patient) => {
+    const key = patient.id || `${patient.displayName}:${patient.nationalId || patient.phone || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function samePatientSummary(left: PatientSummary, right: PatientSummary) {
+  if (left.id && right.id && left.id === right.id) return true;
+  const leftName = left.displayName.trim().toLowerCase();
+  const rightName = right.displayName.trim().toLowerCase();
+  if (leftName && rightName && leftName === rightName) return true;
+  return Boolean(left.nationalId && right.nationalId && left.nationalId === right.nationalId);
+}
+
+export function patientIdentifierLabel(patient: PatientSummary) {
+  if (patient.phone) return maskPhone(patient.phone);
+  if (patient.nationalId) return `ID: ${maskIdentifier(patient.nationalId)}`;
+  return "Existing patient";
+}
+
+export function maskIdentifier(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 8) return value;
+  return `${digits.slice(0, 4)}....${digits.slice(-4)}`;
+}
+
+export function maskPhone(value: string) {
+  const visible = value.slice(0, Math.max(0, value.length - 4));
+  return `${visible}....`;
+}
+
+export function formatLastVisit(value?: string | null) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+export function captureOutOfContext(item: CaptureItem): boolean {
+  const meta = metadataRecord(item.metadata);
+  const marker = metadataRecord(meta.out_of_context);
+  // A staff "Mark relevant" override clears the AI marker (see backend update_capture).
+  if (marker.overridden_by_staff === true) return false;
+  if (marker.present === true) return true;
+  if ("present" in marker) return false;
+  const intents = metadataRecord(metadataRecord(meta.ai_processing).intents);
+  return metadataRecord(intents.out_of_context).present === true;
+}
+
+export function suggestionNameFromInformation(candidate: Record<string, unknown>): string {
+  const info = metadataRecord(candidate.patientInformation);
+  return metadataDisplay(info.standardized_display_name || info.raw_mentioned_name || info.full_name);
+}
+
+export function suggestionNationalId(candidate: Record<string, unknown>): string | undefined {
+  const info = metadataRecord(candidate.patientInformation);
+  return metadataDisplay(info.national_id) || undefined;
+}
+
+export function reportFreshness(
+  session: CaptureSession | null,
+  isPro?: boolean,
+): { current: boolean; included: number; pending: number; setAside: number } | null {
+  if (!isPro) return null;
+  const inContext = (session?.items || []).filter((item) => !captureOutOfContext(item));
+  if (!inContext.length) return null;
+  const pending = inContext.filter(
+    (item) => metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status) !== "added",
+  );
+  const summary = metadataRecord(metadataRecord(session?.extractedMetadata).report_contribution_summary);
+  const setAside = Number(summary.set_aside);
+  return {
+    current: pending.length === 0,
+    included: inContext.length - pending.length,
+    pending: pending.length,
+    setAside: Number.isFinite(setAside) && setAside > 0 ? setAside : 0,
+  };
+}
+
+export function reportUpdatingLabel(session: CaptureSession | null): string {
+  const pending = (session?.items || []).filter((item) => {
+    const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
+    return status === "pending" || status === "updating" || item.status === "processing" || item.status === "uploaded";
+  });
+  if (!pending.length) return "Updating the report…";
+  const labels = pending.slice(0, 2).map((item, index) => captureDraftLabel(item, index + 1));
+  const suffix = pending.length > 2 ? ` +${pending.length - 2}` : "";
+  return `Updating for ${labels.join(", ")}${suffix}…`;
+}
+
+export function patientInformationFromSession(session: CaptureSession | null): StructuredPatientInformation | null {
+  if (!session?.patientId && !session?.patientName) return { status: "unassigned" };
+  return {
+    status: "assigned",
+    patientId: session.patientId || null,
+    displayName: session.patientName || session.patientId || "Assigned patient",
+  };
+}
+
+export function workspaceReportState(
+  session: CaptureSession | null,
+): { badge: string; detail: string; kind: "partial" | "structured" | "verified"; label: string; tone: "neutral" | "blue" | "green" | "amber" } {
+  const stageLabel = nonTechnicalStageLabel(session?.processingStatus);
+  if (!session) {
+    return {
+      badge: "Empty",
+      detail: "Start with audio, a photo, or a note. The draft will build here without changing screens.",
+      kind: "partial",
+      label: "Empty draft",
+      tone: "neutral",
+    };
+  }
+  if (session.report?.isStale) {
+    return {
+      badge: "Draft",
+      detail: "New material has been added. Generate the structured report again when ready.",
+      kind: "partial",
+      label: "Draft updated",
+      tone: "blue",
+    };
+  }
+  if (session.report?.status === "generating" || session.processingStatus?.state === "processing") {
+    return { badge: "Updating", detail: stageLabel, kind: "partial", label: "Report updating", tone: "blue" };
+  }
+  if (session.complete) {
+    return { badge: "Complete", detail: "Captures processed, patient assigned, and the report is up to date.", kind: "verified", label: "Complete report", tone: "green" };
+  }
+  if (session.report?.status === "processed") {
+    return {
+      badge: "Structured",
+      detail: "Structured draft is ready for review.",
+      kind: "structured",
+      label: "Structured report",
+      tone: "green",
+    };
+  }
+  if (session.report?.status === "failed" || sessionUxState(session.status) === "failed") {
+    return { badge: "Needs attention", detail: "The latest report update did not complete. Existing captures remain available below.", kind: "partial", label: "Report needs attention", tone: "amber" };
+  }
+  if (isLocalSessionId(session.id) || sessionUxState(session.status) === "capturing") {
+    return {
+      badge: session.items.length ? "Partial" : "Empty",
+      detail: session.items.length ? "Early draft from the current captures." : "Start with audio, a photo, or a note.",
+      kind: "partial",
+      label: session.items.length ? "Partial draft" : "Empty draft",
+      tone: session.items.length ? "blue" : "neutral",
+    };
+  }
+  return { badge: "Structured", detail: "Structured draft is ready for review.", kind: "structured", label: "Structured report", tone: "green" };
+}
+
+export function workspaceStructuredReportCopy(session: CaptureSession | null) {
+  const reportBody = session?.report?.body || session?.generatedReport;
+  if (reportBody) return reportBody.split(/\n{2,}/).map((line) => line.trim()).filter(Boolean);
+  return [];
+}
+
+export function captureDraftLabel(item: CaptureItem, sequence: number) {
+  if (item.title?.trim()) return item.title.trim();
+  if (item.type === "audio" || item.type === "voice") return `Audio ${sequence}`;
+  if (item.type === "photo") return `Photo ${sequence}`;
+  return `Note ${sequence}`;
+}
+
+export function draftCaptureText(item: CaptureItem) {
+  const generated = generatedTextForReport(item);
+  if (generated) return generated;
+  if (item.type === "audio" || item.type === "voice") return "Transcribing audio...";
+  if (item.type === "photo") return "Photo added, analyzing...";
+  return item.detail || "Text note added to the draft.";
+}
+
+export function generatedTextForReport(item: CaptureItem) {
+  const metadata = metadataRecord(item.metadata);
+  // A staff-edited Basic note wins for notes (it's the doctor's own words, no AI involved).
+  if (item.type === "note") {
+    const editedNote = metadataText(metadataRecord(metadata.note).text);
+    if (editedNote) return editedNote;
+  }
+  const generated =
+    item.type === "audio" || item.type === "voice"
+      ? metadata.transcript
+      : item.type === "photo"
+        ? metadata.caption || metadata.ocr
+        : metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
+  const generatedRecord = metadataRecord(generated);
+  const status = metadataDisplay(generatedRecord.status || generatedRecord.state).toLowerCase();
+  if (status === "processing" || status === "queued" || status === "running") return "";
+  const text =
+    metadataText(generated) ||
+    metadataText(generatedRecord.text) ||
+    metadataText(generatedRecord.transcript) ||
+    metadataText(generatedRecord.caption) ||
+    metadataText(generatedRecord.decorated_text) ||
+    metadataText(generatedRecord.decoratedText) ||
+    metadataText(generatedRecord.normalized_note) ||
+    metadataText(generatedRecord.normalizedNote);
+  if (text) return text;
+  if (item.type === "note") return item.detail;
+  // Photos carry no AI caption in Basic (or when captioning is unavailable) — return nothing so the
+  // UI offers a manual "Add caption" instead of a placeholder.
+  return "";
+}
+
+/** Display direction for transcript/caption/note text: RTL when it's predominantly
+ * Persian/Arabic script (covers farsi and mixed-farsi), otherwise LTR. */
+export function textDirection(text: string): "rtl" | "ltr" {
+  const rtl = (text.match(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
+  const ltr = (text.match(/[A-Za-z]/g) || []).length;
+  return rtl > ltr ? "rtl" : "ltr";
+}
+
+export function noteDecoratedText(item: CaptureItem) {
+  const metadata = metadataRecord(item.metadata);
+  const decorated = metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
+  const decoratedRecord = metadataRecord(decorated);
+  return (
+    metadataText(decorated) ||
+    metadataText(decoratedRecord.text) ||
+    metadataText(decoratedRecord.decorated_text) ||
+    metadataText(decoratedRecord.decoratedText) ||
+    metadataText(decoratedRecord.normalized_note) ||
+    metadataText(decoratedRecord.normalizedNote)
+  );
+}
+
+export function nonTechnicalStageLabel(status?: SessionProcessingStatus) {
+  if (!status || status.state !== "processing") return "Report is staying current with the latest captures.";
+  if (status.stage === "transcripts") return "Reading the source captures.";
+  if (status.stage === "report") return "Drafting the clinical report.";
+  if (status.stage === "findings") return "Organizing key details.";
+  if (status.stage === "summary") return "Condensing the session.";
+  return status.label || "Updating the report.";
+}
+
+export function workspaceReportMilestones(session: CaptureSession | null, state: ReturnType<typeof workspaceReportState>) {
+  if (state.kind === "verified") {
+    return ["Draft", "Structured", "Complete"].map((label) => ({
+      label,
+      state: "done",
+      className: label === "Complete" ? "done verified" : "done",
+    }));
+  }
+  if (state.kind === "structured") {
+    return [
+      { label: "Draft", state: "done", className: "done" },
+      { label: "Structured", state: "done", className: "done" },
+      { label: "Complete", state: "current", className: "current" },
+    ];
+  }
+  return ["Draft", "Structured", "Complete"].map((label, index) => ({
+    label,
+    state: index === 0 ? "current" : "next",
+    className: index === 0 ? "current" : "next",
+  }));
+}
+
+export function workspaceReportUpdatedLabel(value?: string | null) {
+  if (!value) return "Live draft updates as captures arrive";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Recently updated";
+  return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+}
+
+export function sessionSummaryStatusChip(session: CaptureSession | null) {
+  if (session?.complete) {
+    return { checked: true, label: "Complete", tone: "success" };
+  }
+  if (session?.report?.status === "processed" && !session.report.isStale) {
+    return { checked: false, label: "Generated", tone: "success" };
+  }
+  if (session?.processingStatus?.state === "processing" || session?.report?.status === "generating") {
+    return { checked: false, label: "Generating", tone: "info" };
+  }
+  return { checked: false, label: session?.items.length ? "Draft" : "Ready", tone: "neutral" };
+}
+
+export function sessionSummaryTitle(session: CaptureSession | null, isHistorical: boolean) {
+  if (isHistorical) return session?.label || "Session review";
+  const title = (session?.report?.title || session?.label || "").trim();
+  if (title && session && !isLocalSessionId(session.id)) return title;
+  return "Current session";
+}
+
+export const ORDINAL_WORDS = ["", "first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
+export function ordinalWord(n: number) {
+  if (!n || n <= 0) return "";
+  return ORDINAL_WORDS[n] || `${n}th`;
+}
+
+/** Basic light-header title: "{patient}'s {Nth} session" when assigned, else the session date+time. */
+export function lightSessionTitle(session: CaptureSession | null, ordinal: number | null) {
+  if (!session) return "New session";
+  if (session.patientName || session.patientId) {
+    const name = session.patientName || "Patient";
+    const word = ordinal ? ordinalWord(ordinal) : "";
+    return word ? `${name}'s ${word} session` : `${name}'s session`;
+  }
+  return sessionDateTimeLabel(session.capturedAt || session.createdAt, session.time) || "New session";
+}
+
+/** A capture not yet confirmed on the backend (queued, in-flight, or failed). */
+export function captureNotSynced(status?: CaptureItem["status"]) {
+  return status === "saved" || status === "syncing" || status === "uploading" || status === "failed";
+}
+
+export function sessionPatientName(session: CaptureSession | null) {
+  return session?.patientName || "Unassigned patient";
+}
+
+export function aiPatientActionForSession(session: CaptureSession | null) {
+  if (!session?.extractedMetadata) return null;
+  const action = metadataRecord(session.extractedMetadata.ai_patient_action);
+  return Object.keys(action).length ? action : null;
+}
+
+export function activePatientAssignmentActionForSession(session: CaptureSession | null) {
+  if (!session?.extractedMetadata) return null;
+  const action = metadataRecord(session.extractedMetadata.active_patient_assignment_action || session.extractedMetadata.ai_patient_action);
+  return Object.keys(action).length ? action : null;
+}
+
+export type AssignmentCandidate = { patientId: string; displayName: string };
+
+/** Derive each capture's assignment candidate from the session's assignment timeline. */
+export function sessionAssignmentCandidates(session: CaptureSession | null): {
+  activeCaptureId: string;
+  activePatientId: string;
+  byCapture: Record<string, AssignmentCandidate>;
+} {
+  const action = metadataRecord(activePatientAssignmentActionForSession(session));
+  const actionMeta = metadataRecord(action.actionMetadata);
+  const activeCaptureId = metadataDisplay(action.captureId || action.basisCaptureId || actionMeta.basisCaptureId);
+  const activePatientId = metadataDisplay(action.patientId || actionMeta.patientId);
+  const byCapture: Record<string, AssignmentCandidate> = {};
+  const timeline = metadataRecord(session?.extractedMetadata).patient_assignment_timeline;
+  if (Array.isArray(timeline)) {
+    for (const raw of timeline) {
+      const event = metadataRecord(raw);
+      const captureId = metadataDisplay(event.captureId);
+      const patientId = metadataDisplay(event.patientId);
+      if (captureId && patientId) byCapture[captureId] = { patientId, displayName: metadataDisplay(event.displayName) };
+    }
+  }
+  return { activeCaptureId, activePatientId, byCapture };
+}
+
+/** The reassignment a capture offers when it is not the current source (a switchable alternate). */
+export function alternateCandidateForCapture(
+  candidates: ReturnType<typeof sessionAssignmentCandidates>,
+  captureId: string,
+): AssignmentCandidate | null {
+  const candidate = candidates.byCapture[captureId];
+  if (!candidate) return null;
+  if (captureId === candidates.activeCaptureId) return null;
+  if (candidate.patientId === candidates.activePatientId) return null;
+  return candidate;
+}
+
+export function sessionSummaryCreatedLabel(session: CaptureSession | null) {
+  if (!session) return "Created now";
+  const source = session.capturedAt || session.createdAt || session.dateLabel || session.time;
+  const label = sessionDateTimeLabel(source, session.time);
+  return label ? `Created ${label}` : "Created recently";
+}
+
+export function sessionSummaryUpdatedLabel(session: CaptureSession | null) {
+  const source = session?.report?.updatedAt || session?.processingStatus?.updatedAt || session?.time;
+  const label = sessionDateTimeLabel(source);
+  return `Updated ${label || "recently"}`;
+}
+
+export function sessionDateTimeLabel(source?: string | null, fallbackTime?: string | null) {
+  if (!source && !fallbackTime) return "";
+  const date = source ? new Date(source) : null;
+  if (date && !Number.isNaN(date.getTime())) {
+    const dateLabel = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+    const timeLabel = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+    return `${dateLabel} · ${timeLabel}`;
+  }
+  const datePart = source && !source.match(/\b\d{1,2}:\d{2}\b/) ? source : "";
+  const time = source?.match(/\b\d{1,2}:\d{2}\b/)?.[0] || fallbackTime || "";
+  return [datePart, time].filter(Boolean).join(" · ");
+}
+
+export function workspaceFindings(session: CaptureSession | null) {
+  if (session?.findings?.length) return session.findings;
+  const metadata = metadataRecord(session?.extractedMetadata);
+  const clinical = metadataRecord(metadata.clinical_metadata);
+  const patient = metadataRecord(metadata.patient_information);
+  const candidates = [
+    ["Patient", session?.patientName || metadataDisplay(patient.full_name)],
+    ["Procedure", metadataDisplay(clinical.procedure || clinical.visit_type || metadata.visit_type)],
+    ["Body area", metadataDisplay(clinical.body_area || clinical.area || metadata.body_area)],
+    ["Product", metadataDisplay(clinical.product || metadata.product)],
+    ["Template", metadataDisplay(session?.reportTemplateKey)],
+  ];
+  return candidates
+    .filter((entry): entry is [string, string] => Boolean(entry[1]))
+    .map(([label, value]) => ({ label, value }));
 }
