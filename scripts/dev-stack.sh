@@ -119,7 +119,10 @@ set_env_var() { # FILE KEY VALUE — update in place or append.
   fi
 }
 
-get_env_var() { grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' "'; }
+# NOTE: trailing `|| true` is load-bearing — the script runs under `set -euo pipefail`, so a
+# missing key makes grep exit 1, pipefail propagates it, and `var="$(get_env_var …)"` would trip
+# `set -e` (aborting `up` before the default kicks in). Absent key → empty string, exit 0.
+get_env_var() { grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' "' || true; }
 
 # ---------------------------------------------------------------------------
 # Shared infra
