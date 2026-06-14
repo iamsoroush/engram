@@ -69,6 +69,9 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
   const [synthesizing, setSynthesizing] = React.useState(false);
   const [error, setError] = React.useState("");
   const [captureKind, setCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  // True while a session is open or being composed — so the "Active Session" nav shows the
+  // workspace (or a clear empty state) rather than silently doing nothing.
+  const [composing, setComposing] = React.useState(false);
   const [newClientOpen, setNewClientOpen] = React.useState(false);
   const [creatingClient, setCreatingClient] = React.useState(false);
   const [online, setOnline] = React.useState(typeof navigator === "undefined" ? true : navigator.onLine);
@@ -111,6 +114,7 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
     setSelectedClientId(client.patientId);
     setClientName(client.displayName);
     setClientDetail(null);
+    setComposing(false);
     setView("client");
     await loadClientDetail(client.patientId);
   }, [loadClientDetail]);
@@ -142,6 +146,7 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
     setActiveSessionId(null);
     setSession(null);
     setCaptures([]);
+    setComposing(true);
     setView("session");
   }, []);
 
@@ -149,6 +154,7 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
     setActiveSessionId(sessionId);
     setSession(null);
     setCaptures([]);
+    setComposing(true);
     setView("session");
     await refreshSession(sessionId);
   }, [refreshSession]);
@@ -202,13 +208,14 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
 
   const onNavigate = React.useCallback((target: Screen) => {
     if (target === "active-session") {
-      setView(activeSessionId ? "session" : "clients");
+      setView("session"); // shows the workspace, or a clear empty state when nothing is in progress
     } else if (target === "settings" || target === "profile") {
       setView(target);
     } else {
+      setComposing(false);
       setView("clients"); // patients + search both land on the caseload
     }
-  }, [activeSessionId]);
+  }, []);
 
   const captureContextLabel = view === "session" && clientName ? `${clientName} · Session` : "New session";
 
@@ -342,7 +349,16 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
           </div>
         ) : null}
 
-        {view === "session" ? (
+        {view === "session" && !composing && !activeSessionId ? (
+          <Card className="stack therapy-empty-session">
+            <p className="eyebrow">Active session</p>
+            <h1>No session in progress</h1>
+            <p className="muted">Open a client and start a session, or capture below to begin — capture-first, assign when ready.</p>
+            <Button variant="secondary" onClick={() => { setComposing(false); setView("clients"); }} type="button">Go to clients</Button>
+          </Card>
+        ) : null}
+
+        {view === "session" && (composing || activeSessionId) ? (
           <TherapyCaptureScreen
             clientName={clientName || "Unassigned"}
             session={session}
