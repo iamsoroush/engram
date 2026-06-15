@@ -1,0 +1,197 @@
+groups:
+  # ---------------------------------------------------------------------------
+  # Infrastructure / host (always available from node-exporter + cAdvisor)
+  # ---------------------------------------------------------------------------
+  - name: host
+    rules:
+      - alert: HostHighCPU
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host CPU > 90% for 10m"
+          description: "Sustained CPU saturation on {{ $labels.instance }}."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Host memory > 90% for 10m"
+          description: "Memory pressure on {{ $labels.instance }}."
+
+      - alert: HostDiskLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 15
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Filesystem < 15% free"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is low. Covers object-store/Postgres/backup disk on a single box."
+
+      - alert: HostDiskCritical
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Filesystem < 5% free"
+          description: "{{ $labels.mountpoint }} on {{ $labels.instance }} is critically low."
+
+  # ---------------------------------------------------------------------------
+  # Containers (cAdvisor) — restarts / down
+  # ---------------------------------------------------------------------------
+  - name: containers
+    rules:
+      - alert: ContainerRestarting
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 2 or changes(container_start_time_seconds{name!=""}[15m]) > 2
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container restarting repeatedly"
+          description: "{{ $labels.name }} restarted >2 times in 15m."
+
+      - alert: ScrapeTargetDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus target down: {{ $labels.job }}"
+          description: "Target {{ $labels.instance }} (job {{ $labels.job }}) has been unreachable for 5m. NOTE: the 'backend' job is DOWN until /metrics is added — ignore until then."
+
+  # ---------------------------------------------------------------------------
+  # Postgres (postgres-exporter)
+  # ---------------------------------------------------------------------------
+  - name: postgres
+    rules:
+      - alert: PostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Postgres is down"
+          description: "postgres-exporter cannot reach the database."
+
+      - alert: PostgresTooManyConnections
+        expr: sum by (instance) (pg_stat_activity_count) > (pg_settings_max_connections * 0.8)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Postgres connections > 80% of max"
+          description: "Approaching max_connections; check for connection leaks / pool size."
+
+  # ---------------------------------------------------------------------------
+  # Redis (redis-exporter) — memory + Celery queue depth
+  # ---------------------------------------------------------------------------
+  - name: redis
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "redis-exporter cannot reach Redis (Celery broker + result backend)."
+
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85 and redis_memory_max_bytes > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory > 85% of maxmemory"
+          description: "Risk of eviction / OOM affecting Celery."
+
+      - alert: CeleryQueueBacklog
+        # redis-exporter exposes list length for keys configured via --check-keys.
+        # The Celery default queue 'ai_jobs' is a Redis list under the broker DB (db0).
+        expr: redis_key_size{key="ai_jobs"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Celery ai_jobs backlog > 100 for 10m"
+          description: "AI-job queue depth is high — worker may be down, stuck, or under-provisioned."
+
+  # ---------------------------------------------------------------------------
+  # Uptime (Uptime Kuma metrics export) — endpoint up + TLS cert expiry
+  # Requires Uptime Kuma's Prometheus metrics to be enabled (API key in settings).
+  # ---------------------------------------------------------------------------
+  - name: uptime
+    rules:
+      - alert: HealthEndpointDown
+        expr: monitor_status == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Monitored endpoint down: {{ $labels.monitor_name }}"
+          description: "Uptime Kuma reports {{ $labels.monitor_name }} as down."
+
+      - alert: TLSCertExpiringSoon
+        expr: monitor_cert_days_remaining < 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert expiring < 14 days: {{ $labels.monitor_name }}"
+          description: "Renew the certificate for {{ $labels.monitor_name }}."
+
+  # ---------------------------------------------------------------------------
+  # Application metrics — ACTIVE ONLY after backend exposes /metrics.
+  # API error rate, p95 latency, failed uploads, AI-job failure rate.
+  # Metric names below assume prometheus-fastapi-instrumentator defaults +
+  # custom counters the backend effort should add (see docs/monitoring.md).
+  # ---------------------------------------------------------------------------
+  - name: application
+    rules:
+      - alert: APIHighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="backend",status=~"5.."}[5m]))
+            / sum(rate(http_requests_total{job="backend"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API 5xx error rate > 5% for 5m"
+          description: "Backend is returning a high rate of server errors."
+
+      - alert: APIHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job="backend"}[5m]))) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API p95 latency > 1.5s for 10m"
+          description: "Backend request latency degraded."
+
+      - alert: FailedUploadsSpike
+        # Requires a custom counter, e.g. notari_capture_uploads_failed_total, in the backend.
+        expr: rate(notari_capture_uploads_failed_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Capture uploads are failing"
+          description: "Failed-upload counter is increasing — product-critical (capture-first promise)."
+
+      - alert: AIJobFailureRate
+        # Requires a custom counter, e.g. notari_ai_jobs_total{status="failed"}, in the backend/worker.
+        expr: |
+          sum(rate(notari_ai_jobs_total{status="failed"}[15m]))
+            / clamp_min(sum(rate(notari_ai_jobs_total[15m])), 0.001) > 0.2
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI-job failure rate > 20% for 15m"
+          description: "Capture processing is failing at an elevated rate."
