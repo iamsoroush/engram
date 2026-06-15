@@ -82,6 +82,7 @@ Read:
 Read:
 
 - `docs/production.md`
+- `docs/production-readiness.md`
 - `docker-compose.prod.yml`
 - `docs/architecture.md`
 
@@ -149,6 +150,9 @@ Read:
 
 - `docs/production.md`  
   Production setup and operational notes.
+
+- `docs/production-readiness.md`  
+  Production gap list, ArvanCloud-tailored decisions, prioritized tasks, and the go-live checklist.
 
 The backend OpenAPI schema is the source of truth for exact API contracts. Do not create a large duplicate API contract document.
 
