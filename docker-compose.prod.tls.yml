@@ -1,0 +1,34 @@
+# TLS edge overlay — adds Caddy (auto-HTTPS) in front of the frontend.
+#
+# Usage (production): run together with the base prod compose:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.tls.yml --env-file .env.prod up -d --build
+#
+# Caddy owns host ports 80/443. Keep the frontend OFF host port 80 so they don't collide —
+# set PROD_FRONTEND_PORT=127.0.0.1:8080 in .env.prod (Caddy reaches the frontend over the
+# internal Docker network as frontend:80, regardless of the host publish).
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:?set CADDY_SITE_ADDRESS to your origin hostname (e.g. origin.example.com)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,36 @@
+# Caddy — origin TLS for the Notari/Memara production stack.
+#
+# Caddy is the public ingress on the VPS: it terminates HTTPS (auto Let's Encrypt) and
+# reverse-proxies to the frontend nginx container (which serves the SPA + proxies /api/v1
+# to the backend). Behind ArvanCloud CDN, set CADDY_SITE_ADDRESS to a DIRECT, UNPROXIED
+# origin hostname (e.g. origin.your-domain) with an A-record straight to the VPS, so Caddy
+# can complete the ACME challenge; point the CDN's upstream/origin at https://origin.your-domain.
+# Without a CDN, set it to your main domain (it must resolve to the VPS during issuance).
+#
+# Required env: CADDY_SITE_ADDRESS (the hostname Caddy serves + auto-certs).
+
+{$CADDY_SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Uploads (audio/photo) — must match the frontend nginx client_max_body_size.
+	request_body {
+		max_size 60MB
+	}
+
+	reverse_proxy frontend:80 {
+		header_up X-Forwarded-Proto https
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

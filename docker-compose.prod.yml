@@ -1,3 +1,12 @@
+# Log rotation for every service (default json-file grows unbounded → fills the disk).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+# Resource limits: set per-service `mem_limit:` / `cpus:` sized to your VPS — see docs/production.md.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,6 +17,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 30s
@@ -27,6 +37,7 @@ services:
       - "9000"
       - "9001"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 30s
@@ -42,6 +53,7 @@ services:
     expose:
       - "6379"
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -87,6 +99,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips '*'"
     healthcheck:
       test:
@@ -126,6 +139,7 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
     command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/notari-celerybeat-schedule
 
   frontend:
@@ -140,6 +154,7 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/api/v1/health"]  # uses localhost because nginx proxies to backend
       interval: 30s

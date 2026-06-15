@@ -152,7 +152,23 @@ Development can use `BACKEND_AUTH_MODE=dev` and `POST /api/v1/auth/dev-login` wi
 
 ## Deployment Commands
 
-Build and start:
+Production (TLS) — full first-time setup + the go-live checklist live in
+[production-readiness.md](production-readiness.md). In short:
+
+1. `cp .env.prod.example .env.prod` and fill it; generate the secrets with `scripts/gen-secrets.sh`.
+2. DNS → ArvanCloud CDN; set the CDN origin to `https://$CADDY_SITE_ADDRESS` (a direct, **unproxied**
+   A-record to the VPS so Caddy can obtain a Let's Encrypt cert); CDN SSL mode = full / origin-HTTPS.
+3. Deploy with `scripts/deploy.sh` (build + migrate + start the TLS stack + health-check), or manually:
+
+```sh
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.tls.yml --env-file .env.prod up -d --build
+```
+
+Schedule `scripts/backup.sh` via cron and rehearse `scripts/restore.sh`. Set per-service `mem_limit`/`cpus`
+in `docker-compose.prod.yml` sized to your VPS (log rotation is already configured). Create an app-scoped
+MinIO key (not root) for the backend and enable MinIO encryption + versioning.
+
+Plain HTTP (dev/staging, no TLS — set `PROD_FRONTEND_PORT=80`):
 
 ```sh
 docker compose -f docker-compose.prod.yml up --build -d
