@@ -191,3 +191,48 @@ If port 80 is unavailable:
 ```sh
 PROD_FRONTEND_PORT=8080 docker compose -f docker-compose.prod.yml up --build -d
 ```
+
+## DNS & TLS edge (two hostnames)
+
+ArvanCloud CDN fronts the app; the VPS origin runs Caddy for origin TLS. Set up **two** names:
+
+| Hostname | DNS record | Role | TLS cert (who signs it) |
+|---|---|---|---|
+| `app.<domain>` (public) | through **ArvanCloud CDN** (proxied) | what users open | public cert provisioned by **ArvanCloud** at the CDN edge |
+| `origin.<domain>` (= `CADDY_SITE_ADDRESS`) | **plain A-record straight to the VPS IP — unproxied / DNS-only** | where the CDN fetches the real content | **Let's Encrypt**, auto-obtained + renewed by **Caddy** on the VPS |
+
+- In the CDN: set the **origin/upstream** to `https://origin.<domain>` and **SSL mode = Full** (or Full-strict) so the CDN→origin hop is encrypted.
+- `origin.<domain>` MUST be **unproxied** so Let's Encrypt can reach Caddy directly for the ACME challenge — if it sits behind the CDN, cert issuance fails.
+- Encrypted end to end: `user → app.<domain> → ArvanCloud CDN (TLS#1, cache) → https://origin.<domain> → Caddy (TLS#2, Let's Encrypt) → frontend nginx → backend`.
+- **Alternative to Caddy:** install an **ArvanCloud-issued origin certificate** on the frontend nginx instead (skips Let's Encrypt; then the TLS overlay isn't needed). Caddy is the zero-maintenance default.
+
+## Backups & restore
+
+`scripts/backup.sh` dumps Postgres (gzip), optionally copies the dump **off-box** + mirrors MinIO
+media, and prunes old local dumps. `scripts/restore.sh` loads a dump back into Postgres.
+
+**One-time off-box setup** (offsite durability — do this; a local-only backup dies with the box):
+
+1. In the **ArvanCloud dashboard**, create an Object Storage bucket (e.g. `notari-backups`) + an access key.
+2. On the VPS, install `mc` (MinIO client) and add the alias:
+   ```sh
+   mc alias set offsite https://<arvan-s3-endpoint> <access-key> <secret-key>
+   ```
+3. In `.env.prod`: `OFFSITE_ALIAS=offsite` and `OFFSITE_BUCKET=notari-backups`.
+
+**Schedule** (cron, nightly):
+
+```sh
+0 2 * * *  cd /srv/notari && scripts/backup.sh >> /var/log/notari-backup.log 2>&1
+```
+
+**Restore** (DESTRUCTIVE — overwrites the DB; cleanest into a fresh, empty DB):
+
+```sh
+scripts/restore.sh /var/backups/notari/pg-YYYYMMDD-HHMMSS.sql.gz
+```
+
+**Rehearse restores regularly** (e.g. monthly): load the latest dump into a scratch/staging database
+and verify the data + app work — an untested backup is not a backup. Note: `restore.sh` covers
+**Postgres only**; recover MinIO media by re-mirroring from the off-box copy
+(`mc mirror offsite/notari-backups/media local/notari-captures`).

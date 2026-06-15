@@ -230,7 +230,11 @@ After first login at `http://localhost:3001` (via tunnel):
    Enable **certificate expiry** notification (e.g. 14 days). This covers the **TLS cert
    expiry** + **uptime** items directly in Uptime Kuma even before Grafana alerting exists.
 3. Add a second monitor for the http→https redirect or the origin if useful.
-4. Configure a notification channel (Telegram/email) in Settings → Notifications.
+4. **AI gateway** monitor: type **HTTP(s)** (or **TCP** if it exposes no health URL), target the EU
+   transcription gateway (`AI_ENGINE_TRANSCRIPTION_BASE_URL`), interval 60s. AI jobs depend on it, so
+   this alerts you when the gateway becomes unreachable from the server — even though it's not part of
+   our own stack. (Metric-based alternative once `/metrics` lands: alert on the AI-job failure counter.)
+5. Configure a notification channel (Telegram/email) in Settings → Notifications.
 
 To also surface Uptime Kuma in Grafana, enable its Prometheus metrics (Settings → API Keys),
 which feeds the `uptime-kuma` scrape job and the `HealthEndpointDown` / `TLSCertExpiringSoon`
