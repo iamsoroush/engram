@@ -154,6 +154,9 @@ Read:
 - `docs/production-readiness.md`  
   Production gap list, ArvanCloud-tailored decisions, prioritized tasks, and the go-live checklist.
 
+- `docs/monitoring.md`  
+  Self-hosted observability overlay (Prometheus/Grafana/exporters + Uptime Kuma + GlitchTip) and what to watch.
+
 The backend OpenAPI schema is the source of truth for exact API contracts. Do not create a large duplicate API contract document.
 
 ---

@@ -22,6 +22,9 @@ POSTGRES_PASSWORD=${PG_PASS}
 MINIO_ROOT_PASSWORD=$(safe 40)
 BACKEND_JWT_SECRET=$(openssl rand -hex 48)
 AI_ENGINE_INTERNAL_TOKEN=$(openssl rand -hex 32)
+GRAFANA_ADMIN_PASSWORD=$(safe 32)
+GLITCHTIP_SECRET_KEY=$(openssl rand -hex 48)
+GLITCHTIP_POSTGRES_PASSWORD=$(safe 40)
 # Remember to update BACKEND_DATABASE_URL to use the POSTGRES_PASSWORD above:
 #   BACKEND_DATABASE_URL=postgresql+psycopg://notari:${PG_PASS}@postgres:5432/notari
 # And create an APP-SCOPED object-storage key (not the MinIO root) for
