@@ -1,0 +1,247 @@
+# =============================================================================
+# Notari — self-hosted monitoring OVERLAY
+#
+# Run together with the prod stack (SAME Compose project, so these services join
+# the prod default network and can scrape `backend`, `postgres`, `redis` by name):
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+#
+# Everything here is SELF-HOSTED (no foreign SaaS) — safe for ArvanCloud / Iran.
+# All UIs bind to 127.0.0.1 only; reach them via SSH tunnel or behind the CDN
+# with auth. See docs/monitoring.md.
+#
+# Stack: Prometheus + Grafana + node-exporter + cAdvisor + postgres-exporter +
+# redis-exporter (metrics/dashboards) · Uptime Kuma (uptime + TLS cert expiry) ·
+# GlitchTip (Sentry-API-compatible error tracking, web + worker + migrate + own
+# postgres + redis).
+# =============================================================================
+
+networks:
+  # The prod default network is created by docker-compose.prod.yml within the same
+  # project; exporters join it implicitly (no explicit `networks:` on those services)
+  # so they resolve backend/postgres/redis by service name.
+  default: {}
+  # Isolated network for GlitchTip's own datastores (kept off the app network).
+  monitoring_internal: {}
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+  uptime_kuma_data: {}
+  glitchtip_postgres_data: {}
+  glitchtip_redis_data: {}
+  glitchtip_uploads: {}
+
+services:
+  # ---------------------------------------------------------------------------
+  # Prometheus — metrics store + alert rules
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090" # localhost only — tunnel to reach
+    depends_on:
+      - node-exporter
+      - cadvisor
+      - postgres-exporter
+      - redis-exporter
+
+  # ---------------------------------------------------------------------------
+  # Grafana — dashboards (datasource + starter dashboard auto-provisioned)
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.1.4
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      # Grafana is reached via tunnel/CDN-auth; no anonymous access.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000" # localhost only — tunnel to reach
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # node-exporter — host CPU / mem / disk / filesystem / load
+  # (host disk also covers Postgres / object-store / backup disk on a single box)
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    pid: host
+    volumes:
+      - /:/host:ro,rslave
+    expose:
+      - "9100"
+
+  # ---------------------------------------------------------------------------
+  # cAdvisor — per-container CPU/mem, restarts, container up/down
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    expose:
+      - "8080"
+
+  # ---------------------------------------------------------------------------
+  # postgres-exporter — connections, tx, locks, DB size
+  # Connects to the APP Postgres (service `postgres` on the shared default net).
+  # ---------------------------------------------------------------------------
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      # Reuses the app DB creds. POSTGRES_* already exist in .env.prod.
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-notari}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-notari}?sslmode=disable"
+    expose:
+      - "9187"
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # redis-exporter — Redis memory/clients/keyspace + Celery queue depth.
+  # --check-keys exports the length of the `ai_jobs` list (Celery default queue,
+  # broker DB 0) as redis_key_size{key="ai_jobs"}.
+  # ---------------------------------------------------------------------------
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.62.0-alpine
+    restart: unless-stopped
+    command:
+      - "--redis.addr=redis://redis:6379"
+      - "--check-keys=db0=ai_jobs"
+    expose:
+      - "9121"
+
+  # ---------------------------------------------------------------------------
+  # Uptime Kuma — external-style uptime checks + TLS cert-expiry tracking.
+  # Add a monitor for https://<domain>/api/v1/health after first login.
+  # ---------------------------------------------------------------------------
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.16
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    ports:
+      - "127.0.0.1:3001:3001" # localhost only — tunnel to reach
+
+  # ---------------------------------------------------------------------------
+  # GlitchTip — Sentry-API-compatible error tracking (self-hosted).
+  # backend + frontend send errors via a DSN once SENTRY/GLITCHTIP wiring is added
+  # (see docs/monitoring.md "Error tracking wiring").
+  # ---------------------------------------------------------------------------
+  glitchtip-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_POSTGRES_PASSWORD:?GLITCHTIP_POSTGRES_PASSWORD is required}
+    volumes:
+      - glitchtip_postgres_data:/var/lib/postgresql/data
+    networks:
+      - monitoring_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  glitchtip-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - glitchtip_redis_data:/data
+    networks:
+      - monitoring_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  glitchtip-migrate:
+    image: glitchtip/glitchtip:v4.2.4
+    restart: "no"
+    command: ./bin/run-migrate.sh
+    environment: &glitchtip-env
+      DATABASE_URL: "postgres://glitchtip:${GLITCHTIP_POSTGRES_PASSWORD:?GLITCHTIP_POSTGRES_PASSWORD is required}@glitchtip-postgres:5432/glitchtip"
+      REDIS_URL: "redis://glitchtip-redis:6379/0"
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?GLITCHTIP_SECRET_KEY is required}
+      PORT: "8000"
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8080}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_DEFAULT_FROM_EMAIL:-glitchtip@localhost}
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+      # Drop old events to bound disk (single box).
+      GLITCHTIP_MAX_EVENT_LIFE_DAYS: ${GLITCHTIP_MAX_EVENT_LIFE_DAYS:-90}
+      CELERY_WORKER_AUTOSCALE: ${GLITCHTIP_CELERY_AUTOSCALE:-1,3}
+      ENABLE_OPEN_USER_REGISTRATION: "False"
+    networks:
+      - monitoring_internal
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+
+  glitchtip-web:
+    image: glitchtip/glitchtip:v4.2.4
+    restart: unless-stopped
+    environment: *glitchtip-env
+    ports:
+      - "127.0.0.1:8080:8000" # localhost only — tunnel/CDN-auth to reach
+    networks:
+      - default # so backend/frontend containers could reach it by name if desired
+      - monitoring_internal
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:v4.2.4
+    restart: unless-stopped
+    command: ./bin/run-celery-with-beat.sh
+    environment: *glitchtip-env
+    networks:
+      - monitoring_internal
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-redis:
+        condition: service_healthy
+      glitchtip-migrate:
+        condition: service_completed_successfully
