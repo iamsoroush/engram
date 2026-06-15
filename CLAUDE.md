@@ -98,6 +98,12 @@ Read:
 - `docs/design-principles.md`  
   Non-negotiable product and UX principles.
 
+- `docs/intelligence-layer.md`  
+  Capture→intent intelligence-layer redesign: rationale, entity model, and phased plan.
+
+- `docs/intelligence-layer-stories.md`  
+  Build-facing user stories for the intelligence-layer work.
+
 - `docs/ux/overview.md`  
   Compact entry point for current UX. Start here for user-facing tasks.
 
@@ -113,6 +119,9 @@ Read:
 - `docs/ux/screens/`  
   One compact file per important screen.
 
+- `docs/ux/archive/`, `docs/dev/archive/`  
+  Superseded one-time planning inputs (research briefs, journey maps, build notes), kept for history.
+
 - `docs/architecture.md`  
   System architecture, modules, data flow, and boundaries.
 
@@ -121,6 +130,22 @@ Read:
 
 - `docs/ai_engine/README.md`  
   AI engine worker boundary, processing jobs, placeholder processors, and replacement path.
+
+- `docs/backend/`  
+  As-built backend: `README.md` (index), `design.md` (Postgres/MinIO/Celery/Alembic data + API design),
+  `auth.md` (JWT auth, dev login, roles/tenants), `storage.md` (MinIO object storage),
+  `aes-basic-api.md` and `aes-pro-qa-api.md` (aesthetics Basic + Pro Q&A API contracts).
+
+- `docs/frontend/`  
+  Frontend: `README.md` (index), `overview.md` (capture-first app structure + mobile testing),
+  `auth-login.md` (login/persona flow), `sync-outbox.md` (local-first outbox + cache policy).
+
+- `docs/qa/`  
+  Manual QA scripts: `aes-basic-smoke.md`, `aes-pro-smoke.md`, `aes-frontend-scenarios.md`,
+  `aes-patient-pages-scenarios.md`.
+
+- `docs/dev/`  
+  Dev workflow: `worktree-stacks.md` (isolated per-worktree dev stacks), `screenshots.md`.
 
 - `docs/production.md`  
   Production setup and operational notes.

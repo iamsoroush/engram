@@ -158,8 +158,8 @@ current product to iterate from).
    `../../apps/frontend/design-prototypes/*.html`.
 
 > **Aesthetics track — delivered (design, for review).** Spec: [redesign-aesthetics.md](redesign-aesthetics.md).
-> Research: [aesthetics-research-brief.md](aesthetics-research-brief.md). Journeys:
-> [aesthetics-journeys.md](aesthetics-journeys.md). Stories (build hand-off):
+> Research: [aesthetics-research-brief.md](archive/aesthetics-research-brief.md). Journeys:
+> [aesthetics-journeys.md](archive/aesthetics-journeys.md). Stories (build hand-off):
 > [aesthetics-stories.md](aesthetics-stories.md). Prototypes:
 > `../../apps/frontend/design-prototypes/aesthetics-{capture,report,patient,patient-surface,frontdesk}.html`.
 > Proposed extensions for human review: [redesign-aesthetics.md §10](redesign-aesthetics.md).

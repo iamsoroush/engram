@@ -1,12 +1,12 @@
-# Backend v2 Design
+# Backend Design
 
 ## Summary
 
-Backend v2 is the handoff target for replacing the prototype storage model. It uses FastAPI, Postgres for metadata, MinIO for source files and generated artifacts, backend-managed JWT authentication, tenant-scoped authorization, patient-aware sessions and captures, and Celery-backed processing jobs with realistic placeholder outputs from `apps/ai_engine`.
+This is the as-built backend design. It uses FastAPI, Postgres for metadata, MinIO for source files and generated artifacts, backend-managed JWT authentication, tenant-scoped authorization, patient-aware sessions and captures, and Celery-backed processing jobs with realistic placeholder outputs from `apps/ai_engine`. Schema changes are managed with Alembic.
 
-The backend must continue to support local-first frontend capture. A capture is only considered safely transferred after the source object is stored in MinIO and its metadata is committed in Postgres.
+The backend supports local-first frontend capture. A capture is only considered safely transferred after the source object is stored in MinIO and its metadata is committed in Postgres.
 
-Celery and Redis provide the background processing boundary. The backend produces tasks and `apps/ai_engine` consumes them. The AI engine reports lifecycle state and results through protected backend `/internal/ai/jobs/...` endpoints instead of importing backend modules or writing to Postgres directly. Real AI job bodies are not part of this version.
+Celery and Redis provide the background processing boundary. The backend produces tasks and `apps/ai_engine` consumes them. The AI engine reports lifecycle state and results through protected backend `/internal/ai/jobs/...` endpoints instead of importing backend modules or writing to Postgres directly. The current AI job bodies are placeholder processors that real AI logic will replace later.
 
 ## Core Principles
 
@@ -42,7 +42,7 @@ Patient rules:
 
 - Doctors and assistants can create patients directly.
 - Patient creation is tenant-scoped and audited.
-- Duplicate detection may warn but must not block patient creation in v2.
+- Duplicate detection may warn but must not block patient creation.
 - `sessions.patient_id` and `captures.patient_id` are nullable.
 - Assignment and reassignment are audited with actor, previous value, next value, timestamp, and reason/source.
 
@@ -107,7 +107,7 @@ Frontend grouping:
 
 ## Captures
 
-Use a shared `captures` table plus type-specific metadata. Use JSONB with typed Pydantic schemas for v2; split into separate tables later only when querying requirements justify it.
+Use a shared `captures` table plus type-specific metadata. Type-specific metadata is stored as JSONB with typed Pydantic schemas; split into separate tables later only when querying requirements justify it.
 
 Common fields:
 

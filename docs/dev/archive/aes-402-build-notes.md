@@ -1,9 +1,11 @@
 # AES-402 build notes — what shipped, and what went beyond the planned step
 
+> ⚠️ **Archived** — one-time build-notes input, superseded by the current Pro Q&A contract [`../../backend/aes-pro-qa-api.md`](../../backend/aes-pro-qa-api.md). Kept for history.
+>
 > The planned step was **AES-402 (Pro): post-session patient↔clinic Q&A + its patient-surface
 > payload** (the Basic report/aftercare payload was already merged). During the build several changes
 > landed that were **out of the original scope**. They are recorded here with their rationale so the
-> deviations are deliberate and reviewable, not silent. Contract: [`../backend/aes-pro-qa-api.md`](../backend/aes-pro-qa-api.md).
+> deviations are deliberate and reviewable, not silent. Contract: [`../../backend/aes-pro-qa-api.md`](../../backend/aes-pro-qa-api.md).
 
 ## In scope (the planned step, as built)
 

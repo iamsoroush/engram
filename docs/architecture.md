@@ -15,53 +15,30 @@ The product should not feel like a dashboard, HIS, appointment system, queue man
 
 ```text
 Browser
-  React prototype
-  IndexedDB outbox and synced cache
-  Vite dev proxy or nginx production proxy
-
-Backend
-  FastAPI API
-  Celery producer for background AI job processing
-  Redis broker/result backend
-  Local filesystem capture storage
-  JSON metadata per session
-
-AI Engine
-  Celery worker
-  Placeholder audio/text/image capture processors
-
-Storage
-  Development: ./captures mounted to /data/captures
-  Production: capture_data Docker volume mounted to /data/captures
-```
-
-## Backend v2 Direction
-
-Backend v2 replaces file-backed JSON metadata with:
-
-```text
-Browser
   React frontend
   IndexedDB pending outbox
   IndexedDB synced preview cache
   Authenticated API client
+  Vite dev proxy or nginx production proxy
 
 Backend
   FastAPI API
   Backend-managed JWT auth
   Tenant-scoped services
-  Celery-backed AI job producer
+  Celery producer for background AI job processing
+  Redis broker/result backend
+  Alembic-managed schema
 
 AI Engine
   Celery worker process
-  AI processing implementation boundary
+  Placeholder audio/text/image capture processors
 
 Storage
   Postgres metadata
-  MinIO object storage
+  MinIO object storage (development and production)
 ```
 
-Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows. MinIO stores source files and generated artifacts in both development and production.
+Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows; the schema is managed with Alembic. MinIO stores source files and generated artifacts in both development and production. See [backend design](backend/design.md), [storage](backend/storage.md), [auth](backend/auth.md), and [production](production.md) for details.
 
 Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks. `apps/ai_engine` consumes those tasks and owns the current placeholder implementations for audio capture processing, text capture processing, and image capture processing.
 
@@ -159,26 +136,15 @@ The current synced cache limit is `50 MB`. Eviction deletes the oldest/least rec
 
 ## Backend Storage
 
-The backend currently stores captures on disk:
+The backend stores metadata in Postgres and source files plus generated artifacts in MinIO (S3-compatible object storage), in both development and production. Object keys are tenant-scoped and never expose patient names or source filenames; file access goes through backend authorization or short-lived presigned URLs.
 
-```text
-captures/
-  session-.../
-    session.json
-    cap-....jpg
-    cap-....webm
-    cap-....txt
-```
-
-This is intentionally simple for MVP testing. A production system should move source files to durable object storage and metadata to a real database.
-
-Backend v2 uses Postgres for metadata and MinIO for object storage. The backend should not claim a capture is safely synced until the MinIO object and Postgres metadata are both durable.
+The backend does not claim a capture is safely synced until the MinIO object and its Postgres metadata are both durable. If either side fails, the upload must not return success. See [storage](backend/storage.md) for object-key layout, upload-safety, and backup requirements.
 
 ## Session And Review Semantics
 
-Patient selection is still not required before capture. Uploaded sessions and captures may remain unassigned until staff or AI processing assigns them.
+Patient selection is not required before capture. Uploaded sessions and captures may remain unassigned until staff or AI processing assigns them.
 
-Backend v2 separates organization from human verification:
+The backend separates organization from human verification:
 
 - `draft`: captures exist and the session is still in active capture/progressive draft state.
 - `unassigned`: no patient is known yet.
@@ -208,10 +174,9 @@ session payload) replaces the old manual "verify" gate.
 - User-facing capture states are compact, non-technical, and owned by [UX states](ux/states.md).
 - Technical pipeline labels such as OCR, embedding, inference, job queues, or model names should not appear in doctor-facing UI.
 
-## Known Prototype Limits
+## Known Limits
 
-- Metadata is file-backed JSON, not a database.
-- API is workflow-driven rather than full CRUD.
+- AI capture/session processing is still placeholder logic, not real models.
 - There is no encryption-at-rest implementation yet.
 - Browser storage quotas are not fully surfaced to the user yet.
 - Audio recording on phone browsers may require HTTPS; a file input fallback exists for local HTTP testing.

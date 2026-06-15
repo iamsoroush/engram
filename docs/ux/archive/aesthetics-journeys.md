@@ -1,33 +1,35 @@
 # Aesthetics — User-Journey Maps (Basic + Pro, all personas)
 
+> ⚠️ **Archived** — one-time journey-mapping input, superseded by the shipped aesthetics spec [../redesign-aesthetics.md](../redesign-aesthetics.md). Kept for history.
+>
 > Deliverable 2 of the aesthetics design track (foundation §6). Per **persona** × per **tier**,
 > phased across a real clinic day. The companion deliverables: comparable-product research
 > [aesthetics-research-brief.md](aesthetics-research-brief.md), the build hand-off
-> [aesthetics-stories.md](aesthetics-stories.md), and the spec + prototypes
-> [redesign-aesthetics.md](redesign-aesthetics.md). North-star:
-> [redesign-foundation.md](redesign-foundation.md). Current UX seams reused here:
-> [redesign-capture-surface.md](redesign-capture-surface.md), [screens/patients.md](screens/patients.md),
-> [states.md](states.md).
+> [aesthetics-stories.md](../aesthetics-stories.md), and the spec + prototypes
+> [redesign-aesthetics.md](../redesign-aesthetics.md). North-star:
+> [redesign-foundation.md](../redesign-foundation.md). Current UX seams reused here:
+> [redesign-capture-surface.md](../redesign-capture-surface.md), [screens/patients.md](../screens/patients.md),
+> [states.md](../states.md).
 >
 > **The seam is the point.** Each journey marks, at every step, what is **deterministic (Basic)**
 > vs **AI (Pro)** and where a **✨ Try Pro** teaser sits. Reading the Basic and Pro columns of one
 > persona side-by-side *is* the tier boundary. Nothing in the agreed set
-> ([foundation §3](redesign-foundation.md)) is dropped; proposed extensions are flagged
-> `⊕ candidate` and collected in [redesign-aesthetics.md §10](redesign-aesthetics.md).
+> ([foundation §3](../redesign-foundation.md)) is dropped; proposed extensions are flagged
+> `⊕ candidate` and collected in [redesign-aesthetics.md §10](../redesign-aesthetics.md).
 
 ## How to read
 
-- **Personas** ([foundation §2](redesign-foundation.md)): **Doctor** (captures, treats, owns clinical
+- **Personas** ([foundation §2](../redesign-foundation.md)): **Doctor** (captures, treats, owns clinical
   content) · **Assistant** (supports documentation) · **Receptionist** (intake; creates/manages
   patients; scheduling-adjacent). **Patient** is read / limited-write via the patient surface
-  ([foundation §4](redesign-foundation.md)) — covered in the patient micro-journeys at the end.
+  ([foundation §4](../redesign-foundation.md)) — covered in the patient micro-journeys at the end.
 - **Phases** of an aesthetics encounter: **Before** (arrival/intake) · **During** (in-chair capture +
   treatment) · **After** (close-out, share, aftercare) · **Between** (recall, follow-up, patient Q&A).
 - `det` = deterministic/zero-AI (works offline, instant). `ai` = AI-derived (Pro). `✨` = a Try-Pro
   teaser shown *in Basic* — labelled, non-functional, a conversion lever
-  ([foundation §1](redesign-foundation.md)).
+  ([foundation §1](../redesign-foundation.md)).
 - The capture-first invariant: **no journey blocks on reception.** A doctor can capture before a
-  patient exists; assignment catches up ([design-principles §1](../design-principles.md)).
+  patient exists; assignment catches up ([design-principles §1](../../design-principles.md)).
 
 ## Cast & surfaces (quick reference)
 
@@ -65,7 +67,7 @@ build themselves.
 
 **Basic report (close-out):** the Live report is a **clean chronological document** — clinic + patient
 header (template/DB), then transcript-less notes + **photos shown**, honest timestamps, no synthesis,
-no chips. A tidy notebook that stands on its own ([redesign-capture-surface.md](redesign-capture-surface.md) B2 Basic).
+no chips. A tidy notebook that stands on its own ([redesign-capture-surface.md](../redesign-capture-surface.md) B2 Basic).
 
 ## 1.2 Doctor · Pro (understanding + upsell)
 
@@ -75,7 +77,7 @@ no chips. A tidy notebook that stands on its own ([redesign-capture-surface.md](
 | | Recall | Asks "what did I use last time?" | `ai` **recall** answers from the structured *Treatment performed* data — area · product · brand · units · lot | The Basic teaser is now real |
 | **During** | Dictate | **Audio-first**: dictates the visit naturally while treating; drops photos | `ai` **transcription** (native script, RTL-aware); `ai` **captions** photos; `ai` **before/after prepared** (paired + slider) | Audio is first-class in Pro; secondary in Basic |
 | | Out-of-context | A side-comment / phone call mid-session | `ai` **out-of-context** capture dimmed, excluded from the report, never deleted; one-tap **Mark relevant** | Same guard as the generic build |
-| | Patient match | Says the patient's name, or it's inferred | `ai` **patient matching** — auto-match / create / reassign / suggest; partial matches resolve in-place ([capture-surface H4](redesign-capture-surface.md)) | Capture never waits on the match |
+| | Patient match | Says the patient's name, or it's inferred | `ai` **patient matching** — auto-match / create / reassign / suggest; partial matches resolve in-place ([capture-surface H4](../redesign-capture-surface.md)) | Capture never waits on the match |
 | **After** | Structured report builds itself | Glances at the **Live report** | `ai` **structured session report** (fixed v1: Visit summary · Concern/goals · Assessment · **Treatment performed** [area·product·brand·units·**lot**] · Before/after · Plan & follow-up · Aftercare); rebuilt as captures land; auto-**Complete** badge | The core Pro value; no Generate button, no verify gate |
 | | Lot capture | Lot # spoken in the dictation (or scanned `⊕ candidate`) | `ai` lot extracted into *Treatment performed* + the clinic **lot/batch ledger** | Feeds recall + safety |
 | | Share | Same shareable report + aftercare as Basic, now pre-filled from the structured report | `ai`-assembled, `det`-delivered | Patient surface is one primitive across tiers |
@@ -105,7 +107,7 @@ manual-but-fast; in Pro the assistant becomes a *verifier* of AI output rather t
 | Phase | Step | Assistant does | System | Seam |
 | --- | --- | --- | --- | --- |
 | **After** | Verify, don't type | Skims the **AI-structured report**; fixes a transcript/caption inline; confirms extracted *Treatment performed* fields (esp. **lot**) | `ai` report + extraction; `det` inline **Edit** with edited-vs-AI attribution feeding the report | The job shifts from authoring to checking |
-| | Resolve matches | Clears **Needs input**: choose-patient, verify AI-created patient | `ai` candidates; `det` confirm (never auto-merges) | Same needs-input contract as today ([states.md](states.md)) |
+| | Resolve matches | Clears **Needs input**: choose-patient, verify AI-created patient | `ai` candidates; `det` confirm (never auto-merges) | Same needs-input contract as today ([states.md](../states.md)) |
 | **Between** | Triage Q&A | First-pass on the **patient Q&A** queue: routes clinical ones to the doctor with the AI draft attached, handles logistics | `ai` drafts; doctor verifies clinical replies | Assistant filters; doctor approves clinical content |
 | | Keep lots current | Logs new product lots/expiry into **Products & lots** | `ai` recall depends on this ledger | Data quality work that powers safety |
 
@@ -113,10 +115,10 @@ manual-but-fast; in Pro the assistant becomes a *verifier* of AI output rather t
 
 # 3 · Receptionist (front desk)
 
-Designed *inside* aesthetics ([foundation §2](redesign-foundation.md)): intake here means **registering
+Designed *inside* aesthetics ([foundation §2](../redesign-foundation.md)): intake here means **registering
 walk-ins and returning patients, guarding against duplicates, and getting the right patient attached to
 the right chair** — without ever blocking the doctor. Memara is **not** a booking/billing system
-([design-principles §2](../design-principles.md)); the front desk is a light **Today / arrivals** lens
+([design-principles §2](../../design-principles.md)); the front desk is a light **Today / arrivals** lens
 plus registration, not a scheduler. The receptionist's screens are Clinical Memory's **Today** tab and
 the **assignment resolver**, framed for the desk.
 
@@ -165,7 +167,7 @@ drafting) is absent, each marked by a `✨ Try Pro` teaser at the exact moment i
 
 ---
 
-# 5 · Patient micro-journeys (the patient surface — [foundation §4](redesign-foundation.md))
+# 5 · Patient micro-journeys (the patient surface — [foundation §4](../redesign-foundation.md))
 
 The patient is **read / limited-write** through one shared clinic→patient channel, consumed by two
 payloads. Designed as a **contract** (access · delivery · consent · what's shared vs withheld), not

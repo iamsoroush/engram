@@ -245,7 +245,7 @@ spec; the contract-level points:
 1. AI engine: add `intents` to the transcription prompt + output schema (Pro); adopt
    gateway structured output + thin normalization.
 2. Backend: replace the assignment-suppression gate in `ai_jobs.complete_worker_job`
-   ([apps/backend/app/services/ai_jobs.py](apps/backend/app/services/ai_jobs.py)) with the
+   ([apps/backend/app/services/ai_jobs/worker.py](../apps/backend/app/services/ai_jobs/worker.py)) with the
    §5 override rule; generalize `patient_action_badges` → `effects`; add `out_of_context`
    handling; add tenant `tier` + tier-aware gating.
 3. Frontend: Captures/Live-report tabs, remove Generate, render effect chips + undo,

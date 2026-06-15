@@ -1,11 +1,13 @@
 # Therapy — Comparable-Product Research Brief (Phase 0)
 
+> ⚠️ **Archived** — one-time research input, superseded by the therapy spec [../redesign-therapy.md](../redesign-therapy.md). Kept for history.
+>
 > Greenfield design grounding for **Memara for Therapy** (Spine A, single-tier — the AI *is* the
-> value; see [redesign-foundation.md](redesign-foundation.md) §1, §5 and [../spines.md](../spines.md)
+> value; see [redesign-foundation.md](../redesign-foundation.md) §1, §5 and [../spines.md](../../spines.md)
 > §2–4). Started 2026-06-11, **pre-PMF**. This brief scans the therapy-documentation landscape →
 > distills the patterns that matter → names the gaps → states **where Memara-therapy differentiates**.
 > The feature set, journeys, and prototype that build on it live in
-> [redesign-therapy.md](redesign-therapy.md).
+> [redesign-therapy.md](../redesign-therapy.md).
 >
 > Method: targeted scan of the two product categories below (vendor docs + practitioner/comparison
 > write-ups, 2025–2026) plus the clinical-standard primitives (note formats, MBC instruments, HIPAA
@@ -135,7 +137,7 @@ category depth we can add later; none is the wedge.
 
 ---
 
-## 6. Direct inputs to the design (→ [redesign-therapy.md](redesign-therapy.md))
+## 6. Direct inputs to the design (→ [redesign-therapy.md](../redesign-therapy.md))
 
 - **Signature surface = pre-session brief**, with a compact **arc strip** (mini-timeline) for longitudinal
   context, then sections ordered by clinical urgency: **safety/risk first**, *arc position*, *recurring

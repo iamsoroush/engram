@@ -1,8 +1,8 @@
 # Aesthetics — User-Story Inventory (build hand-off)
 
 > Deliverable 3 of the aesthetics design track ([foundation §6](redesign-foundation.md)). The hand-off
-> to build. Companion docs: research [aesthetics-research-brief.md](aesthetics-research-brief.md),
-> journeys [aesthetics-journeys.md](aesthetics-journeys.md), spec
+> to build. Companion docs: research [aesthetics-research-brief.md](archive/aesthetics-research-brief.md),
+> journeys [aesthetics-journeys.md](archive/aesthetics-journeys.md), spec
 > [redesign-aesthetics.md](redesign-aesthetics.md). North-star: [redesign-foundation.md](redesign-foundation.md).
 >
 > Every story is `As a <persona>, I want <goal>, so that <value>` + **acceptance** notes, tagged:

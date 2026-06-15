@@ -7,8 +7,8 @@
 > there) and the current capture surface [redesign-capture-surface.md](redesign-capture-surface.md),
 > which it **reuses, not replaces**.
 >
-> **Companion deliverables:** research [aesthetics-research-brief.md](aesthetics-research-brief.md) ·
-> journeys [aesthetics-journeys.md](aesthetics-journeys.md) · stories (build hand-off)
+> **Companion deliverables:** research [aesthetics-research-brief.md](archive/aesthetics-research-brief.md) ·
+> journeys [aesthetics-journeys.md](archive/aesthetics-journeys.md) · stories (build hand-off)
 > [aesthetics-stories.md](aesthetics-stories.md). **Prototypes:**
 > [`aesthetics-capture.html`](../../apps/frontend/design-prototypes/aesthetics-capture.html) (interactive
 > Basic↔Pro) · [`aesthetics-report.html`](../../apps/frontend/design-prototypes/aesthetics-report.html) ·
@@ -64,7 +64,7 @@ Basic's answer to "what did we use last time" is **fast retrieval** of the previ
 **Personas** ([foundation §2](redesign-foundation.md)): Doctor (owns clinical content) · Assistant
 (supports documentation) · Receptionist (intake; designed in §7) · Patient (read/limited-write via the
 patient surface §6). **Capture-first never blocks reception** ([design-principles §1](../design-principles.md));
-the non-blocking handoff is shown concretely in [journeys §4](aesthetics-journeys.md).
+the non-blocking handoff is shown concretely in [journeys §4](archive/aesthetics-journeys.md).
 
 ## 2 · Surfaces & IA additions
 
@@ -178,7 +178,7 @@ from the structured report; Basic curates from the chronological one.
   they already wrote, made instantly skimmable (**no structured table**). **Pro:** a longitudinal
   **treatment & lot table** (visit · area · product · units · **lot**) built from extraction — the
   structure **lot recall** + smart lists need, and it exists *because* Pro extracts, never because
-  anyone filled a form ([research §3](aesthetics-research-brief.md)).
+  anyone filled a form ([research §3](archive/aesthetics-research-brief.md)).
 - **Flags band (Pro, AES-701)** — allergy/consent/preference at the top of the file.
 - **Tiered memory** ([screens/patients.md](screens/patients.md)): **Basic** = honest **structural**
   recap, **no ✨**, never paraphrases audio; **Pro** = **AI history** (Snapshot · Story so far · Worth
@@ -187,7 +187,7 @@ from the structured report; Basic curates from the chronological one.
 - **Smart lists (Pro, AES-501)** + **Lot recall (Pro, AES-502)** live in Clinical Memory: filters over
   the structured data, and a recall lookup that returns every patient on a recalled lot and hands off to
   the patient channel ("Message all"). A real safety capability only structure can provide
-  ([research §6](aesthetics-research-brief.md); FDA counterfeit-Botox recalls).
+  ([research §6](archive/aesthetics-research-brief.md); FDA counterfeit-Botox recalls).
 
 ## 6 · Patient surface — the shared contract
 *Prototype: [`aesthetics-patient-surface.html`](../../apps/frontend/design-prototypes/aesthetics-patient-surface.html).
@@ -208,7 +208,7 @@ auth/consent ([foundation §4](redesign-foundation.md)).
 
 ### 6.1 Post-session Q&A (Pro, AES-402)
 *Why:* turns the unmanaged WhatsApp/IG question deluge into a fast, in-context, **verified** channel that
-accrues as data ([foundation §3 Pro 8](redesign-foundation.md), [research §3](aesthetics-research-brief.md)).
+accrues as data ([foundation §3 Pro 8](redesign-foundation.md), [research §3](archive/aesthetics-research-brief.md)).
 - **Patient side:** an in-thread question composer; replies arrive marked **doctor-verified**.
 - **Clinic side (doctor inbox):** *"Patient X asks … · Suggested reply (grounded in this patient's
   context + the doctor's prior answers) … · **Send / Edit / Dismiss**."* **Nothing sends without
@@ -234,7 +234,7 @@ desk is a **light arrivals lens + registration**, not a scheduler. It is Clinica
 - **Register + duplicate guard (Basic, AES-601/205):** the shared patient form (name required, rest
   fill-later); as the name is typed a **deterministic, Persian-aware** near-match check warns **before**
   a duplicate is created — the failure mode that splits one Persian patient into many records
-  ([research §3](aesthetics-research-brief.md)). **Use this** adopts the existing record; **Create
+  ([research §3](archive/aesthetics-research-brief.md)). **Use this** adopts the existing record; **Create
   anyway** never blocks.
 - **Attach the doctor-captured visit (AES-603):** the capture-first handoff — an unassigned visit the
   doctor started gets a **deterministic suggestion** (the just-registered patient, ranked first) +

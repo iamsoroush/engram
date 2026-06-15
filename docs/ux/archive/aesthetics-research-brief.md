@@ -1,12 +1,14 @@
 # Aesthetics — Comparable-Product Research Brief (Phase 0)
 
-> Deliverable 1 of the aesthetics design track ([foundation §5–6](redesign-foundation.md)). A
-> **lighter pass** ([foundation §5](redesign-foundation.md): the §3 feature set already frames it):
+> ⚠️ **Archived** — one-time research input, superseded by the shipped aesthetics spec [../redesign-aesthetics.md](../redesign-aesthetics.md). Kept for history.
+>
+> Deliverable 1 of the aesthetics design track ([foundation §5–6](../redesign-foundation.md)). A
+> **lighter pass** ([foundation §5](../redesign-foundation.md): the §3 feature set already frames it):
 > med-spa / aesthetics tools + the behavioral reality of small Persian-speaking clinics. Feeds the
 > journeys ([aesthetics-journeys.md](aesthetics-journeys.md)), stories
-> ([aesthetics-stories.md](aesthetics-stories.md)), and spec
-> ([redesign-aesthetics.md](redesign-aesthetics.md)). Candidate extensions surfaced here are flagged
-> `⊕` and collected for human review in [redesign-aesthetics.md §10](redesign-aesthetics.md) — none
+> ([aesthetics-stories.md](../aesthetics-stories.md)), and spec
+> ([redesign-aesthetics.md](../redesign-aesthetics.md)). Candidate extensions surfaced here are flagged
+> `⊕` and collected for human review in [redesign-aesthetics.md §10](../redesign-aesthetics.md) — none
 > replace or drop an agreed feature.
 
 ## 1. Landscape snapshot

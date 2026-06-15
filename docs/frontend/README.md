@@ -1,10 +1,10 @@
 # Frontend Docs
 
-Frontend docs describe the current MVP app and the v2 contracts it must support.
+Frontend docs describe the current app and the backend contracts it consumes.
 
 ## Documents
 
-- [Current frontend](v1-current.md): capture-first UX, feature structure, IndexedDB outbox, synced cache, and mobile testing notes.
+- [Frontend overview](overview.md): capture-first UX, feature structure, IndexedDB outbox, synced cache, and mobile testing notes.
 - [Authentication and login](auth-login.md): dev persona login, production token flow, and patient persona separation.
 - [Sync outbox](sync-outbox.md): local-first capture, authenticated sync, backend ID mapping, and cache policy.
 
