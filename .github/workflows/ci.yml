@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs for the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests (unittest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: apps/backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: apps/backend
+        run: python -m unittest discover -s tests
+
+  ai-engine:
+    name: AI engine tests (unittest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/ai_engine/requirements.txt
+
+      - name: Install dependencies
+        working-directory: apps/ai_engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: apps/ai_engine
+        run: python -m unittest discover -s tests
+
+  frontend:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: apps/frontend
+        run: npx tsc --noEmit
+
+  compose-validate:
+    name: Validate prod compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Validate docker-compose.prod.yml parses. The prod compose uses
+      # ${VAR:?required} guards, so supply dummy values for the required vars
+      # inline. This only catches compose syntax/interpolation breakage; no
+      # images are built and no services are started.
+      - name: docker compose config
+        env:
+          BACKEND_DATABASE_URL: postgresql+psycopg://user:pass@postgres:5432/db
+          BACKEND_JWT_SECRET: dummy-jwt-secret
+          BACKEND_OBJECT_STORAGE_ACCESS_KEY: dummy-access-key
+          BACKEND_OBJECT_STORAGE_SECRET_KEY: dummy-secret-key
+          AI_ENGINE_INTERNAL_TOKEN: dummy-ai-engine-token
+          MINIO_ROOT_USER: dummy-minio-user
+          MINIO_ROOT_PASSWORD: dummy-minio-password
+          POSTGRES_PASSWORD: dummy-postgres-password
+        run: docker compose -f docker-compose.prod.yml config -q
