@@ -74,9 +74,13 @@ export function LiveDraftReport({
     );
   }
 
+  // Render in capture order (chronological): a merge/refresh must never let a newer capture jump
+  // above older ones. Every item has capturedAt (local + backend); ISO strings sort lexicographically.
+  const orderedItems = [...session.items].sort((a, b) => (a.capturedAt || "").localeCompare(b.capturedAt || ""));
+
   return (
     <div className="live-draft">
-      {session.items.map((item, index) => (
+      {orderedItems.map((item, index) => (
         <LiveDraftCaptureItem
           activePatientAction={activePatientAction}
           alternateCandidate={alternateCandidateForCapture(candidates, item.id)}
