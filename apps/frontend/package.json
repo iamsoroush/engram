@@ -11,6 +11,7 @@
     "test:visual": "playwright test tests/visual"
   },
   "dependencies": {
+    "@sentry/react": "^9.47.1",
     "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",

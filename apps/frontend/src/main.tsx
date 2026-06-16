@@ -1,6 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
+import { initSentry } from "./shared/lib/sentry";
+
+// Error tracking — initialized once for every route branch (clinic, share, qa). No-op when
+// VITE_SENTRY_DSN is empty, so dev / unconfigured builds are unaffected.
+initSentry();
+
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 
 // Top-level route split. `/share/{token}` is the PUBLIC patient surface — a separate page area with

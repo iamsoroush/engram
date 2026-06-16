@@ -22,6 +22,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
+from app.observability.metrics import record_capture_upload_failed
 from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
 from app.services.patient_memory_intelligence import mark_patient_memory_updating
 from app.services.session_contracts import build_session_contracts, evolve_session_after_capture, session_is_complete
@@ -375,6 +376,9 @@ async def upload_source_capture(
             "processingJob": ai_job_payload(ai_job) if ai_job else None,
         }
     except Exception:
+        # Product-critical: a failed capture upload breaks the capture-first promise. Count it for
+        # the FailedUploadsSpike alert (notari_capture_uploads_failed_total).
+        record_capture_upload_failed()
         db.rollback()
         if object_key is not None:
             try:

@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required
 from app.auth.service import dev_login, login, logout, me_response, refresh, update_tenant_settings
 from app.config import settings
+from app.observability import init_sentry, instrument
+from app.observability.metrics import record_ai_job
 from app.db.session import get_db
 from app.schemas.api import (
     AftercareTemplatePatch,
@@ -106,12 +108,19 @@ from sqlalchemy.orm import Session
 
 API_V1_PREFIX = "/api/v1"
 
+# Error tracking is initialized once, before the app is built, so any startup-time errors are
+# captured. No-op when BACKEND_SENTRY_DSN is empty (dev / Basic / unconfigured envs unaffected).
+init_sentry()
+
 app = FastAPI(
     title=settings.app_name,
     docs_url=f"{API_V1_PREFIX}/docs",
     redoc_url=f"{API_V1_PREFIX}/redoc",
     openapi_url=f"{API_V1_PREFIX}/openapi.json",
 )
+
+# Prometheus instrumentation: exposes /metrics (NOT under /api/v1) for the internal-network scrape.
+instrument(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -210,7 +219,10 @@ def internal_ai_job_complete(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Persist successful AI processing output from the worker."""
-    return complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
+    result = complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
+    # AI-job outcome metric (notari_ai_jobs_total): completion is always a terminal success.
+    record_ai_job("succeeded")
+    return result
 
 
 @internal_api.post("/ai/jobs/{job_id}/progress")
@@ -247,7 +259,7 @@ def internal_ai_job_fail(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Record terminal AI processing failure after retries are exhausted."""
-    return fail_worker_job(
+    result = fail_worker_job(
         db,
         job_id=job_id,
         error_message=request.error_message,
@@ -255,6 +267,16 @@ def internal_ai_job_fail(
         retry_count=request.retry_count,
         retry_reason=request.retry_reason,
     )
+    # AI-job outcome metric (notari_ai_jobs_total): count a failure only when the job is now
+    # terminal. fail_worker_job may instead schedule a durable retry (status stays failed but
+    # retryable) — that is a transient attempt, not a terminal failure, so it must not inflate the
+    # failure rate the AIJobFailureRate alert watches.
+    job_view = result.get("job", {}) if isinstance(result, dict) else {}
+    metadata = job_view.get("resultMetadata") or {}
+    is_terminal = job_view.get("status") == "failed" and metadata.get("retryable") is False
+    if is_terminal:
+        record_ai_job("failed")
+    return result
 
 
 @internal_api.get("/captures/{capture_id}/file-content")
