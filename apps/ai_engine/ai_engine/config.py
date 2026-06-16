@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,6 +7,12 @@ class Settings(BaseSettings):
 
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
+    # Error tracking (Sentry-SDK compatible; self-hosted GlitchTip). Empty DSN => no-op. Reuses the
+    # backend's DSN by default (BACKEND_SENTRY_DSN); ENVIRONMENT / TRACES_SAMPLE_RATE are the shared,
+    # unprefixed vars (see docs/monitoring.md), so they are aliased to opt out of the AI_ENGINE_ prefix.
+    sentry_dsn: str = Field(default="", validation_alias="BACKEND_SENTRY_DSN")
+    sentry_environment: str = Field(default="development", validation_alias="SENTRY_ENVIRONMENT")
+    sentry_traces_sample_rate: float = Field(default=0.0, validation_alias="SENTRY_TRACES_SAMPLE_RATE")
     backend_internal_url: str = "http://backend:8000"
     internal_token: str = "dev-ai-engine-token"
     job_max_retries: int = 3

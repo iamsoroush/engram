@@ -5,3 +5,4 @@ pydantic-settings==2.7.1
 openai==2.37.0
 requests==2.34.2
 google-genai==2.6.0
+sentry-sdk==2.20.0

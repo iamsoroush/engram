@@ -1,6 +1,11 @@
 from celery import Celery
 
 from ai_engine.config import settings
+from ai_engine.observability import init_sentry
+
+# Error tracking is initialized once, when the Celery app module is imported (before the worker
+# starts). No-op when the DSN is empty (dev / unconfigured envs unaffected).
+init_sentry()
 
 
 celery_app = Celery(
