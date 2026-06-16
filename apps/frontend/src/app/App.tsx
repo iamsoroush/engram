@@ -713,11 +713,11 @@ export function App() {
     const currentAuth = authRef.current;
     const activeTenantId = currentAuth?.tenant.id;
     if (processingRef.current || !currentAuth || !activeTenantId || currentAuth.user.persona === "patient-preview") return;
-    if (!navigator.onLine) {
-      setOnline(false);
-      setToast("Offline · Captures are saved on this device.");
-      return;
-    }
+    // `navigator.onLine` is unreliable — it returns false-negatives after sleep / Wi-Fi / VPN
+    // changes and often never recovers, which used to strand captures in "waiting to upload".
+    // Treat it as a UI hint only and STILL attempt the upload: a genuinely-offline fetch fails
+    // fast and is caught + retried below, so a wrong `onLine` can no longer block syncing.
+    if (!navigator.onLine) setOnline(false);
     processingRef.current = true;
     setSyncing(true);
     setSyncError("");
@@ -801,11 +801,16 @@ export function App() {
     }
   };
 
+  // Robust periodic retry: while there is pending work, re-attempt on a FIXED interval regardless
+  // of transient sync/online state. processOutbox() self-guards against overlap (processingRef), so
+  // a tick during an in-flight sync is a no-op. Using setInterval (not a setTimeout re-armed only
+  // when `syncing` toggles) guarantees stuck "waiting to upload" items are always retried — even
+  // after an early-return that never flipped `syncing`.
   React.useEffect(() => {
-    if (!auth || auth.user.persona === "patient-preview" || (!pendingCount && !pendingOperationCount) || syncing) return;
-    const retryTimer = window.setTimeout(() => void processOutbox(), 15000);
-    return () => window.clearTimeout(retryTimer);
-  }, [auth, pendingCount, pendingOperationCount, syncing]);
+    if (!auth || auth.user.persona === "patient-preview" || (!pendingCount && !pendingOperationCount)) return;
+    const retryTimer = window.setInterval(() => void processOutbox(), 15000);
+    return () => window.clearInterval(retryTimer);
+  }, [auth, pendingCount, pendingOperationCount]);
 
   /**
    * Saves a capture to IndexedDB before attempting network transfer.
