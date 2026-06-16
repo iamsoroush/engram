@@ -192,19 +192,49 @@ If port 80 is unavailable:
 PROD_FRONTEND_PORT=8080 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-## DNS & TLS edge (two hostnames)
+## ArvanCloud DNS & TLS — pick one setup
 
-ArvanCloud CDN fronts the app; the VPS origin runs Caddy for origin TLS. Set up **two** names:
+**First, delegate DNS to ArvanCloud.** At your domain **registrar** (where the domain was bought), set the
+domain's **nameservers** to ArvanCloud's — the `*.ns.arvancdn.ir` hosts shown as `NS` records in your Arvan
+DNS panel. That delegation is what makes the internet use Arvan for your DNS (propagation can take a few
+hours). The `NS` records inside the panel are informational — leave them; the action is at the registrar.
+(If you bought the domain through Arvan, it's already delegated.)
 
-| Hostname | DNS record | Role | TLS cert (who signs it) |
+**Record types:** **A** = host → IPv4; **CNAME** = host → another host (not allowed on the bare apex `@`);
+**NS** = authoritative nameservers (Arvan's — leave); **TXT** = domain/email verification; **MX** = mail.
+In Arvan each record is **Proxied** (through the CDN) or **DNS-only** (resolves straight to the IP).
+
+### Option A — Direct-to-origin (recommended for clinical/PHI)
+
+No CDN in the request path; Caddy terminates TLS directly, so PHI is seen only by the user and your server.
+
+| Name | Type | Value | Mode |
 |---|---|---|---|
-| `app.<domain>` (public) | through **ArvanCloud CDN** (proxied) | what users open | public cert provisioned by **ArvanCloud** at the CDN edge |
-| `origin.<domain>` (= `CADDY_SITE_ADDRESS`) | **plain A-record straight to the VPS IP — unproxied / DNS-only** | where the CDN fetches the real content | **Let's Encrypt**, auto-obtained + renewed by **Caddy** on the VPS |
+| `app` (or apex `@`) | A | `<VPS_IP>` | **DNS-only** |
+| `www` | CNAME | `app.<domain>` | DNS-only |
 
-- In the CDN: set the **origin/upstream** to `https://origin.<domain>` and **SSL mode = Full** (or Full-strict) so the CDN→origin hop is encrypted.
-- `origin.<domain>` MUST be **unproxied** so Let's Encrypt can reach Caddy directly for the ACME challenge — if it sits behind the CDN, cert issuance fails.
-- Encrypted end to end: `user → app.<domain> → ArvanCloud CDN (TLS#1, cache) → https://origin.<domain> → Caddy (TLS#2, Let's Encrypt) → frontend nginx → backend`.
-- **Alternative to Caddy:** install an **ArvanCloud-issued origin certificate** on the frontend nginx instead (skips Let's Encrypt; then the TLS overlay isn't needed). Caddy is the zero-maintenance default.
+- Set `CADDY_SITE_ADDRESS=app.<domain>` — Caddy auto-obtains a Let's Encrypt cert for it (needs 80/443
+  reachable). No `origin.` record, no CDN SSL, no page rules. Caddy can also redirect `www`→`app`.
+- You can still use Arvan CDN + its free SSL later for a *separate* static/marketing site.
+
+### Option B — CDN in front (caching/DDoS; the CDN decrypts PHI — get a DPA with Arvan)
+
+| Name | Type | Value | Mode |
+|---|---|---|---|
+| `app` (or apex `@`) | A | `<VPS_IP>` | **Proxied** (CDN on) |
+| `origin` | A | `<VPS_IP>` | **DNS-only** (unproxied) |
+| `www` | CNAME | `app.<domain>` | Proxied |
+
+- `origin.<domain>` stays unproxied so Caddy can complete the Let's Encrypt ACME challenge and the CDN can
+  reach a valid origin cert. Set `CADDY_SITE_ADDRESS=origin.<domain>`.
+- In Arvan's CDN/origin settings: origin/upstream → `https://origin.<domain>`, **SSL mode = Full** (labels
+  may vary; the goal is an *encrypted* CDN→origin hop validated against Caddy's cert).
+- **Required page rule: bypass cache for `/api/v1/*`** (never cache PHI/API responses); also don't cache
+  media; cache `/assets/*`.
+- Certs: edge (browser↔CDN) = Arvan's **free SSL**; origin (CDN↔VPS) = **Caddy/Let's Encrypt**.
+- Watch the **8 GB/day** free-tier cap (media-heavy) — serve large media from origin/presigned URLs.
+- Path (encrypted end to end): `user → app.<domain> → Arvan CDN (TLS#1) → https://origin.<domain> → Caddy
+  (TLS#2) → frontend → backend`.
 
 ## Backups & restore
 
