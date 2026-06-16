@@ -25,9 +25,21 @@ echo "[backup] dumping Postgres -> $DUMP"
 $COMPOSE exec -T postgres pg_dump -U "${POSTGRES_USER:-notari}" "${POSTGRES_DB:-notari}" | gzip > "$DUMP"
 test -s "$DUMP" || { echo "[backup] ERROR: empty dump" >&2; exit 1; }
 
+# Encrypt at rest (recommended) so an off-box / provider breach yields ciphertext, not patient data.
+# Store BACKUP_ENCRYPTION_KEY SEPARATELY from the backups (e.g. a password manager) — lose it and the
+# backups are unrecoverable. AES-256 via openssl (portable, no extra tooling).
+ART="$DUMP"
+if [ -n "${BACKUP_ENCRYPTION_KEY:-}" ]; then
+  openssl enc -aes-256-cbc -pbkdf2 -salt -in "$DUMP" -out "$DUMP.enc" -pass env:BACKUP_ENCRYPTION_KEY
+  rm -f "$DUMP"; ART="$DUMP.enc"
+  echo "[backup] encrypted -> $ART"
+else
+  echo "[backup] WARN: BACKUP_ENCRYPTION_KEY unset — dump stored UNENCRYPTED (set it for PHI safety)."
+fi
+
 if [ -n "${OFFSITE_ALIAS:-}" ] && command -v mc >/dev/null; then
   echo "[backup] copying dump off-box -> ${OFFSITE_ALIAS}/${OFFSITE_BUCKET}"
-  mc cp "$DUMP" "${OFFSITE_ALIAS}/${OFFSITE_BUCKET:?set OFFSITE_BUCKET}/postgres/" || echo "[backup] WARN: off-box dump copy failed"
+  mc cp "$ART" "${OFFSITE_ALIAS}/${OFFSITE_BUCKET:?set OFFSITE_BUCKET}/postgres/" || echo "[backup] WARN: off-box dump copy failed"
   # Mirror media only when using self-hosted MinIO (skip if media is already in ArvanCloud S3).
   case "${BACKEND_OBJECT_STORAGE_ENDPOINT:-}" in
     *minio*) echo "[backup] mirroring media -> ${OFFSITE_ALIAS}/${OFFSITE_BUCKET}/media"
@@ -39,5 +51,5 @@ else
 fi
 
 echo "[backup] pruning local dumps older than ${BACKUP_RETAIN_DAYS:-14}d"
-find "$DIR" -name 'pg-*.sql.gz' -mtime +"${BACKUP_RETAIN_DAYS:-14}" -delete || true
-echo "[backup] done: $DUMP"
+find "$DIR" -name 'pg-*.sql.gz*' -mtime +"${BACKUP_RETAIN_DAYS:-14}" -delete || true
+echo "[backup] done: $ART"

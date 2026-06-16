@@ -238,8 +238,15 @@ No CDN in the request path; Caddy terminates TLS directly, so PHI is seen only b
 
 ## Backups & restore
 
-`scripts/backup.sh` dumps Postgres (gzip), optionally copies the dump **off-box** + mirrors MinIO
-media, and prunes old local dumps. `scripts/restore.sh` loads a dump back into Postgres.
+`scripts/backup.sh` dumps Postgres (gzip), **encrypts it at rest** (AES-256) when `BACKUP_ENCRYPTION_KEY`
+is set, optionally copies the dump **off-box** + mirrors MinIO media, and prunes old local dumps.
+`scripts/restore.sh` decrypts (if `.enc`) and loads a dump back into Postgres.
+
+> **Encrypt backups** (recommended for PHI): set `BACKUP_ENCRYPTION_KEY` in `.env.prod`
+> (`scripts/gen-secrets.sh` generates one) — then a breach of the off-box bucket or provider yields
+> ciphertext, not patient data. **Store that key separately from the backups** (a password manager); lose
+> it and the backups are unrecoverable. *(Media off-box copies rely on MinIO/ArvanCloud S3 server-side
+> encryption — enable that on the bucket.)*
 
 **One-time off-box setup** (offsite durability — do this; a local-only backup dies with the box):
 

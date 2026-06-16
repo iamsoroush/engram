@@ -10,7 +10,7 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-DUMP="${1:?usage: restore.sh <pg-dump.sql.gz>}"
+DUMP="${1:?usage: restore.sh <pg-dump.sql.gz[.enc]>}"
 [ -f "$DUMP" ] || { echo "restore: no such file: $DUMP" >&2; exit 1; }
 [ -f .env.prod ] || { echo "restore: .env.prod missing" >&2; exit 1; }
 set -a; . ./.env.prod; set +a
@@ -22,5 +22,13 @@ read -r -p "This OVERWRITES database '$DB' from $DUMP. Type 'yes' to proceed: " 
 [ "$confirm" = "yes" ] || { echo "aborted."; exit 1; }
 
 echo "[restore] loading $DUMP -> $DB"
-gunzip -c "$DUMP" | $COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB"
+# `.enc` dumps (from backup.sh with BACKUP_ENCRYPTION_KEY) are decrypted first; plain `.gz` load directly.
+case "$DUMP" in
+  *.enc)
+    [ -n "${BACKUP_ENCRYPTION_KEY:-}" ] || { echo "restore: $DUMP is encrypted but BACKUP_ENCRYPTION_KEY is unset" >&2; exit 1; }
+    openssl enc -d -aes-256-cbc -pbkdf2 -in "$DUMP" -pass env:BACKUP_ENCRYPTION_KEY | gunzip -c \
+      | $COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB" ;;
+  *)
+    gunzip -c "$DUMP" | $COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB" ;;
+esac
 echo "[restore] done. Restart services if needed: $COMPOSE restart backend ai-engine"
