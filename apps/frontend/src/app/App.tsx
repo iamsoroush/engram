@@ -727,7 +727,14 @@ export function App() {
       for (const pendingCapture of pending) {
         if (!authRef.current || authRef.current.tenant.id !== activeTenantId) break;
         const capture = (await loadPendingCapture(pendingCapture.id)) || pendingCapture;
-        if (capture.tenantId && capture.tenantId !== activeTenantId) continue;
+        if (capture.tenantId && capture.tenantId !== activeTenantId) {
+          // A capture only uploads for the tenant it was made under. After tier/clinic switching this
+          // strands it as "waiting to upload" under the wrong tenant — surface why instead of hiding it.
+          console.warn(
+            `[outbox] capture ${capture.item.id} is for tenant ${capture.tenantId}, not the active tenant ${activeTenantId} — skipping. Log in under that clinic/tier to upload it.`,
+          );
+          continue;
+        }
         const backendSessionId = capture.backendSessionId || capture.sessionId;
         await updatePendingCapture(capture.id, (current) => ({
           ...normalizePendingCapture(current),
@@ -781,7 +788,9 @@ export function App() {
           } catch {
             setToast("Capture safely transferred.");
           }
-        } catch {
+        } catch (uploadError) {
+          // Was swallowed silently — log the real reason so a perpetually-stuck capture is diagnosable.
+          console.warn(`[outbox] upload failed for capture ${capture.item.id} (retry ${capture.retryCount + 1}):`, uploadError);
           await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
           updateItemStatus(capture.item.id, "saved");
           await rebuildLocalPendingSessions();
