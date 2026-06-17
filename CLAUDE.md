@@ -132,6 +132,9 @@ Read:
 - `docs/ai_engine/README.md`  
   AI engine worker boundary, processing jobs, placeholder processors, and replacement path.
 
+- `docs/ai_engine/capture-intelligence-design.md`  
+  Approved build design for the Pro capture-intelligence wave (4 jobs, the synthesis+treatments A↔B contract, seams, decisions). Build keystone-first.
+
 - `docs/backend/`  
   As-built backend: `README.md` (index), `design.md` (Postgres/MinIO/Celery/Alembic data + API design),
   `auth.md` (JWT auth, dev login, roles/tenants), `storage.md` (MinIO object storage),
