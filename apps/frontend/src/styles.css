@@ -10303,3 +10303,11 @@ small {
   background: var(--color-surface, #fff); color: var(--color-text, #1b2433);
 }
 .treatments-performed .treatment-flag { color: var(--color-muted, #52617e); font-weight: 600; }
+
+/* Pro synthesis — clinician-confirmation chips (uncertainties + treatment review). Calm, not alarming. */
+.report-review .report-review-chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.report-review .report-review-chip {
+  font-size: var(--text-sm, 0.82rem); line-height: 1.4; padding: 8px 12px;
+  border: 1px solid #f5d9a8; border-left-width: 3px; border-radius: var(--radius-md, 10px);
+  background: #fff8ec; color: #8a5a12;
+}

@@ -62,6 +62,7 @@ Do not show `Failed` as a default state in normal memory surfaces. If something 
   - Text: `Decorated text`
 - The report area always exists and can move through empty, partial, summarized, and reviewed states without blocking capture.
 - If AI is unavailable, use available deterministic or rule-based text and update memory later.
+- Pro "organizing with AI": once captures settle, the deterministic baseline report is shown immediately, then the single-pass synthesis refines it in the background. While that synthesis job is in flight (queued/running/retrying), the baseline stays fully readable and a calm, persistent notice — `Organizing with AI — this report will update shortly` — signals AI is still working (never a blocking overlay; the header reads `Organizing`, not a premature `Complete`). On success the synthesized report replaces the baseline and the notice clears. Basic / gateway-less / synthesis-disabled never dispatch this job, so they show no such notice — their deterministic report is final.
 
 ## Success
 

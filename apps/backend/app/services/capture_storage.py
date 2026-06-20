@@ -81,7 +81,7 @@ def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid
 def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
     from app.services.attribution import attribution_payload
 
-    contracts = build_session_contracts(session)
+    contracts = build_session_contracts(session, db)
     extracted_metadata = session.extracted_metadata or {}
     assignment_source = extracted_metadata.get("patient_assignment_source")
     structured_report = session.report_model if isinstance(session.report_model, dict) and session.report_model else None

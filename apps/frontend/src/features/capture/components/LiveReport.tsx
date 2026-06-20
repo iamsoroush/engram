@@ -5,7 +5,7 @@ import type { CaptureItem, CaptureSession, StructuredPatientInformation, Structu
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, sessionTreatmentReview, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
 export function LiveReportView({
   isPro,
@@ -53,12 +53,20 @@ export function ProLiveReport({
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
-  // Pro is a deterministic, grouped-by-type document (Audio notes / Written notes / Photos) built
-  // without an LLM — render the structured sections (with their headers) so the grouping is visible.
+  // Render the report's structured sections (with their headers). This one path serves both report
+  // models: the deterministic baseline's by-type grouping (Audio notes / Written notes / Photos) AND
+  // the Pro synthesis's fixed clinical sections (visit-summary, concern-goals, assessment,
+  // treatment-performed, media, plan-followup, aftercare) — each is just {id, title, blocks}.
   const sections = (session?.reportModel?.sections || []).filter((section) => section.blocks?.length);
   // Performed treatments extracted by the Pro synthesis (queryable store). The report's
   // treatment-performed section is a prose mirror; this is the structured at-a-glance list.
   const treatments = workspaceTreatments(session);
+  // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
+  // low confidence, missing lot, free-text uncertainty) — rendered as calm chips below the report.
+  const review = sessionTreatmentReview(session);
+  // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
+  // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
+  const organizing = sessionAiOrganizing(session);
   const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
   const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
   // Explicit "what this report is based on" status (Pro): current = reflects all captures.
@@ -68,7 +76,12 @@ export function ProLiveReport({
       <ReportDocHeader session={session} />
       <div className="report-meta-strip">
         <span className="report-meta-template">{templateLabel}</span>
-        {freshness ? (
+        {organizing ? (
+          <span className="report-freshness updating" aria-live="polite">
+            <span className="report-freshness-dot" aria-hidden="true" />
+            {AI_ORGANIZING_NOTICE}
+          </span>
+        ) : freshness ? (
           <span className={`report-freshness ${freshness.current ? "current" : "updating"}`} aria-live="polite">
             {freshness.current ? (
               <>
@@ -119,6 +132,18 @@ export function ProLiveReport({
                 </li>
               );
             })}
+          </ul>
+        </section>
+      ) : null}
+      {review.length ? (
+        <section className="structured-report-section report-review" aria-label="Items that need your confirmation">
+          <h3>Needs your confirmation</h3>
+          <ul className="report-review-chips">
+            {review.map((item, index) => (
+              <li className={`report-review-chip ${item.category}`} dir={textDirection(item.reason)} key={`${index}-${item.reason.slice(0, 32)}`}>
+                {item.reason}
+              </li>
+            ))}
           </ul>
         </section>
       ) : null}

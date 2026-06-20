@@ -1,5 +1,5 @@
 import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, StructuredPatientInformation } from "../../domain/types";
+import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation } from "../../domain/types";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
 import { sessionUxState } from "../../domain/status";
 
@@ -389,7 +389,22 @@ export function reportFreshness(
   };
 }
 
+/**
+ * Calm, persistent "AI is still organizing" notice for Pro. The backend flips the session's
+ * processingStatus to `state="processing"` + `stage="organizing"` while a real Pro synthesis job is
+ * in flight (even though the deterministic baseline already reads complete), so the report stays
+ * readable while we signal AI is still working. Never set for Basic / gateway-less (no such job).
+ */
+export const AI_ORGANIZING_NOTICE = "Organizing with AI — this report will update shortly";
+
+export function sessionAiOrganizing(session: CaptureSession | null): boolean {
+  return session?.processingStatus?.state === "processing" && session?.processingStatus?.stage === "organizing";
+}
+
 export function reportUpdatingLabel(session: CaptureSession | null): string {
+  // While AI is organizing, the captures are already in the baseline — the work is the synthesis,
+  // not folding captures in — so show the calm AI notice instead of a per-capture "Updating for…".
+  if (sessionAiOrganizing(session)) return AI_ORGANIZING_NOTICE;
   const pending = (session?.items || []).filter((item) => {
     const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
     return status === "pending" || status === "updating" || item.status === "processing" || item.status === "uploaded";
@@ -529,6 +544,7 @@ export function captionDisplay(item: CaptureItem): string {
 
 export function nonTechnicalStageLabel(status?: SessionProcessingStatus) {
   if (!status || status.state !== "processing") return "Report is staying current with the latest captures.";
+  if (status.stage === "organizing") return AI_ORGANIZING_NOTICE;
   if (status.stage === "transcripts") return "Reading the source captures.";
   if (status.stage === "report") return "Drafting the clinical report.";
   if (status.stage === "findings") return "Organizing key details.";
@@ -566,6 +582,11 @@ export function workspaceReportUpdatedLabel(value?: string | null) {
 }
 
 export function sessionSummaryStatusChip(session: CaptureSession | null) {
+  // AI still organizing wins over "Complete": the deterministic baseline is current, but the
+  // synthesized report is still on its way, so the header reads "Organizing" (not a false Complete).
+  if (sessionAiOrganizing(session)) {
+    return { checked: false, label: "Organizing", tone: "info" };
+  }
   if (session?.complete) {
     return { checked: true, label: "Complete", tone: "success" };
   }
@@ -704,6 +725,24 @@ export function workspaceTreatments(session: CaptureSession | null): SessionTrea
       carriedForward: entry.carriedForward === true,
     }))
     .filter((treatment) => treatment.area || treatment.product);
+}
+
+/**
+ * Clinician-confirmation items from the Pro synthesis (extractedMetadata.treatment_review), which
+ * already folds in synthesis-level uncertainties[]. Drives the report's "Needs your confirmation"
+ * chips. Empty for Basic / when synthesis produced nothing to confirm.
+ */
+export function sessionTreatmentReview(session: CaptureSession | null): SessionTreatmentReview[] {
+  const raw = metadataRecord(session?.extractedMetadata).treatment_review;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+    .map((entry) => ({
+      category: metadataText(entry.category) || "ambiguous",
+      reason: metadataText(entry.reason),
+      product: metadataText(entry.product) || null,
+    }))
+    .filter((item) => item.reason);
 }
 
 /** A one-line label for a treatment (verbatim quantity/brand/lot preserved). */

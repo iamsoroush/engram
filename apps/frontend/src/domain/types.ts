@@ -138,6 +138,17 @@ export type SessionTreatment = {
   carriedForward?: boolean;
 };
 
+/**
+ * A clinician-confirmation item from the Pro synthesis (session.extractedMetadata.treatment_review).
+ * Folds in synthesis-level uncertainties[] (as `ambiguous`) plus per-treatment review flags
+ * (carried-forward dose, low confidence, missing lot, ambiguous correction).
+ */
+export type SessionTreatmentReview = {
+  category: "ambiguous" | "carried_forward" | "low_confidence" | "missing_lot" | string;
+  reason: string;
+  product?: string | null;
+};
+
 export type SessionSummaries = {
   schemaVersion?: string;
   status: "empty" | "partial" | "processed" | "verified" | string;
