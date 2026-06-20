@@ -1,7 +1,7 @@
 // Shared presentational cards/pills for the Clinical Memory screens.
 // Extracted verbatim from MemoryScreens.tsx (no behavior change).
 import React from "react";
-import type { PatientMemoryHistory } from "../../../domain/appTypes";
+import type { LineupCard as LineupCardModel, LineupCardHero, PatientMemoryHistory } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
 import { Badge, Button, Card } from "../../../shared/ui/primitives";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
@@ -446,6 +446,83 @@ export function PatientHistoryBlock({
             )}
         <span className="memory-sweep" aria-hidden="true" />
       </div>
+    </section>
+  );
+}
+
+// The hero photo on the line-up card: a deterministic single glance (most recent clear after-photo
+// of the primary area). Resolves the capture's content endpoint to a blob URL, same as the
+// before/after thumbs.
+function LineupHero({ hero, onResolveFile }: { hero: LineupCardHero; onResolveFile?: (endpoint: string) => Promise<string> }) {
+  const [url, setUrl] = React.useState("");
+  React.useEffect(() => {
+    let cancelled = false;
+    const endpoint = hero.contentEndpoint || hero.fileEndpoint;
+    if (!endpoint || !onResolveFile) return;
+    void onResolveFile(endpoint)
+      .then((resolved) => {
+        if (!cancelled) setUrl(resolved);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [hero.contentEndpoint, hero.fileEndpoint, onResolveFile]);
+  return (
+    <span className="lineup-card-hero">
+      {url ? <img alt={hero.caption || "Most recent photo"} src={url} /> : <span className="lineup-card-hero-skeleton" aria-hidden="true" />}
+    </span>
+  );
+}
+
+// The compact, glanceable line-up card (Pro only) at the top of the worklist recap. ≤2 short
+// paragraphs (story so far / right now), a deterministic hero photo, a "since last visit" delta,
+// and surfaced flags. Same ✨ spark + updating→ready treatment as the other memory artifacts.
+export function LineupCard({
+  card,
+  isPro,
+  onResolveFile,
+}: {
+  card?: LineupCardModel | null;
+  isPro: boolean;
+  onResolveFile?: (endpoint: string) => Promise<string>;
+}) {
+  if (!isPro || !card) return null;
+  const flags = card.flags || [];
+  const hasContent = Boolean(card.storySoFar || card.rightNow || card.sinceLastVisit || flags.length || card.hero);
+  if (!hasContent) return null;
+  const updating = card.status === "updating";
+  return (
+    <section className={`lineup-card${updating ? " updating" : ""}`} aria-label="Line-up recap">
+      <div className="lineup-card-head">
+        <MemorySpark working={updating} />
+        <h3>At a glance</h3>
+        {updating ? <MemoryUpdatingPill /> : null}
+      </div>
+      <div className="lineup-card-body">
+        {card.hero ? <LineupHero hero={card.hero} onResolveFile={onResolveFile} /> : null}
+        <div className="lineup-card-copy" key={`${card.storySoFar}|${card.rightNow}`}>
+          {card.storySoFar ? (
+            <p className="lineup-card-story" dir={memoryTextDirection(card.storySoFar)}>{card.storySoFar}</p>
+          ) : null}
+          {card.rightNow ? (
+            <p className="lineup-card-now" dir={memoryTextDirection(card.rightNow)}>{card.rightNow}</p>
+          ) : null}
+          {card.sinceLastVisit ? (
+            <p className="lineup-card-delta" dir={memoryTextDirection(card.sinceLastVisit)}>{card.sinceLastVisit}</p>
+          ) : null}
+          {flags.length ? (
+            <ul className="lineup-card-flags" aria-label="Flags to remember">
+              {flags.map((flag, index) => (
+                <li key={`${flag.kind}-${index}`} className={`lineup-flag lineup-flag-${flag.kind}`} dir={memoryTextDirection(flag.label)}>
+                  {flag.label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+      <span className="memory-sweep" aria-hidden="true" />
     </section>
   );
 }

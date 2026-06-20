@@ -1,7 +1,7 @@
 """Capture-chain ordering, Celery dispatch, job creation, and patient-memory dispatch."""
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
+from app.config import settings
 from app.models import (
     AiJob,
     AiJobStatus,
@@ -18,6 +19,7 @@ from app.models import (
     CaptureStatus,
     CaptureType,
     Patient,
+    PatientStatus,
     Session,
     SessionStatus,
 )
@@ -30,6 +32,7 @@ from app.services.patient_memory_intelligence import (
     mark_patient_memory_updating,
     patient_has_active_memory_job,
     patient_has_pending_capture_jobs,
+    patient_memory_is_stale,
 )
 from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY
 from app.services.session_contracts import session_is_complete
@@ -41,6 +44,15 @@ from app.services.ai_jobs.config import tenant_report_language, tenant_tier
 from app.services.ai_jobs.recovery import ai_job_retryable, schedule_retry
 
 logger = logging.getLogger(__name__)
+
+# Celery (Redis) priority tiers for patient-memory refreshes — lower number is consumed first. The
+# three triggers map to three classes, so a queue backlog always serves the more-imminently-viewed
+# patient first: a patient just OPENED (1st class) > a patient just LINED UP (2nd class) > the
+# background quiescence sweep of patients nobody touched (3rd class). Capture/session jobs keep the
+# default 0, so interactive work is never delayed by a memory backlog.
+READ_DISPATCH_PRIORITY = 0      # 1st class: patient opened + stale
+LINEUP_DISPATCH_PRIORITY = 3    # 2nd class: patient added to the line-up
+SWEEP_DISPATCH_PRIORITY = 6     # 3rd class: background quiescence sweep
 
 TASK_NAME_BY_JOB_TYPE = {
     AiJobType.audio_capture_process: "ai_engine.process_audio_capture",
@@ -70,6 +82,9 @@ __all__ = [
     "dispatch_session_processing_job",
     "dispatch_patient_memory_job",
     "maybe_dispatch_patient_memory_job",
+    "maybe_refresh_stale_patient_memory",
+    "LINEUP_DISPATCH_PRIORITY",
+    "sweep_stale_patient_memory",
     "patient_memory_job_payload",
     "complete_patient_memory_worker_job",
     "enqueue_capture_processing_job",
@@ -385,8 +400,12 @@ def dispatch_patient_memory_job(db: DbSession, job: AiJob) -> None:
         "last_dispatched_at": now.isoformat(),
         "queue": "ai_jobs",
     }
+    # A background (sweep) refresh carries a lower Celery priority so it never delays interactive work
+    # (default priority 0 = highest). The priority is stored on the job so recovery re-dispatch keeps it.
+    priority = (job.result_metadata or {}).get("dispatch_priority")
+    send_kwargs = {"priority": priority} if isinstance(priority, int) else {}
     try:
-        celery_app.send_task(task_name, args=[str(job.id)], task_id=str(job.id), queue="ai_jobs")
+        celery_app.send_task(task_name, args=[str(job.id)], task_id=str(job.id), queue="ai_jobs", **send_kwargs)
         logger.info("Queued patient memory job", extra={"job_id": str(job.id), "patient_id": str(job.patient_id)})
         db.commit()
     except Exception as exc:
@@ -403,13 +422,15 @@ def maybe_dispatch_patient_memory_job(
     patient_id: uuid.UUID | None,
     created_by_user_id: uuid.UUID | None = None,
     trigger_session: Session | None = None,
+    priority: int = READ_DISPATCH_PRIORITY,
 ) -> None:
     """Dispatch the combined patient summary+history job (Pro only) once the data has settled.
 
     Gated on "report complete": the triggering session (if any) must be complete — captures
     processed, a patient assigned, and the report current — and no capture job may still be in
     flight for the patient. Coalesces bursts via a per-patient dedup. Marks the patient `updating`
-    only when it will actually dispatch, so Pro memory is never left stuck.
+    only when it will actually dispatch, so Pro memory is never left stuck. ``priority`` sets the
+    Celery (Redis) queue tier — 0 (open) is served before 3 (line-up) before 6 (background sweep).
     """
     if patient_id is None:
         return
@@ -427,18 +448,102 @@ def maybe_dispatch_patient_memory_job(
     if patient is None:
         return
     mark_patient_memory_updating(db, patient_id)
+    result_metadata: dict[str, Any] = {"queue": "ai_jobs"}
+    if priority > 0:
+        # 0 routes to the base (highest) queue with no special handling; only store a real demotion.
+        result_metadata["dispatch_priority"] = priority
     job = AiJob(
         tenant_id=tenant_id,
         patient_id=patient_id,
         job_type=AiJobType.patient_memory,
         status=AiJobStatus.queued,
         created_by_user_id=created_by_user_id,
-        result_metadata={"queue": "ai_jobs"},
+        result_metadata=result_metadata,
     )
     db.add(job)
     db.commit()
     db.refresh(job)
     dispatch_patient_memory_job(db, job)
+
+
+def maybe_refresh_stale_patient_memory(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    patient: Patient,
+    sessions: list[Session],
+    created_by_user_id: uuid.UUID | None = None,
+    priority: int = READ_DISPATCH_PRIORITY,
+) -> bool:
+    """Refresh a patient's Pro memory when a visit changed since the last completed build.
+
+    The interactive trigger shared by the two "a human is about to look at this patient" events: the
+    patient page / line-up recap **opens** (1st class, ``priority`` 0) and the patient is **added to
+    the line-up** (2nd class, ``priority`` 3). Memory is NOT refreshed on session completion — only
+    when staleness meets one of these reads, plus the background sweep (3rd class). Dispatch
+    self-gates on capability (Pro only), in-flight capture jobs, and the per-patient dedup, so Basic
+    patients, fresh memory, and already-refreshing patients are a no-op. Returns whether a refresh
+    was kicked off (so the caller can reflect the updating→ready lifecycle).
+    """
+    if not patient_memory_is_stale(patient, sessions):
+        return False
+    before = patient_has_active_memory_job(db, tenant_id=tenant_id, patient_id=patient.id)
+    maybe_dispatch_patient_memory_job(
+        db, tenant_id=tenant_id, patient_id=patient.id, created_by_user_id=created_by_user_id, priority=priority
+    )
+    return not before and patient_has_active_memory_job(db, tenant_id=tenant_id, patient_id=patient.id)
+
+
+def sweep_stale_patient_memory(
+    db: DbSession,
+    *,
+    now: datetime | None = None,
+    idle_seconds: int | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    """Quiescence sweep: refresh Pro patient memory for visits that have gone quiet *and* stale.
+
+    The background half of the decoupled trigger model, run on the EXISTING Celery-beat recovery
+    loop (no new infra) — it catches stale patients nobody happened to open. Picks active patients
+    whose latest visit activity has been idle for ``idle_seconds`` (default ~30 min, so memory is
+    never rebuilt mid-visit) and whose memory is stale, newest-idle first, capped at ``limit`` per
+    beat (the rest drain on later beats). Dispatch self-gates on capability + in-flight + dedup, so
+    Basic and already-refreshing patients are skipped and there is ≤1 job per patient per window.
+    """
+    moment = now or utc_now()
+    idle = idle_seconds if idle_seconds is not None else settings.patient_memory_quiescence_seconds
+    cap = limit if limit is not None else settings.patient_memory_sweep_limit
+    cutoff = moment - timedelta(seconds=idle)
+    latest_activity = func.max(func.coalesce(Session.updated_at, Session.captured_at, Session.created_at))
+    patients = list(
+        db.execute(
+            select(Patient)
+            .join(Session, (Session.patient_id == Patient.id) & (Session.tenant_id == Patient.tenant_id))
+            .where(Patient.status == PatientStatus.active)
+            .group_by(Patient.id)
+            .having(latest_activity <= cutoff)
+            .order_by(latest_activity.desc())
+            .limit(max(cap, 0))
+        ).scalars()
+    )
+    dispatched = 0
+    for patient in patients:
+        if patient_has_active_memory_job(db, tenant_id=patient.tenant_id, patient_id=patient.id):
+            continue
+        sessions = list(
+            db.execute(
+                select(Session).where(Session.tenant_id == patient.tenant_id, Session.patient_id == patient.id)
+            ).scalars()
+        )
+        if not patient_memory_is_stale(patient, sessions):
+            continue
+        # 3rd class: lowest Celery priority, so a sweep backlog never delays an opened/lined-up patient.
+        maybe_dispatch_patient_memory_job(
+            db, tenant_id=patient.tenant_id, patient_id=patient.id, priority=SWEEP_DISPATCH_PRIORITY
+        )
+        if patient_has_active_memory_job(db, tenant_id=patient.tenant_id, patient_id=patient.id):
+            dispatched += 1
+    return {"swept": len(patients), "dispatched": dispatched}
 
 
 def patient_memory_job_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]) -> dict[str, Any]:

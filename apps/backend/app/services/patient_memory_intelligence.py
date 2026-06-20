@@ -24,6 +24,7 @@ from transcription/report language) will localize this; wiring that is deferred.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -110,6 +111,14 @@ def _fmt_time(value: datetime | None) -> str | None:
 def _ordered(sessions: list[Session]) -> list[Session]:
     """Newest-first, by visit time."""
     return sorted(sessions, key=lambda s: _session_sort_date(s) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
+
+def _clip_sentences(text: str | None, max_sentences: int) -> str:
+    """Keep at most ``max_sentences`` sentences (the compact line-up card stays glanceable)."""
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    parts = re.split(r"(?<=[.!?。؟])\s+", text.strip())
+    return " ".join(parts[:max_sentences]).strip()
 
 
 # --------------------------------------------------------------------------- read helpers
@@ -200,6 +209,30 @@ def memory_updated_at(patient: Patient) -> str | None:
     return mem.get("updated_at") if mem and isinstance(mem.get("updated_at"), str) else None
 
 
+def _session_changed_at(session: Session) -> datetime | None:
+    """When a session's content last changed (for memory-staleness comparison)."""
+    return session.updated_at or session.created_at or session.captured_at
+
+
+def patient_memory_is_stale(patient: Patient, sessions: list[Session]) -> bool:
+    """Whether a visit changed since this patient's memory was last *built* (→ refresh is due).
+
+    Drives both triggers that replaced the per-capture dispatch: the read-trigger (patient page /
+    line-up opens) and the quiescence sweep. "Built" means a completed memory write — its
+    ``updated_at`` is only stamped on finalize/apply, never while ``updating`` — so a refresh that
+    is mid-flight still reads as stale, and the per-patient dedup (not this check) prevents a
+    duplicate dispatch. A patient with no visits is never stale; a patient with visits but no
+    memory yet always is.
+    """
+    if not sessions:
+        return False
+    last_built = _parse_iso(memory_updated_at(patient))
+    if last_built is None:
+        return True
+    latest_change = max((changed for session in sessions if (changed := _session_changed_at(session))), default=None)
+    return latest_change is not None and latest_change > last_built
+
+
 # --------------------------------------------------------------------------- content generators
 
 
@@ -241,6 +274,9 @@ def generate_patient_memory(
             "visits": content.get("visits", []),
             "source": source,
         },
+        # The compact line-up-card projection (Pro only). Deterministic here; the AI job overwrites
+        # the text parts. hero/delta/flags are layered on at read time by the detail endpoint.
+        "card": content.get("card") if is_pro else None,
     }
 
 
@@ -259,6 +295,11 @@ def _pro_content(
                 {"label": "Worth remembering", "body": "Captures from the first visit will start building this history."},
                 {"label": "Right now", "body": "Start a visit to begin building this memory."},
             ],
+            "card": {
+                "storySoFar": "No visit has been captured yet.",
+                "rightNow": "Start a visit to begin building this memory.",
+                "flags": [],
+            },
         }
     latest_date = _fmt_date(_session_sort_date(latest))
     first_date = _fmt_date(_session_sort_date(first))
@@ -289,6 +330,11 @@ def _pro_content(
             {"label": "Worth remembering", "body": remember},
             {"label": "Right now", "body": now_line},
         ],
+        "card": {
+            "storySoFar": _clip_sentences(story, 2),
+            "rightNow": _clip_sentences(now_line, 2),
+            "flags": [],
+        },
     }
 
 
@@ -388,6 +434,7 @@ def finalize_patient_memory_if_due(
         "mode": content["mode"],
         "summary": content["summary"],
         "history": content["history"],
+        "card": _coerce_card(content.get("card")) if tier == "pro" else None,
         "source": content["source"],
         "updated_at": _iso(moment),
     }
@@ -395,6 +442,27 @@ def finalize_patient_memory_if_due(
 
 
 # --------------------------------------------------------------------------- real AI job (Pro)
+
+
+# Treatment fields fed to the memory model: the queryable core that grounds recall ("last used
+# Voluma 0.3 mL, left cheek"). quantityText is kept verbatim (original script) for display/audit.
+_TREATMENT_BRIEF_KEYS = ("area", "product", "brand", "quantity", "unit", "quantityText", "lot")
+
+
+def _session_treatments(session: Session, *, limit: int = 8) -> list[dict[str, Any]]:
+    """Compact per-visit treatments (from Job-3 ``extracted_metadata.treatments``) for grounding."""
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    raw = metadata.get("treatments")
+    if not isinstance(raw, list):
+        return []
+    treatments: list[dict[str, Any]] = []
+    for item in raw[:limit]:
+        if not isinstance(item, dict):
+            continue
+        compact = {key: item.get(key) for key in _TREATMENT_BRIEF_KEYS if item.get(key) not in (None, "")}
+        if compact:
+            treatments.append(compact)
+    return treatments
 
 
 def _session_brief(session: Session) -> dict[str, Any]:
@@ -407,6 +475,8 @@ def _session_brief(session: Session) -> dict[str, Any]:
         "captureCount": _capture_count(session),
         "latestType": metadata.get("latest_capture_type") if isinstance(metadata.get("latest_capture_type"), str) else None,
         "summary": summary.strip() if isinstance(summary, str) and summary.strip() else None,
+        # Each visit's performed treatments, so recall is grounded in real doses/products/areas.
+        "treatments": _session_treatments(session),
     }
 
 
@@ -447,6 +517,7 @@ def build_patient_memory_job_input(
             "summary": fallback["summary"],
             "history": fallback["history"],
             "source": fallback["source"],
+            "card": fallback.get("card"),
         },
     }
 
@@ -469,6 +540,65 @@ def _coerce_history(history: Any, tier: str) -> dict[str, Any]:
     }
 
 
+# Surfaced line-up flags a clinician should see at a glance; anything else is normalized to "caution".
+_FLAG_KINDS = frozenset({"allergy", "consent", "preference", "caution"})
+
+
+def stored_card(patient: Patient) -> dict[str, Any] | None:
+    """Return the patient's persisted line-up-card text (storySoFar/rightNow/flags), if any."""
+    mem = _memory(patient)
+    card = mem.get("card") if mem else None
+    return card if isinstance(card, dict) else None
+
+
+def _coerce_flags(value: Any) -> list[dict[str, str]]:
+    flags: list[dict[str, str]] = []
+    for item in value if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", "")).strip()
+        if not label:
+            continue
+        kind = str(item.get("kind", "")).strip().lower()
+        flags.append({"kind": kind if kind in _FLAG_KINDS else "caution", "label": label[:120]})
+    return flags[:4]
+
+
+def _coerce_card(card: Any, *, fallback: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Normalize a (model- or deterministically-authored) line-up card; None when it carries nothing.
+
+    Enforces the compact contract here so a verbose model never leaks into the glanceable card:
+    ``storySoFar``/``rightNow`` are each clipped to 2 sentences. Empty fields fall back to the
+    deterministic card so the Pro line-up is never blank.
+    """
+    card = card if isinstance(card, dict) else {}
+    fallback = fallback if isinstance(fallback, dict) else {}
+    story = _clip_sentences(card.get("storySoFar"), 2) or _clip_sentences(fallback.get("storySoFar"), 2)
+    right_now = _clip_sentences(card.get("rightNow"), 2) or _clip_sentences(fallback.get("rightNow"), 2)
+    flags = _coerce_flags(card.get("flags")) or _coerce_flags(fallback.get("flags"))
+    if not (story or right_now or flags):
+        return None
+    return {"storySoFar": story, "rightNow": right_now, "flags": flags}
+
+
+def card_from_history(history: Any) -> dict[str, Any] | None:
+    """Derive a deterministic line-up card from a stored history brief (read-time fallback)."""
+    history = history if isinstance(history, dict) else {}
+    sections = history.get("sections") if isinstance(history.get("sections"), list) else []
+    by_label = {
+        str(section.get("label", "")).strip().lower(): section.get("body")
+        for section in sections
+        if isinstance(section, dict)
+    }
+    return _coerce_card(
+        {
+            "storySoFar": by_label.get("story so far") or history.get("snapshot"),
+            "rightNow": by_label.get("right now"),
+            "flags": [],
+        }
+    )
+
+
 def apply_patient_memory_output(
     patient: Patient,
     output: dict[str, Any],
@@ -481,15 +611,19 @@ def apply_patient_memory_output(
     summary = output.get("summary")
     history = output.get("history")
     source = output.get("source") if isinstance(output.get("source"), str) and output.get("source") else None
+    card = output.get("card")
     if not isinstance(summary, str) or not summary.strip() or not isinstance(history, dict):
         # Defensive: the worker is expected to fall back to deterministic content, but guard anyway.
         fallback = generate_patient_memory(patient, [], tier, now=moment)
-        summary, history, source = fallback["summary"], fallback["history"], fallback["source"]
+        summary, history, source, card = fallback["summary"], fallback["history"], fallback["source"], fallback.get("card")
+    coerced_history = _coerce_history(history, tier)
     patient.memory = {
         "status": "ready",
         "mode": "pro" if tier == "pro" else "basic",
         "summary": summary.strip(),
-        "history": _coerce_history(history, tier),
+        "history": coerced_history,
+        # Line-up card text is a Pro artifact; deterministic-history fallback keeps it populated.
+        "card": _coerce_card(card, fallback=card_from_history(coerced_history)) if tier == "pro" else None,
         "source": source or (MOCK_AI_SOURCE if tier == "pro" else MOCK_DETERMINISTIC_SOURCE),
         "updated_at": _iso(moment),
     }

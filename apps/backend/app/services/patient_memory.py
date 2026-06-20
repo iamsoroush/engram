@@ -1,4 +1,5 @@
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from app.auth.dependencies import CurrentPrincipal
 from app.models import (
     Capture,
     CaptureStatus,
+    CaptureType,
     Patient,
     PatientIdentifier,
     PatientStatus,
@@ -20,17 +22,20 @@ from app.services.attribution import attribution_payload
 from app.services.patient_identity import normalize_identifier, search_keys_for_query
 from app.services.patient_memory_intelligence import (
     can_finalize_on_read,
+    card_from_history,
     finalize_patient_memory_if_due,
     generate_patient_memory,
     memory_source,
     memory_status,
     memory_updated_at,
     persisted_summary,
+    stored_card,
     stored_history,
     tenant_tier,
 )
 from app.services.patients import get_patient, patient_payload
 from app.services.session_contracts import session_is_complete
+from app.services.session_processing import capture_is_out_of_context
 from app.services.sessions import parse_uuid
 
 # "Active" means a visit that is genuinely live right now — being captured or processed. The
@@ -462,6 +467,183 @@ def _timeline_group_label(value: datetime | None) -> str:
     return "Earlier"
 
 
+# --------------------------------------------------------------------------- line-up card
+
+# Pairing attributes (region/phase/isProductLabel) come from the Pro caption job (Job 2). They may
+# be absent (no gateway / Basic / caption track not yet run), in which case hero selection falls back
+# to "latest clear photo" — still fully deterministic, never an LLM call.
+def _photo_attrs(capture: Capture) -> dict[str, Any]:
+    metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+    caption = metadata.get("caption") if isinstance(metadata.get("caption"), dict) else {}
+    for key in ("pairing", "attributes"):
+        attrs = caption.get(key)
+        if isinstance(attrs, dict):
+            return attrs
+    return {}
+
+
+def _photo_region(capture: Capture) -> str | None:
+    region = _photo_attrs(capture).get("region")
+    return region.strip().lower() if isinstance(region, str) and region.strip() else None
+
+
+def _photo_phase(capture: Capture) -> str | None:
+    phase = _photo_attrs(capture).get("phase")
+    return phase.strip().lower() if isinstance(phase, str) and phase.strip() else None
+
+
+def _is_product_label(capture: Capture) -> bool:
+    return _photo_attrs(capture).get("isProductLabel") is True
+
+
+def _photo_caption_text(capture: Capture) -> str | None:
+    metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+    caption = metadata.get("caption") if isinstance(metadata.get("caption"), dict) else {}
+    text = caption.get("text")
+    return text.strip() if isinstance(text, str) and text.strip() else None
+
+
+def _hero_capture(db: DbSession, tenant_id: uuid.UUID, session_ids: list[uuid.UUID]) -> Capture | None:
+    """Deterministically pick the patient's hero photo — NO LLM.
+
+    Rule: the most recent clear *after*-photo of the primary area (the most-photographed region),
+    else the most recent after-photo, else the most recent photo of the primary area, else the
+    latest photo. Out-of-context shots and product-label photos are never the hero.
+    """
+    if not session_ids:
+        return None
+    captures = db.execute(
+        select(Capture).where(
+            Capture.tenant_id == tenant_id,
+            Capture.session_id.in_(session_ids),
+            Capture.capture_type == CaptureType.photo,
+            Capture.status != CaptureStatus.deleted,
+            Capture.source_artifact_id.is_not(None),
+        )
+    ).scalars().all()
+    photos = [c for c in captures if not capture_is_out_of_context(c) and not _is_product_label(c)]
+    if not photos:
+        return None
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    photos.sort(key=lambda c: (c.captured_at or c.created_at or floor), reverse=True)  # newest first
+    regions = Counter(region for c in photos if (region := _photo_region(c)))
+    primary = regions.most_common(1)[0][0] if regions else None
+
+    def first(predicate) -> Capture | None:
+        return next((c for c in photos if predicate(c)), None)
+
+    return (
+        (first(lambda c: _photo_phase(c) == "after" and _photo_region(c) == primary) if primary else None)
+        or first(lambda c: _photo_phase(c) == "after")
+        or (first(lambda c: _photo_region(c) == primary) if primary else None)
+        or photos[0]
+    )
+
+
+def _hero_payload(db: DbSession, tenant_id: uuid.UUID, sessions: list[Session]) -> dict[str, Any] | None:
+    hero = _hero_capture(db, tenant_id, [session.id for session in sessions])
+    if hero is None:
+        return None
+    return {
+        "captureId": str(hero.id),
+        "fileEndpoint": f"/api/v1/captures/{hero.id}/file",
+        "contentEndpoint": f"/api/v1/captures/{hero.id}/file-content",
+        "capturedAt": _iso(hero.captured_at),
+        "caption": _photo_caption_text(hero),
+    }
+
+
+def _fmt_num(value: Any) -> str:
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value)
+
+
+def _treatment_phrase(treatment: dict[str, Any]) -> str | None:
+    """A glanceable "Voluma 0.3 mL, left cheek" from one extracted treatment (verbatim quantity)."""
+    name = treatment.get("product") or treatment.get("brand")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    quantity = treatment.get("quantityText")
+    if not (isinstance(quantity, str) and quantity.strip()) and treatment.get("quantity") is not None:
+        unit = treatment.get("unit")
+        quantity = f"{_fmt_num(treatment['quantity'])}{(' ' + unit) if isinstance(unit, str) and unit else ''}"
+    phrase = f"{name.strip()} {quantity.strip()}" if isinstance(quantity, str) and quantity.strip() else name.strip()
+    area = treatment.get("area")
+    return f"{phrase}, {area.strip()}" if isinstance(area, str) and area.strip() else phrase
+
+
+def _session_treatment_phrases(session: Session, limit: int = 2) -> list[str]:
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    raw = metadata.get("treatments")
+    phrases: list[str] = []
+    for item in raw if isinstance(raw, list) else []:
+        if isinstance(item, dict) and (phrase := _treatment_phrase(item)):
+            phrases.append(phrase)
+        if len(phrases) >= limit:
+            break
+    return phrases
+
+
+def _since_last_visit_line(sessions: list[Session]) -> str | None:
+    """Deterministic "since last visit" delta for the line-up card (grounded in real treatments)."""
+    ordered = sorted(
+        sessions,
+        key=lambda s: _session_sort_date(s) or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    if not ordered:
+        return None
+    latest = ordered[0]
+    treatments = _session_treatment_phrases(latest)
+    detail = "; ".join(treatments) if treatments else None
+    if len(ordered) == 1:
+        date_text = _fmt_date(_session_sort_date(latest))
+        return f"First visit on record · {date_text}." + (f" {detail}." if detail else "")
+    prior_date = _session_sort_date(ordered[1])
+    prior_text = _fmt_date(prior_date)
+    if detail is None:
+        count = _capture_count(latest.extracted_metadata or {})
+        detail = f"{count} new capture{'s' if count != 1 else ''}" if count else "visit captured"
+    return f"Since last visit ({prior_text}): {detail}."
+
+
+def _fmt_date(value: datetime | None) -> str:
+    if value is None:
+        return "recently"
+    value = value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    return f"{value:%b} {value.day}"
+
+
+def build_lineup_card(
+    db: DbSession,
+    tenant_id: uuid.UUID,
+    patient: Patient,
+    sessions: list[Session],
+    tier: str,
+) -> dict[str, Any] | None:
+    """Assemble the compact, glanceable line-up card (Pro only) for the worklist recap.
+
+    Text (storySoFar/rightNow/flags) is the AI job's compact projection — persisted on the patient,
+    with a deterministic history-derived fallback so it is never blank. heroCaptureId and the
+    "since last visit" delta are computed deterministically here (no LLM), so they stay fresh against
+    the current captures even between memory rebuilds. ``status`` mirrors the memory lifecycle so the
+    card can animate updating→ready.
+    """
+    if tier != "pro":
+        return None
+    card = stored_card(patient) or card_from_history(stored_history(patient)) or {}
+    return {
+        "storySoFar": card.get("storySoFar") or "",
+        "rightNow": card.get("rightNow") or "",
+        "flags": card.get("flags") or [],
+        "sinceLastVisit": _since_last_visit_line(sessions),
+        "hero": _hero_payload(db, tenant_id, sessions),
+        "status": memory_status(patient),
+        "updatedAt": memory_updated_at(patient),
+    }
+
+
 def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patient_id: str) -> dict[str, Any]:
     """Return one patient memory summary with timeline sessions."""
     from app.services.caseload import patient_in_caseload
@@ -475,8 +657,22 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         .where(Session.tenant_id == principal.tenant_id, Session.patient_id == parse_uuid(patient_id, "patient_id"))
         .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
     ).scalars().all()
-    capture_counts = _capture_counts(db, principal.tenant_id, [session.id for session in sessions])
     tier = tenant_tier(db, principal.tenant_id)
+    # 1st-class refresh: opening the patient page / line-up recap while a visit changed since the last
+    # build kicks the AI rebuild now (updating→ready), at the highest queue priority. Self-gates to
+    # Pro + dedups; no-op otherwise.
+    from app.services.ai_jobs.orchestration import maybe_refresh_stale_patient_memory
+
+    maybe_refresh_stale_patient_memory(
+        db,
+        tenant_id=principal.tenant_id,
+        patient=patient,
+        sessions=list(sessions),
+        created_by_user_id=principal.user_id,
+    )
+    capture_counts = _capture_counts(db, principal.tenant_id, [session.id for session in sessions])
+    # Safety net: deterministically finalize a stuck `updating` memory when nothing is in flight (so
+    # Pro memory is never left spinning). No-op once the read-trigger above has a job in flight.
     if can_finalize_on_read(db, tenant_id=principal.tenant_id, patient=patient, tier=tier) and finalize_patient_memory_if_due(
         db, patient, list(sessions), tier
     ):
@@ -542,4 +738,6 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         "sessions": timeline_sessions,
         "groups": groups,
         "history": history,
+        # Compact, glanceable line-up card for the worklist recap (Pro only; None for Basic).
+        "lineupCard": build_lineup_card(db, principal.tenant_id, patient, list(sessions), tier),
     }

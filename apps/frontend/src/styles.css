@@ -9358,6 +9358,88 @@ small {
 }
 .last-visit-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .last-visit-thumbs-note { font-size: 0.68rem; color: var(--color-muted); }
+
+/* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
+.lineup-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--color-surface-soft);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.lineup-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.lineup-card-head h3 {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.lineup-card-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.lineup-card-hero,
+.lineup-card-hero-skeleton {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 84px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.lineup-card-hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lineup-card-hero-skeleton {
+  display: block;
+  background: linear-gradient(100deg, var(--color-surface-soft) 30%, var(--color-surface) 50%, var(--color-surface-soft) 70%);
+}
+.lineup-card-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lineup-card-story { margin: 0; font-size: 0.83rem; line-height: 1.45; color: var(--color-text); }
+.lineup-card-now { margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--color-text-soft); }
+.lineup-card-delta {
+  margin: 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.lineup-card-flags {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.lineup-flag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+.lineup-flag-allergy { border-color: #e7b4b4; background: #fbeaea; color: #8a2b2b; }
+.lineup-flag-consent { border-color: #cdb6e8; background: #f1e9fb; color: #5a3a8a; }
+.lineup-flag-preference { border-color: #b6d9e8; background: #e9f4fb; color: #2b5d8a; }
+.lineup-flag-caution { border-color: #e8d3a6; background: #fbf3e0; color: #8a6a2b; }
+.lineup-card.updating .lineup-card-copy { opacity: 0.72; }
+
 .note-prefill-hint {
   margin: 0;
   font-size: 0.74rem;

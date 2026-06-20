@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import MembershipRole, MembershipStatus, Patient, TenantMembership, User, WorklistEntry
+from app.models import MembershipRole, MembershipStatus, Patient, Session, TenantMembership, User, WorklistEntry
 from app.services.attribution import attribution_payload
 from app.services.sessions import parse_uuid
 
@@ -118,6 +118,24 @@ def create_worklist_entry(
         target_type="worklist_entry",
         target_id=entry.id,
         details={"patient_id": str(patient_uuid), "clinician_user_id": str(clinician_uuid)},
+    )
+    # 2nd-class memory refresh: a human just queued this patient, so refresh stale Pro memory now (at
+    # line-up priority — below an actively-opened patient, above the background sweep) so the brief is
+    # ready when the clinician taps through to the recap. Self-gates to Pro + dedups; Basic no-ops.
+    from app.services.ai_jobs.orchestration import LINEUP_DISPATCH_PRIORITY, maybe_refresh_stale_patient_memory
+
+    patient_sessions = list(
+        db.execute(
+            select(Session).where(Session.tenant_id == principal.tenant_id, Session.patient_id == patient_uuid)
+        ).scalars()
+    )
+    maybe_refresh_stale_patient_memory(
+        db,
+        tenant_id=principal.tenant_id,
+        patient=patient,
+        sessions=patient_sessions,
+        created_by_user_id=principal.user_id,
+        priority=LINEUP_DISPATCH_PRIORITY,
     )
     db.commit()
     db.refresh(entry)
