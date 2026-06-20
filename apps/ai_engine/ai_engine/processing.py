@@ -1920,11 +1920,17 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
             f"The clinical setting is a {label}.",
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
-                "Produce a warm, assistant-voiced brief — natural sentences, never a form or bullet dump. "
-                "Synthesize across visits, but do NOT invent clinical facts, names, products, or doses "
-                "that are not present in the briefs. Do NOT include the patient's name in any field — it "
-                "is already shown beside this text in the UI; use pronouns or omit the subject. "
-                "Keep the card summary to 1-2 sentences. "
+                "Each visit brief may include the treatments performed that visit (product, dose, area, "
+                "lot) — use them to ground recall in specifics (e.g. 'last visit: Voluma 0.3 mL, left "
+                "cheek'), quoting doses verbatim. Produce a warm, assistant-voiced brief — natural "
+                "sentences, never a form or bullet dump. Synthesize across visits, but do NOT invent "
+                "clinical facts, names, products, or doses that are not present in the briefs. Do NOT "
+                "include the patient's name in any field — it is already shown beside this text in the "
+                "UI; use pronouns or omit the subject. Keep the card summary to 1-2 sentences. "
+                "Also produce a compact 'card' for the line-up worklist: 'storySoFar' and 'rightNow' are "
+                "EACH at most 2 short sentences; 'flags' surfaces only genuinely important "
+                "allergy/consent/preference/caution items actually found in the briefs — return an empty "
+                "list when there are none, and never invent one. "
                 f"{language_directive}"
             ),
             (
@@ -1933,7 +1939,10 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
                 '"history": {"snapshot": "<one line: patient + current focus>", '
                 '"sections": [{"label": "Story so far", "body": "<2-4 sentences>"}, '
                 '{"label": "Worth remembering", "body": "<preferences, cautions, recurring themes>"}, '
-                '{"label": "Right now", "body": "<open threads / next visit>"}], "visits": []}}'
+                '{"label": "Right now", "body": "<open threads / next visit>"}], "visits": []}, '
+                '"card": {"storySoFar": "<at most 2 short sentences>", '
+                '"rightNow": "<at most 2 short sentences: what is open / next visit>", '
+                '"flags": [{"kind": "allergy|consent|preference|caution", "label": "<short>"}]}}'
             ),
             f"Patient context:\n{json.dumps(patient, ensure_ascii=False, sort_keys=True)}",
         )
@@ -1969,7 +1978,9 @@ def parse_patient_memory_output(text: str) -> dict[str, Any] | None:
     sections = history.get("sections")
     if not isinstance(sections, list) or not sections:
         return None
-    return {"summary": summary.strip(), "history": history}
+    # The compact line-up card is optional (backend layers in a deterministic fallback if absent).
+    card = data.get("card")
+    return {"summary": summary.strip(), "history": history, "card": card if isinstance(card, dict) else None}
 
 
 def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1984,6 +1995,7 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "summary": fallback.get("summary"),
             "history": fallback.get("history"),
+            "card": fallback.get("card"),
             "source": fallback.get("source") or "mock-deterministic",
             "generated_by": "ai-engine",
             "generated_at": utc_now().isoformat(),
@@ -2008,6 +2020,8 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "summary": parsed["summary"],
         "history": history,
+        # Carry the model's compact card through; backend coerces it + falls back deterministically.
+        "card": parsed.get("card") or fallback.get("card"),
         "source": f"ai:{model}",
         "model": model,
         "generated_by": "ai-engine",

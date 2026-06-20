@@ -203,11 +203,41 @@ export type PatientMemoryHistory = {
   updatedAt?: string | null;
 };
 
+// A surfaced clinical flag on the line-up card (allergy/consent/preference/caution).
+export type LineupCardFlag = {
+  kind: "allergy" | "consent" | "preference" | "caution" | string;
+  label: string;
+};
+
+// The deterministic hero photo for the line-up card (most recent clear after-photo of the primary
+// area, else the latest photo). Endpoints resolve to the file via the capture content route.
+export type LineupCardHero = {
+  captureId: string;
+  fileEndpoint: string;
+  contentEndpoint: string;
+  capturedAt: string | null;
+  caption: string | null;
+};
+
+// The compact, glanceable line-up card (Pro only) shown in the worklist recap: ≤2 short paragraphs
+// (story so far / right now), a deterministic hero photo, a "since last visit" delta, and flags.
+export type LineupCard = {
+  storySoFar: string;
+  rightNow: string;
+  flags: LineupCardFlag[];
+  sinceLastVisit: string | null;
+  hero: LineupCardHero | null;
+  status: "ready" | "updating" | string;
+  updatedAt?: string | null;
+};
+
 export type PatientMemoryDetailResponse = {
   patient: PatientMemoryRow;
   sessions: PatientMemoryTimelineSession[];
   groups: PatientMemorySessionGroup[];
   history?: PatientMemoryHistory | null;
+  // Compact line-up card for the worklist recap (Pro; null for Basic / no captures).
+  lineupCard?: LineupCard | null;
 };
 
 // --- Aesthetics-Basic deterministic services (docs/backend/aes-basic-api.md) ---

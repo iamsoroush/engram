@@ -75,7 +75,6 @@ from app.services.ai_jobs.intents import (
 from app.services.ai_jobs.orchestration import (
     complete_patient_memory_worker_job,
     dispatch_next_session_capture,
-    maybe_dispatch_patient_memory_job,
     patient_memory_job_payload,
     requeue_failed_session_captures,
 )
@@ -651,15 +650,11 @@ def complete_worker_job(
 
             recompute_session_photo_pairing(db, session=session)
             db.commit()
-        # With the report now current, refresh the patient's AI memory (Pro). Gated on the session
-        # being complete (captures processed, patient assigned, report up to date) + dedup.
-        maybe_dispatch_patient_memory_job(
-            db,
-            tenant_id=job.tenant_id,
-            patient_id=session.patient_id if session is not None else None,
-            created_by_user_id=job.created_by_user_id,
-            trigger_session=session,
-        )
+        # NOTE: patient AI memory is intentionally NOT refreshed on session/capture completion. It is
+        # refreshed only when a human is about to look at the patient — the patient page / line-up
+        # recap opens while stale (1st class), the patient is added to the line-up (2nd class) — plus
+        # the Celery-beat quiescence sweep for patients nobody touched (3rd class). See orchestration.
+        # maybe_refresh_stale_patient_memory / sweep_stale_patient_memory.
     return {"job": ai_job_payload(job)}
 
 
@@ -1030,6 +1025,8 @@ def complete_session_worker_job(
             session_id=job.session_id,
             created_by_user_id=job.created_by_user_id,
         )
+    # Patient AI memory is NOT refreshed here — it is read/line-up-triggered (when a human is about to
+    # look at the patient) + a background sweep. See maybe_refresh_stale_patient_memory.
     return {"job": ai_job_payload(job)}
 
 

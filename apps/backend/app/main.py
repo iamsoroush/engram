@@ -48,6 +48,7 @@ from app.services.ai_jobs import (
     require_ai_engine_token,
     retry_worker_job,
     start_worker_job,
+    sweep_stale_patient_memory,
     progress_worker_job,
 )
 from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture
@@ -193,8 +194,15 @@ def health_check() -> dict[str, str]:
 
 @internal_api.post("/ai/jobs/recover")
 def internal_ai_jobs_recover(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Recover queued or retryable failed AI jobs when workers come back online."""
-    return recover_all_ai_jobs(db)
+    """Recover queued/retryable failed AI jobs and sweep stale Pro patient memory.
+
+    The Celery-beat recovery task drives this. Besides re-dispatching durable jobs, it runs the
+    patient-memory quiescence sweep (idle ~30 min + stale → refresh) — the background half of the
+    decoupled memory trigger model, reusing the existing beat so no new infra is added.
+    """
+    result = recover_all_ai_jobs(db)
+    result["memorySweep"] = sweep_stale_patient_memory(db)
+    return result
 
 
 @internal_api.post("/ai/jobs/{job_id}/start")

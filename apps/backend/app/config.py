@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     ai_job_retry_max_delay_seconds: int = 900
     ai_job_dispatch_visibility_timeout_seconds: int = 300
     ai_job_running_stale_seconds: int = 900
+    # Patient-memory (Pro) quiescence sweep, run on the Celery-beat recovery loop: a visit must be
+    # idle this long before stale memory is refreshed in the background (so it is never rebuilt
+    # mid-visit; read-triggered refresh handles immediacy). Capped per beat by the sweep limit.
+    patient_memory_quiescence_seconds: int = 1800
+    patient_memory_sweep_limit: int = 50
     ai_engine_internal_token: str = "dev-ai-engine-token"
     # Whether the Pro single-pass report synthesis (the revived `session_organize` job) is dispatched
     # at chain-drain. This is the backend-visible proxy for "the AI engine's synthesis gateway is

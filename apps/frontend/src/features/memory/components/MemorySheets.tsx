@@ -9,7 +9,7 @@ import { PatientForm } from "../../patient/PatientForm";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 import { PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, labelForDecisionAction, patientChoiceCandidates, extractedPatientMatchHint, filterPatientMatches, resolverCaptureSummary, patientHint, sessionVisitTitle, naturalSessionSummary, reviewSummaryText, sessionTimeLabel, formatBytes, avatarInitials } from "./memoryModel";
 import { SearchIcon, ChevronIcon } from "./MemoryIcons";
-import { PatientHistoryBlock, EmptyClinicalState, CaptureChips } from "./MemoryCards";
+import { PatientHistoryBlock, EmptyClinicalState, CaptureChips, LineupCard } from "./MemoryCards";
 
 export function PatientIdentityEditor({
   patient,
@@ -148,6 +148,8 @@ export function PatientRecapSheet({
         </div>
 
         <div className="patient-recap-body">
+          {/* The glanceable line-up card (Pro): hero photo + ≤2 paragraphs + since-last-visit + flags. */}
+          <LineupCard card={detail?.lineupCard} isPro={isPro} onResolveFile={onResolveFile} />
           <PatientHistoryBlock
             history={detail?.history}
             isPro={isPro}

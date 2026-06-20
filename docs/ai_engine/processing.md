@@ -220,23 +220,51 @@ history.
 
 - **Incremental input.** The payload (`build_patient_memory_job_input`) carries the patient's
   *prior* memory plus compact per-visit briefs (each session's distilled summary + capture
-  counts/types), not raw transcripts — so cost stays ~flat as visits grow. It also includes a
-  `deterministicFallback` (the backend's deterministic generator output).
+  counts/types **+ that visit's `treatments[]`** from Job-3 extraction, so recall is grounded —
+  "last visit: Voluma 0.3 mL, left cheek"), not raw transcripts — so cost stays ~flat as visits
+  grow. It also includes a `deterministicFallback` (the backend's deterministic generator output).
 - **Worker** (`completed_patient_memory_output`): when a gateway is configured it asks the model for
-  strict JSON (`summary` + `history{snapshot, sections, visits}`) and validates it; if the gateway is
-  absent or the response is unusable it returns the `deterministicFallback`, so the job always
-  completes with valid memory. Output `source` is `ai:<model>` or `mock-deterministic`.
-- **Dispatch gate (report-complete).** `maybe_dispatch_patient_memory_job` is **Pro-only** and runs
-  only once the triggering session is *complete* — captures processed, a patient assigned (manual or
-  auto-matched), report current — and no capture job is still in flight for the patient. It coalesces
-  bursts per patient (dedup on an in-flight `patient_memory` job). Triggers: capture-chain settle
-  (`complete_worker_job`) and patient (re)assignment (both sides). Recovery re-dispatches it like
-  other jobs.
-- **Completion** (`complete_patient_memory_worker_job`) writes `patients.memory`
-  (`status:"ready", summary, history, source, updated_at`); the read path serves the stored brief.
+  strict JSON (`summary` + `history{snapshot, sections, visits}` + a compact `card{storySoFar,
+  rightNow, flags}`) and validates it; if the gateway is absent or the response is unusable it
+  returns the `deterministicFallback`, so the job always completes with valid memory. Output
+  `source` is `ai:<model>` or `mock-deterministic`.
+- **Decoupled from per-capture; refreshed when a human is about to look.** Memory is **not** rebuilt
+  on capture/session completion (that would rebuild mid-visit, before treatments exist, and for
+  patients nobody will see). `maybe_dispatch_patient_memory_job` stays **Pro-only** + self-gating (no
+  capture job in flight, dedup on an in-flight `patient_memory` job); the *triggers* are three
+  priority classes (lower Celery/Redis `priority_steps` number is served first, so the
+  more-imminently-viewed patient jumps the queue):
+  - **1st class — patient OPENED + stale** (`priority` 0): the detail endpoint / line-up recap calls
+    `maybe_refresh_stale_patient_memory` when memory is **stale** (`patient_memory_is_stale`: a visit
+    changed since the last completed build), kicking the rebuild (`updating → ready`) at the moment a
+    clinician is reading it.
+  - **2nd class — patient ADDED TO THE LINE-UP + stale** (`priority` 3): `create_worklist_entry`
+    fires the same refresh when staff queue a patient, so the brief is ready by the time the clinician
+    taps through.
+  - **3rd class — background quiescence sweep** (`priority` 6): `sweep_stale_patient_memory`, run on
+    the EXISTING Celery-beat recovery loop (`/internal/ai/jobs/recover`), refreshes stale patients
+    nobody touched whose latest visit has been idle ≥ `patient_memory_quiescence_seconds` (~30 min),
+    newest-idle first, capped per beat.
+
+  All three coalesce to ≤1 job per patient per window; capture/session jobs keep priority 0, so a
+  memory backlog never delays interactive processing. See `READ_/LINEUP_/SWEEP_DISPATCH_PRIORITY`.
+- **Completion** (`complete_patient_memory_worker_job` → `apply_patient_memory_output`) writes
+  `patients.memory` (`status:"ready", summary, history, card, source, updated_at`); the read path
+  serves the stored brief, and the detail endpoint layers the **line-up card** on top (see below).
 - **Basic** never runs this job — its summary/history are deterministic, finalized lazily on read. A
   Pro read only finalizes deterministically as a safety net when nothing is in flight, so Pro memory
-  is never permanently stuck in `updating`.
+  is never permanently stuck in `updating` (even if a gateway-bound job died).
+
+### Line-up card (Pro, worklist recap)
+
+The patient-memory detail (`GET /patients/{id}/memory`) carries a compact, glanceable `lineupCard`
+for the worklist recap. Its text (`storySoFar` ≤2 sentences, `rightNow` ≤2 sentences, `flags`) is the
+AI job's `card` projection — persisted on the patient with a deterministic history-derived fallback,
+so it is never blank. **`hero` and `sinceLastVisit` are computed deterministically (no LLM)** at read
+time so they stay fresh against current captures: `hero` is the most recent clear *after*-photo of the
+primary (most-photographed) area, else the latest photo (OOC + product-label shots excluded);
+`sinceLastVisit` is a delta line grounded in the latest visit's `treatments[]`. `status` mirrors the
+memory lifecycle so the card animates `updating → ready`. Basic tenants get no card.
 
 Capture upload behavior:
 
