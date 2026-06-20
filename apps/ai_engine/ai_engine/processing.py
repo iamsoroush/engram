@@ -507,14 +507,34 @@ def resolve_model(task: str, ai_models: dict[str, Any] | None, *, override: str 
 
     The backend resolves the live per-task selection and passes it in the job payload's `aiModels`,
     so a model change applies to the next request; a blank/absent value falls back to the worker env.
+    A task entry may be a bare model string (legacy) or a `{model, reasoningEffort}` object — the
+    richer shape carries the per-task quality knobs (see `resolve_reasoning_effort`).
     """
     if isinstance(override, str) and override.strip():
         return override.strip()
     if isinstance(ai_models, dict):
         selected = ai_models.get(task)
+        if isinstance(selected, dict):
+            selected = selected.get("model")
         if isinstance(selected, str) and selected.strip():
             return selected.strip()
     return gateway_settings_for(task)[2]
+
+
+def resolve_reasoning_effort(task: str, ai_models: dict[str, Any] | None, *, default: str | None = None) -> str | None:
+    """Resolve a task's reasoning effort from the live `aiModels` payload, else `default`.
+
+    Only the `{model, reasoningEffort}` task shape carries an effort; a bare model string has none.
+    GPT-5-class models take `reasoning_effort` instead of `temperature` (which they reject), so this
+    is the stability/quality knob for structured synthesis. Returns None to send no effort at all.
+    """
+    if isinstance(ai_models, dict):
+        selected = ai_models.get(task)
+        if isinstance(selected, dict):
+            effort = selected.get("reasoningEffort")
+            if isinstance(effort, str) and effort.strip():
+                return effort.strip()
+    return default
 
 
 def image_to_data_url(content: bytes, media_type: str | None) -> str:
@@ -1290,6 +1310,357 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
     client.complete_job(job_id, output_key=output_key, output=completed_metadata(job, capture))
 
 
+# --- Session report synthesis + treatment extraction (Pro, single-pass) ------------------------
+#
+# The keystone of the Pro capture-intelligence wave. ONE structured call emits the per-visit report
+# sections AND the performed treatments[] together (the A↔B contract). It is dispatched by the
+# backend (the revived `session_organize` job) only for Pro tenants with a gateway, AFTER the
+# deterministic baseline already wrote a report — so synthesis is a refinement that never blocks the
+# capture. Gateway-less / malformed → a SKIP sentinel; the backend keeps the deterministic baseline
+# and treatments stay empty (Basic + gateway-less run zero AI and must never break).
+
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
+
+# Fixed section ids + order (rendered by the backend). `treatment-performed` is a PROSE MIRROR of
+# treatments[] — the backend re-renders it FROM treatments[] so prose + store can never diverge.
+SYNTHESIS_SECTIONS: tuple[tuple[str, str], ...] = (
+    ("visit-summary", "Visit summary"),
+    ("concern-goals", "Concern & goals"),
+    ("assessment", "Assessment"),
+    ("treatment-performed", "Treatment performed"),
+    ("media", "Media"),
+    ("plan-followup", "Plan & follow-up"),
+    ("aftercare", "Aftercare"),
+)
+SYNTHESIS_SECTION_IDS: tuple[str, ...] = tuple(section_id for section_id, _ in SYNTHESIS_SECTIONS)
+SYNTHESIS_LANGUAGES = {"fa", "en", "mixed"}
+
+
+def report_synthesis_json_schema() -> dict[str, Any]:
+    """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
+    block = {
+        "type": "object",
+        "properties": {
+            "type": {"type": "string", "enum": ["paragraph", "image"]},
+            "text": {"type": ["string", "null"]},
+            "captureId": {"type": ["string", "null"]},
+            "caption": {"type": ["string", "null"]},
+        },
+        "required": ["type"],
+    }
+    section = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "title": {"type": "string"},
+            "blocks": {"type": "array", "items": block},
+        },
+        "required": ["id", "title", "blocks"],
+    }
+    treatment = {
+        "type": "object",
+        "properties": {
+            "area": {"type": "string"},
+            "product": {"type": "string"},
+            "brand": {"type": ["string", "null"]},
+            "quantity": {"type": ["number", "null"]},
+            "unit": {"type": ["string", "null"]},
+            "quantityText": {"type": ["string", "null"]},
+            "lot": {"type": ["string", "null"]},
+            "confidence": {"type": "number"},
+            "sourceCaptureIds": {"type": "array", "items": {"type": "string"}},
+            "evidence": {"type": ["string", "null"]},
+            "carriedForward": {"type": "boolean"},
+            "supersedesCaptureId": {"type": ["string", "null"]},
+            "attributes": {"type": "object"},
+        },
+        "required": ["area", "product", "confidence", "sourceCaptureIds", "carriedForward"],
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "language": {"type": "string", "enum": ["fa", "en", "mixed"]},
+            "sections": {"type": "array", "items": section},
+            "treatments": {"type": "array", "items": treatment},
+            "uncertainties": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["summary", "language", "sections", "treatments", "uncertainties"],
+    }
+
+
+def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
+    """Build the single-pass report-synthesis + treatment-extraction prompt.
+
+    Vertical-AGNOSTIC: the clinical setting comes from the domain descriptor (neutral "clinic" when
+    absent). The prompt encodes the design's discipline: ground every statement in captures, native
+    script prose, verbatim quantities/brands, stable targeted update from the prior draft + changeset,
+    corrections-vs-additions with `supersedesCaptureId`, carry-forward only on an explicit cue, and
+    "leave null rather than guess".
+    """
+    context = processing_context if isinstance(processing_context, dict) else {}
+    label, vocabulary, _ = domain_framing(context)
+    report_language = context.get("reportLanguage")
+    language_directive = (
+        f"Write all report prose in {report_language} using its native script."
+        if isinstance(report_language, str) and report_language.strip()
+        else "Write all report prose in the language the captures use (the report template's default)."
+    )
+    vocab_line = f"Common {label} vocabulary may include {', '.join(vocabulary)}. " if vocabulary else ""
+    section_lines = "; ".join(f"{section_id} ({title})" for section_id, title in SYNTHESIS_SECTIONS)
+    return "\n\n".join(
+        (
+            f"You are Memara, synthesizing ONE per-visit clinical report and extracting the performed "
+            f"treatments for a {label}. Work only from the provided captures (audio transcripts, photo "
+            f"captions, and raw text notes) and the prior visit context. Invent nothing.",
+            (
+                "Produce a strict JSON object with EXACTLY these keys: summary, language, sections, "
+                "treatments, uncertainties.\n"
+                f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
+                "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
+                "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
+                "Leave a section's blocks empty ([]) when the captures do not support it — never pad it.\n"
+                f"- {language_directive} Keep any patient/clinician quotes and ALL quantities, product "
+                "names, brands, and lot numbers VERBATIM in their original script — never translate or "
+                "romanize Persian/Farsi (e.g. «ژل ۲ سی‌سی»), never normalize «۲» to \"2\" in quantityText.\n"
+                f"{vocab_line}"
+                "- treatments: one TreatmentItem per distinct performed treatment, with core fields "
+                "area, product, brand, quantity (number or null), unit, quantityText (VERBATIM original "
+                "script), lot (dictated or read off a product-label photo), confidence (0..1), "
+                "sourceCaptureIds, evidence, carriedForward, supersedesCaptureId, and an open attributes "
+                "map (needleGauge, depth, device, sessions, …). The treatment-performed section is a prose "
+                "MIRROR of treatments — keep them consistent.\n"
+                "- Leave any field null rather than guessing. Set confidence to reflect genuine certainty."
+            ),
+            (
+                "UPDATE DISCIPLINE — the captures are authoritative. If a prior report draft and a "
+                "changeset are provided, update the prior draft to match the current captures: keep "
+                "unchanged prose byte-stable, recompute only the sections/treatments affected by the "
+                "changed captures, and REMOVE anything no longer supported by a capture."
+            ),
+            (
+                "CORRECTIONS vs ADDITIONS (e.g. «ژل ۲ سی‌سی» then «ژل ۳ سی‌سی» for the same area):\n"
+                "- CORRECTION (supersede): on an explicit correction cue (اشتباه گفتم، منظورم…بود، "
+                "\"actually\", \"make that\") OR the same area+product+unit simply restated with a new "
+                "quantity. Emit ONE corrected TreatmentItem and set supersedesCaptureId to the captureId "
+                "of the superseded statement (auditable/undoable).\n"
+                "- ADDITION: on an additive cue (هم…هم، اضافه، \"another\") OR a different area/product. "
+                "Emit a separate TreatmentItem for each.\n"
+                "- AMBIGUOUS (cannot tell correction from addition): DO NOT silently overwrite. Emit BOTH "
+                "treatments AND add a clear sentence to uncertainties describing the ambiguity."
+            ),
+            (
+                "CARRY-FORWARD: only when a capture explicitly says \"same as last time\" (همون قبلی، "
+                "مثل دفعه قبل). Then set carriedForward=true, LOWER the confidence, cite the prior visit "
+                "in sourceCaptureIds/evidence, and copy the referenced prior-visit treatment. NEVER "
+                "silently materialize a prior dose without an explicit cue."
+            ),
+            (
+                "uncertainties: a list of short human-readable sentences for anything a clinician should "
+                "confirm (ambiguous correction, a missing-but-expected lot number, a low-confidence "
+                "product, a carried-forward dose). Return ONLY strict JSON, no markdown, no code fences."
+            ),
+            f"Session context (captures, prior report draft, changeset, prior-visit treatments):\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
+        )
+    )
+
+
+def _clean_synthesis_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
+    """Coerce model block output into validated paragraph/image blocks."""
+    blocks: list[dict[str, Any]] = []
+    if not isinstance(raw_blocks, list):
+        return blocks
+    for block in raw_blocks:
+        if not isinstance(block, dict):
+            continue
+        block_type = block.get("type")
+        if block_type == "paragraph":
+            text = block.get("text")
+            if isinstance(text, str) and text.strip():
+                blocks.append({"type": "paragraph", "text": text.strip()})
+        elif block_type == "image":
+            capture_id = block.get("captureId")
+            if isinstance(capture_id, str) and capture_id.strip():
+                image: dict[str, Any] = {"type": "image", "captureId": capture_id.strip()}
+                caption = block.get("caption")
+                if isinstance(caption, str) and caption.strip():
+                    image["caption"] = caption.strip()
+                blocks.append(image)
+    return blocks
+
+
+def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
+    """Coerce one TreatmentItem into the stable core+attributes shape, or None if unusable."""
+    if not isinstance(raw, dict):
+        return None
+    area = raw.get("area")
+    product = raw.get("product")
+    if not (isinstance(area, str) and area.strip()) and not (isinstance(product, str) and product.strip()):
+        return None
+
+    def _text(value: Any) -> str | None:
+        return value.strip() if isinstance(value, str) and value.strip() else None
+
+    def _number(value: Any) -> float | int | None:
+        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+    source_ids = raw.get("sourceCaptureIds")
+    attributes = raw.get("attributes")
+    return {
+        "area": _text(area) or "",
+        "product": _text(product) or "",
+        "brand": _text(raw.get("brand")),
+        "quantity": _number(raw.get("quantity")),
+        "unit": _text(raw.get("unit")),
+        "quantityText": _text(raw.get("quantityText")),
+        "lot": _text(raw.get("lot")),
+        "confidence": clamp_confidence(raw.get("confidence")),
+        "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)] if isinstance(source_ids, list) else [],
+        "evidence": _text(raw.get("evidence")),
+        "carriedForward": raw.get("carriedForward") is True,
+        "supersedesCaptureId": _text(raw.get("supersedesCaptureId")),
+        "attributes": attributes if isinstance(attributes, dict) else {},
+    }
+
+
+def parse_session_synthesis_output(raw_text: str, *, source_capture_ids: list[str] | None = None) -> dict[str, Any] | None:
+    """Parse + validate the synthesis JSON into the A↔B contract, or None to fall back.
+
+    Returns the full output with ALL fixed section ids present (in order), cleaned treatments, and
+    `sourceReferences` covering every reportable capture so the backend can mark contributions.
+    """
+    if not raw_text or not raw_text.strip():
+        return None
+    text = raw_text.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    summary = parsed.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+
+    raw_sections = parsed.get("sections")
+    blocks_by_id: dict[str, list[dict[str, Any]]] = {}
+    if isinstance(raw_sections, list):
+        for section in raw_sections:
+            if isinstance(section, dict) and isinstance(section.get("id"), str):
+                blocks_by_id[section["id"]] = _clean_synthesis_blocks(section.get("blocks"))
+    sections = [
+        {"id": section_id, "title": title, "blocks": blocks_by_id.get(section_id, [])}
+        for section_id, title in SYNTHESIS_SECTIONS
+    ]
+
+    treatments = [cleaned for cleaned in (_clean_synthesis_treatment(item) for item in (parsed.get("treatments") or [])) if cleaned]
+    language = parsed.get("language") if parsed.get("language") in SYNTHESIS_LANGUAGES else "mixed"
+    uncertainties = parsed.get("uncertainties")
+    source_references = [{"type": "capture", "captureId": capture_id} for capture_id in (source_capture_ids or [])]
+    return {
+        "schemaVersion": SESSION_SYNTHESIS_OUTPUT_VERSION,
+        "summary": summary.strip(),
+        "language": language,
+        "sections": sections,
+        "treatments": treatments,
+        "sourceReferences": source_references,
+        "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
+        "generatedBy": "ai-engine",
+        "generatedAt": utc_now().isoformat(),
+    }
+
+
+def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Run the single-pass report synthesis through the gateway; None to fall back to baseline.
+
+    Network/gateway EXCEPTIONS propagate (retryable). Empty/malformed CONTENT returns None so the
+    caller emits the skip sentinel and the deterministic baseline stands (never breaks).
+    """
+    processing_context = payload.get("sessionProcessingContext") if isinstance(payload.get("sessionProcessingContext"), dict) else {}
+    captures = flattened_processing_captures(processing_context)
+    source_capture_ids = [capture_id(capture) for capture in captures if capture_id(capture)]
+    ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
+    model = resolve_model("report_synthesis", ai_models)
+    effort = resolve_reasoning_effort(
+        "report_synthesis", ai_models, default=(settings.report_synthesis_reasoning_effort or None)
+    )
+    client = gateway_client("report_synthesis")
+    request: dict[str, Any] = {
+        "model": model,
+        "messages": [{"role": "user", "content": report_synthesis_prompt(processing_context)}],
+        # Schema-enforced JSON; NO temperature (GPT-5-class rejects it — stability from low effort).
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "session_synthesis_output", "schema": report_synthesis_json_schema()},
+        },
+    }
+    if effort:
+        request["extra_body"] = {"reasoning_effort": effort}
+    response = client.chat.completions.create(**request)
+    return parse_session_synthesis_output(response.choices[0].message.content or "", source_capture_ids=source_capture_ids)
+
+
+def session_synthesis_skip_output(reason: str) -> dict[str, Any]:
+    """Sentinel telling the backend synthesis did not run — keep the deterministic baseline."""
+    return {
+        "status": "skipped",
+        "synthesis_skipped": True,
+        "reason": reason,
+        "generated_by": "ai-engine",
+        "generated_at": utc_now().isoformat(),
+    }
+
+
+def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any]:
+    """Build the worker completion envelope for a Pro session synthesis job.
+
+    Wraps the A↔B synthesis output as `structured_report` plus the top-level summary +
+    extracted_metadata the backend's `complete_session_worker_job` expects. Gateway-less or
+    malformed → a skip sentinel so the deterministic baseline is preserved (treatments empty).
+    """
+    job = payload["job"]
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    report_template = payload.get("reportTemplate") if isinstance(payload.get("reportTemplate"), dict) else {}
+    if not transcription_is_configured():
+        return session_synthesis_skip_output("gateway_not_configured")
+    synthesis = synthesize_session_report(payload)
+    if synthesis is None:
+        return session_synthesis_skip_output("empty_or_malformed_synthesis")
+
+    source_capture_ids = [reference["captureId"] for reference in synthesis["sourceReferences"] if reference.get("captureId")]
+    extracted_metadata = {
+        "status": "completed",
+        "generated_by": "ai-engine",
+        "job_id": job["id"],
+        "job_type": job["jobType"],
+        "generated_at": utc_now().isoformat(),
+        "source_capture_ids": source_capture_ids,
+        # The backend post-processes treatments (validate/supersede/carry-forward) before storing.
+        "treatments": synthesis["treatments"],
+        "uncertainties": synthesis["uncertainties"],
+        "processing_status": {
+            "state": "complete",
+            "label": "Complete",
+            "stage": "complete",
+            "source": "ai-engine",
+            "updated_at": utc_now().isoformat(),
+        },
+    }
+    return {
+        "status": "completed",
+        "summary": synthesis["summary"],
+        "structured_report": synthesis,
+        "extracted_metadata": extracted_metadata,
+        "report_template_key": report_template.get("key") or session.get("reportTemplateKey") or "default",
+        "generated_by": "ai-engine",
+        "job_id": job["id"],
+        "generated_at": utc_now().isoformat(),
+    }
+
+
 def run_session_processing_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:
     """Run a session processing job through the backend API contract."""
     client = BackendClient()
@@ -1298,7 +1669,15 @@ def run_session_processing_job(job_id: str, *, celery_task_id: str | None, retry
     if job.get("status") == "succeeded":
         return
 
-    # TODO(ai-integration): Replace these deterministic stages with real progressive AI session artifacts.
+    # Pro single-pass report synthesis + treatment extraction (the revived `session_organize`). The
+    # backend sets `reportSynthesis` only for Pro tenants with a gateway, AFTER the deterministic
+    # baseline already wrote a report. Gateway-less / malformed yields a skip sentinel that the
+    # backend treats as "keep the deterministic baseline" (treatments empty) — never breaks.
+    if payload.get("reportSynthesis"):
+        client.complete_job(job_id, output_key="session_outputs", output=completed_session_synthesis_output(payload))
+        return
+
+    # Legacy deterministic progressive stages (placeholder pipeline + recovery of pre-synthesis jobs).
     for stage in ("transcripts", "report", "findings", "summary"):
         client.progress_job(job_id, output_key="session_progress", output=session_progress_output(payload, stage), stage=stage)
         sleep(settings.mock_stage_delay_seconds)

@@ -24,7 +24,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
-from app.services.ai_model_config import get_ai_model_overrides
+from app.services.ai_model_config import ai_models_worker_payload
 from app.services.capabilities import (
     IMAGE_CAPTION,
     LIVE_REPORT_SYNTHESIS,
@@ -45,8 +45,12 @@ from app.services.reporting import (
     structured_report_from_markdown_body,
 )
 from app.services.session_processing import (
+    SESSION_SYNTHESIS_OUTPUT_VERSION,
+    bounded_prior_visit_treatments,
     build_session_processing_input,
     capture_is_out_of_context,
+    finalize_session_synthesis_output,
+    prior_visit_capture_ids,
     report_model_from_session_processing_output,
     session_processing_output_from_legacy_report,
 )
@@ -84,8 +88,12 @@ from app.services.ai_jobs.recovery import (
 from app.services.ai_jobs.reports import (
     has_append_intent,
     mark_session_report_contributions,
+    maybe_dispatch_session_synthesis,
     regenerate_session_report_if_idle,
     report_contribution_effect,
+    reportable_session_captures,
+    session_report_content_signature,
+    session_synthesis_enabled,
 )
 
 __all__ = [
@@ -233,8 +241,9 @@ def get_job_for_worker(db: DbSession, job_id: str) -> AiJob:
 
 def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     """Serialize job input needed by the AI engine worker."""
-    # Live per-task model selection, resolved per request so a change applies to the next job.
-    ai_models = get_ai_model_overrides(db)
+    # Live per-task model + reasoning-effort selection, resolved per request so a change applies to
+    # the next job. Each task is a bare model string or a {model, reasoningEffort} object.
+    ai_models = ai_models_worker_payload(db)
     if job.job_type == AiJobType.patient_memory:
         return patient_memory_job_payload(db, job, ai_models)
     if job.job_type == AiJobType.qa_draft:
@@ -303,12 +312,15 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         # Out-of-context captures are kept but excluded from the synthesized report.
         if not capture_is_out_of_context(capture)
     ]
-    # TODO(ai-integration): Real session processors should consume this stable
-    # context and return the structured body-level output contract.
+    # Stable session context for the synthesizer (captures, prior report draft + changeset,
+    # prior-visit treatments, domain descriptor) plus the preferred report language.
     processing_context = build_session_processing_input(db, session)
-    # The preferred report language (None = follow the report template's default) is consumed by
-    # a real synthesizer; the placeholder body is language-neutral.
     processing_context = {**processing_context, "reportLanguage": tenant_report_language(db, job.tenant_id)}
+    # `reportSynthesis` tells the worker to run the single-pass LLM synthesis (vs the legacy
+    # placeholder pipeline). The backend only dispatches this job for synthesis-enabled tenants, so
+    # the flag is the explicit contract; a gateway-less worker still degrades to the deterministic
+    # baseline via the skip sentinel.
+    report_synthesis = session_synthesis_enabled(db, job.tenant_id)
     return {
         "job": ai_job_payload(job),
         "session": {
@@ -334,6 +346,7 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         ],
         "reportTemplate": load_report_template(session.report_template_key),
         "sessionProcessingContext": processing_context,
+        "reportSynthesis": report_synthesis,
         "aiModels": ai_models,
     }
 
@@ -382,7 +395,12 @@ def start_worker_job(
         ).scalar_one_or_none()
         if session is None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
-        session.status = SessionStatus.processing
+        # The Pro synthesis refinement runs AFTER a deterministic report already exists — keep it
+        # visible (a quiet enrichment, not a processing flash). Only flip to `processing` when there
+        # is no report yet (the legacy first-pass session job).
+        report_model = session.report_model if isinstance(session.report_model, dict) else None
+        if not (report_model and report_model.get("sections")):
+            session.status = SessionStatus.processing
     db.commit()
     db.refresh(job)
     return worker_job_payload(db, job)
@@ -722,6 +740,63 @@ def progress_worker_job(
     return {"job": ai_job_payload(job)}
 
 
+def _complete_session_synthesis_skip(
+    db: DbSession, *, job: AiJob, output_key: str, session: Session, reason: str | None = None
+) -> dict[str, Any]:
+    """Persist a synthesis SKIP: the worker couldn't synthesize, so the deterministic baseline stands.
+
+    Mark the baseline's captures contributed (so the freshness strip reads "current" and we don't loop
+    re-dispatching a synthesis that keeps skipping) and the job succeeded — without touching the
+    report (Basic + gateway-less run zero AI and must never break).
+    """
+    completed_at = utc_now()
+    reportable = reportable_session_captures(db, tenant_id=job.tenant_id, session_id=session.id)
+    capture_ids = [str(capture.id) for capture in reportable]
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    contribution_summary = None
+    if tenant_has_capability(db, job.tenant_id, LIVE_REPORT_SYNTHESIS):
+        contribution_summary = mark_session_report_contributions(
+            db, session=session, generated_at=completed_at.isoformat(), source_capture_ids=capture_ids
+        )
+    session.extracted_metadata = {
+        **metadata,
+        "generated_output_stale": False,
+        "report_synthesis": {
+            "status": "skipped",
+            "captureIds": capture_ids,
+            "signature": session_report_content_signature(reportable),
+            "generatedAt": completed_at.isoformat(),
+        },
+        **({"report_contribution_summary": contribution_summary} if contribution_summary is not None else {}),
+    }
+    session.updated_at = completed_at
+    job.status = AiJobStatus.succeeded
+    job.completed_at = completed_at
+    job.error_message = None
+    job.last_error = None
+    job.retry_reason = None
+    job.next_retry_at = None
+    job.result_metadata = {
+        **(job.result_metadata or {}),
+        "output_key": output_key,
+        "synthesis_skipped": True,
+        "synthesis_skip_reason": reason,
+        "completed_at": completed_at.isoformat(),
+    }
+    audit(
+        db,
+        tenant_id=job.tenant_id,
+        actor_user_id=job.created_by_user_id,
+        action="ai_processing.complete",
+        target_type="session",
+        target_id=session.id,
+        details={"job_id": str(job.id), "job_type": job.job_type.value, "synthesis_skipped": True},
+    )
+    db.commit()
+    db.refresh(job)
+    return {"job": ai_job_payload(job)}
+
+
 def complete_session_worker_job(
     db: DbSession,
     *,
@@ -738,6 +813,11 @@ def complete_session_worker_job(
     if session is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
 
+    # Synthesis skip sentinel — gateway-less / malformed synthesis. Keep the deterministic baseline.
+    if output.get("synthesis_skipped") is True or output.get("status") == "skipped":
+        reason = output.get("reason") if isinstance(output.get("reason"), str) else None
+        return _complete_session_synthesis_skip(db, job=job, output_key=output_key, session=session, reason=reason)
+
     completed_at = utc_now()
     summary = output.get("summary")
     structured_output = output.get("structured_report")
@@ -753,9 +833,37 @@ def complete_session_worker_job(
         session_processing_output = session_processing_output_from_legacy_report(output, generated_at=completed_at.isoformat())
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session job output")
+
+    # Pro single-pass synthesis path: validate every captureId against this session's captures (drop
+    # unknowns), finalize treatments (correction/addition/carry-forward/supersede + uncertainty
+    # confirmation items), and re-render the treatment-performed section FROM treatments[] so the
+    # prose mirror can never diverge from the queryable store.
+    is_synthesis = session_processing_output.get("schemaVersion") == SESSION_SYNTHESIS_OUTPUT_VERSION
+    reportable_captures: list[Capture] = []
+    synthesis_capture_ids: list[str] = []
+    synthesis_treatments: list[dict[str, Any]] = []
+    synthesis_review: list[dict[str, Any]] = []
+    if is_synthesis:
+        reportable_captures = reportable_session_captures(db, tenant_id=job.tenant_id, session_id=session.id)
+        synthesis_capture_ids = [str(capture.id) for capture in reportable_captures]
+        prior_ids = prior_visit_capture_ids(bounded_prior_visit_treatments(db, session))
+        session_processing_output, synthesis_treatments, synthesis_review = finalize_session_synthesis_output(
+            session_processing_output,
+            valid_capture_ids=synthesis_capture_ids,
+            prior_visit_capture_ids=prior_ids,
+        )
+
     structured_findings = session_processing_output.get("findings")
     if isinstance(structured_findings, list) and not isinstance(extracted_metadata.get("findings"), list):
         extracted_metadata = {**extracted_metadata, "findings": structured_findings}
+    if is_synthesis:
+        # treatments[] → the queryable store (recall / lot tracking / smart lists); treatment_review →
+        # the existing needs-input surface (see _session_needs_input_item).
+        extracted_metadata = {
+            **extracted_metadata,
+            "treatments": synthesis_treatments,
+            "treatment_review": synthesis_review,
+        }
     structured_source_references = session_processing_output.get("sourceReferences")
     if isinstance(structured_source_references, list):
         extracted_metadata = {
@@ -846,6 +954,20 @@ def complete_session_worker_job(
         "generated_output_stale": False,
         "processed_versions": previous_versions[-5:],
         **({"report_contribution_summary": report_contribution_summary} if report_contribution_summary is not None else {}),
+        # Mark the synthesis current for this exact reportable content so a later deterministic regen
+        # doesn't clobber the LLM report (the floor only rebuilds when the content signature changes).
+        **(
+            {
+                "report_synthesis": {
+                    "status": "current",
+                    "captureIds": synthesis_capture_ids,
+                    "signature": session_report_content_signature(reportable_captures),
+                    "generatedAt": completed_at.isoformat(),
+                }
+            }
+            if is_synthesis
+            else {}
+        ),
     }
     session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     session.organization_source = OrganizationSource.ai_engine
@@ -875,8 +997,15 @@ def complete_session_worker_job(
     )
     db.commit()
     db.refresh(job)
-    # Deterministic regen is the source of truth now; if a capture is idle, rebuild from cumulative state.
-    if job.session_id is not None:
+    if is_synthesis:
+        # The LLM write is FINAL on the synthesis path — do NOT re-run the deterministic regen (it
+        # would clobber the synthesized report). Only re-dispatch synthesis if a capture landed mid-job
+        # (debounced + guarded), so a late capture still gets folded in.
+        maybe_dispatch_session_synthesis(
+            db, tenant_id=job.tenant_id, session_id=job.session_id, created_by_user_id=job.created_by_user_id
+        )
+    elif job.session_id is not None:
+        # Legacy/placeholder path: deterministic regen is the source of truth.
         regenerate_session_report_if_idle(
             db,
             tenant_id=job.tenant_id,
@@ -953,10 +1082,16 @@ def fail_worker_job(
         session = db.execute(
             select(Session).where(Session.id == job.session_id, Session.tenant_id == job.tenant_id)
         ).scalar_one_or_none()
-        if session is not None and not ai_job_retryable(job):
-            session.status = SessionStatus.failed
-        elif session is not None:
-            session.status = SessionStatus.processing
+        # A synthesis refinement that fails terminally must NOT mark the session failed — the
+        # deterministic baseline is already a complete report (terminal failure → session still
+        # "complete"). Only the legacy first-pass session job (no report yet) flips to failed.
+        report_model = session.report_model if session is not None and isinstance(session.report_model, dict) else None
+        has_baseline_report = bool(report_model and report_model.get("sections"))
+        if session is not None and not has_baseline_report:
+            if not ai_job_retryable(job):
+                session.status = SessionStatus.failed
+            else:
+                session.status = SessionStatus.processing
     audit(
         db,
         tenant_id=job.tenant_id,

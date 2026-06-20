@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     ai_job_dispatch_visibility_timeout_seconds: int = 300
     ai_job_running_stale_seconds: int = 900
     ai_engine_internal_token: str = "dev-ai-engine-token"
+    # Whether the Pro single-pass report synthesis (the revived `session_organize` job) is dispatched
+    # at chain-drain. This is the backend-visible proxy for "the AI engine's synthesis gateway is
+    # configured" (the gateway URL/key live in the worker env, which the backend can't see). Default
+    # OFF so gateway-less / Basic environments dispatch ZERO synthesis and the deterministic baseline
+    # stands untouched. Turn on (BACKEND_REPORT_SYNTHESIS_ENABLED=true) where a gateway is reachable.
+    report_synthesis_enabled: bool = False
     # Error tracking (Sentry-SDK compatible; points at self-hosted GlitchTip). Empty DSN => no-op,
     # so dev / Basic / unconfigured environments are unaffected. Names match docs/monitoring.md:
     # the DSN is backend-specific (BACKEND_ prefix), while ENVIRONMENT / TRACES_SAMPLE_RATE are

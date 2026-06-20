@@ -124,6 +124,20 @@ export type SessionFinding = {
   status?: string;
 };
 
+/** A performed treatment extracted by the Pro synthesis (session.extractedMetadata.treatments). */
+export type SessionTreatment = {
+  area?: string | null;
+  product?: string | null;
+  brand?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  /** Verbatim, original script (e.g. «۳ سی‌سی») — display + audit. */
+  quantityText?: string | null;
+  lot?: string | null;
+  confidence?: number | null;
+  carriedForward?: boolean;
+};
+
 export type SessionSummaries = {
   schemaVersion?: string;
   status: "empty" | "partial" | "processed" | "verified" | string;
