@@ -5,7 +5,6 @@ import type {
   AuthSession,
   CaptureDraft,
   DevTier,
-  LastVisitInfo,
   PatientAssignmentDraft,
   PatientMemoryFilter,
   PatientMemoryListResponse,
@@ -13,6 +12,7 @@ import type {
   PendingOperation,
   Persona,
   RolePermissions,
+  SessionContext,
   SyncHealth,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
@@ -35,6 +35,7 @@ import {
   createWorklistEntry,
   fetchClinicMembers,
   fetchLastVisit,
+  fetchSessionContext,
   fetchWorklist,
   getPatient,
   listAftercareTemplates,
@@ -157,7 +158,7 @@ export function App() {
   const [photoOpen, setPhotoOpen] = React.useState(false);
   const [audioOpen, setAudioOpen] = React.useState(false);
   // AES-106 — the active patient's prior visit (note + photos), surfaced at capture in Basic.
-  const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
+  const [sessionContext, setSessionContext] = React.useState<SessionContext | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
@@ -555,23 +556,27 @@ export function App() {
     return () => window.clearTimeout(refreshTimer);
   }, [activeSession, refreshVisibleSession]);
 
-  // AES-106 — for a Basic returning patient, fetch the prior visit (note + photos) so the capture
-  // strip can surface "last visit · same as last time", and resolve the first photo as a ghost
-  // overlay (AES-105) for the next shot. Deterministic retrieval — no AI.
+  // When a patient is determined for the active session (manual assign OR AI match), fetch the
+  // deterministic session context — last-visit digest + cross-visit photo strip + key facts — so the
+  // context card can surface it in BOTH tiers (Pro is no longer blank here; the intelligent window
+  // layers on top later). Also resolve the prior visit's first photo as a ghost overlay (AES-105) for
+  // the next shot, kept Basic-only. Deterministic retrieval — no AI.
   const patientId = activeSession?.patientId;
   const activeSessionId = activeSession?.id;
+  const isBasicTier = auth?.tenant.tier === "basic";
   React.useEffect(() => {
-    if (auth?.tenant.tier !== "basic" || !patientId || isLocalAssignmentPatient(patientId)) {
-      setLastVisit(null);
+    if (!patientId || isLocalAssignmentPatient(patientId)) {
+      setSessionContext(null);
       setGhostPhotoUrl("");
       return;
     }
     let cancelled = false;
-    void fetchLastVisit(apiFetch, patientId, activeSessionId && !isLocalSessionId(activeSessionId) ? activeSessionId : undefined)
-      .then((info) => {
+    void fetchSessionContext(apiFetch, patientId, activeSessionId && !isLocalSessionId(activeSessionId) ? activeSessionId : undefined)
+      .then((context) => {
         if (cancelled) return;
-        setLastVisit(info);
-        const ghostEndpoint = info.visit?.media?.[0]?.contentEndpoint || info.visit?.media?.[0]?.fileEndpoint;
+        setSessionContext(context);
+        const firstPhoto = context.lastVisit.visit?.media?.[0];
+        const ghostEndpoint = isBasicTier ? firstPhoto?.contentEndpoint || firstPhoto?.fileEndpoint : null;
         if (ghostEndpoint) {
           void resolveCaptureFileUrl(apiFetch, ghostEndpoint)
             .then((url) => {
@@ -584,14 +589,14 @@ export function App() {
       })
       .catch(() => {
         if (!cancelled) {
-          setLastVisit(null);
+          setSessionContext(null);
           setGhostPhotoUrl("");
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [apiFetch, auth?.tenant.tier, patientId, activeSessionId]);
+  }, [apiFetch, isBasicTier, patientId, activeSessionId]);
 
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
@@ -1874,7 +1879,7 @@ export function App() {
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
-          lastVisit={lastVisit}
+          sessionContext={sessionContext}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
           onUseAsNote={composeNoteFromText}
           offline={offline}

@@ -300,7 +300,7 @@ export type LastVisitMedia = {
   fileEndpoint: string;
   contentEndpoint: string;
   capturedAt: string | null;
-  caption: string | null;
+  caption?: string | null;
 };
 
 export type LastVisitInfo = {
@@ -316,6 +316,9 @@ export type LastVisitInfo = {
     note: string | null;
     noteSource: string | null;
     media: LastVisitMedia[];
+    /** Playable voice memos from the prior visit (digest); count for the headline. */
+    audio?: LastVisitMedia[];
+    audioCount?: number;
   } | null;
   /** Deterministic "same as last time" pre-fill; null if the prior visit has no typed note. */
   sameAsLastTime: {
@@ -324,6 +327,34 @@ export type LastVisitInfo = {
     fromVisitAt: string | null;
     label: string;
   } | null;
+};
+
+/** One prior visit in the cross-visit photo strip (deterministic, newest-first). */
+export type SessionRecentVisit = {
+  sessionId: string;
+  title: string;
+  capturedAt: string | null;
+  photoCount: number;
+  photos: LastVisitMedia[];
+};
+
+/**
+ * Deterministic patient context for the session/assignment surface (both tiers, zero AI).
+ * The Basic card renders this directly; Pro layers intelligent Job-4 blocks on top and falls back
+ * to it. From GET /patients/{id}/session-context.
+ */
+export type SessionContext = {
+  patientId: string;
+  /** The last-visit digest (full prior visit). */
+  lastVisit: LastVisitInfo;
+  /** Cross-visit photo strip for eyeball progress (bounded). */
+  recentVisits: SessionRecentVisit[];
+  /** Number of real prior visits (the strip is bounded; this counts all). */
+  totalPriorVisits: number;
+  /** The in-progress visit's 1-based number in this patient's history. */
+  visitOrdinal: number;
+  /** Patient-pinned key facts (allergies/preferences) surfaced at top; null if none. */
+  keyFacts: string | null;
 };
 
 /** AES-702 — a per-procedure deterministic aftercare instruction template. */

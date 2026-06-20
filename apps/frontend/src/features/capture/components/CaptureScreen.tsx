@@ -1,11 +1,11 @@
 // Capture screen shell (orchestration); presentational pieces live in sibling files.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { LastVisitInfo, PatientAssignmentDraft, PatientSummary } from "../../../domain/appTypes";
+import type { PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
 import { Button, Card } from "../../../shared/ui/primitives";
-import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
+import { SessionContextCard } from "../../aesthetics/SessionContextCard";
 import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
@@ -38,7 +38,7 @@ export function CaptureScreen({
   onConfirmCarriedForward,
   onFetchPatient,
   tier,
-  lastVisit,
+  sessionContext,
   onOpenVisit,
   onUseAsNote,
   offline = false,
@@ -81,8 +81,9 @@ export function CaptureScreen({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
-  /** AES-106 — the returning patient's prior visit (note + photos), surfaced at capture (Basic). */
-  lastVisit?: LastVisitInfo | null;
+  /** Deterministic session context (last-visit digest + cross-visit photo strip), surfaced at
+   * capture in both tiers once the patient is determined. */
+  sessionContext?: SessionContext | null;
   onOpenVisit?: (sessionId: string) => void;
   onUseAsNote?: (text: string) => void;
   /** No connection / backend unreachable — gates the only sync indicators we show. */
@@ -266,8 +267,14 @@ export function CaptureScreen({
           </span>
         </div>
       ) : null}
-      {!isPro && !isHistorical && activeSession?.patientId && lastVisit ? (
-        <LastVisitStrip lastVisit={lastVisit} onOpenVisit={onOpenVisit} onUseAsNote={onUseAsNote} onResolveFile={onResolveFile} />
+      {!isHistorical && activeSession?.patientId && sessionContext ? (
+        <SessionContextCard
+          context={sessionContext}
+          isPro={isPro}
+          onOpenVisit={onOpenVisit}
+          onUseAsNote={onUseAsNote}
+          onResolveFile={onResolveFile}
+        />
       ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
         <AiCreatedPatientPanel

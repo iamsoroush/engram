@@ -11,6 +11,7 @@ import type {
   CreatePatientShareInput,
   DuplicateCheckResponse,
   LastVisitInfo,
+  LastVisitMedia,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
   PatientMemoryHistory,
@@ -23,6 +24,7 @@ import type {
   Persona,
   ClinicMember,
   RolePermissions,
+  SessionContext,
   SmartPatientSearchResponse,
   WorklistEntry,
   WorklistResponse,
@@ -250,18 +252,24 @@ export async function fetchAssignmentSuggestion(apiFetch: ApiFetch, sessionId: s
 }
 
 /** AES-106/203 — the prior visit's note + photos (how Basic answers "what did we use last time"). */
-export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<LastVisitInfo> {
-  const params = new URLSearchParams();
-  if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
-  const query = params.toString();
-  const response = await apiFetch(`${API_BASE}/patients/${patientId}/last-visit${query ? `?${query}` : ""}`);
-  if (!response.ok) throw new Error("Could not load last visit");
-  const payload = (await response.json()) as Record<string, unknown>;
+function normalizeVisitMedia(raw: unknown): LastVisitMedia[] {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((media): media is Record<string, unknown> => Boolean(media && typeof media === "object"))
+    .map((media) => ({
+      captureId: String(media.captureId || ""),
+      type: String(media.type || "photo"),
+      fileEndpoint: String(media.fileEndpoint || ""),
+      contentEndpoint: String(media.contentEndpoint || ""),
+      capturedAt: stringOrNull(media.capturedAt),
+      caption: stringOrNull(media.caption),
+    }));
+}
+
+function normalizeLastVisit(payload: Record<string, unknown>, fallbackPatientId: string): LastVisitInfo {
   const rawVisit = payload.visit && typeof payload.visit === "object" ? (payload.visit as Record<string, unknown>) : null;
   const rawSame = payload.sameAsLastTime && typeof payload.sameAsLastTime === "object" ? (payload.sameAsLastTime as Record<string, unknown>) : null;
-  const rawMedia = rawVisit && Array.isArray(rawVisit.media) ? rawVisit.media : [];
   return {
-    patientId: String(payload.patientId || patientId),
+    patientId: String(payload.patientId || fallbackPatientId),
     hasPriorVisit: Boolean(payload.hasPriorVisit),
     visit: rawVisit
       ? {
@@ -273,16 +281,9 @@ export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excl
           captureCount: numberValue(rawVisit.captureCount, 0),
           note: stringOrNull(rawVisit.note),
           noteSource: stringOrNull(rawVisit.noteSource),
-          media: rawMedia
-            .filter((media): media is Record<string, unknown> => Boolean(media && typeof media === "object"))
-            .map((media) => ({
-              captureId: String(media.captureId || ""),
-              type: String(media.type || "photo"),
-              fileEndpoint: String(media.fileEndpoint || ""),
-              contentEndpoint: String(media.contentEndpoint || ""),
-              capturedAt: stringOrNull(media.capturedAt),
-              caption: stringOrNull(media.caption),
-            })),
+          media: normalizeVisitMedia(rawVisit.media),
+          audio: normalizeVisitMedia(rawVisit.audio),
+          audioCount: numberValue(rawVisit.audioCount, 0),
         }
       : null,
     sameAsLastTime: rawSame
@@ -293,6 +294,42 @@ export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excl
           label: String(rawSame.label || "from last visit"),
         }
       : null,
+  };
+}
+
+export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<LastVisitInfo> {
+  const params = new URLSearchParams();
+  if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}/last-visit${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load last visit");
+  return normalizeLastVisit((await response.json()) as Record<string, unknown>, patientId);
+}
+
+export async function fetchSessionContext(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<SessionContext> {
+  const params = new URLSearchParams();
+  if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/patients/${patientId}/session-context${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load session context");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const rawLast = payload.lastVisit && typeof payload.lastVisit === "object" ? (payload.lastVisit as Record<string, unknown>) : {};
+  const rawRecent = Array.isArray(payload.recentVisits) ? payload.recentVisits : [];
+  return {
+    patientId: String(payload.patientId || patientId),
+    lastVisit: normalizeLastVisit(rawLast, patientId),
+    recentVisits: rawRecent
+      .filter((visit): visit is Record<string, unknown> => Boolean(visit && typeof visit === "object"))
+      .map((visit) => ({
+        sessionId: String(visit.sessionId || ""),
+        title: String(visit.title || "Visit"),
+        capturedAt: stringOrNull(visit.capturedAt),
+        photoCount: numberValue(visit.photoCount, 0),
+        photos: normalizeVisitMedia(visit.photos),
+      })),
+    totalPriorVisits: numberValue(payload.totalPriorVisits, 0),
+    visitOrdinal: numberValue(payload.visitOrdinal, 1),
+    keyFacts: stringOrNull(payload.keyFacts),
   };
 }
 

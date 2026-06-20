@@ -9375,6 +9375,80 @@ small {
 .last-visit-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .last-visit-thumbs-note { font-size: 0.68rem; color: var(--color-muted); }
 
+/* --- Session context card (both tiers): last-visit digest + cross-visit progress strip --- */
+.session-context-card {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-md);
+}
+.session-context-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.session-context-ordinal { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
+.session-context-tier {
+  flex: 0 0 auto; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em;
+  padding: 2px 8px; border-radius: var(--radius-pill); color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, #fff); border: 1px solid color-mix(in srgb, var(--color-primary) 35%, #fff);
+}
+.session-context-facts {
+  margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--color-text);
+  padding: 7px 9px; border-radius: 8px; background: #fff8ec; border: 1px solid #f5d9a8;
+}
+.session-context-facts-label { font-weight: 700; color: #8a5a12; margin-right: 4px; }
+.session-context-digest { display: flex; flex-direction: column; gap: 7px; }
+.session-context-digest-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.8rem; color: var(--color-text); }
+.session-context-counts { color: var(--color-muted); font-size: 0.74rem; }
+.session-context-link {
+  margin-left: auto; border: 0; background: transparent; color: var(--color-primary);
+  font-weight: 700; font-size: 0.76rem; cursor: pointer; padding: 0;
+}
+.session-context-note { margin: 0; font-size: 0.8rem; line-height: 1.5; color: var(--color-text); }
+.session-context-thumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.session-context-thumb {
+  width: 42px; height: 42px; border-radius: 7px; border: 1px solid var(--color-border);
+  overflow: hidden; background: var(--color-surface-soft); flex: 0 0 auto;
+}
+.session-context-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.session-context-more {
+  font-size: 0.72rem; font-weight: 700; color: var(--color-muted);
+  width: 42px; height: 42px; border-radius: 7px; border: 1px dashed var(--color-border);
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+.session-context-thumbs-note { font-size: 0.68rem; color: var(--color-muted); }
+.session-context-audio { display: flex; flex-direction: column; gap: 5px; }
+.session-context-audio-player { width: 100%; max-width: 280px; height: 32px; }
+.session-context-audio-play {
+  align-self: flex-start; border: 1px solid var(--color-border); background: #fff; color: var(--color-text);
+  font-size: 0.74rem; font-weight: 600; padding: 4px 10px; border-radius: var(--radius-pill); cursor: pointer;
+}
+.session-context-use {
+  align-self: flex-start; padding: 6px 12px; border: 1px solid var(--color-primary);
+  border-radius: var(--radius-pill); background: transparent; color: var(--color-primary);
+  font-weight: 700; font-size: 0.76rem; cursor: pointer; white-space: nowrap;
+}
+.session-context-progress { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--color-border); padding-top: 9px; }
+.session-context-progress-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
+.session-context-progress-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.session-context-progress-visit {
+  position: relative; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+}
+.session-context-progress-visit:disabled { cursor: default; }
+.session-context-progress-visit .session-context-thumb { width: 54px; height: 54px; }
+.session-context-progress-date { font-size: 0.66rem; color: var(--color-muted); }
+.session-context-progress-count {
+  position: absolute; top: 3px; right: 3px; font-size: 0.6rem; font-weight: 700; color: #fff;
+  background: rgba(0,0,0,0.55); border-radius: var(--radius-pill); padding: 0 5px; line-height: 1.5;
+}
+
 /* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
 .lineup-card {
   position: relative;
