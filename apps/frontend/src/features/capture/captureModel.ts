@@ -1,5 +1,5 @@
 import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession, SessionProcessingStatus, StructuredPatientInformation } from "../../domain/types";
+import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, StructuredPatientInformation } from "../../domain/types";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
 import { sessionUxState } from "../../domain/status";
 
@@ -693,6 +693,35 @@ export function sessionDateTimeLabel(source?: string | null, fallbackTime?: stri
   const datePart = source && !source.match(/\b\d{1,2}:\d{2}\b/) ? source : "";
   const time = source?.match(/\b\d{1,2}:\d{2}\b/)?.[0] || fallbackTime || "";
   return [datePart, time].filter(Boolean).join(" · ");
+}
+
+/** Performed treatments extracted by the Pro synthesis (extractedMetadata.treatments), display-shaped. */
+export function workspaceTreatments(session: CaptureSession | null): SessionTreatment[] {
+  const raw = metadataRecord(session?.extractedMetadata).treatments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+    .map((entry) => ({
+      area: metadataText(entry.area) || null,
+      product: metadataText(entry.product) || null,
+      brand: metadataText(entry.brand) || null,
+      quantity: typeof entry.quantity === "number" ? entry.quantity : null,
+      unit: metadataText(entry.unit) || null,
+      quantityText: metadataText(entry.quantityText) || null,
+      lot: metadataText(entry.lot) || null,
+      confidence: typeof entry.confidence === "number" ? entry.confidence : null,
+      carriedForward: entry.carriedForward === true,
+    }))
+    .filter((treatment) => treatment.area || treatment.product);
+}
+
+/** A one-line label for a treatment (verbatim quantity/brand/lot preserved). */
+export function treatmentLabel(treatment: SessionTreatment): string {
+  const head = treatment.area && treatment.product ? `${treatment.area}: ${treatment.product}` : treatment.area || treatment.product || "";
+  const withBrand = treatment.brand ? `${head} (${treatment.brand})` : head;
+  const amount = treatment.quantityText || (treatment.quantity != null && treatment.unit ? `${treatment.quantity} ${treatment.unit}` : "");
+  const withAmount = amount ? `${withBrand} — ${amount}` : withBrand;
+  return treatment.lot ? `${withAmount} · lot ${treatment.lot}` : withAmount;
 }
 
 export function workspaceFindings(session: CaptureSession | null) {

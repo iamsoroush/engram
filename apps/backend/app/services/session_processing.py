@@ -1,7 +1,7 @@
 from datetime import date, datetime, timezone
 from typing import Any, Literal, NotRequired, TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.models import Artifact, Capture, CaptureStatus, CaptureType, Patient, Session
@@ -15,6 +15,17 @@ from app.services.reporting import (
 
 SESSION_PROCESSING_INPUT_VERSION = "2026-05-21.session-processing-input.v1"
 SESSION_PROCESSING_OUTPUT_VERSION = "2026-05-21.session-processing-output.v1"
+# Pro single-pass report synthesis + treatment extraction output (extends the processing output with
+# treatments[] and the fixed-id sections). Emitted by the AI engine, post-processed below.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
+TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
+
+# Treatment post-processing thresholds (deterministic, clinical-safety guardrails over the LLM
+# output). A field that writes doses must surface uncertainty rather than silently commit.
+LOW_CONFIDENCE_TREATMENT_THRESHOLD = 0.5
+CARRY_FORWARD_MAX_CONFIDENCE = 0.6
+# Bound the prior-visit treatments we feed back in (for "same as last time"), keeping the context small.
+MAX_PRIOR_VISIT_TREATMENTS = 12
 
 
 def capture_is_out_of_context(capture: Capture) -> bool:
@@ -127,9 +138,20 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
     patient_information = patient_information_from_assignment(db, session)
     assigned_patient = patient_information if patient_information.get("status") == "assigned" else None
 
+    # Vertical-aware prompt framing (label + optional vocabulary); the worker falls back to a neutral
+    # "clinic" when absent — synthesis prompts never hardcode a vertical. Imported locally to avoid an
+    # import cycle (caseload/verticals sit above this module).
+    from app.services.caseload import tenant_vertical
+    from app.services.verticals import domain_descriptor
+
+    current_capture_ids = [str(capture.id) for capture in captures]
+    prior_report_model = session.report_model if isinstance(session.report_model, dict) else None
+    changeset = _session_synthesis_changeset(current_capture_ids, synthesized_capture_ids(session))
+
     return {
         "schemaVersion": SESSION_PROCESSING_INPUT_VERSION,
         "rawReportTemplate": report_template_payload(session.report_template_key),
+        "domain": domain_descriptor(tenant_vertical(db, session.tenant_id)),
         "clinic": {
             "name": template.clinic_name,
             "information": list(template.clinic_information),
@@ -141,6 +163,12 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
             "photos": [capture for capture in capture_inputs if capture["type"] == CaptureType.photo.value],
             "text": [capture for capture in capture_inputs if capture["type"] == CaptureType.note.value],
         },
+        # Stable targeted update: the prior report draft + a changeset (capture ids added/removed
+        # since the last synthesis) let the synthesizer recompute only what changed.
+        "priorReportModel": prior_report_model,
+        "changeset": changeset,
+        # Bounded prior-visit treatments enable explicit "same as last time" carry-forward.
+        "referencePriorVisitTreatments": bounded_prior_visit_treatments(db, session),
         "session": {
             "id": str(session.id),
             "tenantId": str(session.tenant_id),
@@ -252,6 +280,270 @@ def session_processing_output_from_legacy_report(output: dict[str, Any], *, gene
         "generatedBy": output.get("generated_by") if isinstance(output.get("generated_by"), str) else "mock-ai-engine",
         "generatedAt": output.get("generated_at") if isinstance(output.get("generated_at"), str) else generated_at,
     }
+
+
+# --- Pro report synthesis: input context helpers + treatment post-processing -------------------
+#
+# These are pure functions (no DB except the bounded prior-visit query) so the clinical-safety
+# guardrails over the LLM's treatments[] are unit-tested deterministically. The LLM emits the
+# signals (supersedesCaptureId, carriedForward, confidence, uncertainties); this layer VALIDATES
+# them against the real session captures, applies the supersede/carry-forward semantics, and surfaces
+# anything a clinician must confirm — never silently overwriting a dose.
+
+
+def synthesized_capture_ids(session: Session) -> list[str]:
+    """The reportable capture ids the current synthesis was generated from (empty if none yet)."""
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    record = metadata.get("report_synthesis")
+    if isinstance(record, dict) and isinstance(record.get("captureIds"), list):
+        return [str(value) for value in record["captureIds"] if isinstance(value, str)]
+    return []
+
+
+def _session_synthesis_changeset(current_ids: list[str], last_ids: list[str]) -> dict[str, list[str]]:
+    """Capture ids added/removed since the last synthesis (drives the stable targeted update)."""
+    current = list(dict.fromkeys(str(value) for value in current_ids))
+    current_set = set(current)
+    last = [str(value) for value in last_ids]
+    last_set = set(last)
+    return {
+        "addedCaptureIds": [value for value in current if value not in last_set],
+        "removedCaptureIds": [value for value in last if value not in current_set],
+    }
+
+
+def bounded_prior_visit_treatments(db: DbSession, session: Session) -> list[dict[str, Any]]:
+    """Return the most recent OTHER visit's stored treatments for this patient (bounded).
+
+    Feeds explicit "same as last time" carry-forward without dragging the whole history into the
+    prompt. Empty when the visit has no assigned patient or no prior visit recorded treatments.
+    """
+    if session.patient_id is None:
+        return []
+    prior_sessions = db.execute(
+        select(Session)
+        .where(
+            Session.tenant_id == session.tenant_id,
+            Session.patient_id == session.patient_id,
+            Session.id != session.id,
+        )
+        .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
+    ).scalars()
+    for prior in prior_sessions:
+        metadata = prior.extracted_metadata if isinstance(prior.extracted_metadata, dict) else {}
+        treatments = metadata.get("treatments")
+        if isinstance(treatments, list) and treatments:
+            return [treatment for treatment in treatments if isinstance(treatment, dict)][:MAX_PRIOR_VISIT_TREATMENTS]
+    return []
+
+
+def prior_visit_capture_ids(treatments: list[dict[str, Any]] | None) -> set[str]:
+    """Capture ids cited by prior-visit treatments (allowed targets for carry-forward citations)."""
+    ids: set[str] = set()
+    for treatment in treatments or []:
+        if not isinstance(treatment, dict):
+            continue
+        for capture_id in treatment.get("sourceCaptureIds") or []:
+            if isinstance(capture_id, str):
+                ids.add(capture_id)
+    return ids
+
+
+def _treatment_review_item(category: str, reason: str, product: str | None, source_capture_ids: list[str]) -> dict[str, Any]:
+    """One human-confirmation item for treatment extraction (drives the existing needs-input surface)."""
+    return {
+        "category": category,
+        "reason": reason,
+        "product": product,
+        "sourceCaptureIds": list(source_capture_ids or []),
+    }
+
+
+def process_synthesized_treatments(
+    treatments: list[dict[str, Any]] | None,
+    *,
+    valid_capture_ids: list[str] | set[str],
+    prior_visit_capture_ids: list[str] | set[str] | None = None,
+    uncertainties: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate + finalize the LLM's treatments[] and collect items a clinician must confirm.
+
+    Deterministic clinical-safety logic (canned-output unit-tested):
+    - drop source/supersede capture ids that don't resolve to a real capture in this session;
+    - a `supersedesCaptureId` resolving to a known capture is a clean correction (kept, auditable);
+      one that does NOT resolve is an ambiguous correction → flagged, supersede cleared, BOTH kept;
+    - `carriedForward` caps confidence and always raises a confirmation item;
+    - low-confidence and missing-but-expected lot raise confirmation items;
+    - synthesis-level `uncertainties[]` map straight to confirmation items.
+
+    Returns `(treatments, review_items)`. Treatments are never silently dropped or overwritten.
+    """
+    valid = {str(value) for value in (valid_capture_ids or [])}
+    prior = {str(value) for value in (prior_visit_capture_ids or [])}
+    allowed = valid | prior
+    processed: list[dict[str, Any]] = []
+    review: list[dict[str, Any]] = []
+    for raw in treatments or []:
+        if not isinstance(raw, dict):
+            continue
+        treatment = dict(raw)
+        product = str(treatment.get("product") or treatment.get("area") or "treatment").strip() or "treatment"
+        sources = treatment.get("sourceCaptureIds")
+        treatment["sourceCaptureIds"] = (
+            [str(value) for value in sources if isinstance(value, str) and str(value) in allowed]
+            if isinstance(sources, list)
+            else []
+        )
+        supersedes = treatment.get("supersedesCaptureId")
+        if isinstance(supersedes, str) and supersedes in valid:
+            treatment["supersedesCaptureId"] = supersedes  # clean, auditable correction
+        elif supersedes:
+            # The model flagged a correction but we can't resolve which capture it replaces — surface
+            # for confirmation and keep BOTH statements rather than silently overwriting a dose.
+            treatment["supersedesCaptureId"] = None
+            review.append(
+                _treatment_review_item(
+                    "ambiguous",
+                    f"Ambiguous correction for {product}: confirm whether it replaces an earlier entry.",
+                    product,
+                    treatment["sourceCaptureIds"],
+                )
+            )
+        confidence = treatment.get("confidence")
+        confidence = float(confidence) if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) else 0.0
+        if treatment.get("carriedForward") is True:
+            treatment["confidence"] = min(confidence, CARRY_FORWARD_MAX_CONFIDENCE)
+            review.append(
+                _treatment_review_item(
+                    "carried_forward",
+                    f"{product} carried forward from a previous visit — confirm the dose.",
+                    product,
+                    treatment["sourceCaptureIds"],
+                )
+            )
+        else:
+            treatment["confidence"] = confidence
+            if confidence < LOW_CONFIDENCE_TREATMENT_THRESHOLD:
+                review.append(
+                    _treatment_review_item(
+                        "low_confidence",
+                        f"Low-confidence treatment: {product} — confirm.",
+                        product,
+                        treatment["sourceCaptureIds"],
+                    )
+                )
+        attributes = treatment.get("attributes") if isinstance(treatment.get("attributes"), dict) else {}
+        if attributes.get("lotExpected") is True and not treatment.get("lot"):
+            review.append(_treatment_review_item("missing_lot", f"Missing lot number for {product}.", product, treatment["sourceCaptureIds"]))
+        processed.append(treatment)
+    for sentence in uncertainties or []:
+        if isinstance(sentence, str) and sentence.strip():
+            review.append(_treatment_review_item("ambiguous", sentence.strip(), None, []))
+    return processed, review
+
+
+def _treatment_performed_line(treatment: dict[str, Any]) -> str | None:
+    """Render one treatment as a prose line (verbatim quantity/brand/lot, native script preserved)."""
+    area = str(treatment.get("area") or "").strip()
+    product = str(treatment.get("product") or "").strip()
+    head = f"{area}: {product}" if area and product else (area or product)
+    if not head:
+        return None
+    brand = str(treatment.get("brand") or "").strip()
+    if brand:
+        head = f"{head} ({brand})"
+    amount = str(treatment.get("quantityText") or "").strip()
+    if not amount:
+        quantity = treatment.get("quantity")
+        unit = str(treatment.get("unit") or "").strip()
+        if isinstance(quantity, (int, float)) and not isinstance(quantity, bool):
+            amount = f"{quantity:g} {unit}".strip()
+    parts = [head] + ([amount] if amount else [])
+    line = " — ".join(parts)
+    lot = str(treatment.get("lot") or "").strip()
+    if lot:
+        line = f"{line} · lot {lot}"
+    if treatment.get("carriedForward") is True:
+        line = f"{line} (carried forward — confirm)"
+    return line
+
+
+def render_treatment_performed_blocks(treatments: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Render the treatment-performed section blocks FROM treatments[] (prose mirror of the store)."""
+    blocks: list[dict[str, Any]] = []
+    for treatment in treatments or []:
+        if not isinstance(treatment, dict):
+            continue
+        line = _treatment_performed_line(treatment)
+        if line:
+            blocks.append({"type": "paragraph", "text": line})
+    return blocks
+
+
+def validate_synthesis_capture_ids(output: dict[str, Any], valid_capture_ids: list[str] | set[str]) -> dict[str, Any]:
+    """Drop section image blocks / sourceReferences referencing captures not in this session.
+
+    The renderer trusts model-provided capture ids, so unknown ones are dropped here before they
+    reach the report model (a 404 image / phantom source otherwise).
+    """
+    valid = {str(value) for value in (valid_capture_ids or [])}
+    sections: list[dict[str, Any]] = []
+    for section in output.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        blocks = []
+        for block in section.get("blocks") or []:
+            if isinstance(block, dict) and block.get("type") == "image":
+                capture_id = block.get("captureId")
+                if not (isinstance(capture_id, str) and capture_id in valid):
+                    continue
+            blocks.append(block)
+        sections.append({**section, "blocks": blocks})
+    references = output.get("sourceReferences")
+    cleaned_references = (
+        [
+            reference
+            for reference in references
+            if isinstance(reference, dict)
+            and (reference.get("type") != "capture" or (isinstance(reference.get("captureId"), str) and reference["captureId"] in valid))
+        ]
+        if isinstance(references, list)
+        else output.get("sourceReferences")
+    )
+    return {**output, "sections": sections, "sourceReferences": cleaned_references}
+
+
+def set_treatment_performed_section(output: dict[str, Any], blocks: list[dict[str, Any]]) -> dict[str, Any]:
+    """Replace the treatment-performed section's blocks (rendered from treatments[])."""
+    sections = []
+    for section in output.get("sections") or []:
+        if isinstance(section, dict) and section.get("id") == TREATMENT_PERFORMED_SECTION_ID:
+            sections.append({**section, "blocks": blocks})
+        else:
+            sections.append(section)
+    return {**output, "sections": sections}
+
+
+def finalize_session_synthesis_output(
+    output: dict[str, Any],
+    *,
+    valid_capture_ids: list[str] | set[str],
+    prior_visit_capture_ids: list[str] | set[str] | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Validate captureIds, finalize treatments, and re-render treatment-performed FROM treatments[].
+
+    Returns `(finalized_output, treatments, review_items)` for the backend to persist.
+    """
+    validated = validate_synthesis_capture_ids(output, valid_capture_ids)
+    treatments, review_items = process_synthesized_treatments(
+        validated.get("treatments") if isinstance(validated.get("treatments"), list) else [],
+        valid_capture_ids=valid_capture_ids,
+        prior_visit_capture_ids=prior_visit_capture_ids,
+        uncertainties=validated.get("uncertainties") if isinstance(validated.get("uncertainties"), list) else None,
+    )
+    blocks = render_treatment_performed_blocks(treatments)
+    finalized = set_treatment_performed_section({**validated, "treatments": treatments}, blocks)
+    return finalized, treatments, review_items
 
 
 def _capture_input(capture: Capture, artifact: Artifact | None) -> SessionProcessingCaptureInput:
@@ -395,7 +687,9 @@ def _valid_blocks(value: Any) -> list[dict[str, Any]]:
         block_type = block["type"]
         if block_type == "paragraph" and isinstance(block.get("text"), str):
             blocks.append({"type": "paragraph", "text": block["text"]})
-        elif block_type in {"image", "artifact"} and isinstance(block.get("artifactId"), str):
+        elif block_type in {"image", "artifact"} and (isinstance(block.get("artifactId"), str) or isinstance(block.get("captureId"), str)):
+            # Synthesis emits captureId-only image blocks (the renderer resolves them to the file
+            # endpoint); the legacy deterministic path emits artifactId — accept either.
             blocks.append(
                 {
                     key: block[key]

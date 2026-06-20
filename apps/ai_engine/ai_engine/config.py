@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     patient_memory_model: str = ""
     patient_memory_base_url: str = ""
     patient_memory_api_key: str = ""
+    # Session report synthesis + treatment extraction (Pro). One single-pass structured call.
+    # Falls back to the transcription gateway/model when blank. Reasoning effort is low by default
+    # (stability comes from structured output + low effort; NO temperature for GPT-5-class models).
+    report_synthesis_model: str = ""
+    report_synthesis_base_url: str = ""
+    report_synthesis_api_key: str = ""
+    report_synthesis_reasoning_effort: str = "low"
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

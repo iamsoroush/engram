@@ -1,10 +1,13 @@
 """Deterministic session report model + synchronous regeneration and contribution tracking."""
+import hashlib
+import logging
 import uuid
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from app.config import settings
 from app.models import (
     AiJob,
     AiJobStatus,
@@ -23,7 +26,13 @@ from app.services.session_processing import capture_is_out_of_context
 
 from app.services.ai_jobs.base import utc_now
 from app.services.ai_jobs.context import generated_capture_text
-from app.services.ai_jobs.orchestration import _session_capture_jobs
+from app.services.ai_jobs.orchestration import (
+    _session_capture_jobs,
+    create_session_report_job,
+    dispatch_session_processing_job,
+)
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "report_contribution_effect",
@@ -32,11 +41,40 @@ __all__ = [
     "session_has_pending_capture_jobs",
     "session_has_active_report_job",
     "session_has_reportable_capture",
+    "reportable_session_captures",
     "session_has_uncontributed_capture",
+    "session_synthesis_enabled",
+    "session_report_content_signature",
     "build_session_report_model",
     "regenerate_session_report",
     "regenerate_session_report_if_idle",
+    "maybe_dispatch_session_synthesis",
 ]
+
+
+def session_synthesis_enabled(db: DbSession, tenant_id: uuid.UUID) -> bool:
+    """Whether the Pro single-pass report synthesis should run for this tenant.
+
+    True only when a synthesis gateway is configured (the backend-visible `report_synthesis_enabled`
+    proxy), the tenant has the live-report capability, and it is a capture-first vertical (therapy
+    has its own narrative synthesis path). When False the deterministic baseline is the final report.
+    """
+    return (
+        settings.report_synthesis_enabled
+        and tenant_has_capability(db, tenant_id, LIVE_REPORT_SYNTHESIS)
+        and tenant_vertical(db, tenant_id) != "therapy"
+    )
+
+
+def session_report_content_signature(captures: list[Capture]) -> str:
+    """Stable signature of a session's reportable capture content (id + generated text).
+
+    Changes whenever a capture is added, removed, or its generated text/caption is edited — so a
+    current LLM synthesis can be kept (not re-run) while its content is unchanged, yet any real
+    change re-triggers the deterministic floor + a fresh synthesis.
+    """
+    parts = sorted(f"{capture.id}\x1f{_capture_report_text(capture) or ''}" for capture in captures)
+    return hashlib.sha1("\x1e".join(parts).encode("utf-8")).hexdigest()
 
 
 def report_contribution_effect(status: str, *, generated_at: str | None = None, had_append_intent: bool = False) -> dict[str, Any]:
@@ -145,6 +183,11 @@ def session_has_reportable_capture(db: DbSession, *, tenant_id: uuid.UUID, sessi
     return bool(_reportable_captures(db, tenant_id=tenant_id, session_id=session_id))
 
 
+def reportable_session_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:
+    """Public accessor for a session's reportable captures (processed, in-context)."""
+    return _reportable_captures(db, tenant_id=tenant_id, session_id=session_id)
+
+
 def session_has_uncontributed_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
     """Whether a reportable capture isn't yet folded into the report (its contribution != `added`).
 
@@ -232,6 +275,7 @@ def regenerate_session_report(db: DbSession, *, session: Session) -> None:
         key=lambda capture: (capture.captured_at or capture.created_at or utc_now()),
     )
     generated_at = utc_now()
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     # Therapy branch: narrative-first, two-plane synthesis (DAP/SOAP/BIRP + private plane +
     # "Session so far") instead of the aesthetics by-type grouping. Kept fully isolated here so the
     # aesthetics path below is untouched. See app/services/therapy_reporting.py.
@@ -241,18 +285,33 @@ def regenerate_session_report(db: DbSession, *, session: Session) -> None:
         apply_therapy_synthesis(session, captures, db=db, generated_at=generated_at.isoformat())
         session.updated_at = generated_at
         return
+    # Don't clobber a current LLM synthesis: when the single-pass synthesis already produced the
+    # report for this exact reportable content, the deterministic baseline is only the floor — leave
+    # the synthesized report in place. Any content change (add/remove/edit) shifts the signature, so
+    # the floor rebuilds and a fresh synthesis is dispatched.
+    live_synthesis = session_synthesis_enabled(db, session.tenant_id)
+    if live_synthesis:
+        record = metadata.get("report_synthesis")
+        if (
+            isinstance(record, dict)
+            and record.get("status") == "current"
+            and record.get("signature") == session_report_content_signature(captures)
+        ):
+            return
     synthesized = tenant_has_capability(db, session.tenant_id, LIVE_REPORT_SYNTHESIS)
     model = build_session_report_model(session, captures, grouped=synthesized)
     session.report_model = model
     session.generated_report = render_report_body_markdown(model, db=db, session=session)
     session.organization_source = OrganizationSource.ai_engine
-    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     metadata = {**metadata, "generated_output_stale": False, "generated_at": generated_at.isoformat()}
-    if synthesized:
+    if synthesized and not live_synthesis:
         # The "Added to report" chip + meta strip ride on live-report synthesis; Basic is a plain chronological render.
         metadata["report_contribution_summary"] = mark_session_report_contributions(
             db, session=session, generated_at=generated_at.isoformat()
         )
+    # When live synthesis is on, the floor leaves captures `pending` (set at capture completion) so
+    # the synthesis is dispatched and folds them in (marking them `added`); the freshness strip shows
+    # "updating" until then. We do NOT mark them added here, or the synthesis would never dispatch.
     session.extracted_metadata = metadata
     # A processed session settles to needs_review (assigned) / unassigned (no patient); completeness
     # is then derived (is_session_complete) rather than set by a manual verify.
@@ -281,5 +340,50 @@ def regenerate_session_report_if_idle(
     ).scalar_one_or_none()
     if session is None:
         return
+    # Deterministic baseline ALWAYS runs first (a report is always present), then — for Pro tenants
+    # with a synthesis gateway — the single-pass LLM synthesis is dispatched to refine it.
     regenerate_session_report(db, session=session)
     db.commit()
+    maybe_dispatch_session_synthesis(
+        db, tenant_id=tenant_id, session_id=session_id, created_by_user_id=created_by_user_id
+    )
+
+
+def maybe_dispatch_session_synthesis(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    session_id: uuid.UUID,
+    created_by_user_id: uuid.UUID | None = None,
+) -> None:
+    """Dispatch the Pro single-pass report synthesis (revived `session_organize`) once data settles.
+
+    Runs AFTER the deterministic baseline, only for a synthesis-enabled tenant with an uncontributed
+    reportable capture, and is debounced via the existing guards (no pending capture jobs, no active
+    report job) so a settle burst coalesces to one synthesis. The job is a quiet refinement — it does
+    not flip the session to `processing`, so the baseline report stays visible while it runs.
+    """
+    if not session_synthesis_enabled(db, tenant_id):
+        return
+    if session_has_pending_capture_jobs(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    if session_has_active_report_job(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    if not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
+        return
+    session = db.execute(
+        select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if session is None:
+        return
+    job = create_session_report_job(
+        db,
+        tenant_id=tenant_id,
+        created_by_user_id=created_by_user_id,
+        session=session,
+        trigger="settle",
+        mark_processing=False,
+    )
+    db.commit()
+    db.refresh(job)
+    dispatch_session_processing_job(db, job)

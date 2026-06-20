@@ -198,6 +198,18 @@ def _session_needs_input_item(session: Session) -> dict[str, Any] | None:
             "reason": "This visit is saved, but I do not know which patient it belongs to.",
             "created_at": _iso(session.updated_at),
         }
+    # review-treatments — the Pro synthesis flagged an extracted dose/correction/carry-forward a
+    # clinician should confirm (ambiguous correction, low-confidence product, missing lot, carried
+    # forward). Reuses the existing needs-input surface; lower priority than the patient decisions above.
+    review = metadata.get("treatment_review")
+    if isinstance(review, list) and review:
+        reasons = [str(item.get("reason")) for item in review if isinstance(item, dict) and item.get("reason")]
+        return {
+            "kind": "review-treatments",
+            "session_id": str(session.id),
+            "reason": reasons[0] if reasons else "Confirm the treatments extracted from this visit.",
+            "created_at": _iso(session.updated_at),
+        }
     return None
 
 

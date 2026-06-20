@@ -226,8 +226,14 @@ def create_session_report_job(
     created_by_user_id: uuid.UUID | None,
     session: Session,
     trigger: str = "manual",
+    mark_processing: bool = True,
 ) -> AiJob:
-    """Create a queued session live-report job and mark the session processing."""
+    """Create a queued session live-report job and (optionally) mark the session processing.
+
+    `mark_processing=False` keeps the session at its current resting status — used by the Pro
+    synthesis refinement, which runs AFTER a deterministic report already exists, so the report must
+    stay visible (a quiet enrichment, never an error/processing flash).
+    """
     source_ids = [
         str(source_id)
         for source_id in db.execute(
@@ -255,8 +261,9 @@ def create_session_report_job(
     )
     db.add(job)
     db.flush()
-    session.status = SessionStatus.processing
-    session.summary = session.summary or "Session processing has started."
+    if mark_processing:
+        session.status = SessionStatus.processing
+        session.summary = session.summary or "Session processing has started."
     return job
 
 

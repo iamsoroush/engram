@@ -5,7 +5,7 @@ import type { CaptureItem, CaptureSession, StructuredPatientInformation, Structu
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, generatedTextForReport, textDirection } from "../captureModel";
 
 export function LiveReportView({
   isPro,
@@ -56,6 +56,9 @@ export function ProLiveReport({
   // Pro is a deterministic, grouped-by-type document (Audio notes / Written notes / Photos) built
   // without an LLM — render the structured sections (with their headers) so the grouping is visible.
   const sections = (session?.reportModel?.sections || []).filter((section) => section.blocks?.length);
+  // Performed treatments extracted by the Pro synthesis (queryable store). The report's
+  // treatment-performed section is a prose mirror; this is the structured at-a-glance list.
+  const treatments = workspaceTreatments(session);
   const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
   const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
   // Explicit "what this report is based on" status (Pro): current = reflects all captures.
@@ -103,6 +106,22 @@ export function ProLiveReport({
           <p className="report-doc-status">The report builds here automatically as captures land.</p>
         )}
       </section>
+      {treatments.length ? (
+        <section className="structured-report-section treatments-performed">
+          <h3>Treatments performed</h3>
+          <ul className="treatments-list">
+            {treatments.map((treatment, index) => {
+              const label = treatmentLabel(treatment);
+              return (
+                <li className="treatment-item" dir={textDirection(label)} key={`${index}-${label.slice(0, 24)}`}>
+                  {label}
+                  {treatment.carriedForward ? <span className="treatment-flag"> · carried forward — confirm</span> : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
