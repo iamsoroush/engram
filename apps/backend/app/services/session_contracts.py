@@ -2,7 +2,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from app.models import CaptureType, OrganizationSource, Session, SessionStatus
+from sqlalchemy import select
+from sqlalchemy.orm import Session as DbSession
+
+from app.models import (
+    AiJob,
+    AiJobStatus,
+    AiJobType,
+    CaptureType,
+    OrganizationSource,
+    Session,
+    SessionStatus,
+)
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
     structured_report_from_markdown_body,
@@ -97,8 +108,51 @@ def _normal_findings(metadata: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def build_session_contracts(session: Session) -> dict[str, Any]:
-    """Build frontend-stable session contracts from the current session record."""
+# Calm, persistent "AI is still organizing" copy, surfaced while a Pro report-synthesis job is in
+# flight even though the deterministic baseline already reads complete. The frontend keys the
+# organizing indicator off `stage == "organizing"` (with `state == "processing"`).
+SYNTHESIS_ORGANIZING_STAGE = "organizing"
+SYNTHESIS_ORGANIZING_LABEL = "Organizing with AI"
+SYNTHESIS_ORGANIZING_DETAIL = "This report will update shortly."
+
+
+def _has_inflight_synthesis_job(db: DbSession, session: Session) -> bool:
+    """Whether a Pro report-synthesis job for this session is still going to run.
+
+    A ``session_organize`` job that is queued/running — or failed-but-retryable (a transient gateway
+    error the recovery loop will re-dispatch) — means AI is still organizing the report, even though
+    the deterministic baseline already settled to "complete". Basic / gateway-less tenants dispatch
+    no such job, so this is never true for them (the deterministic report is final there).
+    """
+    # Local import keeps session_contracts free of an ai_jobs import cycle (ai_jobs.reports ->
+    # orchestration -> session_contracts). The retryable check is the canonical one.
+    from app.services.ai_jobs.recovery import ai_job_retryable
+
+    jobs = db.execute(
+        select(AiJob).where(
+            AiJob.tenant_id == session.tenant_id,
+            AiJob.session_id == session.id,
+            AiJob.capture_id.is_(None),
+            AiJob.job_type == AiJobType.session_organize,
+            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running, AiJobStatus.failed]),
+        )
+    ).scalars()
+    for job in jobs:
+        if job.status in (AiJobStatus.queued, AiJobStatus.running):
+            return True
+        if job.status == AiJobStatus.failed and ai_job_retryable(job):
+            return True
+    return False
+
+
+def build_session_contracts(session: Session, db: DbSession | None = None) -> dict[str, Any]:
+    """Build frontend-stable session contracts from the current session record.
+
+    When ``db`` is provided and the deterministic baseline has settled (captures drained) while a Pro
+    synthesis job is still in flight, the processing status is nudged to a calm working state
+    (``state=processing``, ``stage=organizing``) so the frontend can keep the baseline visible and
+    show a persistent "Organizing with AI" notice — never shown for Basic / gateway-less (no job).
+    """
     metadata = _metadata(session)
     count = _capture_count(metadata)
     is_stale = bool(metadata.get("generated_output_stale"))
@@ -166,6 +220,20 @@ def build_session_contracts(session: Session) -> dict[str, Any]:
         "source": stored_processing_status.get("source") if isinstance(stored_processing_status.get("source"), str) else "mock-session-contract",
         "updatedAt": _iso(session.updated_at),
     }
+    # Pro "organizing with AI": the deterministic baseline has settled (captures drained — not
+    # actively `processing`/`failed`), but a synthesis job is still in flight (gateway slow/down or
+    # queued). Surface a calm, persistent working state so the baseline stays readable AND the user
+    # knows AI is still organizing. Gated off the in-flight job (Basic / gateway-less dispatch none),
+    # and skipped while captures are still processing (that already shows its own working UI).
+    if db is not None and processing_state not in {"processing", "failed"} and _has_inflight_synthesis_job(db, session):
+        processing_status = {
+            **processing_status,
+            "state": "processing",
+            "stage": SYNTHESIS_ORGANIZING_STAGE,
+            "label": SYNTHESIS_ORGANIZING_LABEL,
+            "detail": SYNTHESIS_ORGANIZING_DETAIL,
+            "progress": None,
+        }
     return {
         "contractVersion": SESSION_CONTRACT_VERSION,
         "report": report,
