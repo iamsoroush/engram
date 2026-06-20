@@ -63,7 +63,7 @@ from app.services.patient_memory import get_patient_memory_detail, list_patient_
 from app.services.patient_matching import find_patient_duplicates
 from app.services.patient_search import smart_search_patients
 from app.services.assignment_suggestions import suggest_session_assignment
-from app.services.last_visit import get_last_visit
+from app.services.last_visit import get_last_visit, get_session_context
 from app.services.aftercare_templates import (
     aftercare_template_payload,
     create_aftercare_template,
@@ -458,6 +458,17 @@ def patients_last_visit(
 ) -> dict[str, Any]:
     """Return the patient's prior visit's note + before/after media (AES-106/203)."""
     return get_last_visit(db, principal, patient_id, exclude_session_id=exclude_session_id)
+
+
+@api_v1.get("/patients/{patient_id}/session-context")
+def patients_session_context(
+    patient_id: str,
+    exclude_session_id: str | None = Query(default=None, alias="excludeSessionId"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Deterministic session context (last-visit digest + recent-visits photo strip + key facts)."""
+    return get_session_context(db, principal, patient_id, exclude_session_id=exclude_session_id)
 
 
 @api_v1.get("/patients/{patient_id}/memory", response_model=PatientMemoryDetailResponse)

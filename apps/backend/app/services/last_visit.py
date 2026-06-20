@@ -19,6 +19,11 @@ from app.services.patients import get_patient
 from app.services.sessions import parse_uuid
 
 LAST_VISIT_SCHEMA_VERSION = "2026-06-12.last-visit.v1"
+SESSION_CONTEXT_SCHEMA_VERSION = "2026-06-20.session-context.v1"
+# Cross-visit photo strip bounds — "progress at a glance" without dragging the whole gallery into
+# the card. Newest visits prominent; per-visit photos bounded so one heavy visit can't dominate.
+MAX_RECENT_VISITS = 6
+MAX_PHOTOS_PER_VISIT = 6
 
 
 def _sort_date(session: Session) -> datetime:
@@ -45,6 +50,29 @@ def _caption(capture: Capture) -> str | None:
     if isinstance(caption, dict) and isinstance(caption.get("text"), str) and caption["text"].strip():
         return caption["text"].strip()
     return None
+
+
+def _photo_media(capture: Capture) -> dict[str, Any]:
+    """One photo entry (before/after media; Basic does not tag — the eye pairs)."""
+    return {
+        "captureId": str(capture.id),
+        "type": capture.capture_type.value,
+        "fileEndpoint": f"/api/v1/captures/{capture.id}/file" if capture.source_artifact_id else None,
+        "contentEndpoint": f"/api/v1/captures/{capture.id}/file-content" if capture.source_artifact_id else None,
+        "capturedAt": _iso(capture.captured_at),
+        "caption": _caption(capture),
+    }
+
+
+def _audio_media(capture: Capture) -> dict[str, Any]:
+    """One playable voice-memo entry (no caption; transcript lives on the capture, not the digest)."""
+    return {
+        "captureId": str(capture.id),
+        "type": capture.capture_type.value,
+        "fileEndpoint": f"/api/v1/captures/{capture.id}/file" if capture.source_artifact_id else None,
+        "contentEndpoint": f"/api/v1/captures/{capture.id}/file-content" if capture.source_artifact_id else None,
+        "capturedAt": _iso(capture.captured_at),
+    }
 
 
 def _visit_label(visit_at: datetime | None) -> str:
@@ -113,18 +141,10 @@ def get_last_visit(
 
         note_texts = [text for capture in captures if (text := _note_text(capture)) and capture.capture_type == CaptureType.note]
         note = "\n\n".join(note_texts) if note_texts else None
-        media = [
-            {
-                "captureId": str(capture.id),
-                "type": capture.capture_type.value,
-                "fileEndpoint": f"/api/v1/captures/{capture.id}/file" if capture.source_artifact_id else None,
-                "contentEndpoint": f"/api/v1/captures/{capture.id}/file-content" if capture.source_artifact_id else None,
-                "capturedAt": _iso(capture.captured_at),
-                "caption": _caption(capture),
-            }
-            for capture in captures
-            if capture.capture_type == CaptureType.photo and capture.source_artifact_id
-        ]
+        media = [_photo_media(capture) for capture in captures if capture.capture_type == CaptureType.photo and capture.source_artifact_id]
+        # Voice memos in the prior visit — the digest answers "a visit is many captures", and these
+        # stay playable from the card. Audio without a stored artifact (still uploading) is skipped.
+        audio = [_audio_media(capture) for capture in captures if capture.capture_type == CaptureType.audio and capture.source_artifact_id]
         visit_at = _sort_date(session)
         return {
             "schemaVersion": LAST_VISIT_SCHEMA_VERSION,
@@ -140,6 +160,8 @@ def get_last_visit(
                 "note": note,
                 "noteSource": "captures" if note else None,
                 "media": media,
+                "audio": audio,
+                "audioCount": len(audio),
             },
             "sameAsLastTime": (
                 {
@@ -153,3 +175,90 @@ def get_last_visit(
             ),
         }
     return empty
+
+
+def get_session_context(
+    db: DbSession,
+    principal: CurrentPrincipal,
+    patient_id: str,
+    *,
+    exclude_session_id: str | None = None,
+) -> dict[str, Any]:
+    """Deterministic patient context for the session/assignment surface (both tiers, zero AI).
+
+    The redesign's deterministic base: the last-visit **digest** (the full prior visit — all notes,
+    photos, and playable voice memos, via :func:`get_last_visit`), a bounded **cross-visit photo
+    strip** for eyeball progress, the patient's pinned **key facts**, and the in-progress visit's
+    **ordinal**. The Basic context card renders this directly; the Pro window layers Job-4 intelligent
+    blocks on top of this same base (and falls back to it when the gateway is absent), so Pro is never
+    blank.
+
+    Args:
+        db: Active database session.
+        principal: Authenticated staff principal (tenant scope).
+        patient_id: The patient the session was just determined for.
+        exclude_session_id: The in-progress visit to skip (its captures are not "prior context").
+
+    Returns:
+        ``{"schemaVersion", "patientId", "lastVisit", "recentVisits", "totalPriorVisits",
+        "visitOrdinal", "keyFacts"}``. ``lastVisit`` is the full :func:`get_last_visit` payload.
+        ``recentVisits`` is newest-first, each ``{sessionId, title, capturedAt, photoCount,
+        photos:[…]}`` (photos bounded). ``visitOrdinal`` is the in-progress visit's 1-based number in
+        this patient's history; ``keyFacts`` is the patient's pinned free-text notes or ``None``.
+    """
+    patient = get_patient(db, principal.tenant_id, patient_id)  # 404s on a bad/foreign patient
+    patient_uuid = parse_uuid(patient_id, "patient_id")
+    exclude_uuid = parse_uuid(exclude_session_id, "exclude_session_id") if exclude_session_id else None
+
+    last_visit = get_last_visit(db, principal, patient_id, exclude_session_id=exclude_session_id)
+
+    statement = select(Session).where(
+        Session.tenant_id == principal.tenant_id,
+        Session.patient_id == patient_uuid,
+    )
+    if exclude_uuid is not None:
+        statement = statement.where(Session.id != exclude_uuid)
+    sessions = db.execute(statement).scalars().all()
+    sessions.sort(key=_sort_date, reverse=True)
+
+    recent_visits: list[dict[str, Any]] = []
+    total_prior_visits = 0
+    for session in sessions:
+        captures = db.execute(
+            select(Capture)
+            .where(
+                Capture.tenant_id == principal.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
+            .order_by(Capture.captured_at, Capture.created_at)
+        ).scalars().all()
+        if not captures:  # skip empty shells — only real prior visits count
+            continue
+        total_prior_visits += 1
+        if len(recent_visits) >= MAX_RECENT_VISITS:
+            continue
+        photos = [_photo_media(c) for c in captures if c.capture_type == CaptureType.photo and c.source_artifact_id]
+        if not photos:  # the strip is for visual progress; a note-only visit adds no thumb
+            continue
+        recent_visits.append(
+            {
+                "sessionId": str(session.id),
+                "title": session.title,
+                "capturedAt": _iso(_sort_date(session)) if _sort_date(session) != datetime.min else None,
+                "photoCount": len(photos),
+                "photos": photos[:MAX_PHOTOS_PER_VISIT],
+            }
+        )
+
+    key_facts = patient.notes.strip() if isinstance(patient.notes, str) and patient.notes.strip() else None
+
+    return {
+        "schemaVersion": SESSION_CONTEXT_SCHEMA_VERSION,
+        "patientId": str(patient_uuid),
+        "lastVisit": last_visit,
+        "recentVisits": recent_visits,
+        "totalPriorVisits": total_prior_visits,
+        "visitOrdinal": total_prior_visits + 1,
+        "keyFacts": key_facts,
+    }
