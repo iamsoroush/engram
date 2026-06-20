@@ -45,7 +45,7 @@ zero AI.
   visit, recent prominent) for eyeball progress — the card-sized view of the AES-103 gallery. *Why:* "show
   progress at a glance" is the Basic value; one visit's photos isn't progress.
 - **Deterministic key facts** (if present): patient-pinned notes/flags (allergies, preferences) surfaced
-  at top; "Nth visit since <first-visit date>". *Why:* safety/recall facts shouldn't require a screen jump.
+  at top; "Nth visit since the first visit". *Why:* safety/recall facts shouldn't require a screen jump.
 - **"Same as last time"** pre-fill (keep) + **"View full history →"** (the round-trip entry, below).
 
 Backend: extend `get_last_visit` (or add `get_session_context`) to return the last session's full capture
@@ -119,9 +119,13 @@ not just historical. Composed of these blocks (glanceable; expand for depth):
 
 1. **Basic card depth** — last-visit digest + a recent-visits photo strip (this design), or also a compact
    deterministic "treatments-ish" recall from free-text (riskier without structure)?
-2. **Pro "suggested focus" proactiveness** — a light "likely about / due-for" memory aid (this design), or
-   keep Pro purely retrospective (no anticipation) to avoid any directive feel?
-3. **New job vs Job-4 extension** for `sessionContext`/due-for — extend Job 4 (recommended) or a separate
-   lightweight job?
+2. **Pro proactiveness — DECIDED: light, guarded memory-aid.** Surface **facts** about the patient's own
+   history + the doctor's own prior plan (e.g. "last botox: 10 wks ago · typical interval here ~12";
+   "last visit's plan: review filler at 2 wks") — **never** generated clinical advice, doses, or "should".
+   Due-for is a *fact about the patient's cadence*, not a directive; every line is **cited to its source**.
+   This keeps it informative (a memory aid), not clinical-decision-support. *(Make it per-clinic
+   suppressible in the build.)*
+3. **sessionContext/due-for — DECIDED: extend Job 4** (add a `sessionContext` field to the memory
+   projection), not a separate job — it shares Job 4's context + triggers.
 4. **Round-trip scope** — full timeline only, or also inline "peek" expansions on the card before a full
    navigation?
