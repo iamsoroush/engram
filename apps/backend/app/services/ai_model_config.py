@@ -22,7 +22,6 @@ AI_MODELS_KEY = "ai_models"
 AI_MODEL_TASKS: list[tuple[str, str]] = [
     ("transcription", "Audio transcription + intent"),
     ("caption", "Photo caption (Pro)"),
-    ("note_decoration", "Note decoration (Pro)"),
     ("patient_memory", "Patient summary + history (Pro)"),
     ("qa_draft", "Patient Q&A reply draft (Pro)"),
     ("report_synthesis", "Report synthesis + treatments (Pro)"),

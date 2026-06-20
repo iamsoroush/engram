@@ -9,7 +9,7 @@ import { VoiceMemoPlayer } from "../../aesthetics/VoiceMemoPlayer";
 import { CaptureRawPreview } from "./SourcePreview";
 import { BasicNoteEditor } from "./BasicNoteEditor";
 import { CapturePatientBadges, CaptureReportBadge, captureAssignmentInfo, CaptureAssignmentBadge, CaptureInlineStatus, CaptureWorkingPlaceholder, pendingGeneratedAttribution, audioPendingTranscriptLabel, CaptureGeneratedHeading, CaptureGeneratedText, captureTextAttribution, CaptureTimelineIcon } from "./CaptureBadges";
-import { captureOutOfContext, captureDraftLabel, draftCaptureText, generatedTextForReport, textDirection, noteDecoratedText, activePatientAssignmentActionForSession, AssignmentCandidate, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { captureOutOfContext, captureDraftLabel, draftCaptureText, generatedTextForReport, textDirection, captureNeedsReview, captionDisplay, activePatientAssignmentActionForSession, AssignmentCandidate, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 
 export function LiveDraftReport({
   isPro,
@@ -179,10 +179,13 @@ export function LiveDraftCaptureItem({
   // Basic photos are never captioned → go straight to a manual "Add caption" (no AI badge/spinner).
   const captionStillProcessing =
     isPro && item.status !== "processed" && item.status !== "ready" && item.status !== "needsReview";
-  const fallbackText = draftCaptureText(item);
-  const decoratedNoteText = noteDecoratedText(item) || generatedText || fallbackText;
-  // Basic note text: the staff-edited note, else the raw typed note. (No AI "decoration".)
-  const noteBasicText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
+  // Note text (both tiers): the staff-edited note, else the raw typed note. Notes are a pure
+  // passthrough now — no AI "decoration" — so the card shows the raw note, inline-editable.
+  const noteRawText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
+  // §7: a low-confidence / flagged photo caption surfaces a "Needs review" chip with the reason.
+  const captionReviewReason = captureNeedsReview(item);
+  // Model-authored Markdown variant of the caption (clean text for AI jobs; **bold** for the UI).
+  const captionDisplayText = captionDisplay(item);
   const textAttribution = captureTextAttribution(item);
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
@@ -264,6 +267,7 @@ export function LiveDraftCaptureItem({
               onChooseAnother={onChooseAnother}
               outOfContext={outOfContext}
               onMarkRelevant={markRelevant}
+              needsReviewReason={isPro ? captionReviewReason : ""}
             />
           </div>
           <button
@@ -317,7 +321,7 @@ export function LiveDraftCaptureItem({
               <div className="live-draft-photo-copy">
                 <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
                   {generatedText ? (
-                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} />
+                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} display={captionDisplayText} />
                   ) : captionStillProcessing ? (
                     <>
                       <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
@@ -338,21 +342,9 @@ export function LiveDraftCaptureItem({
           )
         ) : null}
         {!isPhoto && !isAudio ? (
-          isPro ? (
-            <>
-              <section className="capture-generated-section ready">
-                <h4>Decorated text</h4>
-                <p className="live-draft-preview" dir={textDirection(decoratedNoteText)}>{decoratedNoteText}</p>
-              </section>
-              <details className="capture-raw-note">
-                <summary>Raw note</summary>
-                <CaptureRawPreview item={item} onResolveFile={onResolveFile} />
-              </details>
-            </>
-          ) : (
-            // Basic: a note is just the doctor's words — tap the text to edit it inline. (AES-101)
-            <BasicNoteEditor text={noteBasicText} onSave={onEditNote} />
-          )
+          // A note is just the doctor's words (no AI decoration) — tap the text to edit it inline.
+          // Both tiers share the raw-note editor. (AES-101)
+          <BasicNoteEditor text={noteRawText} onSave={onEditNote} />
         ) : null}
       </div>
     </article>

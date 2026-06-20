@@ -15,6 +15,8 @@ from app.services.patient_matching import NATIONAL_ID_CONFLICT_RISK
 __all__ = [
     "assignment_intent_basis",
     "out_of_context_marker",
+    "caption_review_marker",
+    "CAPTION_LOW_CONFIDENCE_THRESHOLD",
     "should_apply_identity_assignment",
     "spoken_name_from_information",
     "suggested_reassignment_candidate",
@@ -51,6 +53,36 @@ def out_of_context_marker(output: dict[str, Any]) -> dict[str, Any] | None:
         "present": True,
         "confidence": float(confidence) if isinstance(confidence, int | float) else 0.0,
         "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
+        "source": "ai",
+    }
+
+
+# A photo caption the model is this unsure of (or that it flagged) is surfaced for a human to confirm.
+CAPTION_LOW_CONFIDENCE_THRESHOLD = 0.5
+
+
+def caption_review_marker(output: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a per-capture needs-review marker for an uncertain photo caption, or None.
+
+    The §7 "AI unsure → tell the human" surface for captions, mirroring `out_of_context_marker`: a
+    structured caption with low model `confidence` or explicit `uncertainties[]` raises a staff-facing
+    review chip with a human-readable reason. Out-of-context has its own marker/chip, so it is not
+    duplicated here; a blank caption (Basic / no gateway / manual-add) is never "uncertain".
+    """
+    text = output.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+    uncertainties = [str(value).strip() for value in (output.get("uncertainties") or []) if isinstance(value, str) and value.strip()]
+    confidence = output.get("confidence")
+    has_confidence = isinstance(confidence, int | float) and not isinstance(confidence, bool)
+    low_confidence = has_confidence and float(confidence) < CAPTION_LOW_CONFIDENCE_THRESHOLD
+    if not low_confidence and not uncertainties:
+        return None
+    reason = uncertainties[0] if uncertainties else "Low-confidence caption — please review."
+    return {
+        "present": True,
+        "reason": reason,
+        "confidence": float(confidence) if has_confidence else None,
         "source": "ai",
     }
 

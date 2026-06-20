@@ -66,9 +66,9 @@ Photos). There is no `session_organize`/synthesis job and no "updating" churn; t
 current for the latest capture. (See [ai_engine/processing.md](ai_engine/processing.md).)
 
 **Per-task models.** Each AI task can run on its own model, configured via env: transcription
-(`AI_ENGINE_TRANSCRIPTION_MODEL`), photo caption (`AI_ENGINE_CAPTION_MODEL`), and note decoration
-(`AI_ENGINE_NOTE_DECORATION_MODEL`), each with optional `*_BASE_URL` / `*_API_KEY` overrides
-(blank = fall back to the transcription gateway).
+(`AI_ENGINE_TRANSCRIPTION_MODEL`) and photo caption (`AI_ENGINE_CAPTION_MODEL`), each with optional
+`*_BASE_URL` / `*_API_KEY` overrides (blank = fall back to the transcription gateway). Notes are a
+pure passthrough (no AI decoration), so there is no per-task note model.
 
 **Completion is auto-derived (no manual "verify").** A session is **complete** when its captures are
 processed, a patient is assigned, and the report is current (not stale) for the latest capture. This

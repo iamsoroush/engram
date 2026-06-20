@@ -17,6 +17,7 @@ export function CapturePatientBadges({
   onChooseAnother,
   outOfContext,
   onMarkRelevant,
+  needsReviewReason = "",
 }: {
   activePatientAction: Record<string, unknown> | null;
   alternateCandidate?: AssignmentCandidate | null;
@@ -25,6 +26,8 @@ export function CapturePatientBadges({
   onChooseAnother?: () => void;
   outOfContext?: boolean;
   onMarkRelevant?: () => void;
+  /** §7: a low-confidence / flagged photo caption — renders a "Needs review" chip with this reason. */
+  needsReviewReason?: string;
 }) {
   const [dismissed, setDismissed] = React.useState(false);
   const [applying, setApplying] = React.useState(false);
@@ -60,7 +63,8 @@ export function CapturePatientBadges({
   // "Matched X · you said Y" — only for a real match (a patient to keep) whose names differ.
   const showMatchedVsSpoken = Boolean(suggestion?.patientId && suggestion?.spokenName && suggestion.spokenName !== suggestion.name);
 
-  if (!showSuggestion && !outOfContext) return null;
+  const showNeedsReview = Boolean(needsReviewReason) && !outOfContext;
+  if (!showSuggestion && !outOfContext && !showNeedsReview) return null;
 
   // Attribute the (re)assignment to this capture so it becomes the source and its chip clears.
   const applyDraft = (draft: PatientAssignmentDraft) => {
@@ -150,6 +154,11 @@ export function CapturePatientBadges({
               Mark relevant
             </button>
           ) : null}
+        </span>
+      ) : null}
+      {showNeedsReview ? (
+        <span className="effect-chip is-review">
+          <span className="effect-chip-label">⚠ Needs review · {needsReviewReason}</span>
         </span>
       ) : null}
     </div>
@@ -344,6 +353,15 @@ export function CaptureGeneratedHeading({ attribution, label }: { attribution: s
 
 /** A generated text block (transcript/caption) with an inline Edit affordance (A4). Saved edits
  * carry edited-vs-AI attribution and feed the live report via the same handlers as the source sheet. */
+/** Render a model-authored display string that is plain text plus **bold** spans. Only `**bold**` is
+ * supported (safe: we build text + <strong> nodes, never inject HTML); anything else renders literally. */
+function renderMarkdownBold(text: string): React.ReactNode {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, index) => {
+    const match = /^\*\*([^*]+)\*\*$/.exec(part);
+    return match ? <strong key={index}>{match[1]}</strong> : <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
 export function CaptureGeneratedText({
   label,
   text,
@@ -351,6 +369,7 @@ export function CaptureGeneratedText({
   dir,
   onSave,
   addLabel = "Add",
+  display,
 }: {
   label: string;
   text: string;
@@ -358,6 +377,8 @@ export function CaptureGeneratedText({
   dir?: "rtl" | "ltr";
   onSave?: (text: string) => Promise<void>;
   addLabel?: string;
+  /** Model-authored Markdown variant (clean `text` plus **bold**) shown read-only; editing uses `text`. */
+  display?: string;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(text);
@@ -401,7 +422,7 @@ export function CaptureGeneratedText({
           </div>
         </div>
       ) : hasText ? (
-        <p className="live-draft-preview" dir={dir}>{text}</p>
+        <p className="live-draft-preview" dir={dir}>{display && display !== text ? renderMarkdownBold(display) : text}</p>
       ) : null}
     </>
   );

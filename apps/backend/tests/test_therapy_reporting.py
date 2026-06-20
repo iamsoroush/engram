@@ -7,10 +7,11 @@ from app.services import therapy_reporting as tr
 
 
 def _note(text, cid=None):
+    # Notes are a pure passthrough (decoration removed): the raw captured text is in `detail`.
     return SimpleNamespace(
         id=cid or uuid.uuid4(),
         capture_type=CaptureType.note,
-        capture_metadata={"decorated_text": {"text": text}},
+        capture_metadata={"detail": text},
         captured_at=None,
         created_at=None,
     )

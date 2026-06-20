@@ -14,10 +14,10 @@ recaps) into:
 See ``docs/ux/redesign-therapy.md`` (§1.2 capture model, §5.3 two planes, §7 privacy) and the design
 foundation ``docs/ux/redesign-foundation.md`` §1 (therapy = single plan, the AI *is* the value).
 
-**v1 is deterministic** — it assembles the already-AI-enriched capture text (the per-capture
-``note_decoration`` / ``transcription`` capabilities are the AI) into the format's sections by light
-sentence routing, exactly as the aesthetics live report is a deterministic assembly of enriched
-captures today. ``THERAPY_SYNTHESIS_PROMPTS`` holds the prompt contracts a real LLM synthesizer will
+**v1 is deterministic** — it assembles the capture text (audio ``transcription`` is the per-capture
+AI; notes are a raw passthrough) into the format's sections by light sentence routing, exactly as the
+aesthetics live report is a deterministic assembly of captures today. ``THERAPY_SYNTHESIS_PROMPTS``
+holds the prompt contracts a real LLM synthesizer will
 use to replace this assembler without changing the stored shape (the ``therapy`` block below).
 
 Privacy invariant (foundation §7, redesign §7): the **report model carries only the shareable
@@ -140,11 +140,8 @@ def _capture_text(capture: Capture) -> str | None:
     if capture.capture_type == CaptureType.audio:
         return _generated_text(metadata.get("transcript"))
     if capture.capture_type == CaptureType.note:
-        return (
-            _generated_text(metadata.get("decorated_text"))
-            or _generated_text(metadata.get("normalized_note"))
-            or _generated_text(metadata.get("detail"))
-        )
+        # Notes are a pure passthrough (decoration removed): use the raw captured text.
+        return _generated_text(metadata.get("detail"))
     if capture.capture_type == CaptureType.photo:
         return _generated_text(metadata.get("caption"))
     return None

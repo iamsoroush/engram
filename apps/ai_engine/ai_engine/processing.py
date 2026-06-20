@@ -3,11 +3,18 @@ import json
 import re
 import subprocess
 from datetime import datetime, timezone
+from io import BytesIO
 from time import sleep
 from typing import Any, Literal, NotRequired, TypedDict
 
 import httpx
 from openai import OpenAI
+
+try:  # Pillow is used to downscale photos before captioning; degrade gracefully if absent.
+    from PIL import Image, ImageOps
+except ImportError:  # pragma: no cover - exercised only in a Pillow-less environment
+    Image = None
+    ImageOps = None
 
 from ai_engine.config import settings
 
@@ -39,6 +46,9 @@ class CaptureProcessingOutput(TypedDict, total=False):
     clinical_summary: NotRequired[str | None]
     uncertainties: NotRequired[list[str]]
     intents: NotRequired[dict[str, Any] | None]
+    pairing: NotRequired[dict[str, Any]]
+    confidence: NotRequired[float]
+    display: NotRequired[str]
 
 
 NOT_DETECTED_PATIENT: DetectedPatientOutput = {
@@ -115,7 +125,10 @@ def output_key_for_capture(capture_type: str) -> str:
         return "transcript"
     if capture_type == "photo":
         return "caption"
-    return "decorated_text"
+    # Notes are a pure passthrough (no decoration): the job marks the note processed with its RAW
+    # text under `note_text`, preserving chain ordering + report_contribution wiring. The report
+    # itself reads the raw `detail`, so this envelope only carries provenance.
+    return "note_text"
 
 
 def placeholder_text_for_capture(capture: dict[str, Any]) -> str:
@@ -331,6 +344,10 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     transcript = parsed.get("transcript")
     if not isinstance(transcript, str) or not transcript.strip():
         raise RuntimeError("Audio transcription structured JSON is missing transcript")
+    # Normalize spoken numbers (doses, national IDs, phones, dates) to Western/Latin digits so all
+    # extracted quantification is comparable regardless of the spoken language — a national ID or dose
+    # dictated in Persian digits must match a stored Latin one. The prose words stay original script.
+    transcript = normalize_digits_to_latin(transcript.strip())
     language = parsed.get("language")
     if language not in TRANSCRIPTION_LANGUAGES:
         language = "unknown"
@@ -338,7 +355,7 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     if not isinstance(patient_information, dict):
         raise RuntimeError("Audio transcription structured JSON is missing patient_information")
 
-    normalized_patient = empty_patient_information(source_text=transcript.strip())
+    normalized_patient = empty_patient_information(source_text=transcript)
     for field in PATIENT_INFORMATION_FIELDS:
         if field in patient_information:
             normalized_patient[field] = patient_information[field]
@@ -349,14 +366,18 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     for field in ("raw_mentioned_name", "standardized_display_name", "national_id", "phone", "date_of_birth", "evidence"):
         value = normalized_patient.get(field)
         normalized_patient[field] = str(value).strip() if value is not None and str(value).strip() else None
+    # Identifiers/dates are comparison-critical (patient matching reads national_id/phone) → Latin digits.
+    for field in ("national_id", "phone", "date_of_birth"):
+        if normalized_patient.get(field):
+            normalized_patient[field] = normalize_digits_to_latin(normalized_patient[field])
 
     uncertainties = parsed.get("uncertainties")
     clinical_summary = parsed.get("clinical_summary")
     return {
-        "transcript": transcript.strip(),
+        "transcript": transcript,
         "language": language,
         "patient_information": normalized_patient,
-        "clinical_summary": clinical_summary.strip() if isinstance(clinical_summary, str) and clinical_summary.strip() else None,
+        "clinical_summary": normalize_digits_to_latin(clinical_summary.strip()) if isinstance(clinical_summary, str) and clinical_summary.strip() else None,
         "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
         "intents": normalize_intents(parsed.get("intents")),
     }
@@ -418,15 +439,65 @@ def transcribe_audio_content(
     return parse_structured_transcription_output(text)
 
 
-# --- Pro enrichment: real image captions + note decoration -------------------------------------
+# --- Pro enrichment: real image captions ------------------------------------------------------
 #
-# Photo captioning and note decoration are Pro-tier capabilities (see the tier table in
-# docs/intelligence-layer.md §3). The backend gates them: it attaches an `enrichmentContext` to a
-# photo/note worker payload only for Pro tenants (reusing the existing `tenant_tier` gate), so a
-# Basic tenant never incurs a gateway call and keeps the deterministic passthrough placeholder.
-# The worker stays a pure function of its payload — it enriches iff an `enrichmentContext` is
-# present and a gateway is configured, and falls back to the placeholder otherwise. The output key
-# is unchanged (`caption` / `decorated_text`), so the worker contract stays stable.
+# Photo captioning is a Pro-tier capability (see the tier table in docs/intelligence-layer.md §3).
+# The backend gates it: it attaches an `enrichmentContext` to a PHOTO worker payload only for Pro
+# tenants, so a Basic tenant never incurs a gateway call and keeps a blank caption (manual add).
+# The worker stays a pure function of its payload — it captions iff an `enrichmentContext` is
+# present and a gateway is configured, and leaves the caption blank otherwise. The caption is a
+# structured result: free-text `caption` PLUS optional attributes (out-of-context + pairing).
+# Notes are NOT enriched here — they are a pure passthrough (see `run_capture_processing_job`).
+#
+# Worker-side downscale: vision token cost/latency scale with pixel count, so we re-encode the upload
+# to a bounded-longest-edge JPEG before sending (detail:low). A product-label shot is re-read at a
+# higher resolution with detail:high so the lot/brand text stays legible.
+
+# Longest-edge caps + JPEG quality for the worker-side downscale. A normal caption pass bounds the
+# longest edge into the 1024–1536 band (detail:low); a product-label re-read keeps more pixels so
+# small lot/brand text is legible (detail:high). GPT-class vision tokens scale with pixels.
+CAPTION_MAX_EDGE = 1280
+CAPTION_PRODUCT_LABEL_MAX_EDGE = 2048
+CAPTION_JPEG_QUALITY = 80
+# Below this the model's own confidence is treated as "AI unsure" and the backend raises a review.
+CAPTION_LOW_CONFIDENCE_THRESHOLD = 0.5
+PAIRING_LATERALITIES = {"left", "right", "bilateral", "midline", "central"}
+PAIRING_PHASES = {"before", "after", "during", "intraop", "other"}
+
+
+def downscale_image_for_caption(
+    content: bytes,
+    media_type: str | None,
+    *,
+    max_edge: int = CAPTION_MAX_EDGE,
+    quality: int = CAPTION_JPEG_QUALITY,
+) -> tuple[bytes, str]:
+    """Re-encode image bytes to a bounded-longest-edge JPEG before sending to the gateway.
+
+    Honors EXIF orientation, flattens to RGB, bounds the longest edge to ``max_edge`` (keeping aspect),
+    and JPEG-encodes at ``quality``. Returns ``(bytes, "image/jpeg")``. On any failure (Pillow absent,
+    undecodable bytes, already small) it returns the original bytes + media type — captioning must
+    never break because a downscale failed.
+    """
+    if Image is None or ImageOps is None:
+        return content, media_type or "image/jpeg"
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image = ImageOps.exif_transpose(image)  # bake in rotation; drop EXIF
+            if image.mode not in ("RGB", "L"):
+                image = image.convert("RGB")
+            longest = max(image.size)
+            if longest > max_edge:
+                scale = max_edge / float(longest)
+                image = image.resize(
+                    (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                    Image.LANCZOS,
+                )
+            buffer = BytesIO()
+            image.convert("RGB").save(buffer, format="JPEG", quality=quality, optimize=True)
+            return buffer.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001 - any decode/encode failure falls back to the raw upload
+        return content, media_type or "image/jpeg"
 
 
 def enrichment_language_directive(enrichment_context: dict[str, Any] | None) -> str:
@@ -443,40 +514,55 @@ def enrichment_language_directive(enrichment_context: dict[str, Any] | None) -> 
 
 
 def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
-    """Build the instruction prompt for clinical photo captioning."""
+    """Build the instruction prompt for photo description + attribute extraction.
+
+    The caption is a NEUTRAL textual stand-in for the image (so downstream text-only AI jobs can read
+    the photo) — an objective description of what is visibly present, NOT a clinical assessment. It is
+    structured JSON: a free-text `caption` PLUS optional attributes — out-of-context detection (reuses
+    the OOC path) and pairing attributes (region/laterality/view/phase + isProductLabel) that the
+    backend turns into before/after pairs deterministically. Vertical-agnostic via the domain
+    descriptor; a product-label shot reads the lot/brand text into the caption.
+    """
     context = enrichment_context if isinstance(enrichment_context, dict) else {}
-    # Vertical-aware framing; neutral "clinic" + no finding examples when absent.
+    # Vertical-aware framing; neutral "clinic" + no feature examples when absent.
     label, _, caption_findings = domain_framing(context)
     findings_hint = f" (e.g. {', '.join(caption_findings)})" if caption_findings else ""
     return "\n\n".join(
         (
-            f"You are a clinical photo captioner for Memara, a clinical memory system. The clinical setting is a {label}.",
+            f"You describe photos for Memara, a clinical memory system, turning each photo into a faithful "
+            f"text description that can stand in for the image in later processing. The setting is a {label}. "
+            "You are an OBJECTIVE describer, not a diagnostician.",
             (
-                "Describe only what is clinically visible in the image in one or two sentences: the anatomical "
-                f"area, observable clinically relevant findings{findings_hint}, and relevant clinical context. "
-                "Do NOT invent patient identity, measurements, dates, or anything not visible in the image. "
+                "Look at the image and return a STRICT JSON object (no markdown, no code fences) with these keys:\n"
+                "- caption: one or two sentences describing OBJECTIVELY what is VISIBLY PRESENT. Lead with the photo's "
+                "PRIMARY subject (the patient's anatomy, OR a product/medication). Give the anatomical area and view "
+                f"plus any clinically relevant features that are actually visible{findings_hint}, AND note any "
+                "product/medication that is visible even if it is only in the background. For ANY visible "
+                "product/medication label or box, read its BRAND and LOT/batch number into the caption. Do NOT "
+                "diagnose, assess severity, judge outcomes, or state what is absent or normal (never write "
+                "\"no signs of …\"). Describe only what is there. Do NOT invent patient identity, measurements, "
+                "dates, or anything not visible.\n"
+                "- confidence: a number 0..1 for how confident you are in the caption (low when the image is blurry, "
+                "ambiguous, or hard to read).\n"
+                "- outOfContext: {present: boolean, reason: string|null, confidence: 0..1} — present=true only when the "
+                "image has no clinical/visit relevance (e.g. a random screenshot, a parking receipt).\n"
+                "- pairing: {region: string|null, laterality: \"left|right|bilateral|midline|central|null\", "
+                "view: string|null, phase: \"before|after|during|null\", isProductLabel: boolean}. isProductLabel "
+                "reflects the photo's PRIMARY INTENT: set it true ONLY when the main subject is a product/medication/"
+                "label (the photo's purpose is to document the product or its lot), NOT when a product merely appears "
+                "in the background of a clinical photo of the patient. For a patient photo fill the anatomical "
+                "attributes (region/laterality/view/phase); for a product photo leave them null.\n"
+                "- uncertainties: a list of short human-readable sentences for anything a clinician should confirm "
+                "(unreadable lot number, ambiguous area). Use [] when there is nothing to confirm.\n"
+                "- display: the SAME caption text rendered as Markdown, with ONLY the 1-4 most important words "
+                "or phrases wrapped in **bold** (e.g. the brand, the lot/batch number, the anatomical area, or a "
+                "key visible feature). Do NOT change any wording, punctuation, or order — add nothing but the ** "
+                "markers. If nothing stands out, return the caption text unchanged.\n"
                 f"{enrichment_language_directive(context)} "
-                "Return only the caption text, with no preamble, labels, or markdown."
-            ),
-            f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
-        )
-    )
-
-
-def note_decoration_prompt(enrichment_context: dict[str, Any] | None) -> str:
-    """Build the instruction prompt for clinical note decoration."""
-    context = enrichment_context if isinstance(enrichment_context, dict) else {}
-    label, _, _ = domain_framing(context)  # vertical-aware; neutral "clinic" when absent
-    return "\n\n".join(
-        (
-            f"You are cleaning up a clinician's quick free-text note for Memara, a clinical memory system. The clinical setting is a {label}.",
-            (
-                "Lightly decorate the note for readability: fix obvious typos, expand clinical shorthand, and "
-                "organize it into clear clinical phrasing. Preserve EVERY clinical detail, number, product, dose, "
-                "and instruction exactly — do NOT add facts, diagnoses, or patient identity that are not already "
-                "in the note, and do not drop anything. "
-                f"{enrichment_language_directive(context)} "
-                "Return only the decorated note text, with no preamble, labels, or markdown."
+                "Keep brand NAMES verbatim, but ALWAYS render NUMBERS — lot/batch numbers, doses, quantities, and "
+                "dates — in Western/Latin digits (0-9) even when the caption prose is in Persian, so they stay "
+                "comparable across captures (this is digit normalization, not romanizing words). Leave any attribute "
+                "null/false rather than guessing."
             ),
             f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )
@@ -486,9 +572,10 @@ def note_decoration_prompt(enrichment_context: dict[str, Any] | None) -> str:
 def gateway_settings_for(task: str) -> tuple[str, str, str]:
     """Resolve (base_url, api_key, model) for an AI task, falling back to the transcription gateway.
 
-    `task` is one of `transcription`, `caption`, `note_decoration`. A blank per-task override falls
-    back to the shared `transcription_*` setting, so a single OpenAI-compatible gateway only needs
-    the per-task `*_model` set, while a separate provider per task can also override base_url/api_key.
+    `task` is one of `transcription`, `caption`, `patient_memory`, `report_synthesis`. A blank
+    per-task override falls back to the shared `transcription_*` setting, so a single
+    OpenAI-compatible gateway only needs the per-task `*_model` set, while a separate provider per
+    task can also override base_url/api_key.
     """
     base_url = (getattr(settings, f"{task}_base_url", "") or settings.transcription_base_url).strip()
     api_key = getattr(settings, f"{task}_api_key", "") or settings.transcription_api_key
@@ -543,14 +630,107 @@ def image_to_data_url(content: bytes, media_type: str | None) -> str:
     return f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"
 
 
-def caption_image_content(
+# Persian (۰-۹) and Arabic-Indic (٠-٩) digits → Western/Latin 0-9. Quantification read off a photo
+# (lot/batch numbers, doses, dates) must be comparable across captures regardless of the caption's
+# language, so digits are normalized deterministically while the prose words stay untouched.
+_LATIN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def normalize_digits_to_latin(text: str) -> str:
+    """Convert Persian/Arabic-Indic digits to Western 0-9 (digit normalization, not romanizing words)."""
+    return text.translate(_LATIN_DIGITS)
+
+
+def normalize_caption_pairing(raw: Any) -> dict[str, Any]:
+    """Coerce model pairing output into the stable {region,laterality,view,phase,isProductLabel} shape."""
+    pairing = raw if isinstance(raw, dict) else {}
+
+    def _text(value: Any) -> str | None:
+        return value.strip().lower() if isinstance(value, str) and value.strip() else None
+
+    laterality = _text(pairing.get("laterality"))
+    phase = _text(pairing.get("phase"))
+    return {
+        "region": pairing.get("region").strip() if isinstance(pairing.get("region"), str) and pairing.get("region").strip() else None,
+        "laterality": laterality if laterality in PAIRING_LATERALITIES else None,
+        "view": pairing.get("view").strip() if isinstance(pairing.get("view"), str) and pairing.get("view").strip() else None,
+        "phase": phase if phase in PAIRING_PHASES else None,
+        "isProductLabel": pairing.get("isProductLabel") is True,
+    }
+
+
+def _caption_display_text(raw_display: Any, caption_text: str) -> str:
+    """Return the model's Markdown display variant of the caption — but only when it is the SAME text
+    with just **bold** added (verified by stripping the markers). Falls back to the clean caption so
+    the UI never shows wording that diverged from the data text. Digits are normalized to match.
+    """
+    if not isinstance(raw_display, str) or not raw_display.strip():
+        return caption_text
+    candidate = normalize_digits_to_latin(raw_display.strip())
+
+    def _plain(value: str) -> str:
+        return re.sub(r"\s+", " ", value.replace("**", "")).strip().lower()
+
+    return candidate if _plain(candidate) == _plain(caption_text) else caption_text
+
+
+def parse_caption_output(raw_text: str) -> dict[str, Any] | None:
+    """Parse the structured caption JSON; degrade to plain-text caption when it isn't JSON.
+
+    Returns ``{caption, display, confidence, outOfContext, pairing, uncertainties}`` or None when there
+    is no usable caption text. `caption` is the CLEAN text consumed by downstream AI jobs; `display` is
+    the model's Markdown-bolded variant for the UI only. A gateway that returns a bare caption string
+    (no JSON) still works — the raw text becomes both caption and display, with no attributes.
+    """
+    text = raw_text.strip()
+    if not text:
+        return None
+    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+    if fenced:
+        text = fenced.group(1).strip()
+    parsed: Any = None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if not isinstance(parsed, dict):
+        # Not JSON — treat the whole response as a plain caption (back-compatible, no attributes).
+        plain = normalize_digits_to_latin(raw_text.strip())
+        return {"caption": plain, "display": plain, "confidence": None, "outOfContext": None, "pairing": normalize_caption_pairing(None), "uncertainties": []}
+    caption = parsed.get("caption")
+    if not isinstance(caption, str) or not caption.strip():
+        return None
+    ooc_raw = parsed.get("outOfContext")
+    out_of_context = None
+    if isinstance(ooc_raw, dict) and ooc_raw.get("present") is True:
+        reason = ooc_raw.get("reason")
+        out_of_context = {
+            "present": True,
+            "confidence": clamp_confidence(ooc_raw.get("confidence")),
+            "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
+        }
+    confidence = parsed.get("confidence")
+    uncertainties = parsed.get("uncertainties")
+    caption_text = normalize_digits_to_latin(caption.strip())
+    return {
+        "caption": caption_text,
+        "display": _caption_display_text(parsed.get("display"), caption_text),
+        "confidence": clamp_confidence(confidence) if isinstance(confidence, int | float) and not isinstance(confidence, bool) else None,
+        "outOfContext": out_of_context,
+        "pairing": normalize_caption_pairing(parsed.get("pairing")),
+        "uncertainties": [str(value).strip() for value in uncertainties if isinstance(value, str) and value.strip()] if isinstance(uncertainties, list) else [],
+    }
+
+
+def _request_caption(
     content: bytes,
     media_type: str | None,
-    enrichment_context: dict[str, Any] | None = None,
+    enrichment_context: dict[str, Any] | None,
     *,
-    model: str | None = None,
-) -> str | None:
-    """Caption a clinical image through the configured gateway; None when the model returns empty."""
+    model: str | None,
+    detail: str,
+) -> dict[str, Any] | None:
+    """One structured caption pass at a given image detail level."""
     client = gateway_client("caption")
     response = client.chat.completions.create(
         model=model or gateway_settings_for("caption")[2],
@@ -559,36 +739,40 @@ def caption_image_content(
                 "role": "user",
                 "content": [
                     {"type": "text", "text": caption_prompt(enrichment_context)},
-                    {"type": "image_url", "image_url": {"url": image_to_data_url(content, media_type)}},
+                    {"type": "image_url", "image_url": {"url": image_to_data_url(content, media_type), "detail": detail}},
                 ],
             }
         ],
     )
     text = response.choices[0].message.content
-    return text.strip() if text and text.strip() else None
+    return parse_caption_output(text) if text and text.strip() else None
 
 
-def decorate_note_content(
-    raw_text: str,
+def caption_image_content(
+    content: bytes,
+    media_type: str | None,
     enrichment_context: dict[str, Any] | None = None,
     *,
     model: str | None = None,
-) -> str | None:
-    """Decorate a clinical note through the configured gateway; None when the model returns empty."""
-    client = gateway_client("note_decoration")
-    response = client.chat.completions.create(
-        model=model or gateway_settings_for("note_decoration")[2],
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"{note_decoration_prompt(enrichment_context)}\n\nNote:\n{raw_text}"},
-                ],
-            }
-        ],
-    )
-    text = response.choices[0].message.content
-    return text.strip() if text and text.strip() else None
+) -> dict[str, Any] | None:
+    """Caption a clinical image through the gateway; None when the model returns no usable caption.
+
+    Worker-side downscale first (bounded longest edge, JPEG q80, detail:low). When the first pass
+    flags the image as a product label, re-read it at a higher resolution with detail:high so the
+    lot/brand text is legible — that high-detail caption (which carries the lot) wins, but the
+    first pass's pairing attributes are preserved.
+    """
+    standard_bytes, standard_mime = downscale_image_for_caption(content, media_type)
+    parsed = _request_caption(standard_bytes, standard_mime, enrichment_context, model=model, detail="low")
+    if parsed is None:
+        return None
+    if parsed.get("pairing", {}).get("isProductLabel") is True:
+        label_bytes, label_mime = downscale_image_for_caption(content, media_type, max_edge=CAPTION_PRODUCT_LABEL_MAX_EDGE)
+        high_detail = _request_caption(label_bytes, label_mime, enrichment_context, model=model, detail="high")
+        if high_detail is not None:
+            high_detail["pairing"] = {**parsed.get("pairing", {}), **high_detail.get("pairing", {}), "isProductLabel": True}
+            return high_detail
+    return parsed
 
 
 def capture_processing_output(job: dict[str, Any], text: str) -> CaptureProcessingOutput:
@@ -604,6 +788,35 @@ def capture_processing_output(job: dict[str, Any], text: str) -> CaptureProcessi
     }
 
 
+def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any]) -> CaptureProcessingOutput:
+    """Build the completed photo-caption envelope from the structured caption result.
+
+    Carries the free-text caption as `text` (so the existing report/caption readers keep working) PLUS
+    the optional attributes: `intents.out_of_context` (reuses the backend OOC path), `pairing`
+    attributes (the deterministic backend pairing step consumes these), the model's `confidence`, and
+    `uncertainties` (the backend raises a needs-review chip below the confidence threshold / on these).
+    """
+    output = capture_processing_output(job, caption_result.get("caption") or "")
+    out_of_context = caption_result.get("outOfContext")
+    if isinstance(out_of_context, dict) and out_of_context.get("present") is True:
+        # Match the transcription intent shape so `out_of_context_marker` reads it unchanged.
+        output["intents"] = {"out_of_context": {"present": True, **{k: v for k, v in out_of_context.items() if k != "present"}}}
+    pairing = caption_result.get("pairing")
+    if isinstance(pairing, dict):
+        output["pairing"] = pairing
+    confidence = caption_result.get("confidence")
+    if isinstance(confidence, int | float) and not isinstance(confidence, bool):
+        output["confidence"] = float(confidence)
+    uncertainties = caption_result.get("uncertainties")
+    if isinstance(uncertainties, list) and uncertainties:
+        output["uncertainties"] = [str(value) for value in uncertainties if isinstance(value, str)]
+    # The Markdown display variant for the UI (the clean caption is `text`, consumed by AI jobs).
+    display = caption_result.get("display")
+    if isinstance(display, str) and display.strip() and display.strip() != (caption_result.get("caption") or "").strip():
+        output["display"] = display
+    return output
+
+
 def is_fixture_capture(capture: dict[str, Any]) -> bool:
     """Return whether a capture maps to a deterministic QA fixture (skip real enrichment)."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
@@ -614,8 +827,8 @@ def is_fixture_capture(capture: dict[str, Any]) -> bool:
     return "Patient prefers subtle correction" in detail and "follow-up photo in 2 weeks" in detail
 
 
-def raw_note_text_for_decoration(capture: dict[str, Any]) -> str | None:
-    """Return the captured note text to decorate, or None when there's nothing meaningful."""
+def raw_note_text(capture: dict[str, Any]) -> str | None:
+    """Return the captured note's raw text (the passthrough's processed text), or None when empty."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
     detail = str(metadata.get("detail") or "").strip()
     return detail or None
@@ -663,7 +876,7 @@ def completed_audio_metadata(
 def capture_text(capture: dict[str, Any]) -> str:
     """Extract the best available mock/generated text for a capture."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
-    for key in ("transcript", "caption", "decorated_text", "ocr", "normalized_note"):
+    for key in ("transcript", "caption", "note_text", "ocr"):
         generated = metadata.get(key)
         if isinstance(generated, dict) and generated.get("text"):
             return str(generated["text"])
@@ -712,7 +925,7 @@ def capture_id(capture: dict[str, Any]) -> str | None:
 
 def session_capture_text(capture: dict[str, Any]) -> str:
     """Extract text from the session-processing context or legacy capture metadata."""
-    for key in ("transcript", "caption", "decoratedText", "rawText"):
+    for key in ("transcript", "caption", "rawText"):
         value = capture.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -1276,32 +1489,35 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
         )
         return
 
-    # Pro enrichment (real image captions / note decoration). The backend attaches an
-    # `enrichmentContext` only for Pro tenants; Basic and gateway-less/fixture captures keep the
-    # deterministic placeholder. A gateway failure propagates as a retryable worker error; an empty
-    # gateway response falls back to the placeholder so the capture still completes.
+    # Notes are a pure passthrough (note decoration removed): no gateway call ever. The job marks the
+    # note processed with its RAW text — preserving chain ordering + report_contribution wiring — and
+    # the report reads the raw `detail`. Fixtures keep their deterministic text for QA.
+    if capture.get("type") == "note" and not is_fixture_capture(capture):
+        client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, raw_note_text(capture) or ""))
+        return
+
+    # Pro photo captioning. The backend attaches an `enrichmentContext` only for Pro tenants; Basic and
+    # gateway-less/fixture captures keep the deterministic/blank fallback. A gateway failure propagates
+    # as a retryable worker error; an empty gateway response leaves the caption blank (manual add).
     enrichment_context = payload.get("enrichmentContext") if isinstance(payload.get("enrichmentContext"), dict) else None
-    enriched_text: str | None = None
-    if enrichment_context is not None and transcription_is_configured() and not is_fixture_capture(capture):
-        capture_type = capture.get("type")
-        if capture_type == "photo" and capture.get("sourceArtifactId"):
-            content, media_type = client.get_file(f"/internal/captures/{capture['id']}/file-content")
-            enriched_text = caption_image_content(
-                content, media_type, enrichment_context, model=resolve_model("caption", ai_models)
-            )
-        elif capture_type == "note":
-            raw_note = raw_note_text_for_decoration(capture)
-            if raw_note:
-                enriched_text = decorate_note_content(
-                    raw_note, enrichment_context, model=resolve_model("note_decoration", ai_models)
-                )
-    if enriched_text:
-        client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, enriched_text))
+    if (
+        capture.get("type") == "photo"
+        and enrichment_context is not None
+        and transcription_is_configured()
+        and not is_fixture_capture(capture)
+        and capture.get("sourceArtifactId")
+    ):
+        content, media_type = client.get_file(f"/internal/captures/{capture['id']}/file-content")
+        caption_result = caption_image_content(
+            content, media_type, enrichment_context, model=resolve_model("caption", ai_models)
+        )
+        output = caption_output_metadata(job, caption_result) if caption_result else capture_processing_output(job, "")
+        client.complete_job(job_id, output_key=output_key, output=output)
         return
 
     # Un-enriched photos (Basic tenants, or no gateway) get NO AI caption — leave it blank so the UI
     # offers a manual "Add caption" instead of a meaningless placeholder. Fixtures keep their
-    # deterministic caption for QA; notes keep the captured text as a passthrough.
+    # deterministic caption for QA.
     if capture.get("type") == "photo" and not is_fixture_capture(capture):
         client.complete_job(job_id, output_key=output_key, output=capture_processing_output(job, ""))
         return
