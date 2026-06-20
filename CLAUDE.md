@@ -120,6 +120,12 @@ Read:
 - `docs/ux/screens/`  
   One compact file per important screen.
 
+- `docs/ux/redesign-session-context.md`  
+  Spec for patient-context at point-of-determination (tier-aware) + the session↔timeline round-trip; Pro context window + its AI jobs (Job-4 backed).
+
+- `docs/ux/redesign-pro-report.md`  
+  Story-C design: polished synthesized-report rendering (clinical + curated patient share) + the recorded share/dose decisions.
+
 - `docs/ux/archive/`, `docs/dev/archive/`  
   Superseded one-time planning inputs (research briefs, journey maps, build notes), kept for history.
 
