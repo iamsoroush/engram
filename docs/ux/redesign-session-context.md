@@ -55,9 +55,13 @@ set + a bounded **recent-visits media** list. Still zero AI.
 
 ## Pro context window (intelligent) — design
 
-Pro has every prior capture, the structured **treatments[]** store, the synthesized reports, and AI. The
-context window should be an **AI-assembled "everything you need to start this visit"** panel — proactive,
-not just historical. Composed of these blocks (glanceable; expand for depth):
+Pro has every prior capture, the structured **treatments[]** store, the synthesized reports, the photos,
+and AI. The context window should feel like **a great human clinic assistant's pre-visit brief** — one who
+reads the whole record, **predicts what matters for THIS patient at THIS moment**, and surfaces just that —
+warmly, scannably — so the visit starts informed and the doctor's flow is easier and more joyful. The
+intelligence is in the **curation/prediction** (what's worth showing) and in **using everything, including
+the photos** — never in clinical advice (see guardrail). The blocks below are the assistant's *palette*: it
+**chooses, orders, and phrases what's salient** for each patient (it won't show all of them every time):
 
 | Block | What it shows | Source |
 |---|---|---|
@@ -75,16 +79,22 @@ not just historical. Composed of these blocks (glanceable; expand for depth):
   projection** (story-so-far, since-last delta, flags, hero) already produce most of the window. **This
   feature surfaces Job-4 output at the session by `patientId`** — no new heavy job for these blocks.
 - **Treatment recall = deterministic** queries over `treatments[]` — *not* an AI job.
-- **NEW: a "session-context / suggested-focus" projection.** Mostly deterministic + light AI:
-  - *due-for* = **deterministic**: compute intervals from `treatments[]` dates per product/area.
-  - *suggested focus* = **light AI**: 1 line on what this visit is likely about, grounded in the last
-    report's plan/follow-up + the trajectory (NOT a clinical recommendation — a memory aid).
-  - *open items* = **deterministic** from existing needs-input / Q&A / flags.
-  **Design decision (for the owner):** implement this as an **extension of Job 4's output** (add a
-  `sessionContext` field to the memory projection) rather than a new job — it shares Job 4's context and
-  triggers. Keep "suggested focus" explicitly a *memory aid, never a clinical directive* (safety/liability).
+- **The pre-visit brief IS the centerpiece — a richer Job-4 synthesis** (`sessionContext` extension), not a
+  due-for line. An *assistant-grade* pass that **predicts + curates**: the salient story, the most telling
+  before/after, **visible progress read from the photos**, the patient's cadence (*due-for as a fact*), the
+  doctor's own prior plan, and what needs attention — choosing what to show and how to phrase it. It may be
+  **multimodal** (the Job-2 captions/pairing + a vision read of progress where it adds value). Deterministic
+  pieces stay deterministic (due-for intervals, open items, treatment recall); the **curation + phrasing is
+  the AI**. Implement as an **extension of Job 4** (shares its context + triggers). This is the heart of the
+  Pro experience — careful prompt design + the same eval scrutiny as extraction.
 
 ### Pro guardrails
+- **Curate freely, never prescribe.** The assistant may decide what's relevant, predict what the doctor
+  will want, narrate **visible progress from photos**, and surface the patient's own cadence + the doctor's
+  own prior plans — but it must **never make a clinical recommendation** (no "you should", no suggested
+  treatment/dose, no diagnosis, no "indicated/due" as a directive). The judgment is *what to surface*, not
+  *what to do*; visual statements stay **observational** ("visible fullness up in the left cheek vs the Jan
+  photo"), never diagnostic.
 - Read-triggered like Job 4 (no cost on un-opened patients); deterministic fallback (gateway-less Pro →
   show the deterministic Basic-style digest + treatment recall, never blank).
 - Everything is **assistive + cited** (tap a claim → the source visit/capture); never authoritative.
@@ -119,12 +129,11 @@ not just historical. Composed of these blocks (glanceable; expand for depth):
 
 1. **Basic card depth** — last-visit digest + a recent-visits photo strip (this design), or also a compact
    deterministic "treatments-ish" recall from free-text (riskier without structure)?
-2. **Pro proactiveness — DECIDED: light, guarded memory-aid.** Surface **facts** about the patient's own
-   history + the doctor's own prior plan (e.g. "last botox: 10 wks ago · typical interval here ~12";
-   "last visit's plan: review filler at 2 wks") — **never** generated clinical advice, doses, or "should".
-   Due-for is a *fact about the patient's cadence*, not a directive; every line is **cited to its source**.
-   This keeps it informative (a memory aid), not clinical-decision-support. *(Make it per-clinic
-   suppressible in the build.)*
+2. **Pro proactiveness — DECIDED: an assistant-grade pre-visit brief.** Be as smart as a great human clinic
+   assistant at **predicting + curating what's valuable** from the whole record (incl. photos) and
+   presenting it warmly — but **never make a clinical recommendation**. The judgment is *what to surface*,
+   not *what to do*: due-for + visible progress are **facts/observations**, cited, never directives.
+   Per-clinic suppressible.
 3. **sessionContext/due-for — DECIDED: extend Job 4** (add a `sessionContext` field to the memory
    projection), not a separate job — it shares Job 4's context + triggers.
 4. **Round-trip scope** — full timeline only, or also inline "peek" expansions on the card before a full
