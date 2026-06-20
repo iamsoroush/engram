@@ -28,7 +28,6 @@ from app.services.ai_model_config import ai_models_worker_payload
 from app.services.capabilities import (
     IMAGE_CAPTION,
     LIVE_REPORT_SYNTHESIS,
-    NOTE_DECORATION,
     tenant_has_capability,
 )
 from app.services.patient_assignment_timeline import (
@@ -65,6 +64,7 @@ from app.services.ai_jobs.config import (
 from app.services.ai_jobs.context import build_capture_enrichment_context, build_transcription_context
 from app.services.ai_jobs.intents import (
     assignment_intent_basis,
+    caption_review_marker,
     fuzzy_auto_apply_candidate,
     near_match_suggestion,
     out_of_context_marker,
@@ -271,10 +271,9 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
             if session is not None:
                 if capture.capture_type == CaptureType.audio:
                     transcription_context = build_transcription_context(db, session=session, capture=capture)
-                # Image captions (photo) and note decoration (note) are gated capabilities; the gate attaches the context.
-                elif tenant_has_capability(
-                    db, job.tenant_id, IMAGE_CAPTION if capture.capture_type == CaptureType.photo else NOTE_DECORATION
-                ):
+                # Image captioning is a gated capability; the gate attaches the enrichment context. Notes
+                # are a pure passthrough (decoration removed) — they never get an enrichment context.
+                elif capture.capture_type == CaptureType.photo and tenant_has_capability(db, job.tenant_id, IMAGE_CAPTION):
                     enrichment_context = build_capture_enrichment_context(db, session=session, capture=capture)
         return {
             "job": ai_job_payload(job),
@@ -575,6 +574,17 @@ def complete_worker_job(
     ooc_marker = out_of_context_marker(output)
     if ooc_marker is not None:
         capture.capture_metadata = {**capture.capture_metadata, "out_of_context": ooc_marker}
+    # §7 uncertainty → needs-input for captions: a low-confidence / flagged photo caption raises a
+    # per-capture review chip (reusing the existing capture-chip surface). Cleared when a re-run
+    # produces a confident caption, so the chip never lingers after the caption improves.
+    if capture.capture_type == CaptureType.photo:
+        review_marker = caption_review_marker(output)
+        metadata = dict(capture.capture_metadata or {})
+        if review_marker is not None:
+            metadata["needs_review"] = review_marker
+        else:
+            metadata.pop("needs_review", None)
+        capture.capture_metadata = metadata
     # Pro folds each in-context capture into the synthesized live report (E2). The capture is
     # marked `pending` here; the report job flips it to `added` once it's folded in. Basic is a
     # chronological render with no synthesis, so it carries no contribution effect, and an
@@ -633,6 +643,14 @@ def complete_worker_job(
             session_id=capture.session_id,
             created_by_user_id=job.created_by_user_id,
         )
+        # Deterministic before/after photo pairing over the caption pairing attributes (not an LLM
+        # job). Idempotent + cheap; recomputed as each photo's caption lands so the final pass is
+        # complete once the chain drains.
+        if session is not None:
+            from app.services.photo_pairing import recompute_session_photo_pairing
+
+            recompute_session_photo_pairing(db, session=session)
+            db.commit()
         # With the report now current, refresh the patient's AI memory (Pro). Gated on the session
         # being complete (captures processed, patient assigned, report up to date) + dedup.
         maybe_dispatch_patient_memory_job(

@@ -144,8 +144,9 @@ Note output:
 
 Per-task models (live-selectable):
 
-- Each AI task (`transcription`, `caption`, `note_decoration`, `patient_memory`) can run on its own
-  model. The model id is **live-configurable at runtime, globally**: the backend stores a per-task
+- Each AI task (`transcription`, `caption`, `patient_memory`, `report_synthesis`) can run on its own
+  model (notes are a pure passthrough — no AI, no per-task model). The model id is
+  **live-configurable at runtime, globally**: the backend stores a per-task
   override in the `app_config` table (key `ai_models`), editable via `GET`/`PUT
   /api/v1/ai-config/models` (Settings → AI models) and surfaced to the worker in every job payload as
   `aiModels`. The worker resolves the model as: payload `aiModels[task]` → env `AI_ENGINE_<TASK>_MODEL`

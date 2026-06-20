@@ -113,10 +113,10 @@ export async function getTherapySession(apiFetch: ApiFetch, sessionId: string): 
 }
 
 function noteText(metadata: Record<string, unknown>): { text: string; raw: string | null } {
-  const decorated = metadata.decorated_text as Record<string, unknown> | undefined;
-  const normalized = metadata.normalized_note as Record<string, unknown> | undefined;
+  // Notes are a pure passthrough (decoration removed): a staff-edited note wins, else the raw note.
+  const note = metadata.note as Record<string, unknown> | undefined;
   const detail = typeof metadata.detail === "string" ? metadata.detail : null;
-  const text = (decorated && typeof decorated.text === "string" && decorated.text) || (normalized && typeof normalized.text === "string" && normalized.text) || detail || "";
+  const text = (note && typeof note.text === "string" && note.text) || detail || "";
   return { text: String(text), raw: detail };
 }
 

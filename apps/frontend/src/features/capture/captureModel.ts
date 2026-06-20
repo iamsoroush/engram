@@ -484,17 +484,11 @@ export function draftCaptureText(item: CaptureItem) {
 
 export function generatedTextForReport(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
-  // A staff-edited Basic note wins for notes (it's the doctor's own words, no AI involved).
+  // Notes are a pure passthrough (no AI decoration): a staff-edited note wins, else the raw note.
   if (item.type === "note") {
-    const editedNote = metadataText(metadataRecord(metadata.note).text);
-    if (editedNote) return editedNote;
+    return metadataText(metadataRecord(metadata.note).text) || item.detail;
   }
-  const generated =
-    item.type === "audio" || item.type === "voice"
-      ? metadata.transcript
-      : item.type === "photo"
-        ? metadata.caption || metadata.ocr
-        : metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
+  const generated = item.type === "audio" || item.type === "voice" ? metadata.transcript : metadata.caption || metadata.ocr;
   const generatedRecord = metadataRecord(generated);
   const status = metadataDisplay(generatedRecord.status || generatedRecord.state).toLowerCase();
   if (status === "processing" || status === "queued" || status === "running") return "";
@@ -502,13 +496,8 @@ export function generatedTextForReport(item: CaptureItem) {
     metadataText(generated) ||
     metadataText(generatedRecord.text) ||
     metadataText(generatedRecord.transcript) ||
-    metadataText(generatedRecord.caption) ||
-    metadataText(generatedRecord.decorated_text) ||
-    metadataText(generatedRecord.decoratedText) ||
-    metadataText(generatedRecord.normalized_note) ||
-    metadataText(generatedRecord.normalizedNote);
+    metadataText(generatedRecord.caption);
   if (text) return text;
-  if (item.type === "note") return item.detail;
   // Photos carry no AI caption in Basic (or when captioning is unavailable) — return nothing so the
   // UI offers a manual "Add caption" instead of a placeholder.
   return "";
@@ -522,18 +511,20 @@ export function textDirection(text: string): "rtl" | "ltr" {
   return rtl > ltr ? "rtl" : "ltr";
 }
 
-export function noteDecoratedText(item: CaptureItem) {
-  const metadata = metadataRecord(item.metadata);
-  const decorated = metadata.decorated_text || metadata.decoratedText || metadata.normalized_note || metadata.normalizedNote;
-  const decoratedRecord = metadataRecord(decorated);
-  return (
-    metadataText(decorated) ||
-    metadataText(decoratedRecord.text) ||
-    metadataText(decoratedRecord.decorated_text) ||
-    metadataText(decoratedRecord.decoratedText) ||
-    metadataText(decoratedRecord.normalized_note) ||
-    metadataText(decoratedRecord.normalizedNote)
-  );
+/** A low-confidence / flagged photo caption the backend raised for review (§7): the reason to show
+ * on the capture's "Needs review" chip, or "" when there's nothing to review. */
+export function captureNeedsReview(item: CaptureItem): string {
+  if (item.type !== "photo") return "";
+  const marker = metadataRecord(metadataRecord(item.metadata).needs_review);
+  if (marker.present !== true) return "";
+  return metadataText(marker.reason) || "Low-confidence caption — please review.";
+}
+
+/** The model-authored Markdown display variant of a photo caption (the clean `text` is for AI jobs;
+ * this `display` has the important words **bold** for the UI). "" when there's no distinct display. */
+export function captionDisplay(item: CaptureItem): string {
+  if (item.type !== "photo") return "";
+  return metadataText(metadataRecord(metadataRecord(item.metadata).caption).display);
 }
 
 export function nonTechnicalStageLabel(status?: SessionProcessingStatus) {

@@ -75,11 +75,8 @@ def transcription_context_from_inputs(
                     }
                 )
         elif capture.capture_type == CaptureType.note:
-            note_text = (
-                generated_capture_text(metadata.get("decorated_text"))
-                or generated_capture_text(metadata.get("normalized_note"))
-                or generated_capture_text(metadata.get("detail"))
-            )
+            # Notes are a pure passthrough (decoration removed): use the raw captured text.
+            note_text = generated_capture_text(metadata.get("detail"))
             if note_text:
                 text_notes.append(
                     {

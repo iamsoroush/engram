@@ -26,7 +26,8 @@ export function generatedMetadataFor(item: CaptureItem) {
   const metadata = metadataRecord(item.metadata);
   if (item.type === "audio" || item.type === "voice") return metadataRecord(metadata.transcript);
   if (item.type === "photo") return metadataRecord(metadata.caption || metadata.ocr);
-  return metadataRecord(metadata.decorated_text || metadata.normalized_note);
+  // Notes are a pure passthrough (decoration removed): the doctor's raw words, never "AI-generated".
+  return metadataRecord(metadata.note);
 }
 
 export function isGeneratedMetadata(metadata: Record<string, unknown>) {

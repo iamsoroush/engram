@@ -550,7 +550,8 @@ small {
   border-color: #e0d8ff;
 }
 .effect-chip.is-suggested,
-.effect-chip.is-context {
+.effect-chip.is-context,
+.effect-chip.is-review {
   background: var(--color-warning-soft);
   color: var(--color-warning);
   border-color: #f3e3bf;
@@ -3106,11 +3107,13 @@ small {
   min-height: 36px;
 }
 
+/* Stack the photo and its caption: the caption reads full-width UNDER the photo (instead of a narrow
+   side column that wraps to a word or two per line). */
 .live-draft-photo-row {
   display: grid;
-  grid-template-columns: minmax(112px, 46%) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  align-items: stretch;
 }
 
 .live-draft-photo-thumb {
@@ -3122,7 +3125,8 @@ small {
 
 .live-draft-photo-thumb .capture-raw-photo {
   width: 100%;
-  height: 94px;
+  height: auto;
+  max-height: 220px;
   border-radius: 8px;
   object-fit: contain;
   background: #f3f7ff;
@@ -3135,7 +3139,19 @@ small {
 .live-draft-photo-copy {
   display: grid;
   min-width: 0;
-  gap: 8px;
+  gap: 6px;
+}
+
+/* Caption prose is secondary to the photo → a touch smaller and tighter, full width. The model's
+   chosen key phrases are bolded inline via <strong> (see renderWithHighlights). */
+.live-draft-photo-copy .live-draft-preview {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.live-draft-photo-copy .live-draft-preview strong {
+  font-weight: 800;
+  color: #0f1b34;
 }
 
 .live-draft-photo-copy h4,

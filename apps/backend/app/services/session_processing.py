@@ -56,7 +56,6 @@ class SessionProcessingCaptureInput(TypedDict, total=False):
     transcript: str | None
     caption: str | None
     rawText: str | None
-    decoratedText: str | None
     detectedPatient: dict[str, Any] | None
     patientInformation: dict[str, Any] | None
 
@@ -552,7 +551,7 @@ def _capture_input(capture: Capture, artifact: Artifact | None) -> SessionProces
     detected_patient = _detected_patient(metadata.get("transcript"))
     patient_information = _patient_information(metadata.get("transcript"))
     caption = _generated_text(metadata.get("caption")) or _generated_text(metadata.get("ocr"))
-    decorated_text = _generated_text(metadata.get("decorated_text")) or _generated_text(metadata.get("normalized_note"))
+    # Notes are a pure passthrough (decoration removed): the synthesizer reads the raw captured text.
     raw_text = str(metadata.get("detail")).strip() if metadata.get("detail") else None
     return {
         "captureId": str(capture.id),
@@ -567,7 +566,6 @@ def _capture_input(capture: Capture, artifact: Artifact | None) -> SessionProces
         "patientInformation": patient_information if capture.capture_type == CaptureType.audio else None,
         "caption": caption if capture.capture_type == CaptureType.photo else None,
         "rawText": raw_text if capture.capture_type == CaptureType.note else None,
-        "decoratedText": decorated_text if capture.capture_type == CaptureType.note else None,
     }
 
 
@@ -618,11 +616,11 @@ def _body_paragraphs_from_input(
 
     audio = [capture for capture in captures if capture.get("transcript")]
     photos = [capture for capture in captures if capture.get("caption")]
-    notes = [capture for capture in captures if capture.get("decoratedText") or capture.get("rawText")]
+    notes = [capture for capture in captures if capture.get("rawText")]
     if audio:
         paragraphs.append("Audio notes: " + " ".join(str(capture["transcript"]) for capture in audio))
     if notes:
-        paragraphs.append("Written notes: " + " ".join(str(capture.get("decoratedText") or capture.get("rawText")) for capture in notes))
+        paragraphs.append("Written notes: " + " ".join(str(capture["rawText"]) for capture in notes))
     if photos:
         paragraphs.append("Photo observations: " + " ".join(str(capture["caption"]) for capture in photos))
     if not paragraphs:

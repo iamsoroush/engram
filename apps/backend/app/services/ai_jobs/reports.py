@@ -209,11 +209,8 @@ def _capture_report_text(capture: Capture) -> str | None:
     if capture.capture_type == CaptureType.audio:
         return generated_capture_text(metadata.get("transcript"))
     if capture.capture_type == CaptureType.note:
-        return (
-            generated_capture_text(metadata.get("decorated_text"))
-            or generated_capture_text(metadata.get("normalized_note"))
-            or generated_capture_text(metadata.get("detail"))
-        )
+        # Notes are a pure passthrough (decoration removed): the report uses the raw captured text.
+        return generated_capture_text(metadata.get("detail"))
     if capture.capture_type == CaptureType.photo:
         return generated_capture_text(metadata.get("caption"))
     return None
