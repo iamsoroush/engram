@@ -286,17 +286,22 @@ rows. *Why server-side:* a withholding guarantee you can only break with a code 
 
 ---
 
-## 5 · Open questions (for the owner)
+## 5 · Resolved decisions (product owner, 2026-06-20)
 
-1. **Assessment on the patient page — opt-in default OFF, or never shareable?** This design makes it an
-   opt-in toggle (default off) so a doctor *can* share findings when appropriate. The stricter
-   alternative is to make assessment clinic-only, period. Which matches clinical comfort?
-2. **Treatment specifics to the patient — plain-words line, or nothing?** We withhold the table and all
-   lots, but allow an optional "what we did" plain-language line (`Forehead — anti-wrinkle treatment`).
-   Some clinics will want even that suppressed (brand/product is competitive/sensitive). Default
-   include, default exclude, or per-clinic setting?
-3. **Carried-forward dose on the *clinical* report — block "Complete" until confirmed, or not?** Today a
-   carried-forward item is a chip + a Needs-input item but the report still reaches `Complete`. Should an
-   *unconfirmed* carried-forward dose hold the report at `Updating` (forcing a confirm), or stay calm
-   (chip only) so it never blocks — consistent with "warnings over blocking"? (This design chose the
-   latter; flagging because it's a clinical-safety judgment, not a UX one.)
+1. **Assessment on the patient page → opt-in, default OFF.** The doctor *may* include the clinical
+   assessment on a shared report, but it's off by default (clinician findings can alarm out of context).
+   As designed in §4.
+2. **Treatment specifics to the patient → per-clinic setting, default GENERIC (no brand).** The share may
+   show a plain-words "what we did" line (`Forehead — anti-wrinkle treatment`) but **omits brand/product
+   names by default**; a clinic can opt in to including brands. The treatment **table and all lots stay
+   always-withheld server-side** regardless. (Add a per-clinic `share_include_brands` setting in the
+   Story-C build; default off.)
+3. **Carried-forward dose → the report must NOT read a clean "Complete" while unconfirmed.** Stricter than
+   chip-only/"warnings-over-blocking", but **for doses specifically** — a dose is the one field where
+   silent completion is a safety risk. An unconfirmed carried-forward dose keeps that item in a
+   *"confirm dose"* state and the report reads **needs confirmation** (not `Complete`) until the doctor
+   confirms; the rest of the report stays non-blocking/usable.
+   **Keystone impact:** the merged Job-3 auto-complete derivation must be gated so an unconfirmed
+   carried-forward *dose* doesn't resolve to `complete`; the report-state surface (Track 3 / Story C)
+   shows "confirm dose" instead. Synthesis is dormant by default (`report_synthesis_enabled` off), so this
+   lands before it's enabled — no live impact in the interim.
