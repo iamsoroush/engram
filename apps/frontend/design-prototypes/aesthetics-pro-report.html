@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memara — Pro report (Story C): the one synthesized report · clinical + shareable</title>
+<style>
+  /* Reuses the aesthetics Pro design system / tokens from aesthetics-report.html
+     + aesthetics-patient-surface.html — no new palette. */
+  :root{
+    --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --color-text:#080d2d; --color-text-soft:#263451; --color-muted:#52617e; --color-muted-2:#667399;
+    --color-primary:#075eff; --color-primary-soft:#eef5ff;
+    --color-page:#f7f9fd; --color-surface:#fff; --color-surface-soft:#f8fbff;
+    --color-border:#dce6f2; --color-border-strong:#cbd8ea;
+    --color-success:#16834a; --color-success-soft:#e8f7ef;
+    --color-warning:#995c00; --color-warning-soft:#fff7e3; --color-warning-border:#f3e2b7;
+    --color-info:#1d4ed8; --color-info-soft:#eef5ff;
+    --violet:#6b3df0; --violet-soft:#f0ecff; --violet-border:#e0d8ff;
+    --green:#0a9d6e;
+    --radius-sm:8px; --radius-md:10px; --radius-lg:12px; --radius-pill:999px;
+    --shadow-card:0 8px 22px rgb(8 13 45 / 5%); --shadow-float:0 16px 38px rgb(15 23 42 / 14%);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--font-sans);background:var(--color-page);color:var(--color-text);
+    -webkit-font-smoothing:antialiased;font-size:14px;padding:34px 22px 80px}
+  .wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:46px}
+  .frame-label{font-size:.74rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);margin:0 0 10px 2px}
+  .frame-note{font-size:.8rem;color:var(--color-muted);margin:10px 2px 0;line-height:1.55}
+  .frame-note b{color:var(--color-text-soft)}
+  .ic{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .ic.sm{width:13px;height:13px}
+  .rtl{direction:rtl;text-align:right;unicode-bidi:plaintext}
+  .grow{flex:1}
+  .num{font-variant-numeric:tabular-nums}
+  .link{color:var(--color-primary);font-weight:700;cursor:pointer}
+  .app{background:var(--color-page);border:1px solid var(--color-border);border-radius:18px;padding:16px;box-shadow:var(--shadow-card)}
+
+  /* ---- report card chrome (from aesthetics-report.html) ---- */
+  .report-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-card);overflow:hidden}
+  .rep-titlebar{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .rep-titlebar h2{font-size:.9rem;font-weight:800;margin:0}
+  .tier{font-size:.6rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;border-radius:var(--radius-pill);padding:3px 8px;border:1px solid}
+  .tier.pro{color:var(--violet);background:var(--violet-soft);border-color:var(--violet-border)}
+  .doc-header{display:flex;align-items:center;gap:11px;padding:13px 14px;background:var(--color-surface-soft);border-bottom:1px solid var(--color-border)}
+  .clinic-logo{width:38px;height:38px;border-radius:10px;background:var(--color-primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+  .clinic-name{font-weight:800;font-size:.9rem}
+  .clinic-addr{font-size:.68rem;color:var(--color-muted);margin-top:1px}
+  .pinfo{display:flex;flex-wrap:wrap;gap:5px 22px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .pinfo .f{font-size:.8rem}
+  .pinfo .f span{font-size:.58rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted);display:block;margin-bottom:1px}
+
+  /* meta strip — the report's basis (Complete/Updating/Organizing) */
+  .rep-meta{padding:9px 14px;font-size:.7rem;color:var(--color-muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--color-border)}
+  .badge-complete{display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;color:var(--color-success);background:var(--color-success-soft);border:1px solid #cdeede;border-radius:var(--radius-pill);padding:3px 9px}
+  .badge-organizing{display:inline-flex;align-items:center;gap:6px;font-size:.66rem;font-weight:800;color:var(--violet);background:var(--violet-soft);border:1px solid var(--violet-border);border-radius:var(--radius-pill);padding:3px 9px}
+  .badge-organizing .pulse{width:7px;height:7px;border-radius:50%;background:var(--violet);animation:pulse 1.3s ease-in-out infinite}
+  .badge-updating{display:inline-flex;align-items:center;gap:6px;font-size:.66rem;font-weight:800;color:var(--color-info);background:var(--color-info-soft);border:1px solid #cfe0ff;border-radius:var(--radius-pill);padding:3px 9px}
+  .badge-updating .dot{width:7px;height:7px;border-radius:50%;background:var(--color-info);animation:pulse 1.3s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+  .confirm-pill{display:inline-flex;align-items:center;gap:5px;font-size:.66rem;font-weight:800;color:var(--color-warning);background:var(--color-warning-soft);border:1px solid var(--color-warning-border);border-radius:var(--radius-pill);padding:3px 9px;cursor:pointer}
+  .meta-tpl{margin-left:auto;font-size:.66rem;color:var(--color-muted)}
+
+  /* sections */
+  .rep-body{padding:4px 14px 14px}
+  .rep-sec{padding:12px 0;border-top:1px solid var(--color-border)}
+  .rep-sec:first-child{border-top:0}
+  .rep-sec h3{margin:0 0 5px;font-size:.62rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-soft);display:flex;align-items:center;gap:7px}
+  .rep-sec h3 .upd{font-size:.55rem;font-weight:800;color:var(--color-info);background:var(--color-info-soft);border-radius:var(--radius-pill);padding:1px 7px;letter-spacing:.02em;text-transform:none}
+  .rep-sec p{margin:0;font-size:.85rem;line-height:1.6;color:var(--color-text-soft)}
+  .rep-sec p + p{margin-top:7px}
+  .rep-sec.lead p{font-size:.92rem;color:var(--color-text)}
+
+  /* treatment table — clinical core */
+  .ttbl{width:100%;border-collapse:collapse;margin-top:8px;font-size:.8rem}
+  .ttbl th{text-align:left;font-size:.56rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-muted-2);padding:5px 9px;border-bottom:1px solid var(--color-border)}
+  .ttbl td{padding:9px;border-bottom:1px solid var(--color-border);color:var(--color-text);vertical-align:top}
+  .ttbl tr:last-child td{border-bottom:0}
+  .ttbl td.units{font-weight:700}
+  .ttbl td.lot{font-variant-numeric:tabular-nums;font-weight:700}
+  .ttbl tr.lowconf td{background:var(--color-warning-soft)}
+  .t-sub{font-size:.68rem;color:var(--color-muted);margin-top:3px}
+  .t-src{font-size:.66rem;color:var(--color-primary);margin-top:4px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+  .was{color:var(--color-muted);text-decoration:line-through;font-size:.72rem}
+  .lotq{color:var(--color-warning);font-weight:800}
+
+  /* per-row chips */
+  .chip{display:inline-flex;align-items:center;gap:4px;font-size:.58rem;font-weight:800;letter-spacing:.02em;border-radius:var(--radius-pill);padding:2px 7px;margin-top:5px;white-space:nowrap}
+  .chip.warn{color:var(--color-warning);background:var(--color-warning-soft);border:1px solid var(--color-warning-border)}
+  .chip.low{color:#8a3a12;background:#fdeee6;border:1px solid #f6d7c4}
+  .chip.spark{color:var(--violet);background:var(--violet-soft);border:1px solid var(--violet-border)}
+  .chip svg{width:11px;height:11px;fill:none;stroke:currentColor;stroke-width:2}
+  .chip .sparkfill{fill:currentColor;stroke:none}
+
+  /* prose-mirror disclosure */
+  .mirror{margin-top:9px;font-size:.78rem}
+  .mirror summary{cursor:pointer;color:var(--color-primary);font-weight:700;font-size:.72rem;list-style:none}
+  .mirror summary::-webkit-details-marker{display:none}
+  .mirror p{margin:7px 0 0;color:var(--color-muted);font-size:.8rem;line-height:1.55}
+
+  /* before/after media + slider */
+  .media-tools{display:flex;gap:6px;margin:2px 0 9px}
+  .seg{display:inline-flex;background:var(--color-surface-soft);border:1px solid var(--color-border);border-radius:var(--radius-pill);padding:2px}
+  .seg button{border:0;background:transparent;font:inherit;font-size:.68rem;font-weight:700;color:var(--color-muted);padding:4px 11px;border-radius:var(--radius-pill);cursor:pointer}
+  .seg button.on{background:#fff;color:var(--color-primary);box-shadow:0 1px 3px rgb(8 13 45 /8%)}
+  .ba-side{display:flex;gap:8px}
+  .ba-fig{flex:1;min-width:0}
+  .ba-img{width:100%;height:150px;border-radius:var(--radius-md);border:1px solid var(--color-border);position:relative;overflow:hidden;
+    background:radial-gradient(circle at 50% 38%, #f2d3c4 0 36%, #f6ece6 38% 100%)}
+  .ba-img.after{background:radial-gradient(circle at 50% 38%, #efc9b6 0 34%, #f4e6dd 36% 100%)}
+  .ba-tag{position:absolute;top:6px;left:6px;font-size:.58rem;font-weight:800;text-transform:uppercase;background:rgba(8,13,45,.6);color:#fff;border-radius:var(--radius-pill);padding:2px 8px}
+  .ba-cap{font-size:.72rem;color:var(--color-muted);margin-top:6px;line-height:1.4}
+
+  /* slider compare */
+  .ba-slider{position:relative;height:200px;border-radius:var(--radius-md);border:1px solid var(--color-border);overflow:hidden;user-select:none;cursor:ew-resize;
+    background:radial-gradient(circle at 50% 38%, #efc9b6 0 34%, #f4e6dd 36% 100%)}
+  .ba-slider .before{position:absolute;inset:0;background:radial-gradient(circle at 50% 38%, #f2d3c4 0 36%, #f6ece6 38% 100%);clip-path:inset(0 50% 0 0)}
+  .ba-slider .lbl{position:absolute;top:8px;font-size:.58rem;font-weight:800;text-transform:uppercase;background:rgba(8,13,45,.62);color:#fff;border-radius:var(--radius-pill);padding:2px 8px}
+  .ba-slider .lbl.b{left:8px}.ba-slider .lbl.a{right:8px}
+  .ba-slider .handle{position:absolute;top:0;bottom:0;width:2px;background:#fff;left:50%;box-shadow:0 0 0 1px rgb(8 13 45 /15%)}
+  .ba-slider .knob{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:#fff;box-shadow:var(--shadow-float);display:flex;align-items:center;justify-content:center;color:var(--color-primary)}
+  .ba-slider .knob svg{width:16px;height:16px;fill:currentColor}
+
+  .care{list-style:none;padding:0;margin:6px 0 0}
+  .care li{display:flex;gap:9px;font-size:.84rem;line-height:1.5;color:var(--color-text-soft);padding:7px 0;border-top:1px solid var(--color-border)}
+  .care li:first-child{border-top:0}
+  .care li .ck{width:18px;height:18px;border-radius:50%;background:var(--color-success-soft);color:var(--color-success);display:flex;align-items:center;justify-content:center;flex:0 0 auto;margin-top:1px}
+
+  /* --- share sheet (clinic-side curation), from aesthetics-report.html FRAME 2 --- */
+  .share-head{display:flex;align-items:center;gap:9px;padding:11px 14px;border-bottom:1px solid var(--color-border)}
+  .pillbtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--color-border-strong);background:#fff;border-radius:var(--radius-pill);font-size:.74rem;font-weight:700;color:var(--color-text-soft);padding:8px 12px;cursor:pointer;justify-content:center}
+  .pillbtn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+  .incl{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--color-border);font-size:.8rem;color:var(--color-text-soft)}
+  .incl small{font-size:.7rem;color:var(--color-muted);display:block;margin-top:1px}
+  .sw{width:34px;height:20px;border-radius:var(--radius-pill);background:var(--color-primary);position:relative;flex:0 0 auto;cursor:pointer}
+  .sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+  .sw.off{background:var(--color-border-strong)}.sw.off::after{right:auto;left:2px}
+  .withheld{font-size:.72rem;color:var(--color-muted);padding:10px 14px;display:flex;align-items:flex-start;gap:7px;background:var(--color-surface-soft);line-height:1.5}
+
+  /* --- patient phone (public share render), from aesthetics-patient-surface.html --- */
+  .phone{background:#fff;border:1px solid var(--color-border);border-radius:24px;box-shadow:var(--shadow-float);overflow:hidden;display:flex;flex-direction:column;max-width:380px}
+  .pf-head{background:var(--color-primary);color:#fff;padding:16px 16px 18px}
+  .pf-clinic{display:flex;align-items:center;gap:10px}
+  .pf-logo{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-weight:800}
+  .pf-name{font-weight:800;font-size:.95rem}
+  .pf-sub{font-size:.7rem;opacity:.85;margin-top:1px}
+  .pf-hi{font-size:.95rem;font-weight:700;margin-top:14px}
+  .pf-meta{font-size:.74rem;opacity:.9;margin-top:2px}
+  .pf-body{padding:14px}
+  .sec{margin-bottom:18px}
+  .sec:last-child{margin-bottom:0}
+  .sec h3{font-size:.66rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--color-muted);margin:0 0 8px}
+  .sec p{margin:0;font-size:.85rem;line-height:1.6;color:var(--color-text-soft)}
+  .pf-foot{padding:12px 14px;border-top:1px solid var(--color-border);background:var(--color-surface-soft);font-size:.72rem;color:var(--color-muted);display:flex;align-items:flex-start;gap:8px;line-height:1.45}
+
+  .cols2{display:grid;grid-template-columns:1fr 380px;gap:22px;align-items:start}
+  @media(max-width:840px){ .cols2{grid-template-columns:1fr} .phone{max-width:100%} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><circle cx="6" cy="12" r="2.4"/><circle cx="17" cy="6" r="2.4"/><circle cx="17" cy="18" r="2.4"/><path d="M8.2 11L15 7M8.2 13L15 17"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 2c.5 4.6 1.7 5.8 6.3 6.3-4.6.5-5.8 1.7-6.3 6.3-.5-4.6-1.7-5.8-6.3-6.3 4.6-.5 5.8-1.7 6.3-6.3Z"/></symbol>
+  <symbol id="i-slider" viewBox="0 0 24 24"><path d="M8 7l-4 5 4 5M16 7l4 5-4 5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+
+  <header>
+    <p class="frame-label" style="font-size:.82rem;color:var(--color-text)">Pro report (Story C) — one synthesized report, two renderings</p>
+    <p class="frame-note" style="margin-top:4px">A single AI-synthesized per-visit report
+      (<code>2026-06-15.session-synthesis-output.v1</code>). The doctor's <b>clinical</b> rendering (below)
+      and the patient's <b>shareable</b> rendering (right) are the <b>same report</b> — the difference is
+      <b>curation + withholding</b>, never a separate document ("one report, no separate patient projection").
+      Every field shown is from the real contract: fixed section ids, <code>TreatmentItem</code>
+      (area·product·brand·quantityText·lot·confidence·carriedForward), <code>uncertainties[]</code>.</p>
+  </header>
+
+  <!-- ============ FRAME 1: CLINICAL — COMPLETE ============ -->
+  <section>
+    <p class="frame-label">1 · Clinical (in-app) — Complete · full sections + treatment table + before/after</p>
+    <div class="app" style="max-width:640px">
+      <div class="report-card">
+        <div class="rep-titlebar"><h2>Clinical report</h2><span class="tier pro">Pro</span></div>
+        <div class="doc-header"><div class="clinic-logo">AM</div>
+          <div><div class="clinic-name">Memara Demo Clinic</div><div class="clinic-addr">Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div></div>
+        <div class="pinfo">
+          <div class="f"><span>Patient</span><span class="rtl" lang="fa" style="font-weight:600">سارا نظری</span></div>
+          <div class="f"><span>National ID</span><span class="num">0012 345 678</span></div>
+          <div class="f"><span>Date of visit</span>Today · 14:05</div>
+        </div>
+        <div class="rep-meta">
+          <span class="badge-complete"><svg class="ic sm"><use href="#i-check"/></svg> Complete</span>
+          <span>· Reflects all 4 captures · 1 set aside</span>
+          <span class="confirm-pill" title="Jump to flagged items">⚠ 1 item to confirm</span>
+          <span class="meta-tpl">Aesthetic default · <span class="link">Change</span></span>
+        </div>
+        <div class="rep-body">
+
+          <!-- visit-summary -->
+          <div class="rep-sec lead"><h3>Visit summary</h3>
+            <p class="rtl" lang="fa">ویزیت نگه‌داری بوتاکس پیشانی؛ ادامهٔ دوز محافظه‌کارانه. بیمار از نتیجهٔ قبلی راضی است و امروز فیلر گونه هم اضافه شد.</p></div>
+
+          <!-- concern-goals -->
+          <div class="rep-sec"><h3>Concern / goals</h3>
+            <p class="rtl" lang="fa">نرم‌شدن خطوط دینامیک پیشانی و حفظ ظاهری طبیعی؛ تمایل به حجم‌دهی ملایم گونه.</p></div>
+
+          <!-- assessment -->
+          <div class="rep-sec"><h3>Assessment</h3>
+            <p>Moderate symmetric dynamic forehead rhytids. Mild midface volume loss. No contraindication noted; lidocaine allergy on file.</p></div>
+
+          <!-- treatment-performed (structured table primary, prose mirror collapsible) -->
+          <div class="rep-sec"><h3>Treatment performed</h3>
+            <table class="ttbl">
+              <thead><tr><th>Area</th><th>Product · brand</th><th>Units</th><th>Lot&nbsp;#</th></tr></thead>
+              <tbody>
+                <!-- row 1: a correction (superseded) — verbatim quantityText, full confidence -->
+                <tr>
+                  <td>Forehead</td>
+                  <td>Botulinum toxin · Dysport</td>
+                  <td class="units"><span class="rtl" lang="fa">۲۰ واحد</span>
+                    <div class="t-sub"><span class="was">was ۱۸ واحد</span> · corrected in dictation</div></td>
+                  <td class="lot"><span dir="ltr">D-4471</span></td>
+                </tr>
+                <!-- row 2: cheek filler, attributes line, lot read from label photo -->
+                <tr>
+                  <td>Cheeks (bilateral)</td>
+                  <td>HA filler · Juvéderm Voluma
+                    <div class="t-sub">23G cannula · supraperiosteal · 1 ml/side</div></td>
+                  <td class="units"><span dir="ltr">2 ml</span></td>
+                  <td class="lot"><span dir="ltr">VLM-8820</span>
+                    <div class="t-sub"><svg class="ic sm" style="display:inline;vertical-align:-2px;color:var(--color-muted)"><use href="#i-spark"/></svg> from label photo</div></td>
+                </tr>
+                <!-- row 3: carried-forward — lower confidence, needs confirm; missing lot -->
+                <tr class="lowconf">
+                  <td>Lips</td>
+                  <td>HA filler · <span style="color:var(--color-muted)">brand — same as last time</span></td>
+                  <td class="units"><span dir="ltr">1 ml</span></td>
+                  <td class="lot"><span class="lotq">lot?</span></td>
+                </tr>
+                <tr class="lowconf"><td colspan="4" style="padding-top:0;border-top:0">
+                  <span class="chip warn">⟲ carried forward · confirm</span>
+                  <span class="chip low">low confidence</span>
+                  <span class="t-src" style="margin-left:8px"><svg class="ic sm"><use href="#i-mic"/></svg> "همون قبلی" · 14:05 dictation · cited to visit Mar&nbsp;3</span>
+                </td></tr>
+              </tbody>
+            </table>
+            <details class="mirror"><summary>Show in words (prose mirror)</summary>
+              <p class="rtl" lang="fa">روی پیشانی ۲۰ واحد دیسپورت تزریق شد. در ناحیهٔ گونه‌ها (دو طرف) مجموعاً ۲ سی‌سی فیلر هیالورونیک‌اسید (ووالوما) با کانولا قرار گرفت. روی لب‌ها ۱ سی‌سی فیلر «مثل دفعهٔ قبل» تزریق شد (نیازمند تأیید).</p>
+            </details>
+          </div>
+
+          <!-- media: before/after, side-by-side default + slider toggle -->
+          <div class="rep-sec"><h3>Before / after</h3>
+            <div class="media-tools">
+              <div class="seg" data-media="m1">
+                <button class="on" data-mode="side">Side by side</button>
+                <button data-mode="slider"><svg class="ic sm" style="display:inline;vertical-align:-2px"><use href="#i-slider"/></svg> Compare</button>
+              </div>
+            </div>
+            <div data-view="m1-side">
+              <div class="ba-side">
+                <div class="ba-fig"><div class="ba-img"><span class="ba-tag">Before</span></div>
+                  <div class="ba-cap rtl" lang="fa">پیشانی، نمای روبه‌رو — پیش از تزریق</div></div>
+                <div class="ba-fig"><div class="ba-img after"><span class="ba-tag">After</span></div>
+                  <div class="ba-cap rtl" lang="fa">پیشانی، نمای روبه‌رو — بلافاصله پس از تزریق</div></div>
+              </div>
+            </div>
+            <div data-view="m1-slider" style="display:none">
+              <div class="ba-slider" data-slider>
+                <span class="lbl a">After</span>
+                <div class="before"><span class="lbl b">Before</span></div>
+                <div class="handle"><div class="knob"><svg viewBox="0 0 24 24"><use href="#i-slider"/></svg></div></div>
+              </div>
+              <div class="ba-cap rtl" lang="fa" style="margin-top:8px">پیشانی، نمای روبه‌رو — مقایسهٔ پیش و پس از تزریق (دستگیره را بکشید)</div>
+            </div>
+          </div>
+
+          <!-- plan-followup -->
+          <div class="rep-sec"><h3>Plan &amp; follow-up</h3>
+            <p class="rtl" lang="fa">بازبینی دو هفتهٔ دیگر برای ارزیابی تقارن؛ امکان ترمیم جزئی بنا به نظر بیمار.</p></div>
+
+          <!-- aftercare -->
+          <div class="rep-sec"><h3>Aftercare given</h3>
+            <ul class="care">
+              <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Stay upright for 4 hours — don't lie down.</li>
+              <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Don't rub or massage the treated areas.</li>
+              <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Skip exercise, saunas, and alcohol for 24 hours.</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <p class="frame-note"><b>The fixed sections rendered cleanly</b>, keyed off the contract section
+      <b>ids</b> (not English titles → vertical-agnostic). <b>Treatment performed</b> is the structured
+      <code>treatments[]</code> as the primary surface — <b>verbatim</b> <code>quantityText</code>
+      (<span class="rtl" lang="fa" style="font-weight:600">۲۰ واحد</span>), brand &amp; <b>lot</b> kept LTR
+      inside RTL rows, attributes as a secondary line, lot <b>read from a label photo</b> (✨). Uncertainty
+      surfaces inline: a <b>correction</b> shows the struck-through <code>was…</code> (auditable), a
+      <b>carried-forward</b> item is amber + low-confidence + cited to the prior visit + <code>lot?</code>
+      for a missing-but-expected lot, and a <b>"1 item to confirm"</b> pill jumps to it — never a blocker.
+      Prose mirror is one tap away. <b>Complete</b> is auto-derived; no Generate, no verify gate.</p>
+  </section>
+
+  <!-- ============ FRAME 2: CLINICAL — ORGANIZING / UPDATING ============ -->
+  <section>
+    <p class="frame-label">2 · Clinical — the calm "Organizing with AI" state (baseline visible, not a takeover)</p>
+    <div class="app" style="max-width:640px">
+      <div class="report-card">
+        <div class="rep-titlebar"><h2>Clinical report</h2><span class="tier pro">Pro</span></div>
+        <div class="doc-header"><div class="clinic-logo">AM</div>
+          <div><div class="clinic-name">Memara Demo Clinic</div><div class="clinic-addr">Vali-e-Asr Ave, Tehran · +98 21 1234 5678</div></div></div>
+        <div class="pinfo">
+          <div class="f"><span>Patient</span><span class="rtl" lang="fa" style="font-weight:600">سارا نظری</span></div>
+          <div class="f"><span>Date of visit</span>Today · 14:05</div>
+        </div>
+        <div class="rep-meta">
+          <span class="badge-organizing"><span class="pulse"></span> Organizing with AI · updates shortly</span>
+          <span class="badge-updating" style="margin-left:2px"><span class="dot"></span> 1 of 4 captures not yet in this report</span>
+        </div>
+        <div class="rep-body">
+          <div class="rep-sec lead"><h3>Visit summary</h3>
+            <p class="rtl" lang="fa">ویزیت نگه‌داری بوتاکس پیشانی؛ ادامهٔ دوز محافظه‌کارانه. بیمار از نتیجهٔ قبلی راضی است.</p></div>
+          <div class="rep-sec"><h3>Concern / goals</h3>
+            <p class="rtl" lang="fa">نرم‌شدن خطوط دینامیک پیشانی و حفظ ظاهری طبیعی.</p></div>
+          <div class="rep-sec"><h3 style="justify-content:flex-start">Treatment performed <span class="upd">updating…</span></h3>
+            <table class="ttbl">
+              <thead><tr><th>Area</th><th>Product · brand</th><th>Units</th><th>Lot&nbsp;#</th></tr></thead>
+              <tbody>
+                <tr><td>Forehead</td><td>Botulinum toxin · Dysport</td>
+                  <td class="units"><span class="rtl" lang="fa">۲۰ واحد</span></td>
+                  <td class="lot"><span dir="ltr">D-4471</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="rep-sec"><h3>Plan &amp; follow-up</h3>
+            <p class="rtl" lang="fa">بازبینی دو هفتهٔ دیگر برای ارزیابی تقارن.</p></div>
+        </div>
+      </div>
+    </div>
+    <p class="frame-note"><b>Enrichment lag is a quiet state, never a takeover.</b> The
+      <b>deterministic baseline runs first</b>, so a readable report is <b>always present</b> — the latest
+      cheek-filler dictation just isn't folded in yet. The meta strip shows a calm
+      <b>Organizing with AI · updates shortly</b> (soft pulse) + an honest <b>Updating · 1 of 4 not yet in
+      this report</b>; the section being recomputed carries a subtle <code>updating…</code> tick. No spinner
+      over the document, no blank state, no error — and offline / gateway-less degrades to exactly this
+      baseline ("Organizing when available"), self-healing.</p>
+  </section>
+
+  <!-- ============ FRAME 3: SHAREABLE — curation + patient render ============ -->
+  <section>
+    <p class="frame-label">3 · Shareable (patient) — the SAME report: clinic-side curation → the public render</p>
+    <div class="cols2">
+
+      <!-- curation sheet (clinic) -->
+      <div>
+        <div class="app" style="padding:0;background:#fff;border-radius:var(--radius-lg)">
+          <div class="report-card" style="border:0;box-shadow:none">
+            <div class="share-head"><svg class="ic" style="color:var(--color-primary)"><use href="#i-share"/></svg>
+              <h2 style="font-size:.95rem;font-weight:800;margin:0">Share with patient</h2><span class="grow"></span>
+              <span class="tier pro">Pro</span></div>
+            <div style="padding:10px 14px;font-size:.78rem;color:var(--color-muted);border-bottom:1px solid var(--color-border)">
+              Pick what <span class="rtl" lang="fa" style="font-weight:600">سارا</span> sees — pre-filled from
+              the report. She gets a read-only link; nothing else from the file.</div>
+
+            <div class="incl"><span class="sw"></span><div class="grow"><b>Before / after — Forehead</b><small>1 pair · slider &amp; side-by-side</small></div></div>
+            <div class="incl"><span class="sw"></span><div class="grow"><b>Visit summary</b><small>from the report</small></div></div>
+            <div class="incl"><span class="sw"></span><div class="grow"><b>Concern / goals</b></div></div>
+            <div class="incl"><span class="sw off"></span><div class="grow" style="color:var(--color-muted)"><b style="color:var(--color-muted)">Assessment</b><small>clinician findings — off by default</small></div></div>
+            <div class="incl"><span class="sw"></span><div class="grow"><b>Plan &amp; follow-up</b></div></div>
+            <div class="incl"><span class="sw"></span><div class="grow"><b>Aftercare instructions</b><small>Botulinum · standard template</small></div><span class="link" style="font-size:.7rem">Change</span></div>
+
+            <div class="withheld"><svg class="ic sm" style="margin-top:1px"><use href="#i-lock"/></svg>
+              <span><b style="color:var(--color-text-soft)">Always withheld</b> (enforced server-side, can't be toggled on):
+              the treatment table, <b>lot numbers</b>, confidence / review flags, source captures &amp; raw audio,
+              national ID, other visits, internal notes.</span></div>
+            <div style="padding:13px 14px;display:flex;gap:9px">
+              <button class="pillbtn grow">Preview</button>
+              <button class="pillbtn primary grow"><svg class="ic sm"><use href="#i-share"/></svg> Send link</button>
+            </div>
+          </div>
+        </div>
+        <p class="frame-note">Sharing is an <b>explicit, curated</b> clinic action with a per-share preview
+          (foundation §4 contract). Pro <b>pre-fills</b> from the synthesized report; the doctor approves.
+          Toggles govern only the <b>opt-in</b> rows (assessment off by default). The <b>"Always withheld"</b>
+          set is enforced at the <b>server/share-payload layer</b> — it has no toggle, so a UI bug can't leak it.</p>
+      </div>
+
+      <!-- patient public render (phone) -->
+      <div>
+        <div class="phone">
+          <div class="pf-head">
+            <div class="pf-clinic"><div class="pf-logo">AM</div>
+              <div><div class="pf-name">Memara Demo Clinic</div><div class="pf-sub">Vali-e-Asr Ave, Tehran</div></div></div>
+            <div class="pf-hi rtl" lang="fa">سلام سارا 👋</div>
+            <div class="pf-meta">Your visit · Today, 14:05 · forehead treatment</div>
+          </div>
+          <div class="pf-body">
+            <div class="sec"><h3>Your before / after</h3>
+              <div class="media-tools">
+                <div class="seg" data-media="m2">
+                  <button class="on" data-mode="side">Side by side</button>
+                  <button data-mode="slider"><svg class="ic sm" style="display:inline;vertical-align:-2px"><use href="#i-slider"/></svg> Compare</button>
+                </div>
+              </div>
+              <div data-view="m2-side">
+                <div class="ba-side">
+                  <div class="ba-fig"><div class="ba-img" style="height:128px"><span class="ba-tag">Before</span></div></div>
+                  <div class="ba-fig"><div class="ba-img after" style="height:128px"><span class="ba-tag">After</span></div></div>
+                </div>
+              </div>
+              <div data-view="m2-slider" style="display:none">
+                <div class="ba-slider" data-slider style="height:170px">
+                  <span class="lbl a">After</span>
+                  <div class="before"><span class="lbl b">Before</span></div>
+                  <div class="handle"><div class="knob"><svg viewBox="0 0 24 24"><use href="#i-slider"/></svg></div></div>
+                </div>
+              </div>
+            </div>
+            <div class="sec"><h3>What we did today</h3>
+              <p class="rtl" lang="fa">ویزیت نگه‌داری بوتاکس پیشانی؛ دوز محافظه‌کارانه ادامه یافت و امروز کمی حجم‌دهی ملایم گونه انجام شد.</p></div>
+            <div class="sec"><h3>Aftercare for the next 24 hours</h3>
+              <ul class="care">
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Stay upright for 4 hours — don't lie down.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Don't rub or massage the treated area.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Skip exercise, saunas, and alcohol for 24 hours.</li>
+                <li><span class="ck"><svg class="ic sm"><use href="#i-check"/></svg></span> Mild redness is normal and settles within hours.</li>
+              </ul></div>
+          </div>
+          <div class="pf-foot"><svg class="ic sm" style="margin-top:1px"><use href="#i-lock"/></svg>
+            <span>Private link for <span class="rtl" lang="fa">سارا</span> · this is everything shared with you. Available until 5 Jul.</span></div>
+        </div>
+        <p class="frame-note">The public <code>/share/{token}</code> render of the <b>same report</b> — no
+          login, read-only, revocable. The slider the doctor curated is here too (the result is the patient's).
+          <b>No treatment table, no lots, no confidence/review chips, no IDs, no status</b> — the patient gets
+          a finished artifact, not the clinic's working document. "What we did" is a plain-words line, never the
+          dose table.</p>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // Toggle each curation switch.
+  document.querySelectorAll('.incl .sw').forEach(s=>s.addEventListener('click',()=>s.classList.toggle('off')));
+
+  // Media: side-by-side <-> slider per media group.
+  document.querySelectorAll('.seg[data-media]').forEach(seg=>{
+    const id=seg.getAttribute('data-media');
+    seg.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{
+      seg.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+      const mode=btn.getAttribute('data-mode');
+      document.querySelector('[data-view="'+id+'-side"]').style.display = mode==='side'?'block':'none';
+      document.querySelector('[data-view="'+id+'-slider"]').style.display = mode==='slider'?'block':'none';
+    }));
+  });
+
+  // Before/after slider drag.
+  document.querySelectorAll('.ba-slider[data-slider]').forEach(slider=>{
+    const before=slider.querySelector('.before');
+    const handle=slider.querySelector('.handle');
+    let dragging=false;
+    const setPct=p=>{ p=Math.max(0,Math.min(100,p)); before.style.clipPath='inset(0 '+(100-p)+'% 0 0)'; handle.style.left=p+'%'; };
+    const fromEvent=e=>{ const r=slider.getBoundingClientRect(); const x=(e.touches?e.touches[0].clientX:e.clientX)-r.left; setPct(x/r.width*100); };
+    const start=e=>{ dragging=true; fromEvent(e); };
+    const move=e=>{ if(dragging){ fromEvent(e); e.preventDefault?.(); } };
+    const end=()=>{ dragging=false; };
+    slider.addEventListener('mousedown',start); window.addEventListener('mousemove',move); window.addEventListener('mouseup',end);
+    slider.addEventListener('touchstart',start,{passive:true}); window.addEventListener('touchmove',move,{passive:false}); window.addEventListener('touchend',end);
+    setPct(50);
+  });
+</script>
+</body>
+</html>

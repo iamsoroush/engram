@@ -177,6 +177,8 @@ deterministic regen] → patient memory refreshed read-triggered/quiescence (not
   share the same synthesized report (curated media + aftercare), scoped to the session.
 - **Story C** — polished report rendering (**needs a UX step**): a good-looking rendering of the one
   synthesized report, clinical + shareable (before/after slider, clean sections, aftercare).
+  *UX step delivered (design, for review):* [redesign-pro-report.md](../ux/redesign-pro-report.md)
+  + prototype [`aesthetics-pro-report.html`](../../apps/frontend/design-prototypes/aesthetics-pro-report.html).
 
 ## Out of scope / always true
 
