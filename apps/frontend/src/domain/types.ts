@@ -147,6 +147,8 @@ export type SessionTreatmentReview = {
   category: "ambiguous" | "carried_forward" | "low_confidence" | "missing_lot" | string;
   reason: string;
   product?: string | null;
+  /** Stable `area|product` key for a carried_forward item — what the confirm endpoint records (Q3). */
+  key?: string | null;
 };
 
 export type SessionSummaries = {

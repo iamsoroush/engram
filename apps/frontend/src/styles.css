@@ -10310,4 +10310,17 @@ small {
   font-size: var(--text-sm, 0.82rem); line-height: 1.4; padding: 8px 12px;
   border: 1px solid #f5d9a8; border-left-width: 3px; border-radius: var(--radius-md, 10px);
   background: #fff8ec; color: #8a5a12;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between;
 }
+.report-review .report-review-chip-reason { flex: 1 1 auto; min-width: 0; }
+/* Q3 — carried-forward dose confirm action (calm, inline). */
+.report-review .report-review-confirm {
+  flex: 0 0 auto; font-size: var(--text-xs, 0.78rem); font-weight: 600; line-height: 1;
+  padding: 6px 12px; border-radius: 999px; border: 1px solid #c98b1f; cursor: pointer;
+  background: #c98b1f; color: #fff;
+}
+.report-review .report-review-confirm:hover:not(:disabled) { background: #b27916; border-color: #b27916; }
+.report-review .report-review-confirm:disabled { opacity: 0.6; cursor: default; }
+.report-review .report-review-chip.confirmed { border-color: #bfe3c4; background: #f1faf2; color: #2f6b3a; }
+.report-review .report-review-chip-confirmed { flex: 0 0 auto; font-weight: 700; }
+.treatments-performed .treatment-flag.confirmed { color: #2f6b3a; }

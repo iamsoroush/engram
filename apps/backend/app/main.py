@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Body, Depends, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required
@@ -88,6 +88,7 @@ from app.services.therapy_reporting import (
 )
 from app.services.sessions import (
     assign_session_patient,
+    confirm_carried_forward_dose,
     create_session,
     get_session,
     list_session_artifacts,
@@ -524,6 +525,17 @@ def update_session_route(
 ) -> dict[str, Any]:
     """Update editable session fields such as title, summary, or status."""
     return update_session(db, principal, session_id, request)
+
+
+@api_v1.post("/sessions/{session_id}/confirm-carried-forward")
+def confirm_carried_forward_route(
+    session_id: str,
+    key: str = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Q3: confirm a carried-forward dose (by its area|product key) so the report can read Complete."""
+    return confirm_carried_forward_dose(db, principal, session_id, key)
 
 
 @api_v1.post("/sessions/{session_id}/save")

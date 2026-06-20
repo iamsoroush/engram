@@ -35,7 +35,21 @@ def session_is_complete(session: Session) -> bool:
     if session.status == SessionStatus.processing:
         return False
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
-    return not metadata.get("generated_output_stale")
+    if metadata.get("generated_output_stale"):
+        return False
+    # Q3: an unconfirmed carried-forward DOSE must NOT let the report read "Complete" — the doctor
+    # confirms the carried dose first (redesign-pro-report §5). Other review items (low-confidence,
+    # ambiguous, missing-lot) stay non-blocking. Confirmation is recorded per area|product key.
+    review = metadata.get("treatment_review")
+    confirmed = set(metadata.get("confirmed_carried_forward") or [])
+    if isinstance(review, list) and any(
+        isinstance(item, dict)
+        and item.get("category") == "carried_forward"
+        and item.get("key") not in confirmed
+        for item in review
+    ):
+        return False
+    return True
 
 
 def _iso(value: datetime | None) -> str | None:

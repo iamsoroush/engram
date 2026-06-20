@@ -239,6 +239,32 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
     return session_payload(session, db)
 
 
+def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, session_id: str, key: str) -> dict[str, Any]:
+    """Q3: record that the doctor confirmed a carried-forward dose so the report can read Complete.
+
+    An unconfirmed carried-forward dose holds the report at "needs confirmation"
+    (`session_is_complete`); confirming it by its `area|product` key clears that one item. Other
+    review items stay non-blocking. Confirmation persists in `extracted_metadata.confirmed_carried_forward`
+    and survives re-synthesis (the same carried item keeps its key).
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't confirm its doses.",
+        )
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    confirmed = [str(value) for value in (metadata.get("confirmed_carried_forward") or []) if isinstance(value, str)]
+    if key not in confirmed:
+        confirmed.append(key)
+    metadata["confirmed_carried_forward"] = confirmed
+    session.extracted_metadata = metadata
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.confirm_carried_forward", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
 def assign_session_patient(
     db: DbSession,
     principal: CurrentPrincipal,

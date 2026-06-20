@@ -348,14 +348,26 @@ def prior_visit_capture_ids(treatments: list[dict[str, Any]] | None) -> set[str]
     return ids
 
 
-def _treatment_review_item(category: str, reason: str, product: str | None, source_capture_ids: list[str]) -> dict[str, Any]:
+def carried_forward_key(treatment: dict[str, Any]) -> str:
+    """Stable id (area|product) for a carried-forward treatment so its dose can be confirmed (Q3)."""
+    area = str(treatment.get("area") or "").strip()
+    product = str(treatment.get("product") or "").strip()
+    return f"{area}|{product}"
+
+
+def _treatment_review_item(
+    category: str, reason: str, product: str | None, source_capture_ids: list[str], key: str | None = None
+) -> dict[str, Any]:
     """One human-confirmation item for treatment extraction (drives the existing needs-input surface)."""
-    return {
+    item: dict[str, Any] = {
         "category": category,
         "reason": reason,
         "product": product,
         "sourceCaptureIds": list(source_capture_ids or []),
     }
+    if key is not None:
+        item["key"] = key  # stable id so a carried-forward dose can be confirmed (Q3)
+    return item
 
 
 def process_synthesized_treatments(
@@ -418,6 +430,7 @@ def process_synthesized_treatments(
                     f"{product} carried forward from a previous visit — confirm the dose.",
                     product,
                     treatment["sourceCaptureIds"],
+                    key=carried_forward_key(treatment),
                 )
             )
         else:

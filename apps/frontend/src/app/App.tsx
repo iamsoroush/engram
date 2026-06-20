@@ -20,6 +20,7 @@ import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import {
   assignSessionPatient,
+  confirmCarriedForward,
   unassignSessionPatient,
   checkDuplicatePatient,
   createAftercareTemplate,
@@ -1279,6 +1280,20 @@ export function App() {
     setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
   }, []);
 
+  // Q3: clinician confirms a carried-forward dose; the report can then read Complete.
+  const confirmCarriedForwardDose = React.useCallback(
+    async (sessionId: string, key: string) => {
+      try {
+        const updated = await confirmCarriedForward(apiFetch, sessionId, key);
+        applySessionUpdate(sessionId, updated);
+        setToast("Dose confirmed.");
+      } catch {
+        setToast("Could not confirm the dose. Try again.");
+      }
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
       if (draft.patientId) {
@@ -1817,6 +1832,7 @@ export function App() {
           onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
+          onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
           offline={offline}
         />
@@ -1856,6 +1872,7 @@ export function App() {
           onUpdateNote={editCaptureNote}
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
+          onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
           lastVisit={lastVisit}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}

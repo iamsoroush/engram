@@ -769,6 +769,17 @@ export async function updateSessionTitle(apiFetch: ApiFetch, sessionId: string, 
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+/** Q3: confirm a carried-forward dose (by its area|product key) so the Pro report can read Complete. */
+export async function confirmCarriedForward(apiFetch: ApiFetch, sessionId: string, key: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/confirm-carried-forward`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  if (!response.ok) throw new Error("Could not confirm carried-forward dose");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
     method: "PATCH",

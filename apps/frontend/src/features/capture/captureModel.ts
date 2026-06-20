@@ -741,8 +741,16 @@ export function sessionTreatmentReview(session: CaptureSession | null): SessionT
       category: metadataText(entry.category) || "ambiguous",
       reason: metadataText(entry.reason),
       product: metadataText(entry.product) || null,
+      key: metadataText(entry.key) || null,
     }))
     .filter((item) => item.reason);
+}
+
+/** Keys (area|product) of carried-forward doses the clinician has already confirmed (Q3). */
+export function sessionConfirmedCarriedForward(session: CaptureSession | null): string[] {
+  const raw = metadataRecord(session?.extractedMetadata).confirmed_carried_forward;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => metadataText(entry)).filter(Boolean);
 }
 
 /** A one-line label for a treatment (verbatim quantity/brand/lot preserved). */

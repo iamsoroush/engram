@@ -35,6 +35,7 @@ export function CaptureScreen({
   onCompleteAiCreatedPatient,
   onStartNewSession,
   onMarkRelevant,
+  onConfirmCarriedForward,
   onFetchPatient,
   tier,
   lastVisit,
@@ -76,6 +77,8 @@ export function CaptureScreen({
   ) => Promise<void>;
   onStartNewSession?: () => void;
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
+  /** Q3 — confirm a carried-forward dose (by area|product key) so the Pro report can complete. */
+  onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
   /** AES-106 — the returning patient's prior visit (note + photos), surfaced at capture (Basic). */
@@ -322,6 +325,7 @@ export function CaptureScreen({
               isPro={isPro}
               session={activeSession}
               onResolveFile={onResolveFile}
+              onConfirmCarriedForward={onConfirmCarriedForward}
             />
           ) : (
             <LiveDraftReport

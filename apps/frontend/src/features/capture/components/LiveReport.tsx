@@ -5,21 +5,23 @@ import type { CaptureItem, CaptureSession, StructuredPatientInformation, Structu
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, sessionTreatmentReview, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
 export function LiveReportView({
   isPro,
   session,
   onResolveFile,
+  onConfirmCarriedForward,
 }: {
   isPro: boolean;
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
+  onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -48,9 +50,11 @@ export function ReportDocHeader({ session }: { session: CaptureSession | null })
 export function ProLiveReport({
   session,
   onResolveFile,
+  onConfirmCarriedForward,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
+  onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
   // Render the report's structured sections (with their headers). This one path serves both report
@@ -64,6 +68,9 @@ export function ProLiveReport({
   // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
   // low confidence, missing lot, free-text uncertainty) — rendered as calm chips below the report.
   const review = sessionTreatmentReview(session);
+  // Q3: carried-forward doses the clinician has already confirmed (so they read as done, not pending).
+  const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
+  const [confirming, setConfirming] = React.useState<string | null>(null);
   // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
@@ -128,7 +135,13 @@ export function ProLiveReport({
               return (
                 <li className="treatment-item" dir={textDirection(label)} key={`${index}-${label.slice(0, 24)}`}>
                   {label}
-                  {treatment.carriedForward ? <span className="treatment-flag"> · carried forward — confirm</span> : null}
+                  {treatment.carriedForward ? (
+                    confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
+                      <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
+                    ) : (
+                      <span className="treatment-flag"> · carried forward — confirm below</span>
+                    )
+                  ) : null}
                 </li>
               );
             })}
@@ -139,11 +152,39 @@ export function ProLiveReport({
         <section className="structured-report-section report-review" aria-label="Items that need your confirmation">
           <h3>Needs your confirmation</h3>
           <ul className="report-review-chips">
-            {review.map((item, index) => (
-              <li className={`report-review-chip ${item.category}`} dir={textDirection(item.reason)} key={`${index}-${item.reason.slice(0, 32)}`}>
-                {item.reason}
-              </li>
-            ))}
+            {review.map((item, index) => {
+              const isCarriedForward = item.category === "carried_forward" && Boolean(item.key);
+              const isConfirmed = isCarriedForward && confirmedCarriedForward.has(item.key as string);
+              return (
+                <li
+                  className={`report-review-chip ${item.category}${isConfirmed ? " confirmed" : ""}`}
+                  dir={textDirection(item.reason)}
+                  key={`${index}-${item.reason.slice(0, 32)}`}
+                >
+                  <span className="report-review-chip-reason">{item.reason}</span>
+                  {isCarriedForward && isConfirmed ? (
+                    <span className="report-review-chip-confirmed" aria-label="Dose confirmed">✓ confirmed</span>
+                  ) : isCarriedForward && onConfirmCarriedForward && session ? (
+                    <button
+                      type="button"
+                      className="report-review-confirm"
+                      disabled={confirming === item.key}
+                      onClick={async () => {
+                        if (!item.key) return;
+                        setConfirming(item.key);
+                        try {
+                          await onConfirmCarriedForward(session.id, item.key);
+                        } finally {
+                          setConfirming(null);
+                        }
+                      }}
+                    >
+                      {confirming === item.key ? "Confirming…" : "Confirm dose"}
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
