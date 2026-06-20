@@ -1,7 +1,7 @@
 // Live report views (pro/basic) + markdown rendering for the capture flow.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { CaptureItem, CaptureSession, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
+import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
@@ -62,9 +62,13 @@ export function ProLiveReport({
   // the Pro synthesis's fixed clinical sections (visit-summary, concern-goals, assessment,
   // treatment-performed, media, plan-followup, aftercare) — each is just {id, title, blocks}.
   const sections = (session?.reportModel?.sections || []).filter((section) => section.blocks?.length);
-  // Performed treatments extracted by the Pro synthesis (queryable store). The report's
-  // treatment-performed section is a prose mirror; this is the structured at-a-glance list.
+  // Performed treatments extracted by the Pro synthesis (queryable store + the clinical source of
+  // truth that powers carry-forward/recall/exports). It is the SINGLE treatment representation: it
+  // renders in place of the synthesis's prose `treatment-performed` section (no duplicate), and as a
+  // fallback below the report when no such section exists (e.g. the deterministic baseline).
+  const TREATMENT_SECTION_ID = "treatment-performed";
   const treatments = workspaceTreatments(session);
+  const hasTreatmentSection = sections.some((section) => section.id === TREATMENT_SECTION_ID);
   // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
   // low confidence, missing lot, free-text uncertainty) — rendered as calm chips below the report.
   const review = sessionTreatmentReview(session);
@@ -106,14 +110,23 @@ export function ProLiveReport({
       </div>
       <section className="structured-report-section structured-report-body">
         {sections.length ? (
-          sections.map((section) => (
-            <section className="workspace-report-section" key={section.id}>
-              {section.title ? <h3>{section.title}</h3> : null}
-              {section.blocks.map((block, index) => (
-                <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
-              ))}
-            </section>
-          ))
+          sections.map((section) => {
+            // The treatment slot renders the structured table (single source of truth), not the
+            // synthesis's prose mirror — unless extraction produced nothing, then keep the prose.
+            const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && treatments.length > 0;
+            return (
+              <section className="workspace-report-section" key={section.id}>
+                {section.title ? <h3>{section.title}</h3> : null}
+                {renderTreatmentTable ? (
+                  <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} />
+                ) : (
+                  section.blocks.map((block, index) => (
+                    <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
+                  ))
+                )}
+              </section>
+            );
+          })
         ) : bodyParagraphs.length ? (
           bodyParagraphs.map((paragraph, index) => (
             <section className="workspace-report-section" key={`${index}-${paragraph.slice(0, 24)}`}>
@@ -126,26 +139,10 @@ export function ProLiveReport({
           <p className="report-doc-status">The report builds here automatically as captures land.</p>
         )}
       </section>
-      {treatments.length ? (
+      {treatments.length && !hasTreatmentSection ? (
         <section className="structured-report-section treatments-performed">
           <h3>Treatments performed</h3>
-          <ul className="treatments-list">
-            {treatments.map((treatment, index) => {
-              const label = treatmentLabel(treatment);
-              return (
-                <li className="treatment-item" dir={textDirection(label)} key={`${index}-${label.slice(0, 24)}`}>
-                  {label}
-                  {treatment.carriedForward ? (
-                    confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
-                      <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
-                    ) : (
-                      <span className="treatment-flag"> · carried forward — confirm below</span>
-                    )
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+          <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} />
         </section>
       ) : null}
       {review.length ? (
@@ -189,6 +186,39 @@ export function ProLiveReport({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The structured performed-treatments list — the single treatment representation in the report
+ * (area · product · dose · lot, verbatim quantity preserved). Carried-forward rows are flagged and,
+ * until confirmed (Q3), point to the "Needs your confirmation" action below.
+ */
+function TreatmentsList({
+  treatments,
+  confirmedCarriedForward,
+}: {
+  treatments: SessionTreatment[];
+  confirmedCarriedForward: Set<string>;
+}) {
+  return (
+    <ul className="treatments-list">
+      {treatments.map((treatment, index) => {
+        const label = treatmentLabel(treatment);
+        return (
+          <li className="treatment-item" dir={textDirection(label)} key={`${index}-${label.slice(0, 24)}`}>
+            {label}
+            {treatment.carriedForward ? (
+              confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
+                <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
+              ) : (
+                <span className="treatment-flag"> · carried forward — confirm below</span>
+              )
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

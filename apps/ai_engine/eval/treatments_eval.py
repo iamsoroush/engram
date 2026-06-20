@@ -19,8 +19,14 @@ eval measures the LLM extraction itself, which the unit tests cannot.
 """
 from __future__ import annotations
 
+import re
 import sys
 from typing import Any
+
+# A Persian report's DESCRIPTIVE treatment fields (area/product/unit) must be in Persian script, not
+# an English category like "filler"/"botox"/"unit". Brand/lot/quantityText stay verbatim (not checked).
+PERSIAN_RE = re.compile(r"[؀-ۿ]")
+LATIN_WORD_RE = re.compile(r"[A-Za-z]{2,}")
 
 # Allow running as a bare script (python eval/treatments_eval.py) from the ai_engine package root.
 sys.path.insert(0, ".")
@@ -63,11 +69,13 @@ CASES: list[dict[str, Any]] = [
     {
         "name": "single filler injection",
         "captures": [_audio("c1", "دو سی‌سی ژل توی گونه چپ تزریق شد")],
+        "lang_fa": True,
         "expect": {"count": 1, "items": [{"product": ["ژل", "gel", "filler"], "quantity": 2, "unit": ["cc", "سی‌سی", "ml"]}]},
     },
     {
         "name": "botox units forehead",
         "captures": [_audio("c1", "بیست واحد بوتاکس روی پیشونی زدیم")],
+        "lang_fa": True,
         "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 20, "unit": ["unit", "واحد"]}]},
     },
     {
@@ -88,6 +96,7 @@ CASES: list[dict[str, Any]] = [
     {
         "name": "two distinct products",
         "captures": [_audio("c1", "یک سی‌سی ژل توی لب و ده واحد بوتاکس روی اخم")],
+        "lang_fa": True,
         "expect": {"count": 2, "items": [{"product": ["ژل", "gel"]}, {"product": ["بوتاکس", "botox"]}]},
     },
     {
@@ -128,6 +137,23 @@ def _norm(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def _not_report_language_fa(value: Any) -> bool:
+    """True if a descriptive field is NOT in Persian (empty is fine; English word = a violation)."""
+    text = str(value or "").strip()
+    if not text:
+        return False
+    return bool(LATIN_WORD_RE.search(text)) or not PERSIAN_RE.search(text)
+
+
+def _language_problems(treatments: list[dict[str, Any]]) -> list[str]:
+    problems: list[str] = []
+    for treatment in treatments:
+        for field in ("area", "product", "unit"):
+            if _not_report_language_fa(treatment.get(field)):
+                problems.append(f"{field}={treatment.get(field)!r} not in report language (fa)")
+    return problems
+
+
 def _match_item(actual: dict[str, Any], expected: dict[str, Any]) -> list[str]:
     """Return a list of failure reasons (empty = the item matched)."""
     problems: list[str] = []
@@ -155,6 +181,8 @@ def _check(case: dict[str, Any], output: dict[str, Any]) -> tuple[bool, list[str
         notes.append("no carriedForward treatment")
     if expect.get("supersede") and not any(t.get("supersedesCaptureId") for t in treatments):
         notes.append("no supersedesCaptureId set")
+    if case.get("lang_fa"):
+        notes.extend(_language_problems(treatments))
     # Greedily match each expected item to some actual treatment.
     for expected_item in expect.get("items", []):
         if not any(not _match_item(actual, expected_item) for actual in treatments):
