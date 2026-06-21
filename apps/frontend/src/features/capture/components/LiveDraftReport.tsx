@@ -223,18 +223,6 @@ export function LiveDraftCaptureItem({
     <article
       ref={rootRef}
       className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}${assignmentInfo ? " is-assignment-source" : ""}`}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest("audio, button, input, textarea, summary, details, .capture-item-menu")) return;
-        onOpenCapture();
-      }}
-      onKeyDown={(event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        if ((event.target as HTMLElement).closest("button, input, textarea, summary")) return;
-        event.preventDefault();
-        onOpenCapture();
-      }}
-      role="button"
-      tabIndex={0}
     >
       <div className="live-draft-marker" aria-hidden="true">
         <CaptureTimelineIcon type={item.type} />

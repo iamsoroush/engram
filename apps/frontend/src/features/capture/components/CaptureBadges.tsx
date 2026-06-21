@@ -402,11 +402,6 @@ export function CaptureGeneratedText({
         <h4>{label}</h4>
         <div className="capture-generated-heading-meta">
           {hasText ? <CaptureAttribution value={attribution} /> : null}
-          {onSave && !editing ? (
-            <button className="capture-generated-edit" onClick={start} type="button">
-              {hasText ? "Edit" : addLabel}
-            </button>
-          ) : null}
         </div>
       </div>
       {editing ? (
@@ -422,7 +417,16 @@ export function CaptureGeneratedText({
           </div>
         </div>
       ) : hasText ? (
-        <p className="live-draft-preview" dir={dir}>{display && display !== text ? renderMarkdownBold(display) : text}</p>
+        // Tap the text itself to edit it inline — no separate Edit button.
+        onSave ? (
+          <button className="live-draft-preview live-draft-preview-edit" dir={dir} onClick={start} type="button" title="Tap to edit">
+            {display && display !== text ? renderMarkdownBold(display) : text}
+          </button>
+        ) : (
+          <p className="live-draft-preview" dir={dir}>{display && display !== text ? renderMarkdownBold(display) : text}</p>
+        )
+      ) : onSave ? (
+        <button className="capture-generated-add" onClick={start} type="button">{addLabel}</button>
       ) : null}
     </>
   );

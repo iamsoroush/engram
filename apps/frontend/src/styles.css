@@ -3102,6 +3102,32 @@ small {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* The transcript/caption text IS the edit affordance now — tap it to edit inline (no Edit button). */
+.live-draft-preview-edit {
+  display: block;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  background: none;
+  cursor: text;
+  font-family: inherit;
+  padding: 3px 6px;
+  margin: 0 -6px;
+  border-radius: 7px;
+}
+.live-draft-preview-edit:hover { background: #f3f6fb; }
+.live-draft-preview-edit:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.capture-generated-add {
+  align-self: flex-start;
+  border: 1px dashed var(--color-border, #dce6f2);
+  background: none;
+  color: var(--color-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill, 999px);
+}
 
 .live-draft-audio-player {
   overflow: hidden;
