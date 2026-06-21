@@ -2,6 +2,7 @@ import React from "react";
 import "./qaInbox.css";
 import type { ApiFetch } from "../../domain/appTypes";
 import { Alert, Badge, Button, Card, Skeleton, Textarea } from "../../shared/ui/primitives";
+import { formatDate } from "../../shared/lib/datetime";
 import {
   dismissQaQuestion,
   fetchQaInbox,
@@ -502,8 +503,5 @@ function Rerouter({
 }
 
 function formatDateTime(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return formatDate(iso, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }

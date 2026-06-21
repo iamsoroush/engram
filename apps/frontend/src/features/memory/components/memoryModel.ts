@@ -2,6 +2,7 @@
 // Extracted verbatim from MemoryScreens.tsx (no behavior change).
 import type { CaptureDraft, PatientMemoryDetailResponse, PatientMemoryTimelineSession, PatientMemoryRow as ApiPatientMemoryRow, PatientSummary, SmartPatientMatch, SyncHealth } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
+import { appDateTimeFormat } from "../../../shared/lib/datetime";
 
 export type ClinicalMemoryTab = "today" | "patients" | "needs-input";
 export type PatientFilter = "recent" | "active" | "all";
@@ -724,7 +725,7 @@ export function formatPatientLastVisit(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   if (isToday(date.toISOString())) return "today";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
 }
 
 export function hasMissingClinicalField(session: CaptureSession) {
@@ -955,7 +956,7 @@ export function firstSeenLabel(detailSessions: PatientMemoryTimelineSession[] | 
     ...localSessions.map(sessionVisitTimestamp),
   ].filter(Boolean);
   if (!timestamps.length) return "";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(Math.min(...timestamps)));
+  return appDateTimeFormat({ month: "short", day: "numeric", year: "numeric" }).format(new Date(Math.min(...timestamps)));
 }
 
 export function naturalSessionSummary(session: CaptureSession) {
@@ -1023,8 +1024,8 @@ export function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, fallbackTime
     .sort((a, b) => b - a)[0];
   if (!timestamp) return "Session: Recent visit";
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
-  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+  const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
   return `Session: ${dateLabel} · ${timeLabel}`;
 }
 
@@ -1044,8 +1045,8 @@ export function latestApiVisitTimestamp(row: ApiPatientMemoryRow) {
 export function latestVisitLabelFromTimestamp(timestamp: number) {
   if (!timestamp) return null;
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
-  const timeLabel = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+  const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
   return `Latest visit: ${dateLabel} · ${timeLabel}`;
 }
 
@@ -1054,7 +1055,7 @@ export function naturalUpdatedDate(session: CaptureSession) {
   if (!timestamp) return "recently";
   const date = new Date(timestamp);
   if (isToday(date.toISOString())) return "today";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  return appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
 }
 
 export function captureCounts(session: CaptureSession) {
@@ -1086,13 +1087,13 @@ export function sessionTimeLabel(session: CaptureSession) {
 
 export function formatSessionTime(timestamp: number) {
   if (!timestamp) return "recently";
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
+  return appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
 export function explicitDateTimeLabel(timestamp: number) {
   if (!timestamp) return "Recent visit";
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date);
+  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
   return `${dateLabel} · ${formatSessionTime(timestamp)}`;
 }
 

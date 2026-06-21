@@ -1,5 +1,6 @@
 import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation } from "../../domain/types";
+import { appDateTimeFormat } from "../../shared/lib/datetime";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
 import { sessionUxState } from "../../domain/status";
 
@@ -16,7 +17,7 @@ export const detailByType: Record<CaptureDraft["kind"], string> = {
 };
 
 export const nowLabel = () =>
-  new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+  appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
 export function createClientId() {
   const browserCrypto = globalThis.crypto;
@@ -345,7 +346,7 @@ export function formatLastVisit(value?: string | null) {
   if (!value) return "Not recorded";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(date);
+  return appDateTimeFormat({ month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
 export function captureOutOfContext(item: CaptureItem): boolean {
@@ -578,7 +579,7 @@ export function workspaceReportUpdatedLabel(value?: string | null) {
   if (!value) return "Live draft updates as captures arrive";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Recently updated";
-  return `Updated ${new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+  return `Updated ${appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
 }
 
 export function sessionSummaryStatusChip(session: CaptureSession | null) {
@@ -698,8 +699,8 @@ export function sessionDateTimeLabel(source?: string | null, fallbackTime?: stri
   if (!source && !fallbackTime) return "";
   const date = source ? new Date(source) : null;
   if (date && !Number.isNaN(date.getTime())) {
-    const dateLabel = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
-    const timeLabel = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+    const dateLabel = appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+    const timeLabel = appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
     return `${dateLabel} · ${timeLabel}`;
   }
   const datePart = source && !source.match(/\b\d{1,2}:\d{2}\b/) ? source : "";

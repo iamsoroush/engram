@@ -20,6 +20,7 @@ import type {
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
+import { setAppLanguage } from "../shared/lib/datetime";
 import {
   assignSessionPatient,
   confirmCarriedForward,
@@ -139,6 +140,8 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
+  // Drive app-wide date formatting (Jalali when the clinic language is Persian) from the tenant.
+  setAppLanguage(auth?.tenant.reportLanguage ?? null);
   const [authReady, setAuthReady] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
   const authRef = React.useRef<AuthSession | null>(null);

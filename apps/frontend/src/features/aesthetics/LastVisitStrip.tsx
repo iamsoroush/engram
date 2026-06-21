@@ -1,5 +1,6 @@
 import React from "react";
 import type { LastVisitInfo, LastVisitMedia } from "../../domain/appTypes";
+import { formatDate } from "../../shared/lib/datetime";
 
 /**
  * AES-106 — Last visit, one glance + "same as last time". For a returning patient the capture
@@ -86,10 +87,7 @@ function LastVisitThumb({ media, onResolveFile }: { media: LastVisitMedia; onRes
 }
 
 function formatVisitDate(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+  return formatDate(value, { month: "short", day: "numeric" });
 }
 
 function textDir(text: string): "rtl" | "ltr" {

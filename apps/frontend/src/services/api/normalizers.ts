@@ -11,6 +11,7 @@ import type {
   StructuredReportModel,
 } from "../../domain/types";
 import { titleByType, nowLabel } from "../../features/capture/captureModel";
+import { appDateTimeFormat } from "../../shared/lib/datetime";
 
 export const sessionStatusFromApi = (status?: string): CaptureSession["status"] => {
   if (
@@ -40,7 +41,7 @@ export const captureStatusFromApi = (status?: string): CaptureItem["status"] => 
 
 export function formatApiTime(value?: string | null) {
   if (!value) return nowLabel();
-  return new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+  return appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
 function formatApiDateLabel(value?: string | null) {
@@ -55,7 +56,7 @@ function formatApiDateLabel(value?: string | null) {
   ) {
     return "Today";
   }
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+  return appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
 }
 
 function stringValue(value: unknown, fallback = "") {

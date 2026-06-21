@@ -1,6 +1,7 @@
 import React from "react";
 import type { LastVisitMedia, LineupCard as LineupCardModel, SessionContext } from "../../domain/appTypes";
 import { LineupCard } from "../memory/components/MemoryCards";
+import { formatDate } from "../../shared/lib/datetime";
 import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
@@ -231,10 +232,7 @@ function ordinalText(n: number): string {
 }
 
 function formatVisitDate(value?: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(date);
+  return formatDate(value, { month: "short", day: "numeric" });
 }
 
 function textDir(text: string): "rtl" | "ltr" {

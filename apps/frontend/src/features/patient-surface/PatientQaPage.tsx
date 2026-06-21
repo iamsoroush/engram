@@ -2,6 +2,7 @@ import React from "react";
 import "./patientSurface.css";
 import "./patientQa.css";
 import { askQuestion, fetchQaThread, type QaExchange, type QaLoadResult, type QaThreadPayload } from "./qaApi";
+import { formatDate } from "../../shared/lib/datetime";
 
 /**
  * Public post-session Q&A page (AES-402/403).
@@ -233,9 +234,7 @@ function initials(name: string | null | undefined): string {
 }
 
 function formatDateTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return formatDate(iso, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 // --- icons (inline, no asset deps) -----------------------------------------

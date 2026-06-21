@@ -3,6 +3,7 @@ import type { CaptureItem } from "../../../domain/types";
 import { CaptureMetadataSummary, generatedMetadataFor, metadataDisplay, metadataRecord, metadataText } from "../metadata";
 import { getCachedCapture } from "../../../services/storage/captureStorage";
 import { Card, Dialog } from "../../../shared/ui/primitives";
+import { appDateTimeFormat } from "../../../shared/lib/datetime";
 import { StatusBadge } from "./StatusBadges";
 
 /**
@@ -493,12 +494,12 @@ function captureDateTime(item: CaptureItem) {
   const value = item.capturedAt || item.time;
   const date = new Date(value);
   if (!Number.isNaN(date.getTime())) {
-    const dateLabel = new Intl.DateTimeFormat("en", {
+    const dateLabel = appDateTimeFormat({
       month: "short",
       day: "numeric",
       year: "numeric",
     }).format(date);
-    const timeLabel = new Intl.DateTimeFormat("en", {
+    const timeLabel = appDateTimeFormat({
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,

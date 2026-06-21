@@ -602,12 +602,12 @@ def _since_last_visit_line(sessions: list[Session], language: str | None = None)
     latest = ordered[0]
     treatments = _session_treatment_phrases(latest)
     detail = "; ".join(treatments) if treatments else None
+    # No formatted date in the string — dates are stored unified and formatted for display by the
+    # client (Jalali in Persian). This line carries WHAT changed, not when.
     if len(ordered) == 1:
-        date_text = _fmt_date(_session_sort_date(latest))
         if fa:
-            return f"اولین ویزیت ثبت‌شده · {date_text}." + (f" {detail}." if detail else "")
-        return f"First visit on record · {date_text}." + (f" {detail}." if detail else "")
-    prior_text = _fmt_date(_session_sort_date(ordered[1]))
+            return "اولین ویزیت ثبت‌شده." + (f" {detail}." if detail else "")
+        return "First visit on record." + (f" {detail}." if detail else "")
     if detail is None:
         count = _capture_count(latest.extracted_metadata or {})
         if fa:
@@ -615,8 +615,8 @@ def _since_last_visit_line(sessions: list[Session], language: str | None = None)
         else:
             detail = f"{count} new capture{'s' if count != 1 else ''}" if count else "visit captured"
     if fa:
-        return f"از آخرین ویزیت ({prior_text}): {detail}."
-    return f"Since last visit ({prior_text}): {detail}."
+        return f"از آخرین ویزیت: {detail}."
+    return f"Since last visit: {detail}."
 
 
 def _fmt_date(value: datetime | None) -> str:

@@ -1,6 +1,7 @@
 import React from "react";
 import "./patientSurface.css";
 import { fetchShare, shareMediaUrl, type ShareLoadResult, type ShareMedia, type SharePayload } from "./shareApi";
+import { formatDate as formatLocaleDate } from "../../shared/lib/datetime";
 
 /**
  * Public, read-only patient page (AES-401/403).
@@ -220,10 +221,7 @@ function initials(name: string | null | undefined): string {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return formatLocaleDate(iso, { day: "numeric", month: "short", year: "numeric" });
 }
 
 /** Split aftercare body into checklist lines, tolerating bullets and blank lines. */
