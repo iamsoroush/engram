@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from app.auth.service import DEV_NAMESPACE, DEV_TENANT_ID
 from app.db.session import SessionLocal
 from app.models import (
+    AftercareTemplate,
     Artifact,
     ArtifactKind,
     Capture,
@@ -167,12 +168,50 @@ def ensure_patient(db, *, display_name: str, first: str, last: str, phone: str, 
     return patient
 
 
+def ensure_aftercare_template(db, *, name: str, procedure_type: str, body: str) -> bool:
+    """Create a clinic aftercare template, or return False if one with this name already exists."""
+    existing = (
+        db.query(AftercareTemplate)
+        .filter(AftercareTemplate.tenant_id == DEV_TENANT_ID, AftercareTemplate.name == name)
+        .first()
+    )
+    if existing is not None:
+        return False
+    db.add(
+        AftercareTemplate(
+            tenant_id=DEV_TENANT_ID,
+            name=name,
+            procedure_type=procedure_type,
+            body=body,
+            is_active=True,
+            created_by_user_id=DOCTOR_USER_ID,
+        )
+    )
+    return True
+
+
 def main() -> None:
     db = SessionLocal()
     store = ObjectStore()
     created: list[str] = []
     skipped: list[str] = []
     try:
+        # Clinic aftercare templates (deterministic, Persian) — one-tap follow-up in the session.
+        if ensure_aftercare_template(
+            db, name="مراقبت بعد از بوتاکس", procedure_type="botox",
+            body="تا ۴ ساعت دراز نکشید. ۲۴ ساعت ورزش سنگین و ماساژ ناحیه ممنوع. تا ۳ روز از سونا و آفتاب مستقیم پرهیز کنید.",
+        ):
+            created.append("aftercare template: مراقبت بعد از بوتاکس")
+        else:
+            skipped.append("aftercare template: مراقبت بعد از بوتاکس")
+        if ensure_aftercare_template(
+            db, name="مراقبت بعد از فیلر", procedure_type="filler",
+            body="تا ۲۴ ساعت آرایش نکنید. کمپرس سرد برای کاهش تورم. تا ۲ هفته از حرارت زیاد (سونا/سولاریوم) پرهیز کنید.",
+        ):
+            created.append("aftercare template: مراقبت بعد از فیلر")
+        else:
+            skipped.append("aftercare template: مراقبت بعد از فیلر")
+
         # A — rich returning patient: 3 prior visits, key facts, the last visit a full digest.
         negar = ensure_patient(
             db, display_name="نگار محمدی", first="نگار", last="محمدی", phone="+98 912 100 1001",

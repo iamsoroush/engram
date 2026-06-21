@@ -110,6 +110,7 @@ export function Shell({
                 <span className="user-menu-identity-text">
                   <strong>{displayName}</strong>
                   <small>{role} · {auth.tenant.name}</small>
+                  <span className={`tier-pill ${isPro ? "pro" : "basic"}`}>{isPro ? "Pro" : "Basic"}</span>
                 </span>
               </div>
               <button className="user-menu-item" onClick={() => goTo("profile")} type="button">

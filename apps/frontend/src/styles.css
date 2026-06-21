@@ -1591,6 +1591,18 @@ small {
   text-transform: capitalize;
   overflow-wrap: anywhere;
 }
+/* The single home for the tier indicator (removed from the per-card badges). */
+.tier-pill {
+  justify-self: start;
+  margin-top: 3px;
+  padding: 1px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.tier-pill.pro { color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 14%, #fff); }
+.tier-pill.basic { color: #667085; background: #eef2f9; }
 .user-menu-avatar.lg {
   width: 38px;
   height: 38px;
@@ -9471,6 +9483,21 @@ small {
 }
 .session-context-thumb-button { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; border-radius: 7px; }
 .session-context-thumb-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* Follow-up & aftercare: one-tap clinic templates inserted as a note (deterministic, both tiers). */
+.aftercare-bar {
+  display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; padding: 10px 12px;
+  border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface-soft);
+}
+.aftercare-bar-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
+.aftercare-bar-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.aftercare-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong); background: #fff; color: var(--color-text); font-size: 0.78rem;
+  font-weight: 600; cursor: pointer; max-width: 100%;
+}
+.aftercare-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aftercare-chip:hover, .aftercare-chip:focus-visible { border-color: var(--color-primary); color: var(--color-primary); outline: none; }
 
 /* --- Non-destructive media viewer (lightbox + before/after comparator) over the live session --- */
 .media-overlay {

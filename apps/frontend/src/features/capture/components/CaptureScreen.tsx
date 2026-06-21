@@ -1,7 +1,7 @@
 // Capture screen shell (orchestration); presentational pieces live in sibling files.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
+import type { AftercareTemplate, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
 import { Button, Card } from "../../../shared/ui/primitives";
@@ -42,6 +42,7 @@ export function CaptureScreen({
   onOpenVisit,
   onViewPatientHistory,
   onUseAsNote,
+  aftercareTemplates,
   offline = false,
   sessionOrdinal = null,
   currentUserId = null,
@@ -89,6 +90,8 @@ export function CaptureScreen({
   /** Jump to the assigned patient's full timeline, with a one-tap "back to this visit". */
   onViewPatientHistory?: (patientId: string) => void;
   onUseAsNote?: (text: string) => void;
+  /** Clinic aftercare templates — one-tap deterministic follow-up instructions (both tiers). */
+  aftercareTemplates?: AftercareTemplate[];
   /** No connection / backend unreachable — gates the only sync indicators we show. */
   offline?: boolean;
   /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
@@ -291,6 +294,24 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
+      {!isHistorical && !readOnly && onUseAsNote && aftercareTemplates && aftercareTemplates.length ? (
+        <section className="aftercare-bar" aria-label="Follow-up & aftercare">
+          <span className="aftercare-bar-label">Follow-up & aftercare</span>
+          <div className="aftercare-bar-chips">
+            {aftercareTemplates.map((template) => (
+              <button
+                key={template.id}
+                className="aftercare-chip"
+                type="button"
+                title={template.body}
+                onClick={() => onUseAsNote(template.body)}
+              >
+                + <span dir="auto">{template.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
         <AiCreatedPatientPanel
           action={aiPatientAction}
@@ -305,7 +326,6 @@ export function CaptureScreen({
               <ClipboardIcon />
             </span>
             <h2>Clinical report</h2>
-            <span className={`report-tier-badge ${isPro ? "pro" : "basic"}`}>{isPro ? "Pro" : "Basic"}</span>
           </div>
           <div className="report-heading-actions">
             {isUpdatingReport ? (

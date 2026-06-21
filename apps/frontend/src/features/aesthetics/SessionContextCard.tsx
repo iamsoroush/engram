@@ -72,7 +72,6 @@ export function SessionContextCard({
           {ordinalText(visitOrdinal)} visit
           {totalPriorVisits > 0 ? ` · ${totalPriorVisits} prior` : " · new patient"}
         </span>
-        {isPro ? <span className="session-context-tier">Pro</span> : null}
       </header>
 
       {keyFacts ? (
@@ -120,7 +119,9 @@ export function SessionContextCard({
               <span className="session-context-thumbs-note">tap to view</span>
             </div>
           ) : null}
-          {visit.audio?.length ? (
+          {/* Basic surfaces raw voice memos to play back; Pro is text-forward (the transcript/summary
+              carries the content), so it shows the count (above) but not raw audio players. */}
+          {!isPro && visit.audio?.length ? (
             <div className="session-context-audio" aria-label="Last visit voice memos">
               {visit.audio.map((memo, index) => (
                 <VoiceMemo key={memo.captureId} memo={memo} index={index} onResolveFile={onResolveFile} />

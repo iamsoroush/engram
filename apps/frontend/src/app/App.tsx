@@ -2,6 +2,7 @@ import React from "react";
 import { flushSync } from "react-dom";
 import type {
   ApiFetch,
+  AftercareTemplate,
   AuthSession,
   CaptureDraft,
   DevTier,
@@ -159,6 +160,7 @@ export function App() {
   const [audioOpen, setAudioOpen] = React.useState(false);
   // AES-106 — the active patient's prior visit (note + photos), surfaced at capture in Basic.
   const [sessionContext, setSessionContext] = React.useState<SessionContext | null>(null);
+  const [aftercareTemplates, setAftercareTemplates] = React.useState<AftercareTemplate[]>([]);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
@@ -1580,6 +1582,23 @@ export function App() {
   const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
   const loadLastVisitForPatient = React.useCallback((patientId: string) => fetchLastVisit(apiFetch, patientId), [apiFetch]);
   const listAftercare = React.useCallback(() => listAftercareTemplates(apiFetch), [apiFetch]);
+  // Clinic aftercare templates, loaded once per auth, so the session can offer one-tap follow-up
+  // instructions (deterministic — the clinic's own text, never AI-authored advice).
+  React.useEffect(() => {
+    if (!auth) {
+      setAftercareTemplates([]);
+      return;
+    }
+    let cancelled = false;
+    void listAftercareTemplates(apiFetch)
+      .then((templates) => {
+        if (!cancelled) setAftercareTemplates(templates.filter((template) => template.isActive));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, auth]);
   const createShare = React.useCallback((input: Parameters<typeof createPatientShare>[1]) => createPatientShare(apiFetch, input), [apiFetch]);
   const revokeShare = React.useCallback((id: string) => revokePatientShare(apiFetch, id), [apiFetch]);
   const loadAssignmentSuggestion = React.useCallback((sessionId: string) => fetchAssignmentSuggestion(apiFetch, sessionId), [apiFetch]);
@@ -1910,6 +1929,7 @@ export function App() {
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
           onViewPatientHistory={openPatientHistory}
           onUseAsNote={composeNoteFromText}
+          aftercareTemplates={aftercareTemplates}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}
