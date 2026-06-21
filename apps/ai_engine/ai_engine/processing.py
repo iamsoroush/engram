@@ -1650,6 +1650,11 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
                 "sourceCaptureIds, evidence, carriedForward, supersedesCaptureId, and an open attributes "
                 "map (needleGauge, depth, device, sessions, …). The treatment-performed section is a prose "
                 "MIRROR of treatments — keep them consistent.\n"
+                "- product vs brand: `product` is the GENERIC category ONLY (e.g. ژل/فیلر, بوتاکس) — never "
+                "put a commercial brand in it. `brand` is the commercial name verbatim (e.g. ژوویدرم/"
+                "Juvederm, رستیلین/Restylane, ولوما/Voluma), null if none was said. When the clinician "
+                "names a brand (e.g. «ژل ژوویدرم»), set product=«ژل» and brand=«ژوویدرم» — split them, "
+                "never merge the brand into product.\n"
                 "- Leave any field null rather than guessing. Set confidence to reflect genuine certainty."
             ),
             (

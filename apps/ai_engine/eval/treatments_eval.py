@@ -108,7 +108,8 @@ CASES: list[dict[str, Any]] = [
     {
         "name": "lot on label (dictated lot)",
         "captures": [_audio("c1", "ژل ژوویدرم با شماره لات A B C یک دو سه تزریق شد")],
-        "expect": {"count": 1, "items": [{"product": ["ژل", "gel", "juvederm", "ژوویدرم"], "lot_present": True}]},
+        "brand_separated": "ژوویدرم",
+        "expect": {"count": 1, "items": [{"product": ["ژل", "gel"], "lot_present": True}]},
     },
     {
         "name": "brand restylane",
@@ -183,6 +184,11 @@ def _check(case: dict[str, Any], output: dict[str, Any]) -> tuple[bool, list[str
         notes.append("no supersedesCaptureId set")
     if case.get("lang_fa"):
         notes.extend(_language_problems(treatments))
+    brand_token = case.get("brand_separated")
+    if brand_token and not any(
+        _norm(brand_token) in _norm(t.get("brand")) and _norm(brand_token) not in _norm(t.get("product")) for t in treatments
+    ):
+        notes.append(f"brand '{brand_token}' not split into the brand field (product leaked it)")
     # Greedily match each expected item to some actual treatment.
     for expected_item in expect.get("items", []):
         if not any(not _match_item(actual, expected_item) for actual in treatments):
