@@ -5,7 +5,7 @@ import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientIn
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
 export function LiveReportView({
   isPro,
@@ -80,6 +80,10 @@ export function ProLiveReport({
   // Q3: carried-forward doses the clinician has already confirmed (so they read as done, not pending).
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
   const [confirming, setConfirming] = React.useState<string | null>(null);
+  // §2.5 trust signal: how many review items still need the clinician (excludes confirmed doses).
+  const toConfirmCount = review.filter(
+    (item) => !(item.category === "carried_forward" && item.key && confirmedCarriedForward.has(item.key)),
+  ).length;
   // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
@@ -109,6 +113,11 @@ export function ProLiveReport({
                 Updating · {freshness.pending} of {freshness.included + freshness.pending} captures not yet in this report
               </>
             )}
+          </span>
+        ) : null}
+        {toConfirmCount ? (
+          <span className="report-meta-confirm" title="Items below need your confirmation">
+            {toConfirmCount} to confirm
           </span>
         ) : null}
       </div>
@@ -209,15 +218,29 @@ function TreatmentsList({
     <ul className="treatments-list">
       {treatments.map((treatment, index) => {
         const label = treatmentLabel(treatment);
+        const lowConfidence = isLowConfidenceTreatment(treatment);
+        const attributeLines = treatmentAttributeLines(treatment);
         return (
-          <li className="treatment-item" dir={textDirection(label)} key={`${index}-${label.slice(0, 24)}`}>
-            {label}
-            {treatment.carriedForward ? (
-              confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
-                <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
-              ) : (
-                <span className="treatment-flag"> · carried forward — confirm below</span>
-              )
+          <li
+            className={`treatment-item${lowConfidence ? " low-confidence" : ""}`}
+            dir={textDirection(label)}
+            key={`${index}-${label.slice(0, 24)}`}
+          >
+            <span className="treatment-item-line">
+              {label}
+              {treatment.carriedForward ? (
+                confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
+                  <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
+                ) : (
+                  <span className="treatment-flag"> · carried forward — confirm below</span>
+                )
+              ) : null}
+              {lowConfidence ? <span className="treatment-flag low"> · low confidence</span> : null}
+            </span>
+            {attributeLines.length ? (
+              <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
+                {attributeLines.join(" · ")}
+              </span>
             ) : null}
           </li>
         );

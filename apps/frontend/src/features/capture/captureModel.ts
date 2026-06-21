@@ -725,8 +725,23 @@ export function workspaceTreatments(session: CaptureSession | null): SessionTrea
       lot: metadataText(entry.lot) || null,
       confidence: typeof entry.confidence === "number" ? entry.confidence : null,
       carriedForward: entry.carriedForward === true,
+      attributes: entry.attributes && typeof entry.attributes === "object" ? (entry.attributes as Record<string, unknown>) : null,
     }))
     .filter((treatment) => treatment.area || treatment.product);
+}
+
+/** Human "key·value" lines for a treatment's open technique attributes (needleGauge, depth, …). */
+export function treatmentAttributeLines(treatment: SessionTreatment): string[] {
+  const attributes = treatment.attributes;
+  if (!attributes || typeof attributes !== "object") return [];
+  return Object.entries(attributes)
+    .filter(([, value]) => value != null && String(value).trim() !== "")
+    .map(([key, value]) => `${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}: ${String(value)}`);
+}
+
+/** A treatment whose extraction confidence is below the trust threshold (surfaced, not hidden). */
+export function isLowConfidenceTreatment(treatment: SessionTreatment): boolean {
+  return typeof treatment.confidence === "number" && treatment.confidence < 0.6;
 }
 
 /**

@@ -136,6 +136,8 @@ export type SessionTreatment = {
   lot?: string | null;
   confidence?: number | null;
   carriedForward?: boolean;
+  /** Open technique map the synthesis extracted (needleGauge, depth, device, sessions…). */
+  attributes?: Record<string, unknown> | null;
 };
 
 /**

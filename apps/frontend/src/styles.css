@@ -10459,8 +10459,19 @@ small {
   font-size: var(--text-sm, 0.85rem); line-height: 1.45; padding: 8px 12px;
   border: 1px solid var(--color-border, #dce6f2); border-radius: var(--radius-md, 10px);
   background: var(--color-surface, #fff); color: var(--color-text, #1b2433);
+  display: flex; flex-direction: column; gap: 3px;
 }
+/* §2.3 low-confidence: tint the whole row + a quiet marker, never hide it. */
+.treatments-performed .treatment-item.low-confidence { border-color: #f5d9a8; background: #fffaf0; }
+.treatments-performed .treatment-attributes { font-size: var(--text-xs, 0.76rem); color: var(--color-muted, #52617e); }
 .treatments-performed .treatment-flag { color: var(--color-muted, #52617e); font-weight: 600; }
+.treatments-performed .treatment-flag.low { color: #8a5a12; }
+/* §2.5 report-level "to confirm" trust pill in the meta strip. */
+.report-meta-confirm {
+  font-size: 0.74rem; font-weight: 700; color: #8a5a12;
+  padding: 2px 9px; border-radius: var(--radius-pill, 999px);
+  background: #fff8ec; border: 1px solid #f5d9a8;
+}
 
 /* Pro synthesis — clinician-confirmation chips (uncertainties + treatment review). Calm, not alarming. */
 .report-review .report-review-chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
