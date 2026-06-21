@@ -361,6 +361,32 @@ export function PatientsHome({
     setPatientListVersion((version) => version + 1);
   }, [memoryRefreshSignal]);
 
+  // Opening a patient whose memory is cold triggers a server-side (re)generation that finishes in a
+  // few seconds — but a passive open gets no post-capture refresh ladder, so poll while it is
+  // "organizing" and stop the moment it flips to ready (capped, so it never spins forever).
+  React.useEffect(() => {
+    if (!selectedPatientId || !onGetPatientMemory) return;
+    if (selectedPatientDetail?.patient?.memoryStatus !== "updating") return;
+    let cancelled = false;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      if (cancelled || attempts > 12) {
+        window.clearInterval(timer);
+        return;
+      }
+      void onGetPatientMemory(selectedPatientId)
+        .then((detail) => {
+          if (!cancelled) setPatientDetailCache((current) => ({ ...current, [selectedPatientId]: detail }));
+        })
+        .catch(() => undefined);
+    }, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [onGetPatientMemory, selectedPatientId, selectedPatientDetail?.patient?.memoryStatus]);
+
   const localSessionById = (sessionId?: string | null) =>
     sessionId ? sessions.find((session) => session.id === sessionId) || (activeSession?.id === sessionId ? activeSession : null) : null;
 
