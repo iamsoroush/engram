@@ -1914,9 +1914,12 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     language = payload.get("language")
     label, _, _ = domain_framing(payload)  # vertical-aware; neutral "clinic" when absent
     language_directive = (
-        f"Write all text in {language}."
+        f"Write EVERY field in {language} and ONLY {language} — one language throughout, native script."
         if isinstance(language, str) and language.strip()
-        else "Write all text in the language the visit notes use (default English)."
+        else (
+            "Write EVERY field in the SAME language the visit notes use (if the notes are Persian/Farsi, "
+            "write Persian — do NOT default to English) — one language throughout, native script."
+        )
     )
     return "\n\n".join(
         (
@@ -1935,7 +1938,12 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
                 "EACH at most 2 short sentences; 'flags' surfaces only genuinely important "
                 "allergy/consent/preference/caution items actually found in the briefs — return an empty "
                 "list when there are none, and never invent one. "
-                f"{language_directive}"
+                f"{language_directive} "
+                "The whole brief MUST be in that one language — NEVER mix (e.g. an English sentence "
+                "containing «گونه چپ»). Brand names and lot numbers may keep their original form. When "
+                "the language is Persian/Farsi, embedding common English clinical terms is fine "
+                "(Finglish, e.g. «فیلر گونه چپ»), but do not switch into English sentences and never "
+                "romanize Persian into Latin."
             ),
             (
                 "Return ONLY strict JSON (no markdown, no code fences) with EXACTLY this shape:\n"
