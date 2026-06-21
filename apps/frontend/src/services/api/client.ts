@@ -12,6 +12,7 @@ import type {
   DuplicateCheckResponse,
   LastVisitInfo,
   LastVisitMedia,
+  LineupCard,
   PatientMemoryDetailResponse,
   PatientMemoryFilter,
   PatientMemoryHistory,
@@ -512,6 +513,35 @@ export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: st
       payload.history && typeof payload.history === "object"
         ? normalizePatientMemoryHistory(payload.history as Record<string, unknown>)
         : null,
+    lineupCard:
+      payload.lineupCard && typeof payload.lineupCard === "object"
+        ? normalizeLineupCard(payload.lineupCard as Record<string, unknown>)
+        : null,
+  };
+}
+
+function normalizeLineupCard(raw: Record<string, unknown>): LineupCard {
+  const rawFlags = Array.isArray(raw.flags) ? raw.flags : [];
+  const rawHero = raw.hero && typeof raw.hero === "object" ? (raw.hero as Record<string, unknown>) : null;
+  return {
+    storySoFar: String(raw.storySoFar || ""),
+    rightNow: String(raw.rightNow || ""),
+    flags: rawFlags
+      .filter((flag): flag is Record<string, unknown> => Boolean(flag && typeof flag === "object"))
+      .map((flag) => ({ kind: String(flag.kind || "caution"), label: String(flag.label || "") }))
+      .filter((flag) => flag.label),
+    sinceLastVisit: stringOrNull(raw.sinceLastVisit),
+    hero: rawHero
+      ? {
+          captureId: String(rawHero.captureId || ""),
+          fileEndpoint: String(rawHero.fileEndpoint || ""),
+          contentEndpoint: String(rawHero.contentEndpoint || ""),
+          capturedAt: stringOrNull(rawHero.capturedAt),
+          caption: stringOrNull(rawHero.caption),
+        }
+      : null,
+    status: raw.status === "updating" ? "updating" : "ready",
+    updatedAt: stringOrNull(raw.updatedAt),
   };
 }
 

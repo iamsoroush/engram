@@ -1,5 +1,6 @@
 import React from "react";
-import type { LastVisitMedia, SessionContext } from "../../domain/appTypes";
+import type { LastVisitMedia, LineupCard as LineupCardModel, SessionContext } from "../../domain/appTypes";
+import { LineupCard } from "../memory/components/MemoryCards";
 import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
@@ -14,12 +15,14 @@ import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 export function SessionContextCard({
   context,
   isPro,
+  lineupCard,
   onOpenVisit,
   onUseAsNote,
   onResolveFile,
 }: {
   context: SessionContext | null;
   isPro?: boolean;
+  lineupCard?: LineupCardModel | null;
   onOpenVisit?: (sessionId: string) => void;
   onUseAsNote?: (text: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
@@ -28,8 +31,8 @@ export function SessionContextCard({
   if (!context) return null;
   const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts } = context;
   const visit = lastVisit.hasPriorVisit ? lastVisit.visit : null;
-  // Nothing worth a card for a brand-new patient with no pinned facts.
-  if (!visit && !keyFacts) return null;
+  // Nothing worth a card for a brand-new patient with no prior content or pinned facts.
+  if (!visit && !keyFacts && !(isPro && lineupCard)) return null;
 
   // Tapping a progress thumb compares that visit against the most recent OTHER one (before/after),
   // oldest on the left so progress reads left → right.
@@ -80,7 +83,10 @@ export function SessionContextCard({
         </p>
       ) : null}
 
-      {visit ? (
+      {/* Pro: the curated Job-4 brief (assistant-grade, text-forward). Basic: the raw last-visit digest. */}
+      {isPro ? (
+        <LineupCard card={lineupCard} isPro onResolveFile={onResolveFile} />
+      ) : visit ? (
         <div className="session-context-digest">
           <div className="session-context-digest-head">
             <strong>Last visit{dateLabel ? ` · ${dateLabel}` : ""}</strong>

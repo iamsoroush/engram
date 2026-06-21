@@ -151,6 +151,9 @@ class PatientMemoryDetailResponse(BaseModel):
     sessions: list[PatientMemorySession]
     groups: list[PatientMemorySessionGroup]
     history: PatientMemoryHistory | None = None
+    # Pro line-up projection (storySoFar/rightNow/flags/hero/sinceLastVisit/status). Built by the
+    # service; passthrough dict so the session context card can surface the curated brief.
+    lineupCard: dict[str, Any] | None = None
 
 
 class AiModelConfigUpdate(BaseModel):

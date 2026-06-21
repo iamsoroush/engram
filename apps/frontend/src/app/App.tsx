@@ -6,6 +6,7 @@ import type {
   AuthSession,
   CaptureDraft,
   DevTier,
+  LineupCard,
   PatientAssignmentDraft,
   PatientMemoryFilter,
   PatientMemoryListResponse,
@@ -161,6 +162,9 @@ export function App() {
   // AES-106 — the active patient's prior visit (note + photos), surfaced at capture in Basic.
   const [sessionContext, setSessionContext] = React.useState<SessionContext | null>(null);
   const [aftercareTemplates, setAftercareTemplates] = React.useState<AftercareTemplate[]>([]);
+  // Pro only: the active patient's Job-4 curated brief (line-up projection), surfaced in the session
+  // context card so Pro reads as a compact pre-visit brief instead of the raw deterministic digest.
+  const [sessionLineupCard, setSessionLineupCard] = React.useState<LineupCard | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
@@ -1577,6 +1581,34 @@ export function App() {
   // is a new reference every render and would re-fire those effects (the "refreshing every few
   // seconds" symptom). apiFetch is itself stable.
   const getPatientMemoryDetail = React.useCallback((patientId: string) => fetchPatientMemoryDetail(apiFetch, patientId), [apiFetch]);
+
+  // Pro: fetch the active patient's curated brief for the session context card, polling while it is
+  // still "organizing" (read-triggered cold generation), capped so it never spins forever.
+  React.useEffect(() => {
+    if (isBasicTier || !patientId || isLocalAssignmentPatient(patientId)) {
+      setSessionLineupCard(null);
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const load = () => {
+      void getPatientMemoryDetail(patientId)
+        .then((detail) => {
+          if (cancelled) return;
+          const card = detail.lineupCard || null;
+          setSessionLineupCard(card);
+          if (card?.status === "updating" && attempts < 10) {
+            attempts += 1;
+            window.setTimeout(load, 3000);
+          }
+        })
+        .catch(() => undefined);
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [getPatientMemoryDetail, isBasicTier, patientId]);
   const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
   const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
   const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
@@ -1926,6 +1958,7 @@ export function App() {
           onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
           sessionContext={sessionContext}
+          lineupCard={sessionLineupCard}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
           onViewPatientHistory={openPatientHistory}
           onUseAsNote={composeNoteFromText}

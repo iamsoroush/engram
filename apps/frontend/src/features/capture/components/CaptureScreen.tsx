@@ -1,7 +1,7 @@
 // Capture screen shell (orchestration); presentational pieces live in sibling files.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { AftercareTemplate, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
+import type { AftercareTemplate, LineupCard, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
 import { Button, Card } from "../../../shared/ui/primitives";
@@ -39,6 +39,7 @@ export function CaptureScreen({
   onFetchPatient,
   tier,
   sessionContext,
+  lineupCard,
   onOpenVisit,
   onViewPatientHistory,
   onUseAsNote,
@@ -86,6 +87,8 @@ export function CaptureScreen({
   /** Deterministic session context (last-visit digest + cross-visit photo strip), surfaced at
    * capture in both tiers once the patient is determined. */
   sessionContext?: SessionContext | null;
+  /** Pro: the active patient's Job-4 curated brief, rendered in place of the raw digest. */
+  lineupCard?: LineupCard | null;
   onOpenVisit?: (sessionId: string) => void;
   /** Jump to the assigned patient's full timeline, with a one-tap "back to this visit". */
   onViewPatientHistory?: (patientId: string) => void;
@@ -289,6 +292,7 @@ export function CaptureScreen({
         <SessionContextCard
           context={sessionContext}
           isPro={isPro}
+          lineupCard={lineupCard}
           onOpenVisit={onOpenVisit}
           onUseAsNote={onUseAsNote}
           onResolveFile={onResolveFile}

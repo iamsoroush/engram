@@ -585,8 +585,13 @@ def _session_treatment_phrases(session: Session, limit: int = 2) -> list[str]:
     return phrases
 
 
-def _since_last_visit_line(sessions: list[Session]) -> str | None:
-    """Deterministic "since last visit" delta for the line-up card (grounded in real treatments)."""
+def _since_last_visit_line(sessions: list[Session], language: str | None = None) -> str | None:
+    """Deterministic "since last visit" delta for the line-up card (grounded in real treatments).
+
+    Localized to the clinic's report language so the line never mixes an English label into an
+    otherwise-Persian card (treatment phrases are already in the visit's language).
+    """
+    fa = isinstance(language, str) and language.strip().lower().startswith("fa")
     ordered = sorted(
         sessions,
         key=lambda s: _session_sort_date(s) or datetime.min.replace(tzinfo=timezone.utc),
@@ -599,12 +604,18 @@ def _since_last_visit_line(sessions: list[Session]) -> str | None:
     detail = "; ".join(treatments) if treatments else None
     if len(ordered) == 1:
         date_text = _fmt_date(_session_sort_date(latest))
+        if fa:
+            return f"اولین ویزیت ثبت‌شده · {date_text}." + (f" {detail}." if detail else "")
         return f"First visit on record · {date_text}." + (f" {detail}." if detail else "")
-    prior_date = _session_sort_date(ordered[1])
-    prior_text = _fmt_date(prior_date)
+    prior_text = _fmt_date(_session_sort_date(ordered[1]))
     if detail is None:
         count = _capture_count(latest.extracted_metadata or {})
-        detail = f"{count} new capture{'s' if count != 1 else ''}" if count else "visit captured"
+        if fa:
+            detail = f"{count} مورد جدید" if count else "ویزیت ثبت شد"
+        else:
+            detail = f"{count} new capture{'s' if count != 1 else ''}" if count else "visit captured"
+    if fa:
+        return f"از آخرین ویزیت ({prior_text}): {detail}."
     return f"Since last visit ({prior_text}): {detail}."
 
 
@@ -632,12 +643,14 @@ def build_lineup_card(
     """
     if tier != "pro":
         return None
+    from app.services.ai_jobs.config import tenant_report_language
+
     card = stored_card(patient) or card_from_history(stored_history(patient)) or {}
     return {
         "storySoFar": card.get("storySoFar") or "",
         "rightNow": card.get("rightNow") or "",
         "flags": card.get("flags") or [],
-        "sinceLastVisit": _since_last_visit_line(sessions),
+        "sinceLastVisit": _since_last_visit_line(sessions, tenant_report_language(db, tenant_id)),
         "hero": _hero_payload(db, tenant_id, sessions),
         "status": memory_status(patient),
         "updatedAt": memory_updated_at(patient),
