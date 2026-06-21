@@ -215,6 +215,19 @@ class GetSessionContextTests(unittest.TestCase):
         self.assertEqual(result["visitOrdinal"], 2)
         self.assertIsNone(result["keyFacts"])
 
+    def test_ai_creation_breadcrumb_not_surfaced_as_key_fact(self):
+        from app.services.patients import AI_CREATED_PATIENT_NOTE
+
+        self.patient.notes = AI_CREATED_PATIENT_NOTE
+        db = _ScriptedDb(
+            _Result([self.patient]),  # get_patient (session-context)
+            _Result([self.patient]),  # get_patient (get_last_visit)
+            _Result([]),              # sessions (get_last_visit)
+            _Result([]),              # sessions (session-context)
+        )
+        result = get_session_context(db, self.principal, str(self.patient.id))
+        self.assertIsNone(result["keyFacts"])
+
     def test_no_prior_visits_first_time_patient(self):
         db = _ScriptedDb(
             _Result([self.patient]),   # get_patient (session-context)

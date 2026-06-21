@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.models import Capture, CaptureStatus, CaptureType, Session
-from app.services.patients import get_patient
+from app.services.patients import AI_CREATED_PATIENT_NOTE, get_patient
 from app.services.sessions import parse_uuid
 
 LAST_VISIT_SCHEMA_VERSION = "2026-06-12.last-visit.v1"
@@ -251,7 +251,10 @@ def get_session_context(
             }
         )
 
-    key_facts = patient.notes.strip() if isinstance(patient.notes, str) and patient.notes.strip() else None
+    # Pinned free-text notes are the deterministic "key facts" — but skip the system AI-creation
+    # breadcrumb so it never reads as a clinical fact in the card's key-facts banner.
+    notes_text = patient.notes.strip() if isinstance(patient.notes, str) else ""
+    key_facts = notes_text if notes_text and notes_text != AI_CREATED_PATIENT_NOTE else None
 
     return {
         "schemaVersion": SESSION_CONTEXT_SCHEMA_VERSION,

@@ -221,6 +221,11 @@ def add_patient_information_identifiers(
             )
 
 
+# System breadcrumb stamped on AI-created patients (a "finish setting this up" reminder, not a
+# clinical fact). Surfaces that show patient "key facts" filter it out so it never reads as guidance.
+AI_CREATED_PATIENT_NOTE = "Created by AI from an audio capture. Complete and verify patient details."
+
+
 def create_patient_from_patient_information(
     db: DbSession,
     *,
@@ -239,7 +244,7 @@ def create_patient_from_patient_information(
         display_name=display_name,
         phone=_patient_information_text(patient_information, "phone"),
         email=_patient_information_text(patient_information, "email"),
-        notes="Created by AI from an audio capture. Complete and verify patient details.",
+        notes=AI_CREATED_PATIENT_NOTE,
         status=PatientStatus.active,
         created_by_user_id=created_by_user_id,
     )

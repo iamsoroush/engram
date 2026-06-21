@@ -34,6 +34,7 @@ from app.models import (
     Session,
     SessionStatus,
 )
+from app.services.ai_jobs.orchestration import maybe_refresh_stale_patient_memory
 from app.services.capture_storage import object_key_for_source
 from app.storage.object_store import ObjectStore
 
@@ -286,6 +287,25 @@ def main() -> None:
             skipped.append("لیلا کریمی")
 
         db.commit()
+
+        # Pre-warm Pro patient memory (Job 4) so demo patients aren't "organizing" on first open —
+        # dispatch the same read-trigger a real open would; the worker generates it in the background.
+        # Re-queries by name (not just newly-created) so a re-run also warms any still-cold patient.
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی"):
+            patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
+            if patient is None:
+                continue
+            patient_sessions = list(
+                db.query(Session).filter(Session.tenant_id == DEV_TENANT_ID, Session.patient_id == patient.id).all()
+            )
+            if maybe_refresh_stale_patient_memory(
+                db,
+                tenant_id=DEV_TENANT_ID,
+                patient=patient,
+                sessions=patient_sessions,
+                created_by_user_id=DOCTOR_USER_ID,
+            ):
+                created.append(f"pre-warmed memory: {name}")
     except Exception:
         db.rollback()
         raise
