@@ -9490,6 +9490,8 @@ small {
   border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); background: var(--color-surface-soft);
 }
 .aftercare-bar-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
+.aftercare-bar-suggest { font-size: 0.68rem; font-weight: 700; color: var(--color-primary); }
+.aftercare-chip.suggested { border-color: var(--color-primary); color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 8%, #fff); }
 .aftercare-bar-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .aftercare-chip {
   display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border-radius: var(--radius-pill);

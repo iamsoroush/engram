@@ -1,5 +1,6 @@
 import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation } from "../../domain/types";
+import type { AftercareTemplate } from "../../domain/appTypes";
 import { appDateTimeFormat } from "../../shared/lib/datetime";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
 import { sessionUxState } from "../../domain/status";
@@ -752,6 +753,37 @@ export function sessionConfirmedCarriedForward(session: CaptureSession | null): 
   const raw = metadataRecord(session?.extractedMetadata).confirmed_carried_forward;
   if (!Array.isArray(raw)) return [];
   return raw.map((entry) => metadataText(entry)).filter(Boolean);
+}
+
+// Cross-language synonyms per aesthetics procedure, for matching the visit's extracted treatments
+// to the clinic's aftercare templates. Deterministic — the AI never authors aftercare; it only
+// surfaces WHICH of the clinic's own templates fit the procedure actually performed.
+const AFTERCARE_PROCEDURE_SYNONYMS: Record<string, string[]> = {
+  botox: ["botox", "بوتاکس", "dysport", "دیسپورت", "xeomin", "زئومین", "neurotoxin", "نوروتاکسین"],
+  filler: ["filler", "فیلر", "ژل", "gel", "juvederm", "ژوویدرم", "restylane", "رستیلین", "hyaluronic", "هیالورونیک", "voluma", "ولوما"],
+  prp: ["prp", "پی آر پی", "پی‌آر‌پی", "plasma", "پلاسما"],
+  mesotherapy: ["meso", "مزو", "mesotherapy", "مزوتراپی"],
+  laser: ["laser", "لیزر"],
+};
+
+/**
+ * IDs of the clinic's aftercare templates that match the procedures performed this visit (Pro). A
+ * template matches when its procedure type or name shares a synonym with a detected treatment's
+ * product/brand. Empty when nothing is detected (then the UI just shows the flat template list).
+ */
+export function suggestedAftercareTemplateIds(templates: AftercareTemplate[], treatments: SessionTreatment[]): Set<string> {
+  const haystacks = treatments.map((treatment) => `${treatment.product || ""} ${treatment.brand || ""}`.toLowerCase());
+  const detected = Object.entries(AFTERCARE_PROCEDURE_SYNONYMS)
+    .filter(([, synonyms]) => haystacks.some((hay) => synonyms.some((synonym) => hay.includes(synonym))))
+    .map(([key]) => key);
+  const ids = new Set<string>();
+  if (!detected.length) return ids;
+  for (const template of templates) {
+    const fields = `${template.procedureType || ""} ${template.name || ""}`.toLowerCase();
+    const matched = detected.some((key) => (AFTERCARE_PROCEDURE_SYNONYMS[key] || [key]).some((synonym) => fields.includes(synonym)));
+    if (matched) ids.add(template.id);
+  }
+  return ids;
 }
 
 /** A one-line label for a treatment (verbatim quantity/brand/lot preserved). */

@@ -11,7 +11,7 @@ import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { AiCreatedPatientPanel } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
@@ -109,6 +109,12 @@ export function CaptureScreen({
   onStartNextVisit?: () => void;
 }) {
   const isPro = tier !== "basic";
+  // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
+  // visit (deterministic match against the extracted treatments). Basic shows the flat list.
+  const aftercareSuggestedIds =
+    isPro && aftercareTemplates?.length ? suggestedAftercareTemplateIds(aftercareTemplates, workspaceTreatments(activeSession)) : new Set<string>();
+  const suggestedAftercare = (aftercareTemplates || []).filter((template) => aftercareSuggestedIds.has(template.id));
+  const otherAftercare = (aftercareTemplates || []).filter((template) => !aftercareSuggestedIds.has(template.id));
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
@@ -301,19 +307,39 @@ export function CaptureScreen({
       {!isHistorical && !readOnly && onUseAsNote && aftercareTemplates && aftercareTemplates.length ? (
         <section className="aftercare-bar" aria-label="Follow-up & aftercare">
           <span className="aftercare-bar-label">Follow-up & aftercare</span>
-          <div className="aftercare-bar-chips">
-            {aftercareTemplates.map((template) => (
-              <button
-                key={template.id}
-                className="aftercare-chip"
-                type="button"
-                title={template.body}
-                onClick={() => onUseAsNote(template.body)}
-              >
-                + <span dir="auto">{template.name}</span>
-              </button>
-            ))}
-          </div>
+          {suggestedAftercare.length ? (
+            <>
+              <span className="aftercare-bar-suggest">Suggested for this visit</span>
+              <div className="aftercare-bar-chips">
+                {suggestedAftercare.map((template) => (
+                  <button
+                    key={template.id}
+                    className="aftercare-chip suggested"
+                    type="button"
+                    title={template.body}
+                    onClick={() => onUseAsNote(template.body)}
+                  >
+                    ✦ <span dir="auto">{template.name}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {otherAftercare.length ? (
+            <div className="aftercare-bar-chips">
+              {otherAftercare.map((template) => (
+                <button
+                  key={template.id}
+                  className="aftercare-chip"
+                  type="button"
+                  title={template.body}
+                  onClick={() => onUseAsNote(template.body)}
+                >
+                  + <span dir="auto">{template.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
