@@ -9469,6 +9469,40 @@ small {
   position: absolute; top: 3px; right: 3px; font-size: 0.6rem; font-weight: 700; color: #fff;
   background: rgba(0,0,0,0.55); border-radius: var(--radius-pill); padding: 0 5px; line-height: 1.5;
 }
+.session-context-thumb-button { border: 0; background: none; padding: 0; cursor: pointer; line-height: 0; border-radius: 7px; }
+.session-context-thumb-button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+/* --- Non-destructive media viewer (lightbox + before/after comparator) over the live session --- */
+.media-overlay {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(8, 14, 24, 0.82);
+}
+.media-overlay-inner { position: relative; width: min(100%, 920px); max-height: 92vh; display: flex; flex-direction: column; }
+.media-overlay-close {
+  position: absolute; top: -6px; right: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
+  border: 0; background: #fff; color: #111; font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.media-overlay-single { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.media-overlay-compare { display: flex; gap: 12px; align-items: center; justify-content: center; }
+.media-overlay-compare .media-overlay-figure { flex: 1 1 0; min-width: 0; }
+.media-overlay-vs { flex: 0 0 auto; color: #fff; font-size: 1.4rem; opacity: 0.8; }
+.media-overlay-figure { margin: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.media-overlay-figure img {
+  display: block; width: 100%; max-height: 78vh; object-fit: contain; border-radius: 10px; background: #000;
+}
+.media-overlay-loading { width: 100%; aspect-ratio: 1; border-radius: 10px; background: rgba(255,255,255,0.08); }
+.media-overlay-caption { display: flex; flex-direction: column; gap: 2px; text-align: center; color: #fff; }
+.media-overlay-date { font-size: 0.8rem; font-weight: 700; }
+.media-overlay-text { font-size: 0.78rem; opacity: 0.85; }
+.media-overlay-nav { display: flex; align-items: center; gap: 14px; color: #fff; font-size: 0.85rem; font-weight: 600; }
+.media-overlay-nav button {
+  width: 40px; height: 40px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.1); color: #fff; font-size: 1.4rem; cursor: pointer;
+}
+@media (max-width: 560px) {
+  .media-overlay-compare { gap: 6px; }
+  .media-overlay-vs { font-size: 1rem; }
+}
 
 /* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
 .lineup-card {

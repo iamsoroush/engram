@@ -1,5 +1,6 @@
 import React from "react";
 import type { LastVisitMedia, SessionContext } from "../../domain/appTypes";
+import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
  * Session patient-context card (deterministic, both tiers — redesign of the single-note
@@ -23,11 +24,32 @@ export function SessionContextCard({
   onUseAsNote?: (text: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const [overlay, setOverlay] = React.useState<MediaOverlayState | null>(null);
   if (!context) return null;
   const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts } = context;
   const visit = lastVisit.hasPriorVisit ? lastVisit.visit : null;
   // Nothing worth a card for a brand-new patient with no pinned facts.
   if (!visit && !keyFacts) return null;
+
+  // Tapping a progress thumb compares that visit against the most recent OTHER one (before/after),
+  // oldest on the left so progress reads left → right.
+  const openCompare = (index: number) => {
+    const tapped = recentVisits[index];
+    const other = index === 0 ? recentVisits[1] : recentVisits[0];
+    if (!tapped?.photos.length) return;
+    if (!other?.photos.length) {
+      setOverlay({ mode: "single", items: [{ media: tapped.photos[0], label: formatVisitDate(tapped.capturedAt) || tapped.title }], index: 0 });
+      return;
+    }
+    const tappedAt = new Date(tapped.capturedAt || 0).getTime();
+    const otherAt = new Date(other.capturedAt || 0).getTime();
+    const [older, newer] = tappedAt <= otherAt ? [tapped, other] : [other, tapped];
+    setOverlay({
+      mode: "compare",
+      left: { media: older.photos[0], label: formatVisitDate(older.capturedAt) || older.title },
+      right: { media: newer.photos[0], label: formatVisitDate(newer.capturedAt) || newer.title },
+    });
+  };
 
   const dateLabel = formatVisitDate(visit?.capturedAt || visit?.updatedAt);
   const sameNote = lastVisit.sameAsLastTime?.note;
@@ -77,11 +99,25 @@ export function SessionContextCard({
           ) : null}
           {visit.media.length ? (
             <div className="session-context-thumbs" aria-label="Last visit photos">
-              {visit.media.slice(0, 4).map((media) => (
-                <MediaThumb key={media.captureId} media={media} onResolveFile={onResolveFile} />
+              {visit.media.slice(0, 4).map((media, index) => (
+                <button
+                  key={media.captureId}
+                  className="session-context-thumb-button"
+                  type="button"
+                  aria-label="View photo"
+                  onClick={() =>
+                    setOverlay({
+                      mode: "single",
+                      items: visit.media.map((m) => ({ media: m, label: dateLabel ? `Last visit · ${dateLabel}` : "Last visit" })),
+                      index,
+                    })
+                  }
+                >
+                  <MediaThumb media={media} onResolveFile={onResolveFile} />
+                </button>
               ))}
               {visit.media.length > 4 ? <span className="session-context-more">+{visit.media.length - 4}</span> : null}
-              <span className="session-context-thumbs-note">compare by eye</span>
+              <span className="session-context-thumbs-note">tap to view</span>
             </div>
           ) : null}
           {visit.audio?.length ? (
@@ -103,15 +139,14 @@ export function SessionContextCard({
         <div className="session-context-progress" aria-label="Progress across recent visits">
           <span className="session-context-progress-label">Progress · recent visits</span>
           <div className="session-context-progress-row">
-            {recentVisits.map((recent) =>
+            {recentVisits.map((recent, index) =>
               recent.photos.length ? (
                 <button
                   key={recent.sessionId}
                   className="session-context-progress-visit"
                   type="button"
-                  onClick={onOpenVisit ? () => onOpenVisit(recent.sessionId) : undefined}
-                  disabled={!onOpenVisit}
-                  title={formatVisitDate(recent.capturedAt) || recent.title}
+                  onClick={() => openCompare(index)}
+                  title={`Compare ${formatVisitDate(recent.capturedAt) || recent.title}`}
                 >
                   <MediaThumb media={recent.photos[0]} onResolveFile={onResolveFile} />
                   <span className="session-context-progress-date">{formatVisitDate(recent.capturedAt) || "—"}</span>
@@ -120,8 +155,11 @@ export function SessionContextCard({
               ) : null,
             )}
           </div>
+          <span className="session-context-thumbs-note">tap a visit to compare before/after</span>
         </div>
       ) : null}
+
+      {overlay ? <MediaOverlay state={overlay} onClose={() => setOverlay(null)} onResolveFile={onResolveFile} /> : null}
     </section>
   );
 }
