@@ -78,6 +78,8 @@ export type AuthTenant = {
   transcriptionLanguage?: string;
   reportLanguage?: string | null;
   matchStrictness?: "strict" | "balanced" | "lenient" | string;
+  /** Story C (decision 2): include commercial brand names in a curated share's treatment line. */
+  shareIncludeBrands?: boolean;
   /** A0 — vertical ("clinic" today) + the presentation label for its work-unit ("Session"). */
   vertical?: string;
   encounterLabel?: string;
@@ -387,6 +389,8 @@ export type CreatePatientShareInput = {
   sections: ShareSectionInput[];
   media: ShareMediaInput[];
   aftercare?: { templateId?: string; name?: string; body?: string } | null;
+  /** Story C: include a plain-words "what we did" line (derived server-side; generic by default). */
+  includeTreatments?: boolean;
   expiresInDays?: number;
 };
 

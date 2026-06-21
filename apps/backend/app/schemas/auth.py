@@ -17,6 +17,8 @@ class TenantSettingsUpdate(BaseModel):
     reportLanguage: str | None = None
     # Fuzzy-match auto-apply line (H3): "strict" | "balanced" | "lenient".
     matchStrictness: str | None = None
+    # Story C (decision 2): include commercial brand names in a curated share's treatment line.
+    shareIncludeBrands: bool | None = None
     # Multi-seat role permissions (AES-905): per non-owner role preset, e.g.
     # {"assistant": "reassign", "doctor": "contribute"}. Each value ∈ contribute | reassign | full.
     # Only provided roles change; unknown roles/presets are rejected (400). Admin-only at the route.
@@ -57,6 +59,7 @@ class TenantProfile(BaseModel):
     transcriptionLanguage: str = "auto"
     reportLanguage: str | None = None
     matchStrictness: str = "strict"
+    shareIncludeBrands: bool = False
     # A0 — vertical + the presentation label for its report-required work-unit ("Session" for clinics).
     vertical: str = "clinic"
     encounterLabel: str = "Session"

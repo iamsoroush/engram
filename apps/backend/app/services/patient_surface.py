@@ -29,6 +29,7 @@ from app.models import (
     CaptureType,
     PatientShare,
     Session,
+    Tenant,
 )
 from app.schemas.api import PatientShareCreate
 from app.services.patients import get_patient
@@ -162,6 +163,33 @@ def _curated_sections(sections: list[Any]) -> list[dict[str, str]]:
     return curated
 
 
+def _curated_treatment_lines(session: Session | None, *, include_brands: bool) -> list[str]:
+    """Plain-words 'what we did' lines from a session's treatments (Story C, decision 2).
+
+    Generic by default — `area — product(category)`; the commercial `brand` is appended ONLY when the
+    clinic opted in. Dose/quantity and lot are NEVER included (the dose table + lots are
+    always-withheld; this is the patient-safe plain-words line, not the clinical record).
+    """
+    if session is None:
+        return []
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    treatments = metadata.get("treatments")
+    if not isinstance(treatments, list):
+        return []
+    lines: list[str] = []
+    for treatment in treatments:
+        if not isinstance(treatment, dict):
+            continue
+        area = str(treatment.get("area") or "").strip()
+        product = str(treatment.get("product") or "").strip()
+        brand = str(treatment.get("brand") or "").strip()
+        head = " — ".join(part for part in (area, product) if part)
+        if not head:
+            continue
+        lines.append(f"{head} ({brand})" if include_brands and brand else head)
+    return lines
+
+
 def create_patient_share(db: DbSession, principal: CurrentPrincipal, request: PatientShareCreate) -> dict[str, Any]:
     """Create a tokenized, revocable share of curated content (AES-303/304/403).
 
@@ -184,6 +212,8 @@ def create_patient_share(db: DbSession, principal: CurrentPrincipal, request: Pa
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Session belongs to a different patient")
 
     clinic = report_template_context(session.report_template_key if session else None)["clinic"]
+    tenant = db.get(Tenant, principal.tenant_id)
+    include_brands = bool(tenant and tenant.share_include_brands)
     content = {
         "schemaVersion": SHARE_SCHEMA_VERSION,
         "clinicName": clinic["name"],
@@ -191,6 +221,7 @@ def create_patient_share(db: DbSession, principal: CurrentPrincipal, request: Pa
         "title": (request.title or "Your visit summary").strip(),
         "visitDate": _iso(session.captured_at) if session and session.captured_at else None,
         "sections": _curated_sections(request.sections),
+        "treatments": _curated_treatment_lines(session, include_brands=include_brands) if request.include_treatments else [],
         "media": _curated_media(db, tenant_id=principal.tenant_id, patient_id=patient.id, media=request.media),
         "aftercare": _curated_aftercare(db, tenant_id=principal.tenant_id, aftercare=request.aftercare),
     }
@@ -308,6 +339,7 @@ def _public_content(share: PatientShare) -> dict[str, Any]:
         "title": content.get("title"),
         "visitDate": content.get("visitDate"),
         "sections": content.get("sections") if isinstance(content.get("sections"), list) else [],
+        "treatments": content.get("treatments") if isinstance(content.get("treatments"), list) else [],
         "media": [
             {
                 "captureId": item.get("captureId"),

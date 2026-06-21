@@ -8,6 +8,7 @@ type TenantSettingsUpdate = {
   transcriptionLanguage?: string;
   reportLanguage?: string | null;
   matchStrictness?: string;
+  shareIncludeBrands?: boolean;
   rolePermissions?: RolePermissions;
 };
 
@@ -224,6 +225,25 @@ export function SettingsScreen({
             <option value="balanced">Balanced (close match)</option>
             <option value="lenient">Lenient (looser)</option>
           </select>
+        </SettingRow>
+      </Card>
+
+      <Card className="settings-group">
+        <div className="settings-group-head">
+          <h2>Patient sharing</h2>
+          <p>What a curated patient share may include. Doses, lots, and the treatment table are always withheld.</p>
+        </div>
+        <SettingRow
+          label="Include brands"
+          hint="When a doctor shares a 'what we did' summary, include commercial brand names (e.g. Juvederm). Off = generic only (e.g. «گونه — فیلر»)."
+        >
+          <input
+            type="checkbox"
+            aria-label="Include brands in patient shares"
+            disabled={saving}
+            checked={Boolean(auth.tenant.shareIncludeBrands)}
+            onChange={(event) => save({ shareIncludeBrands: event.target.checked })}
+          />
         </SettingRow>
       </Card>
 

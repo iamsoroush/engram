@@ -306,6 +306,10 @@ class PatientShareCreate(BaseModel):
     sections: list[PatientShareSectionInput] = Field(default_factory=list)
     media: list[PatientShareMediaInput] = Field(default_factory=list)
     aftercare: PatientShareAftercareInput | None = None
+    # Story C (decision 2): include a plain-words "what we did" treatment line, derived server-side
+    # from the session's treatments (area + category; brand only if the clinic opted in; never
+    # dose/lot). Off by default — the doctor opts in per share.
+    include_treatments: bool = Field(default=False, alias="includeTreatments")
     expires_in_days: int | None = Field(default=None, alias="expiresInDays", ge=1, le=365)
 
     model_config = {"populate_by_name": True}

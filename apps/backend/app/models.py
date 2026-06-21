@@ -148,6 +148,9 @@ class Tenant(Base):
     # preserves prior behavior); "balanced"/"lenient" auto-apply a single high-confidence
     # fuzzy match on an explicit reassignment instruction (high/lower threshold).
     match_strictness: Mapped[str] = mapped_column(String(20), nullable=False, server_default="strict")
+    # Story C (decision 2): may a curated patient share's plain-words treatment line include commercial
+    # brand names? Default off (generic category only). Dose tables + lots stay always-withheld.
+    share_include_brands: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # Post-session Q&A routing policy (Pro, AES-402; foundation §7). "ai_default" = a new patient
     # Q&A thread auto-routes to the patient's treating doctor (most recent/frequent); "manual" = the
     # thread starts unrouted and staff route it. Manual re-route is always available either way.

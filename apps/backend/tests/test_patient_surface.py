@@ -110,7 +110,7 @@ class PublicContentTests(unittest.TestCase):
         payload = _public_content(_share())
         self.assertEqual(
             set(payload.keys()),
-            {"schemaVersion", "payloadType", "status", "clinic", "patientName", "title", "visitDate", "sections", "media", "aftercare", "createdAt", "expiresAt"},
+            {"schemaVersion", "payloadType", "status", "clinic", "patientName", "title", "visitDate", "sections", "treatments", "media", "aftercare", "createdAt", "expiresAt"},
         )
 
 

@@ -42,6 +42,8 @@ export function SharePatientSheet({
   const [title, setTitle] = React.useState("Your visit");
   const [noteIncluded, setNoteIncluded] = React.useState(true);
   const [noteBody, setNoteBody] = React.useState("");
+  // Story C (decision 2): optional plain-words "what we did" line (server-derived, generic).
+  const [treatmentsIncluded, setTreatmentsIncluded] = React.useState(false);
   const [media, setMedia] = React.useState<MediaChoice[]>([]);
   const [templates, setTemplates] = React.useState<AftercareTemplate[]>([]);
   const [aftercareId, setAftercareId] = React.useState<string>("");
@@ -115,6 +117,7 @@ export function SharePatientSheet({
       sections: noteIncluded && noteBody.trim() ? [{ label: "Visit", body: noteBody.trim() }] : [],
       media: includedMedia.map((item) => ({ captureId: item.captureId, caption: item.caption || undefined })),
       aftercare: selectedTemplate ? { templateId: selectedTemplate.id } : undefined,
+      includeTreatments: treatmentsIncluded,
     };
     try {
       const share = await onCreateShare(input);
@@ -210,6 +213,14 @@ export function SharePatientSheet({
                 <textarea className="share-note-input" rows={2} value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="A short summary for the patient" />
               ) : null}
 
+              <div className={`share-incl-row${treatmentsIncluded ? "" : " off"}`}>
+                <Toggle on={treatmentsIncluded} onChange={() => setTreatmentsIncluded((value) => !value)} label="Include what we did" />
+                <div className="share-incl-copy">
+                  <b>What we did</b>
+                  <span>plain-words summary — no doses or lots{`; brands only if your clinic enabled it`}</span>
+                </div>
+              </div>
+
               <div className={`share-incl-row${aftercareId ? "" : " off"}`}>
                 <Toggle on={Boolean(aftercareId)} onChange={() => setAftercareId(aftercareId ? "" : templates[0]?.id || "")} label="Include aftercare" />
                 <div className="share-incl-copy">
@@ -246,7 +257,7 @@ export function SharePatientSheet({
 
             <div className="share-actions">
               <button className="share-pillbtn" onClick={() => setPreview((value) => !value)} type="button">{preview ? "Hide preview" : "Preview"}</button>
-              <Button className="share-pillbtn primary" disabled={sending || (!includedMedia.length && !(noteIncluded && noteBody.trim()) && !selectedTemplate)} onClick={() => void send()} type="button">
+              <Button className="share-pillbtn primary" disabled={sending || (!includedMedia.length && !(noteIncluded && noteBody.trim()) && !selectedTemplate && !treatmentsIncluded)} onClick={() => void send()} type="button">
                 <ShareIcon />
                 {sending ? "Sending…" : "Send link"}
               </Button>

@@ -123,6 +123,17 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
             </section>
           ))}
 
+          {payload.treatments?.length ? (
+            <section className="ps-sec" aria-label="What we did">
+              <h2 dir="auto">What we did</h2>
+              <ul className="ps-care">
+                {payload.treatments.map((line, index) => (
+                  <li dir="auto" key={`${index}-${line.slice(0, 24)}`}>{line}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
           {payload.aftercare && aftercareLines.length ? (
             <section className="ps-sec" aria-label="Aftercare">
               <h2 dir="auto">{payload.aftercare.name || "Aftercare instructions"}</h2>

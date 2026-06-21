@@ -39,6 +39,8 @@ export interface SharePayload {
   title: string | null;
   visitDate: string | null;
   sections: ShareSection[];
+  /** Plain-words "what we did" lines (curated; generic by default, no dose/lot). */
+  treatments: string[];
   media: ShareMedia[];
   aftercare: ShareAftercare | null;
   createdAt: string | null;

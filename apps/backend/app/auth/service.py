@@ -36,6 +36,7 @@ def tenant_profile(tenant: Tenant) -> TenantProfile:
         transcriptionLanguage=tenant.transcription_language,
         reportLanguage=tenant.report_language,
         matchStrictness=tenant.match_strictness,
+        shareIncludeBrands=tenant.share_include_brands,
         vertical=tenant.vertical,
         encounterLabel=encounter_label(tenant.vertical),
         rolePermissions=resolve_role_permissions(tenant.role_permissions),
@@ -337,6 +338,8 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         if value not in MATCH_STRICTNESS_OPTIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported match strictness")
         tenant.match_strictness = value
+    if "shareIncludeBrands" in provided:
+        tenant.share_include_brands = bool(provided["shareIncludeBrands"])
     if "rolePermissions" in provided:
         # AES-905: admin-only — role permissions are the clinic's org policy, not a per-user pref.
         if "admin" not in principal.roles:
@@ -367,6 +370,7 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
             "transcription_language": tenant.transcription_language,
             "report_language": tenant.report_language,
             "match_strictness": tenant.match_strictness,
+            "share_include_brands": tenant.share_include_brands,
             "role_permissions": tenant.role_permissions,
         },
     )
