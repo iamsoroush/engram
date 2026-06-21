@@ -25,6 +25,7 @@ export function PatientTimelineDetail({
   sessions,
   onAssignPatient,
   onBack,
+  onBackToVisit,
   onContinueSession,
   onOpenSession,
   onReviewSummary,
@@ -46,6 +47,8 @@ export function PatientTimelineDetail({
   sessions: CaptureSession[];
   onAssignPatient: (sessionId: string) => void;
   onBack: () => void;
+  /** When set (arrived from an in-progress visit), the single back button returns to that visit. */
+  onBackToVisit?: () => void;
   onContinueSession: (sessionId: string) => void;
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onReviewSummary: (sessionId: string) => void;
@@ -75,10 +78,17 @@ export function PatientTimelineDetail({
 
   return (
     <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
-      <button className="context-back-button" onClick={onBack} type="button">
-        <BackIcon />
-        Patients
-      </button>
+      {onBackToVisit ? (
+        <button className="context-back-button context-back-button--to-visit" onClick={onBackToVisit} type="button">
+          <BackIcon />
+          Back to this visit
+        </button>
+      ) : (
+        <button className="context-back-button" onClick={onBack} type="button">
+          <BackIcon />
+          Patients
+        </button>
+      )}
 
       <section className="patient-detail-header">
         <Avatar label={patient.name} tone={patient.needsInput ? "amber" : "green"} />

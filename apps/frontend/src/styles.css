@@ -5127,6 +5127,9 @@ small {
   width: min(100%, 940px);
   padding: 0 18px 150px;
   background: #f8faff;
+  /* Never let a stray-wide child scroll the whole page sideways (which also shifts the fixed
+     bottom action bar). Cards that need horizontal scroll do it internally (overflow-x: auto). */
+  overflow-x: clip;
 }
 
 .topbar {
@@ -5544,33 +5547,20 @@ small {
 }
 
 .patient-context-actions {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
-/* Round-trip: persistent bar to return to the in-progress visit after jumping to the timeline. */
-.back-to-visit-bar {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 12px;
-  padding: 9px 14px;
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-primary) 10%, #fff);
+/* Round-trip: when the clinician reached the timeline from an in-progress visit, the single back
+   button returns there (emphasised so it reads as "leave history, resume capture"). */
+.context-back-button--to-visit {
   color: var(--color-primary);
-  font-size: 0.82rem;
   font-weight: 700;
-  cursor: pointer;
 }
-.back-to-visit-bar:hover,
-.back-to-visit-bar:focus-visible {
-  background: color-mix(in srgb, var(--color-primary) 18%, #fff);
-  outline: none;
-}
-.back-to-visit-patient { font-weight: 600; opacity: 0.85; }
 
 .session-workspace {
   gap: 14px;
@@ -9414,6 +9404,8 @@ small {
   border: 1px solid var(--color-border-strong);
   background: var(--color-surface-soft);
   border-radius: var(--radius-md);
+  min-width: 0;
+  max-width: 100%;
 }
 .session-context-head {
   display: flex;
@@ -9465,7 +9457,7 @@ small {
 }
 .session-context-progress { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--color-border); padding-top: 9px; }
 .session-context-progress-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
-.session-context-progress-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.session-context-progress-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; min-width: 0; }
 .session-context-progress-visit {
   position: relative; flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 3px;
   border: 0; background: transparent; padding: 0; cursor: pointer;

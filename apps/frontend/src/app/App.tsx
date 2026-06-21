@@ -1932,6 +1932,7 @@ export function App() {
         activeSession={activeSession}
         auth={auth}
         initialPatientId={clinicalMemoryReturnContext?.patientId}
+        onBackToVisit={captureReturnSession ? returnToActiveCapture : undefined}
         initialTab={clinicalMemoryReturnContext?.tab}
         onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
@@ -2024,17 +2025,6 @@ export function App() {
             onNewSession={() => chooseCaptureDestination(pendingCaptureKind)}
             onUseSession={(sessionId) => chooseCaptureDestination(pendingCaptureKind, sessionId)}
           />
-        ) : null}
-        {captureReturnSession && !(screen === "active-session" && activeSession?.id === captureReturnSession.id) ? (
-          <button className="back-to-visit-bar" type="button" onClick={returnToActiveCapture}>
-            <span aria-hidden="true">←</span>
-            Back to this visit
-            {captureReturnSession.patientName ? (
-              <span className="back-to-visit-patient" dir="auto">
-                · {captureReturnSession.patientName}
-              </span>
-            ) : null}
-          </button>
         ) : null}
         {renderCurrentScreen()}
       </Shell>

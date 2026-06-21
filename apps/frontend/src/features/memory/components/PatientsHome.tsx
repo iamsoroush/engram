@@ -23,6 +23,7 @@ export function PatientsHome({
   auth,
   initialPatientId,
   initialTab,
+  onBackToVisit,
   sessions,
   syncHealth,
   onOpenSession,
@@ -61,6 +62,8 @@ export function PatientsHome({
   auth?: AuthSession | null;
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
+  /** When set, the clinician arrived from an in-progress visit; the timeline's back returns there. */
+  onBackToVisit?: () => void;
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
   tier?: string | null;
@@ -520,6 +523,7 @@ export function PatientsHome({
           sessions={sessions}
           activeSession={activeSession}
           onBack={() => setSelectedPatientId("")}
+          onBackToVisit={onBackToVisit}
           onContinueSession={onContinueSession}
           onOpenSession={onOpenSession}
           onUpdatePatient={onUpdatePatient}
