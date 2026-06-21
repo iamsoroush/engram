@@ -170,6 +170,9 @@ export function App() {
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
+  // Round-trip: the in-progress capture visit stashed when the clinician jumps to the patient
+  // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
+  const [captureReturnSession, setCaptureReturnSession] = React.useState<CaptureSession | null>(null);
   const processingRef = React.useRef(false);
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
@@ -1740,6 +1743,29 @@ export function App() {
     navigateScreen("patients");
   };
 
+  // Round-trip from the session: open the assigned patient's full timeline, remembering the
+  // in-progress visit so we can come straight back to it (the live session stays in state the whole
+  // time — we just change which screen is shown).
+  const openPatientHistory = (patientId: string) => {
+    // Stash the in-progress visit once — keep the original if we're already mid-round-trip (e.g. the
+    // user jumped to a prior visit and tapped History again), so "back" still lands on the live one.
+    setCaptureReturnSession((current) => current || activeSession);
+    setClinicalMemoryReturnContext({ tab: "patients", patientId });
+    setSelectedSessionId("");
+    navigateScreen("patients");
+  };
+
+  const returnToActiveCapture = () => {
+    const stashed = captureReturnSession;
+    setCaptureReturnSession(null);
+    setClinicalMemoryReturnContext(null);
+    if (stashed) {
+      setSelectedSessionId("");
+      setActiveSession(stashed);
+      navigateScreen("active-session");
+    }
+  };
+
   const clinicalMemoryBackLabel = clinicalMemoryReturnContext?.patientId
     ? "Patient history"
     : clinicalMemoryReturnContext?.tab === "today"
@@ -1757,6 +1783,7 @@ export function App() {
       accountReturnRef.current = screen;
     }
     setClinicalMemoryReturnContext(null);
+    setCaptureReturnSession(null); // deliberate nav abandons the back-to-visit round-trip
     navigateScreen(nextScreen);
   };
 
@@ -1881,6 +1908,7 @@ export function App() {
           tier={auth?.tenant.tier}
           sessionContext={sessionContext}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
+          onViewPatientHistory={openPatientHistory}
           onUseAsNote={composeNoteFromText}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
@@ -1996,6 +2024,17 @@ export function App() {
             onNewSession={() => chooseCaptureDestination(pendingCaptureKind)}
             onUseSession={(sessionId) => chooseCaptureDestination(pendingCaptureKind, sessionId)}
           />
+        ) : null}
+        {captureReturnSession && !(screen === "active-session" && activeSession?.id === captureReturnSession.id) ? (
+          <button className="back-to-visit-bar" type="button" onClick={returnToActiveCapture}>
+            <span aria-hidden="true">←</span>
+            Back to this visit
+            {captureReturnSession.patientName ? (
+              <span className="back-to-visit-patient" dir="auto">
+                · {captureReturnSession.patientName}
+              </span>
+            ) : null}
+          </button>
         ) : null}
         {renderCurrentScreen()}
       </Shell>

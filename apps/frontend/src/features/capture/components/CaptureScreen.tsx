@@ -12,7 +12,7 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { AiCreatedPatientPanel } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel } from "../captureModel";
-import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon } from "./CaptureIcons";
+import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
   activeSession,
@@ -40,6 +40,7 @@ export function CaptureScreen({
   tier,
   sessionContext,
   onOpenVisit,
+  onViewPatientHistory,
   onUseAsNote,
   offline = false,
   sessionOrdinal = null,
@@ -85,6 +86,8 @@ export function CaptureScreen({
    * capture in both tiers once the patient is determined. */
   sessionContext?: SessionContext | null;
   onOpenVisit?: (sessionId: string) => void;
+  /** Jump to the assigned patient's full timeline, with a one-tap "back to this visit". */
+  onViewPatientHistory?: (patientId: string) => void;
   onUseAsNote?: (text: string) => void;
   /** No connection / backend unreachable — gates the only sync indicators we show. */
   offline?: boolean;
@@ -228,25 +231,37 @@ export function CaptureScreen({
               : "Capture-first — assign when ready"}
           </p>
         </div>
-        {onAssignPatient ? (
-          <button
-            className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
-            onClick={onCloseAssignment}
-            type="button"
-          >
-            {activeSession?.patientId || activeSession?.patientName ? (
-              <>
-                <EditIcon />
-                Change
-              </>
-            ) : (
-              <>
-                <AddPatientIcon />
-                Assign
-              </>
-            )}
-          </button>
-        ) : null}
+        <div className="patient-context-actions">
+          {activeSession?.patientId && onViewPatientHistory ? (
+            <button
+              className="patient-context-action"
+              onClick={() => onViewPatientHistory(activeSession.patientId as string)}
+              type="button"
+            >
+              <ClockHistoryIcon />
+              History
+            </button>
+          ) : null}
+          {onAssignPatient ? (
+            <button
+              className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
+              onClick={onCloseAssignment}
+              type="button"
+            >
+              {activeSession?.patientId || activeSession?.patientName ? (
+                <>
+                  <EditIcon />
+                  Change
+                </>
+              ) : (
+                <>
+                  <AddPatientIcon />
+                  Assign
+                </>
+              )}
+            </button>
+          ) : null}
+        </div>
       </Card>
       {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
         <div className="next-lined-up" role="note">

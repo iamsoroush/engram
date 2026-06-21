@@ -5543,6 +5543,35 @@ small {
   stroke-width: 1.8;
 }
 
+.patient-context-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Round-trip: persistent bar to return to the in-progress visit after jumping to the timeline. */
+.back-to-visit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-primary) 10%, #fff);
+  color: var(--color-primary);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.back-to-visit-bar:hover,
+.back-to-visit-bar:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 18%, #fff);
+  outline: none;
+}
+.back-to-visit-patient { font-weight: 600; opacity: 0.85; }
+
 .session-workspace {
   gap: 14px;
   padding-bottom: 0;

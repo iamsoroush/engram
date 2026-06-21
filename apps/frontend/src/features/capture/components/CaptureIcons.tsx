@@ -48,6 +48,16 @@ export function SearchIcon() {
   );
 }
 
+export function ClockHistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M3.8 9A8 8 0 1 1 4 13.5" />
+      <path d="M3.5 5v4h4" />
+      <path d="M12 8v4.3l2.8 1.7" />
+    </svg>
+  );
+}
+
 export function IdCardIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
