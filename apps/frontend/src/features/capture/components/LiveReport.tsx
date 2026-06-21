@@ -27,6 +27,11 @@ export function LiveReportView({
   );
 }
 
+/**
+ * Clinic + patient header for the report. NOT shown in the live in-session view (that's for glancing
+ * at the report as it builds); reserved for the export / shared-report surfaces where the document
+ * needs its letterhead. The patient share renders its own clinic header (PatientSharePage).
+ */
 export function ReportDocHeader({ session }: { session: CaptureSession | null }) {
   const clinic = session?.report?.template?.clinic;
   const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session);
@@ -84,7 +89,6 @@ export function ProLiveReport({
   const freshness = reportFreshness(session, true);
   return (
     <div className="structured-report-view">
-      <ReportDocHeader session={session} />
       <div className="report-meta-strip">
         <span className="report-meta-template">{templateLabel}</span>
         {organizing ? (
@@ -241,7 +245,6 @@ export function BasicLiveReport({
   const items = session?.items || [];
   return (
     <div className="structured-report-view basic-live-report">
-      <ReportDocHeader session={session} />
       <section className="structured-report-section structured-report-body">
         {items.length ? (
           items.map((item) => <BasicReportEntry item={item} key={item.sourceUrl || item.id} onResolveFile={onResolveFile} />)
