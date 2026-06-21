@@ -78,6 +78,25 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
   const greetingName = firstName(payload.patientName);
   const metaBits = [payload.title, formatDate(payload.visitDate)].filter(Boolean) as string[];
   const aftercareLines = payload.aftercare ? splitLines(payload.aftercare.body) : [];
+  // Localize the page chrome to the clinic's language so labels match the (curated) content.
+  const fa = (payload.language || "").toLowerCase().startsWith("fa");
+  const t = fa
+    ? {
+        careSummary: "خلاصهٔ مراقبت شما",
+        beforeAfter: "قبل و بعد شما",
+        whatWeDid: "آنچه انجام شد",
+        aftercare: "دستورالعمل‌های مراقبت",
+        privateLink: greetingName ? `لینک خصوصی برای ${greetingName} · این همهٔ چیزی است که با شما به اشتراک گذاشته شده.` : "لینک خصوصی · این همهٔ چیزی است که با شما به اشتراک گذاشته شده.",
+        availableUntil: (date: string) => `در دسترس تا ${date}.`,
+      }
+    : {
+        careSummary: "Your care summary",
+        beforeAfter: "Your before / after",
+        whatWeDid: "What we did",
+        aftercare: "Aftercare instructions",
+        privateLink: `Private link${greetingName ? ` for ${greetingName}` : ""} · this is everything shared with you.`,
+        availableUntil: (date: string) => `Available until ${date}.`,
+      };
 
   return (
     <div className="patient-surface">
@@ -89,7 +108,7 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
               <div className="ps-clinic-name" dir="auto">
                 {payload.clinic?.name || "Your clinic"}
               </div>
-              <div className="ps-clinic-sub">Your care summary</div>
+              <div className="ps-clinic-sub" dir="auto">{t.careSummary}</div>
             </div>
           </div>
           {greetingName ? (
@@ -107,7 +126,7 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
         <main className="ps-body">
           {payload.media.length ? (
             <section className="ps-sec" aria-label="Your photos">
-              <h2>Your before / after</h2>
+              <h2 dir="auto">{t.beforeAfter}</h2>
               <div className={`ps-media${payload.media.length === 1 ? " one" : ""}`}>
                 {payload.media.map((item) => (
                   <ShareFigure key={item.captureId} token={token} item={item} />
@@ -125,7 +144,7 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
 
           {payload.treatments?.length ? (
             <section className="ps-sec" aria-label="What we did">
-              <h2 dir="auto">What we did</h2>
+              <h2 dir="auto">{t.whatWeDid}</h2>
               <ul className="ps-care">
                 {payload.treatments.map((line, index) => (
                   <li dir="auto" key={`${index}-${line.slice(0, 24)}`}>{line}</li>
@@ -136,7 +155,7 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
 
           {payload.aftercare && aftercareLines.length ? (
             <section className="ps-sec" aria-label="Aftercare">
-              <h2 dir="auto">{payload.aftercare.name || "Aftercare instructions"}</h2>
+              <h2 dir="auto">{payload.aftercare.name || t.aftercare}</h2>
               <ul className="ps-care">
                 {aftercareLines.map((line, index) => (
                   <li key={index} dir="auto">
@@ -153,11 +172,9 @@ function ShareView({ token, payload }: { token: string; payload: SharePayload })
 
         <footer className="ps-foot">
           <LockIcon className="ps-ic sm" />
-          <span>
-            Private link{greetingName ? ` for ${greetingName}` : ""} · this is everything shared with you.
-            {payload.expiresAt ? (
-              <span className="ps-expiry">Available until {formatDate(payload.expiresAt)}.</span>
-            ) : null}
+          <span dir="auto">
+            {t.privateLink}
+            {payload.expiresAt ? <span className="ps-expiry">{t.availableUntil(formatDate(payload.expiresAt))}</span> : null}
           </span>
         </footer>
       </div>

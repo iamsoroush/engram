@@ -220,6 +220,8 @@ def create_patient_share(db: DbSession, principal: CurrentPrincipal, request: Pa
         "patientName": patient.display_name,
         "title": (request.title or "Your visit summary").strip(),
         "visitDate": _iso(session.captured_at) if session and session.captured_at else None,
+        # The clinic's report language, so the public page localizes its chrome to match the content.
+        "language": (tenant.report_language if tenant else None),
         "sections": _curated_sections(request.sections),
         "treatments": _curated_treatment_lines(session, include_brands=include_brands) if request.include_treatments else [],
         "media": _curated_media(db, tenant_id=principal.tenant_id, patient_id=patient.id, media=request.media),
@@ -338,6 +340,7 @@ def _public_content(share: PatientShare) -> dict[str, Any]:
         "patientName": content.get("patientName"),
         "title": content.get("title"),
         "visitDate": content.get("visitDate"),
+        "language": content.get("language"),
         "sections": content.get("sections") if isinstance(content.get("sections"), list) else [],
         "treatments": content.get("treatments") if isinstance(content.get("treatments"), list) else [],
         "media": [

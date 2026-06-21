@@ -38,6 +38,8 @@ export interface SharePayload {
   patientName: string | null;
   title: string | null;
   visitDate: string | null;
+  /** The clinic's report language (e.g. "fa"), so the page localizes its chrome to match content. */
+  language: string | null;
   sections: ShareSection[];
   /** Plain-words "what we did" lines (curated; generic by default, no dose/lot). */
   treatments: string[];
