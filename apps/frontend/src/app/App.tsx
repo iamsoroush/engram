@@ -1615,6 +1615,7 @@ export function App() {
   const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
   const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
   const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
+  const loadSession = React.useCallback((sessionId: string) => fetchSession(apiFetch, sessionId), [apiFetch]);
   const loadLastVisitForPatient = React.useCallback((patientId: string) => fetchLastVisit(apiFetch, patientId), [apiFetch]);
   const listAftercare = React.useCallback(() => listAftercareTemplates(apiFetch), [apiFetch]);
   // Clinic aftercare templates, loaded once per auth, so the session can offer one-tap follow-up
@@ -2011,6 +2012,9 @@ export function App() {
         onSmartSearch={smartSearchPatients}
         onDuplicateCheck={duplicateCheckPatient}
         onLoadSessionCaptures={loadSessionCaptures}
+        onLoadSession={loadSession}
+        shareIncludeBrands={Boolean(auth?.tenant.shareIncludeBrands)}
+        shareLanguage={auth?.tenant.reportLanguage || null}
         onResolveFile={resolveSourceFile}
         onLoadLastVisit={loadLastVisitForPatient}
         onListAftercareTemplates={listAftercare}

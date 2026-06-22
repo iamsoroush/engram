@@ -40,6 +40,9 @@ export function PatientsHome({
   onSmartSearch,
   onDuplicateCheck,
   onLoadSessionCaptures,
+  onLoadSession,
+  shareIncludeBrands,
+  shareLanguage,
   onResolveFile,
   onLoadLastVisit,
   onListAftercareTemplates,
@@ -95,6 +98,10 @@ export function PatientsHome({
   onSmartSearch?: (query: string) => Promise<SmartPatientSearchResponse>;
   onDuplicateCheck?: (body: { displayName?: string; nationalId?: string; phone?: string }) => Promise<DuplicateCheckResponse>;
   onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
+  /** Load a session (report model + extracted treatments) for the share's synthesized summary. */
+  onLoadSession?: (sessionId: string) => Promise<CaptureSession>;
+  shareIncludeBrands?: boolean;
+  shareLanguage?: string | null;
   onResolveFile?: (endpoint: string) => Promise<string>;
   onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
   onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
@@ -497,6 +504,9 @@ export function PatientsHome({
           visits={sharePatient.visits}
           onLoadLastVisit={onLoadLastVisit}
           onLoadSessionCaptures={onLoadSessionCaptures}
+          onLoadSession={onLoadSession}
+          shareIncludeBrands={shareIncludeBrands}
+          shareLanguage={shareLanguage}
           onListAftercareTemplates={onListAftercareTemplates}
           onResolveFile={onResolveFile}
           onCreateShare={onCreateShare}

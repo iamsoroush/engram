@@ -1,8 +1,26 @@
 import React from "react";
 import type { AftercareTemplate, CreatePatientShareInput, LastVisitInfo, PatientShare } from "../../domain/appTypes";
-import type { CaptureItem } from "../../domain/types";
+import type { CaptureItem, CaptureSession, SessionTreatment } from "../../domain/types";
+import { workspaceTreatments } from "../capture/captureModel";
 import { Button } from "../../shared/ui/primitives";
 import type { GalleryVisit } from "./PatientPhotoGallery";
+
+/** The synthesized 1–2 line visit summary (patient-friendly), from the report's visit-summary section. */
+function synthesizedVisitSummary(session: CaptureSession): string {
+  const section = (session.reportModel?.sections || []).find((entry) => entry.id === "visit-summary");
+  return (section?.blocks || []).map((block) => block.text).filter(Boolean).join("\n").trim();
+}
+
+/** Client mirror of the server's curated "what we did" lines (for the preview only). */
+function treatmentShareLines(treatments: SessionTreatment[], includeBrands: boolean): string[] {
+  return treatments
+    .map((treatment) => {
+      const head = [treatment.area, treatment.product].map((part) => (part || "").trim()).filter(Boolean).join(" — ");
+      if (!head) return "";
+      return includeBrands && treatment.brand?.trim() ? `${head} (${treatment.brand.trim()})` : head;
+    })
+    .filter(Boolean);
+}
 
 type MediaChoice = { captureId: string; caption: string; included: boolean; endpoint: string; visitLabel: string };
 
@@ -19,6 +37,9 @@ export function SharePatientSheet({
   visits,
   onLoadLastVisit,
   onLoadSessionCaptures,
+  onLoadSession,
+  shareIncludeBrands,
+  shareLanguage,
   onListAftercareTemplates,
   onResolveFile,
   onCreateShare,
@@ -31,6 +52,10 @@ export function SharePatientSheet({
   visits: GalleryVisit[];
   onLoadLastVisit: (patientId: string) => Promise<LastVisitInfo>;
   onLoadSessionCaptures: (sessionId: string) => Promise<CaptureItem[]>;
+  /** Load the visit's session (report model + treatments) for the synthesized summary + preview. */
+  onLoadSession?: (sessionId: string) => Promise<CaptureSession>;
+  shareIncludeBrands?: boolean;
+  shareLanguage?: string | null;
   onListAftercareTemplates: () => Promise<AftercareTemplate[]>;
   onResolveFile: (endpoint: string) => Promise<string>;
   onCreateShare: (input: CreatePatientShareInput) => Promise<PatientShare>;
@@ -44,6 +69,9 @@ export function SharePatientSheet({
   const [noteBody, setNoteBody] = React.useState("");
   // Story C (decision 2): optional plain-words "what we did" line (server-derived, generic).
   const [treatmentsIncluded, setTreatmentsIncluded] = React.useState(false);
+  const [treatmentLines, setTreatmentLines] = React.useState<string[]>([]);
+  const fa = (shareLanguage || "").toLowerCase().startsWith("fa");
+  const summaryLabel = fa ? "خلاصهٔ ویزیت" : "Visit summary";
   const [media, setMedia] = React.useState<MediaChoice[]>([]);
   const [templates, setTemplates] = React.useState<AftercareTemplate[]>([]);
   const [aftercareId, setAftercareId] = React.useState<string>("");
@@ -77,6 +105,21 @@ export function SharePatientSheet({
       setTitle(rawTitle && !/^session\b/i.test(rawTitle) ? `Your ${rawTitle.toLowerCase()}` : "Your visit");
       setNoteBody(sourceVisit?.note || "");
       setNoteIncluded(Boolean(sourceVisit?.note));
+      // Prefer the synthesized visit-summary (patient-friendly, no manual typing) over the raw note,
+      // and derive the "what we did" lines for the preview — both from the visit's session.
+      if (sourceVisit?.sessionId && onLoadSession) {
+        void onLoadSession(sourceVisit.sessionId)
+          .then((session) => {
+            if (cancelled) return;
+            const summary = synthesizedVisitSummary(session);
+            if (summary) {
+              setNoteBody(summary);
+              setNoteIncluded(true);
+            }
+            setTreatmentLines(treatmentShareLines(workspaceTreatments(session), Boolean(shareIncludeBrands)));
+          })
+          .catch(() => undefined);
+      }
       // Flatten + dedupe photos; default the most-recent visit's photos included.
       const seen = new Set<string>();
       const pool: MediaChoice[] = [];
@@ -100,7 +143,7 @@ export function SharePatientSheet({
     return () => {
       cancelled = true;
     };
-  }, [patientId, visits, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates]);
+  }, [patientId, visits, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates, onLoadSession, shareIncludeBrands]);
 
   const selectedTemplate = templates.find((template) => template.id === aftercareId) || null;
   const includedMedia = media.filter((item) => item.included);
@@ -114,7 +157,7 @@ export function SharePatientSheet({
       patientId,
       sessionId: visit?.sessionId,
       title: title.trim() || "Your visit",
-      sections: noteIncluded && noteBody.trim() ? [{ label: "Visit", body: noteBody.trim() }] : [],
+      sections: noteIncluded && noteBody.trim() ? [{ label: summaryLabel, body: noteBody.trim() }] : [],
       media: includedMedia.map((item) => ({ captureId: item.captureId, caption: item.caption || undefined })),
       aftercare: selectedTemplate ? { templateId: selectedTemplate.id } : undefined,
       includeTreatments: treatmentsIncluded,
@@ -206,11 +249,11 @@ export function SharePatientSheet({
                 <Toggle on={noteIncluded} onChange={() => setNoteIncluded((value) => !value)} label="Include visit summary" />
                 <div className="share-incl-copy">
                   <b>Visit summary</b>
-                  <span>from your visit note</span>
+                  <span>auto-written from the report — editable</span>
                 </div>
               </div>
               {noteIncluded ? (
-                <textarea className="share-note-input" rows={2} value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="A short summary for the patient" />
+                <textarea className="share-note-input" rows={2} dir="auto" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="A short summary for the patient" />
               ) : null}
 
               <div className={`share-incl-row${treatmentsIncluded ? "" : " off"}`}>
@@ -247,6 +290,7 @@ export function SharePatientSheet({
                 patientName={patientName}
                 title={title}
                 note={noteIncluded ? noteBody : ""}
+                treatments={treatmentsIncluded ? treatmentLines : []}
                 media={includedMedia}
                 onResolveFile={onResolveFile}
                 aftercare={selectedTemplate}
@@ -297,6 +341,7 @@ function SharePreviewPane({
   patientName,
   title,
   note,
+  treatments,
   media,
   onResolveFile,
   aftercare,
@@ -304,6 +349,7 @@ function SharePreviewPane({
   patientName: string;
   title: string;
   note: string;
+  treatments: string[];
   media: MediaChoice[];
   onResolveFile: (endpoint: string) => Promise<string>;
   aftercare: AftercareTemplate | null;
@@ -319,7 +365,14 @@ function SharePreviewPane({
           {media.map((item) => <SharePreviewPhoto key={item.captureId} endpoint={item.endpoint} caption={item.caption} onResolveFile={onResolveFile} />)}
         </div>
       ) : null}
-      {note ? <p className="share-preview-note">{note}</p> : null}
+      {note ? <p className="share-preview-note" dir="auto">{note}</p> : null}
+      {treatments.length ? (
+        <ul className="share-preview-treatments">
+          {treatments.map((line, index) => (
+            <li dir="auto" key={`${index}-${line.slice(0, 24)}`}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
       {aftercare ? (
         <div className="share-preview-aftercare">
           <h4>{aftercare.name}</h4>
