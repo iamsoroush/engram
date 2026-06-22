@@ -43,6 +43,7 @@ export function CaptureScreen({
   lineupCard,
   onOpenVisit,
   onViewPatientHistory,
+  onShareVisit,
   onUseAsNote,
   aftercareTemplates,
   offline = false,
@@ -93,6 +94,8 @@ export function CaptureScreen({
   onOpenVisit?: (sessionId: string) => void;
   /** Jump to the assigned patient's full timeline, with a one-tap "back to this visit". */
   onViewPatientHistory?: (patientId: string) => void;
+  /** Curate + share THIS visit's report with the patient (Pro), from the session screen. */
+  onShareVisit?: () => void;
   onUseAsNote?: (text: string) => void;
   /** Clinic aftercare templates — one-tap deterministic follow-up instructions (both tiers). */
   aftercareTemplates?: AftercareTemplate[];
@@ -365,6 +368,11 @@ export function CaptureScreen({
                 Live report
               </button>
             </div>
+            {isPro && !isHistorical && activeSession?.patientId && onShareVisit ? (
+              <button className="report-share-button" type="button" onClick={onShareVisit}>
+                Share with patient
+              </button>
+            ) : null}
           </div>
         </div>
         {assignmentOpen && activeSession && onAssignPatient ? (

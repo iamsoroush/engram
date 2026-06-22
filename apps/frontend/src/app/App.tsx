@@ -83,6 +83,8 @@ import {
   sessionsFromPending,
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
+import { SharePatientSheet } from "../features/aesthetics/SharePatientSheet";
+import type { GalleryVisit } from "../features/aesthetics/PatientPhotoGallery";
 import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
 import { TherapyApp } from "../features/therapy/TherapyApp";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
@@ -168,6 +170,8 @@ export function App() {
   // Pro only: the active patient's Job-4 curated brief (line-up projection), surfaced in the session
   // context card so Pro reads as a compact pre-visit brief instead of the raw deterministic digest.
   const [sessionLineupCard, setSessionLineupCard] = React.useState<LineupCard | null>(null);
+  // Per-visit share, opened from the session screen (FB6) — curates THIS visit's report.
+  const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
@@ -1810,6 +1814,16 @@ export function App() {
     navigateScreen("patients");
   };
 
+  const openSessionShare = () => {
+    const session = activeSession;
+    if (!session?.patientId) return;
+    setSessionShare({
+      id: session.patientId,
+      name: session.patientName || "Patient",
+      visits: [{ sessionId: session.id, title: "Visit", dateLabel: "" }],
+    });
+  };
+
   const returnToActiveCapture = () => {
     const stashed = captureReturnSession;
     setCaptureReturnSession(null);
@@ -1965,6 +1979,7 @@ export function App() {
           lineupCard={sessionLineupCard}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
           onViewPatientHistory={openPatientHistory}
+          onShareVisit={openSessionShare}
           onUseAsNote={composeNoteFromText}
           aftercareTemplates={aftercareTemplates}
           offline={offline}
@@ -2088,6 +2103,23 @@ export function App() {
         ) : null}
         {renderCurrentScreen()}
       </Shell>
+      {sessionShare && auth ? (
+        <SharePatientSheet
+          patientId={sessionShare.id}
+          patientName={sessionShare.name}
+          visits={sessionShare.visits}
+          onLoadLastVisit={loadLastVisitForPatient}
+          onLoadSessionCaptures={loadSessionCaptures}
+          onLoadSession={loadSession}
+          shareIncludeBrands={Boolean(auth.tenant.shareIncludeBrands)}
+          shareLanguage={auth.tenant.reportLanguage || null}
+          onListAftercareTemplates={listAftercare}
+          onResolveFile={resolveSourceFile}
+          onCreateShare={createShare}
+          onRevokeShare={revokeShare}
+          onClose={() => setSessionShare(null)}
+        />
+      ) : null}
       <TextCaptureSheet
         initialValue={textSeed}
         onClose={() => {

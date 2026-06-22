@@ -5668,8 +5668,27 @@ small {
 }
 
 .report-toolbar-actions {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
+.report-share-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.report-share-button:hover { background: color-mix(in srgb, var(--color-primary) 10%, #fff); }
 
 .report-view-switch {
   border: 0;
