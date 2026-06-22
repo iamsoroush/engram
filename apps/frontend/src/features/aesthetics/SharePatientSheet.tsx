@@ -35,6 +35,7 @@ export function SharePatientSheet({
   patientId,
   patientName,
   visits,
+  sessionId,
   onLoadLastVisit,
   onLoadSessionCaptures,
   onLoadSession,
@@ -50,6 +51,9 @@ export function SharePatientSheet({
   patientName: string;
   /** The patient's recent visits — used to build the before/after photo pool to curate from. */
   visits: GalleryVisit[];
+  /** When sharing a SPECIFIC visit (from the session screen), the source session — its synthesized
+   * summary, treatments, and id drive the share (not the patient's most-recent visit). */
+  sessionId?: string;
   onLoadLastVisit: (patientId: string) => Promise<LastVisitInfo>;
   onLoadSessionCaptures: (sessionId: string) => Promise<CaptureItem[]>;
   /** Load the visit's session (report model + treatments) for the synthesized summary + preview. */
@@ -106,9 +110,11 @@ export function SharePatientSheet({
       setNoteBody(sourceVisit?.note || "");
       setNoteIncluded(Boolean(sourceVisit?.note));
       // Prefer the synthesized visit-summary (patient-friendly, no manual typing) over the raw note,
-      // and derive the "what we did" lines for the preview — both from the visit's session.
-      if (sourceVisit?.sessionId && onLoadSession) {
-        void onLoadSession(sourceVisit.sessionId)
+      // and derive the "what we did" lines for the preview — both from the SHARED session (the
+      // specific visit when shared from the session screen, else the patient's most-recent visit).
+      const sourceSessionId = sessionId || sourceVisit?.sessionId;
+      if (sourceSessionId && onLoadSession) {
+        void onLoadSession(sourceSessionId)
           .then((session) => {
             if (cancelled) return;
             const summary = synthesizedVisitSummary(session);
@@ -143,7 +149,7 @@ export function SharePatientSheet({
     return () => {
       cancelled = true;
     };
-  }, [patientId, visits, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates, onLoadSession, shareIncludeBrands]);
+  }, [patientId, visits, sessionId, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates, onLoadSession, shareIncludeBrands]);
 
   const selectedTemplate = templates.find((template) => template.id === aftercareId) || null;
   const includedMedia = media.filter((item) => item.included);
@@ -155,7 +161,7 @@ export function SharePatientSheet({
     setError("");
     const input: CreatePatientShareInput = {
       patientId,
-      sessionId: visit?.sessionId,
+      sessionId: sessionId || visit?.sessionId,
       title: title.trim() || "Your visit",
       sections: noteIncluded && noteBody.trim() ? [{ label: summaryLabel, body: noteBody.trim() }] : [],
       media: includedMedia.map((item) => ({ captureId: item.captureId, caption: item.caption || undefined })),

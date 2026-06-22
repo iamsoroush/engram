@@ -2108,6 +2108,7 @@ export function App() {
           patientId={sessionShare.id}
           patientName={sessionShare.name}
           visits={sessionShare.visits}
+          sessionId={sessionShare.visits[0]?.sessionId}
           onLoadLastVisit={loadLastVisitForPatient}
           onLoadSessionCaptures={loadSessionCaptures}
           onLoadSession={loadSession}

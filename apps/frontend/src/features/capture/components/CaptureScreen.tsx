@@ -368,7 +368,7 @@ export function CaptureScreen({
                 Live report
               </button>
             </div>
-            {isPro && !isHistorical && activeSession?.patientId && onShareVisit ? (
+            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
               <button className="report-share-button" type="button" onClick={onShareVisit}>
                 Share with patient
               </button>
