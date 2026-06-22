@@ -10,6 +10,7 @@ import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
+import { SessionConfirmations } from "./SessionConfirmations";
 import { AiCreatedPatientPanel } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
@@ -347,6 +348,9 @@ export function CaptureScreen({
             ) : null}
           </div>
         </div>
+        {isPro && !isHistorical ? (
+          <SessionConfirmations session={activeSession} onConfirmCarriedForward={onConfirmCarriedForward} />
+        ) : null}
         <div className="report-toolbar">
           <div className="report-toolbar-actions">
             <div className="report-view-switch" aria-label="Report view">

@@ -79,7 +79,6 @@ export function ProLiveReport({
   const review = sessionTreatmentReview(session);
   // Q3: carried-forward doses the clinician has already confirmed (so they read as done, not pending).
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
-  const [confirming, setConfirming] = React.useState<string | null>(null);
   // §2.5 trust signal: how many review items still need the clinician (excludes confirmed doses).
   const toConfirmCount = review.filter(
     (item) => !(item.category === "carried_forward" && item.key && confirmedCarriedForward.has(item.key)),
@@ -158,46 +157,8 @@ export function ProLiveReport({
           <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} />
         </section>
       ) : null}
-      {review.length ? (
-        <section className="structured-report-section report-review" aria-label="Items that need your confirmation">
-          <h3>Needs your confirmation</h3>
-          <ul className="report-review-chips">
-            {review.map((item, index) => {
-              const isCarriedForward = item.category === "carried_forward" && Boolean(item.key);
-              const isConfirmed = isCarriedForward && confirmedCarriedForward.has(item.key as string);
-              return (
-                <li
-                  className={`report-review-chip ${item.category}${isConfirmed ? " confirmed" : ""}`}
-                  dir={textDirection(item.reason)}
-                  key={`${index}-${item.reason.slice(0, 32)}`}
-                >
-                  <span className="report-review-chip-reason">{item.reason}</span>
-                  {isCarriedForward && isConfirmed ? (
-                    <span className="report-review-chip-confirmed" aria-label="Dose confirmed">✓ confirmed</span>
-                  ) : isCarriedForward && onConfirmCarriedForward && session ? (
-                    <button
-                      type="button"
-                      className="report-review-confirm"
-                      disabled={confirming === item.key}
-                      onClick={async () => {
-                        if (!item.key) return;
-                        setConfirming(item.key);
-                        try {
-                          await onConfirmCarriedForward(session.id, item.key);
-                        } finally {
-                          setConfirming(null);
-                        }
-                      }}
-                    >
-                      {confirming === item.key ? "Confirming…" : "Confirm dose"}
-                    </button>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
+      {/* "Needs your confirmation" now lives at the session level (SessionConfirmations), so doses can
+          be confirmed from either the captures or the report view — see CaptureScreen. */}
     </div>
   );
 }

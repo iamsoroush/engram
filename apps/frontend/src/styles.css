@@ -10502,6 +10502,16 @@ small {
 
 /* Pro synthesis — clinician-confirmation chips (uncertainties + treatment review). Calm, not alarming. */
 .report-review .report-review-chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+/* Session-level confirmations: persistent above the captures/report views so doses can be confirmed
+   without toggling views. */
+.session-confirmations {
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid #f5d9a8;
+  border-radius: var(--radius-md, 10px);
+  background: #fff8ec;
+}
+.session-confirmations h3 { margin: 0 0 2px; font-size: 0.82rem; font-weight: 800; color: #8a5a12; }
 .report-review .report-review-chip {
   font-size: var(--text-sm, 0.82rem); line-height: 1.4; padding: 8px 12px;
   border: 1px solid #f5d9a8; border-left-width: 3px; border-radius: var(--radius-md, 10px);
