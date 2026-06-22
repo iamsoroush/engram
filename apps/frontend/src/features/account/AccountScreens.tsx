@@ -7,6 +7,7 @@ import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSett
 type TenantSettingsUpdate = {
   transcriptionLanguage?: string;
   reportLanguage?: string | null;
+  appLanguage?: string;
   matchStrictness?: string;
   shareIncludeBrands?: boolean;
   rolePermissions?: RolePermissions;
@@ -191,8 +192,15 @@ export function SettingsScreen({
       <Card className="settings-group">
         <div className="settings-group-head">
           <h2>Languages</h2>
-          <p>How Memara transcribes audio and writes the report.</p>
+          <p>The app's interface + dates, how Memara transcribes audio, and how it writes the report.</p>
         </div>
+        <SettingRow label="App" hint="The interface language and date calendar (Persian shows Jalali dates). Separate from the report's language.">
+          <select aria-label="App language" disabled={saving} onChange={(event) => save({ appLanguage: event.target.value })} value={auth.tenant.appLanguage || "en"}>
+            <option value="en">English</option>
+            <option value="fa">Persian</option>
+            <option value="ar">Arabic</option>
+          </select>
+        </SettingRow>
         <SettingRow label="Transcription" hint="Auto transcribes verbatim in the spoken script — best for mixed-language clinics; avoids romanization that breaks name matching.">
           <select aria-label="Transcription language" disabled={saving} onChange={(event) => save({ transcriptionLanguage: event.target.value })} value={auth.tenant.transcriptionLanguage || "auto"}>
             <option value="auto">Auto (verbatim)</option>

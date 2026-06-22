@@ -77,6 +77,8 @@ export type AuthTenant = {
   tier?: "basic" | "pro" | string;
   transcriptionLanguage?: string;
   reportLanguage?: string | null;
+  /** App UI language + date calendar (Jalali when Persian); distinct from reportLanguage. */
+  appLanguage?: string;
   matchStrictness?: "strict" | "balanced" | "lenient" | string;
   /** Story C (decision 2): include commercial brand names in a curated share's treatment line. */
   shareIncludeBrands?: boolean;

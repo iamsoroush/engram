@@ -15,6 +15,8 @@ class TenantSettingsUpdate(BaseModel):
     # null/"" to follow the report template default. Only provided keys are changed.
     transcriptionLanguage: str | None = None
     reportLanguage: str | None = None
+    # App UI language + date calendar (Jalali when Persian); distinct from reportLanguage.
+    appLanguage: str | None = None
     # Fuzzy-match auto-apply line (H3): "strict" | "balanced" | "lenient".
     matchStrictness: str | None = None
     # Story C (decision 2): include commercial brand names in a curated share's treatment line.
@@ -58,6 +60,7 @@ class TenantProfile(BaseModel):
     tier: str = "pro"
     transcriptionLanguage: str = "auto"
     reportLanguage: str | None = None
+    appLanguage: str = "en"
     matchStrictness: str = "strict"
     shareIncludeBrands: bool = False
     # A0 — vertical + the presentation label for its report-required work-unit ("Session" for clinics).

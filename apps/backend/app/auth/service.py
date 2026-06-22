@@ -35,6 +35,7 @@ def tenant_profile(tenant: Tenant) -> TenantProfile:
         tier=tenant.tier,
         transcriptionLanguage=tenant.transcription_language,
         reportLanguage=tenant.report_language,
+        appLanguage=tenant.app_language,
         matchStrictness=tenant.match_strictness,
         shareIncludeBrands=tenant.share_include_brands,
         vertical=tenant.vertical,
@@ -314,6 +315,7 @@ def me_response(db: Session, user: User, tenant: Tenant, persona: str | None = N
 
 TRANSCRIPTION_LANGUAGE_OPTIONS = {"auto", "fa", "en", "ar"}
 REPORT_LANGUAGE_OPTIONS = {"fa", "en", "ar"}
+APP_LANGUAGE_OPTIONS = {"fa", "en", "ar"}
 MATCH_STRICTNESS_OPTIONS = {"strict", "balanced", "lenient"}
 
 
@@ -333,6 +335,11 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         if value and value not in REPORT_LANGUAGE_OPTIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported report language")
         tenant.report_language = value or None
+    if "appLanguage" in provided:
+        value = str(provided["appLanguage"] or "en").strip().lower()
+        if value not in APP_LANGUAGE_OPTIONS:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported app language")
+        tenant.app_language = value
     if "matchStrictness" in provided:
         value = str(provided["matchStrictness"] or "strict").strip().lower()
         if value not in MATCH_STRICTNESS_OPTIONS:
@@ -369,6 +376,7 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         details={
             "transcription_language": tenant.transcription_language,
             "report_language": tenant.report_language,
+            "app_language": tenant.app_language,
             "match_strictness": tenant.match_strictness,
             "share_include_brands": tenant.share_include_brands,
             "role_permissions": tenant.role_permissions,

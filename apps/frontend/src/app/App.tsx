@@ -142,8 +142,9 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
-  // Drive app-wide date formatting (Jalali when the clinic language is Persian) from the tenant.
-  setAppLanguage(auth?.tenant.reportLanguage ?? null);
+  // Drive app-wide UI language + date formatting (Jalali when Persian) from the tenant's APP
+  // language — distinct from report language, which scopes only report/share content.
+  setAppLanguage(auth?.tenant.appLanguage ?? null);
   const [authReady, setAuthReady] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
   const authRef = React.useRef<AuthSession | null>(null);

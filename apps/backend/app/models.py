@@ -144,6 +144,9 @@ class Tenant(Base):
     # language/script; report_language NULL = follow the report template's default.
     transcription_language: Mapped[str] = mapped_column(String(20), nullable=False, server_default="auto")
     report_language: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # App UI language + date calendar (Jalali when Persian). Distinct from report_language, which
+    # scopes only generated report/share content. Default English.
+    app_language: Mapped[str] = mapped_column(String(20), nullable=False, server_default="en")
     # Fuzzy-match auto-apply line (H3): "strict" = deterministic matches only (default,
     # preserves prior behavior); "balanced"/"lenient" auto-apply a single high-confidence
     # fuzzy match on an explicit reassignment instruction (high/lower threshold).

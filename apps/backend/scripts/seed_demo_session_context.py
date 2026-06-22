@@ -24,6 +24,7 @@ from app.db.session import SessionLocal
 from app.models import (
     AftercareTemplate,
     Artifact,
+    Tenant,
     ArtifactKind,
     Capture,
     CaptureStatus,
@@ -198,6 +199,13 @@ def main() -> None:
     created: list[str] = []
     skipped: list[str] = []
     try:
+        # Persian-first demo clinic: app UI + dates (Jalali) and report content both Persian.
+        tenant = db.get(Tenant, DEV_TENANT_ID)
+        if tenant is not None:
+            tenant.app_language = "fa"
+            tenant.report_language = "fa"
+            db.commit()
+
         # Clinic aftercare templates (deterministic, Persian) — one-tap follow-up in the session.
         if ensure_aftercare_template(
             db, name="مراقبت بعد از بوتاکس", procedure_type="botox",
