@@ -36,6 +36,7 @@ from app.models import (
 )
 from app.services.ai_jobs.orchestration import maybe_refresh_stale_patient_memory
 from app.services.capture_storage import object_key_for_source
+from app.services.patients import replace_deterministic_patient_identifiers
 from app.storage.object_store import ObjectStore
 
 DOCTOR_USER_ID = uuid.uuid5(DEV_NAMESPACE, "user:doctor")
@@ -286,6 +287,14 @@ def main() -> None:
         else:
             skipped.append("لیلا کریمی")
 
+        db.commit()
+
+        # Index search identifiers (name aliases, phone) for every demo patient so they are matchable
+        # (AI assignment) + searchable — the raw-ORM creation above skips this, unlike the API path.
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی"):
+            patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
+            if patient is not None:
+                replace_deterministic_patient_identifiers(db, patient=patient, national_id=None, source="staff")
         db.commit()
 
         # Pre-warm Pro patient memory (Job 4) so demo patients aren't "organizing" on first open —

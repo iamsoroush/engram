@@ -114,7 +114,6 @@ export function CaptureScreen({
   const aftercareSuggestedIds =
     isPro && aftercareTemplates?.length ? suggestedAftercareTemplateIds(aftercareTemplates, workspaceTreatments(activeSession)) : new Set<string>();
   const suggestedAftercare = (aftercareTemplates || []).filter((template) => aftercareSuggestedIds.has(template.id));
-  const otherAftercare = (aftercareTemplates || []).filter((template) => !aftercareSuggestedIds.has(template.id));
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
@@ -304,42 +303,24 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
-      {!isHistorical && !readOnly && onUseAsNote && aftercareTemplates && aftercareTemplates.length ? (
+      {/* Content-driven: aftercare only surfaces when a performed procedure matches a clinic template.
+          Nothing captured / no procedure detected → no aftercare bar (no static template list). */}
+      {!isHistorical && !readOnly && onUseAsNote && suggestedAftercare.length ? (
         <section className="aftercare-bar" aria-label="Follow-up & aftercare">
-          <span className="aftercare-bar-label">Follow-up & aftercare</span>
-          {suggestedAftercare.length ? (
-            <>
-              <span className="aftercare-bar-suggest">Suggested for this visit</span>
-              <div className="aftercare-bar-chips">
-                {suggestedAftercare.map((template) => (
-                  <button
-                    key={template.id}
-                    className="aftercare-chip suggested"
-                    type="button"
-                    title={template.body}
-                    onClick={() => onUseAsNote(template.body)}
-                  >
-                    ✦ <span dir="auto">{template.name}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          ) : null}
-          {otherAftercare.length ? (
-            <div className="aftercare-bar-chips">
-              {otherAftercare.map((template) => (
-                <button
-                  key={template.id}
-                  className="aftercare-chip"
-                  type="button"
-                  title={template.body}
-                  onClick={() => onUseAsNote(template.body)}
-                >
-                  + <span dir="auto">{template.name}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <span className="aftercare-bar-label">Follow-up & aftercare · suggested for this visit</span>
+          <div className="aftercare-bar-chips">
+            {suggestedAftercare.map((template) => (
+              <button
+                key={template.id}
+                className="aftercare-chip suggested"
+                type="button"
+                title={template.body}
+                onClick={() => onUseAsNote(template.body)}
+              >
+                ✦ <span dir="auto">{template.name}</span>
+              </button>
+            ))}
+          </div>
         </section>
       ) : null}
       {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
