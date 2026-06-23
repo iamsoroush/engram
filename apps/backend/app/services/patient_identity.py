@@ -188,6 +188,20 @@ def normalized_aliases_for_value(value: Any) -> list[str]:
     return list(dict.fromkeys(alias for alias in aliases if alias))
 
 
+_LATIN_VOWELS = set("aeiouy")
+
+
+def consonant_skeleton(value: Any) -> str | None:
+    """Vowel-stripped Latin skeleton for vowel-tolerant SEARCH (Persian drops short vowels in
+    transliteration: «نگار»→«ngar», but a user types «negar»; both reduce to «ngr»). Returns None
+    when too short to be a useful key. SEARCH-ONLY — never used for exact AI patient matching."""
+    latin = transliterate_persian_to_latin(value) or normalize_text_key(value)
+    if not latin:
+        return None
+    skeleton = "".join(ch for ch in latin if ch.isalnum() and ch not in _LATIN_VOWELS)
+    return skeleton if len(skeleton) >= 2 else None
+
+
 def patient_name_values(
     *,
     display_name: str | None,

@@ -14,13 +14,14 @@ token), so results are stable and explainable (every hit carries ``matchedOn`` +
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.models import Patient, PatientIdentifier, PatientStatus
 from app.services.patient_identity import (
     alias_tokens,
+    consonant_skeleton,
     normalize_email,
     normalize_iranian_phone,
     normalize_national_id,
@@ -115,6 +116,15 @@ def _match_patient(
                 "reason": "Close name match (first/last-name or transliteration variance).",
             }
 
+    # Vowel-tolerant (consonant-skeleton) match: «neg»/«negar» → «نگار» (transliterated «ngar» → skel
+    # «ngr»). One skeleton being a prefix of the other catches both partial and full typed names.
+    query_skeleton = consonant_skeleton(keys.raw)
+    if query_skeleton and len(query_skeleton) >= 2:
+        for alias in alias_values:
+            alias_skeleton = consonant_skeleton(alias)
+            if alias_skeleton and (alias_skeleton.startswith(query_skeleton) or query_skeleton.startswith(alias_skeleton)):
+                return {"score": 0.72, "matchedOn": ["name_skeleton"], "reason": "Transliteration / vowel-variance name match."}
+
     # Partial contact: the typed digits are a fragment of a stored number (e.g. last 4 of a phone).
     digit_query = keys.national_id or (keys.phone.lstrip("+") if keys.phone else None)
     if digit_query and len(digit_query) >= 4:
@@ -134,6 +144,14 @@ def _candidate_patient_ids(db: DbSession, *, tenant_id: uuid.UUID, keys: _QueryK
     # query ("نظری") must still surface "محمدرضا نظری". This mirrors the AI matcher's fuzzy gather;
     # the actual ranking still happens in `_match_patient`, this only widens the candidate net.
     identifier_predicates.extend(PatientIdentifier.normalized_value.ilike(f"%{token}%") for token in keys.tokens)
+    # Vowel-tolerant gather: Persian transliteration drops short vowels («نگار»→«ngar») but users type
+    # them («negar»). Match consonant skeletons so the typed name still surfaces the patient; the
+    # ranking in `_match_patient` still decides the score (this only widens the candidate net).
+    skeleton = consonant_skeleton(keys.raw)
+    if skeleton:
+        identifier_predicates.append(
+            func.regexp_replace(PatientIdentifier.normalized_value, "[aeiouy]", "", "g").ilike(f"%{skeleton}%")
+        )
     if identifier_predicates:
         rows = db.execute(
             select(PatientIdentifier.patient_id)
