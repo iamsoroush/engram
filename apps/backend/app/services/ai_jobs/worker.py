@@ -950,6 +950,15 @@ def complete_session_worker_job(
         for key in ("patient_match", "patient_match_candidate")
         if session.patient_id is None and key in previous_metadata and key not in extracted_metadata
     }
+    # The clinician's carried-forward dose confirmations (Q3) are USER state, not AI output — a
+    # re-synthesis regenerates treatments/review but must not silently un-confirm a dose the clinician
+    # already approved, or the "needs your confirmation" item (and its inline row action) reappears.
+    prior_confirmed = previous_metadata.get("confirmed_carried_forward")
+    preserved_confirmations = (
+        {"confirmed_carried_forward": [value for value in prior_confirmed if isinstance(value, str)]}
+        if isinstance(prior_confirmed, list) and prior_confirmed
+        else {}
+    )
     # The synthesized live report is a Pro capability: mark the captures it folded in as
     # contributed and record the included / set-aside counts for the report meta strip.
     report_contribution_summary: dict[str, int] | None = None
@@ -963,6 +972,7 @@ def complete_session_worker_job(
         **preserved_assignment,
         **preserved_patient_match,
         **extracted_metadata,
+        **preserved_confirmations,
         "session_processing_output": session_processing_output,
         "generated_output_stale": False,
         "processed_versions": previous_versions[-5:],

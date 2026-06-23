@@ -165,9 +165,20 @@ export function preservedReportModelContext(
   existing: CaptureSession | null | undefined,
   incoming: CaptureSession,
 ): Partial<CaptureSession> {
-  return existing && shouldKeepPreviousReportModel(existing, incoming)
-    ? { reportModel: existing.reportModel, extractedMetadata: existing.extractedMetadata }
-    : {};
+  if (!existing || !shouldKeepPreviousReportModel(existing, incoming)) return {};
+  // Hold the prior synthesis + its treatments — but NEVER drop a user action recorded in the incoming
+  // metadata. A just-confirmed carried-forward dose (Q3) lives in `confirmed_carried_forward`; merge
+  // the two sets (confirmations only accumulate) so confirming during the editing window survives the
+  // hold instead of reverting to "needs confirmation".
+  const existingMeta = (existing.extractedMetadata as Record<string, unknown> | null | undefined) || {};
+  const incomingMeta = (incoming.extractedMetadata as Record<string, unknown> | null | undefined) || {};
+  const existingConfirmed = Array.isArray(existingMeta.confirmed_carried_forward) ? existingMeta.confirmed_carried_forward : [];
+  const incomingConfirmed = Array.isArray(incomingMeta.confirmed_carried_forward) ? incomingMeta.confirmed_carried_forward : [];
+  const confirmed = Array.from(new Set([...existingConfirmed, ...incomingConfirmed]));
+  return {
+    reportModel: existing.reportModel,
+    extractedMetadata: { ...existingMeta, confirmed_carried_forward: confirmed } as CaptureSession["extractedMetadata"],
+  };
 }
 
 export function isLocalSessionId(sessionId: string) {
