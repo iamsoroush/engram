@@ -12,7 +12,7 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { SessionConfirmations } from "./SessionConfirmations";
 import { SessionVerifyBar } from "./SessionVerifyBar";
-import { AiCreatedPatientPanel } from "./CaptureBadges";
+import { AiCreatedPatientPanel, CaptureTimelineIcon } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmationItems, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
@@ -40,6 +40,7 @@ export function CaptureScreen({
   onConfirmCarriedForward,
   onFetchPatient,
   tier,
+  reportLanguage,
   sessionContext,
   lineupCard,
   onOpenVisit,
@@ -87,6 +88,9 @@ export function CaptureScreen({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
+  /** Tenant report-content language (distinct from app UI language) — localizes the report's section
+   * titles so a Persian report doesn't show English headings. */
+  reportLanguage?: string | null;
   /** Deterministic session context (last-visit digest + cross-visit photo strip), surfaced at
    * capture in both tiers once the patient is determined. */
   sessionContext?: SessionContext | null;
@@ -185,6 +189,12 @@ export function CaptureScreen({
     setSourcesOpen(true);
     window.requestAnimationFrame(() => sourcesDrawerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
+  // Capture-type breakdown for the Sources drawer chips (voice folds into audio).
+  const captureTypeCounts = (activeSession?.items || []).reduce<Record<string, number>>((counts, item) => {
+    const key = item.type === "voice" ? "audio" : item.type;
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
 
   // The report is always live; default to the Captures feed and let the user toggle tabs.
   React.useEffect(() => {
@@ -366,26 +376,6 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
-      {/* Content-driven: aftercare only surfaces when a performed procedure matches a clinic template.
-          Nothing captured / no procedure detected → no aftercare bar (no static template list). */}
-      {!isHistorical && !readOnly && onUseAsNote && suggestedAftercare.length ? (
-        <section className="aftercare-bar" aria-label="Follow-up & aftercare">
-          <span className="aftercare-bar-label">Follow-up & aftercare · suggested for this visit</span>
-          <div className="aftercare-bar-chips">
-            {suggestedAftercare.map((template) => (
-              <button
-                key={template.id}
-                className="aftercare-chip suggested"
-                type="button"
-                title={template.body}
-                onClick={() => onUseAsNote(template.body)}
-              >
-                ✦ <span dir="auto">{template.name}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
       {!isHistorical && (aiPatientAction || (isPro && confirmationItems.length)) ? (
         <div className="session-verify-region" ref={verifyRegionRef}>
           {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
@@ -459,11 +449,33 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              reportLanguage={reportLanguage}
             />
           ) : (
             captureFeed
           )}
         </div>
+        {/* Content-driven aftercare, folded into the report itself: a one-tap "+ {template}" that
+            appends the clinic's matching aftercare as a note (only when a performed procedure matches). */}
+        {useUnifiedLayout && !isHistorical && !readOnly && onUseAsNote && suggestedAftercare.length ? (
+          <div className="report-aftercare-suggest">
+            <span className="report-aftercare-suggest-label">Add aftercare for this visit</span>
+            <div className="report-aftercare-suggest-chips">
+              {suggestedAftercare.map((template) => (
+                <button
+                  key={template.id}
+                  className="aftercare-add-chip"
+                  type="button"
+                  title={template.body}
+                  onClick={() => onUseAsNote(template.body)}
+                >
+                  <span className="aftercare-add-plus" aria-hidden="true">+</span>
+                  <span dir="auto">{template.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,
           // deleting, re-assigning and tapping into a capture all still live here (and via the report's
@@ -475,8 +487,21 @@ export function CaptureScreen({
               aria-expanded={sourcesShown}
               onClick={() => setSourcesOpen((open) => !open)}
             >
-              <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
-              <span>Sources · {captureCountLabel}</span>
+              <span className="sources-drawer-lead">
+                <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
+                <span className="sources-drawer-title">Sources</span>
+                <span className="sources-drawer-count">{captureCount}</span>
+              </span>
+              <span className="sources-drawer-types" aria-hidden="true">
+                {(["audio", "photo", "note"] as const).map((type) =>
+                  captureTypeCounts[type] ? (
+                    <span className="sources-type-chip" key={type}>
+                      <CaptureTimelineIcon type={type} />
+                      {captureTypeCounts[type]}
+                    </span>
+                  ) : null,
+                )}
+              </span>
             </button>
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>

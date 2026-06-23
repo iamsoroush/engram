@@ -5781,25 +5781,132 @@ small {
 }
 
 .sources-drawer {
-  border-top: 1px solid #dfe7f3;
+  border-top: 1px solid #e6edf7;
+  background: #f7faff;
   scroll-margin-top: 56px;
 }
 .sources-drawer-summary {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
   width: 100%;
-  padding: 12px 16px;
+  padding: 13px 16px;
   border: 0;
-  background: #f7faff;
-  color: #3a4a63;
-  font-size: 0.82rem;
-  font-weight: 800;
+  background: transparent;
+  color: #1d2b46;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 .sources-drawer-summary:hover { background: #eef4fc; }
-.sources-drawer-chev { font-size: 0.7rem; color: #6b7a90; }
-.sources-drawer-body { padding: 0 16px 12px; }
+.sources-drawer-lead {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.sources-drawer-chev {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.66rem;
+  color: #5a6b85;
+}
+.sources-drawer-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.sources-drawer-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e3ecfa;
+  color: #2f4a78;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.sources-drawer-types {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.sources-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid #dce6f2;
+  color: #51627d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.sources-type-chip svg { width: 13px; height: 13px; }
+.sources-drawer-body {
+  padding: 4px 16px 14px;
+  border-top: 1px solid #e6edf7;
+  background: #fff;
+}
+
+/* In-report content-driven aftercare: "+ {template}" add buttons inside the report card. */
+.report-aftercare-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 12px 16px 14px;
+  border-top: 1px dashed #e1e9f5;
+}
+.report-aftercare-suggest-label {
+  color: #5a6b85;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.report-aftercare-suggest-chips { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.aftercare-add-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, #dce6f2);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 6%, #fff);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.aftercare-add-chip:hover { background: color-mix(in srgb, var(--color-primary) 12%, #fff); border-color: var(--color-primary); }
+.aftercare-add-plus { font-size: 1rem; font-weight: 800; line-height: 1; }
+
+/* "Updating" shimmer on the report card while a freshly-added capture is still processing — the
+   report stays visible (no blank), with a moving highlight line so the update is felt, not jarring. */
+.workspace-report-card.processing { position: relative; }
+.workspace-report-card.processing::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: report-refresh-shimmer 1.25s linear infinite;
+  pointer-events: none;
+}
+@keyframes report-refresh-shimmer {
+  0% { background-position: -50% 0; }
+  100% { background-position: 150% 0; }
+}
 
 .treatment-fix-at-source {
   margin-inline-start: 8px;

@@ -1551,6 +1551,25 @@ SYNTHESIS_SECTIONS: tuple[tuple[str, str], ...] = (
 SYNTHESIS_SECTION_IDS: tuple[str, ...] = tuple(section_id for section_id, _ in SYNTHESIS_SECTIONS)
 SYNTHESIS_LANGUAGES = {"fa", "en", "mixed"}
 
+# Persian section titles (report_language="fa"). The body prose already follows reportLanguage; the
+# fixed section TITLES must too, or a Persian report shows English headings.
+SYNTHESIS_SECTION_TITLES_FA: dict[str, str] = {
+    "visit-summary": "خلاصه ویزیت",
+    "concern-goals": "نگرانی‌ها و اهداف",
+    "assessment": "ارزیابی",
+    "treatment-performed": "درمان انجام‌شده",
+    "media": "تصاویر",
+    "plan-followup": "برنامه و پیگیری",
+    "aftercare": "مراقبت‌های بعد از درمان",
+}
+
+
+def synthesis_section_title(section_id: str, default_title: str, report_language: str | None) -> str:
+    """Return the section title localized to the report language (English title by default)."""
+    if isinstance(report_language, str) and report_language.strip().lower().startswith("fa"):
+        return SYNTHESIS_SECTION_TITLES_FA.get(section_id, default_title)
+    return default_title
+
 
 def report_synthesis_json_schema() -> dict[str, Any]:
     """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
@@ -1748,7 +1767,9 @@ def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def parse_session_synthesis_output(raw_text: str, *, source_capture_ids: list[str] | None = None) -> dict[str, Any] | None:
+def parse_session_synthesis_output(
+    raw_text: str, *, source_capture_ids: list[str] | None = None, report_language: str | None = None
+) -> dict[str, Any] | None:
     """Parse + validate the synthesis JSON into the A↔B contract, or None to fall back.
 
     Returns the full output with ALL fixed section ids present (in order), cleaned treatments, and
@@ -1777,7 +1798,11 @@ def parse_session_synthesis_output(raw_text: str, *, source_capture_ids: list[st
             if isinstance(section, dict) and isinstance(section.get("id"), str):
                 blocks_by_id[section["id"]] = _clean_synthesis_blocks(section.get("blocks"))
     sections = [
-        {"id": section_id, "title": title, "blocks": blocks_by_id.get(section_id, [])}
+        {
+            "id": section_id,
+            "title": synthesis_section_title(section_id, title, report_language),
+            "blocks": blocks_by_id.get(section_id, []),
+        }
         for section_id, title in SYNTHESIS_SECTIONS
     ]
 
@@ -1825,7 +1850,11 @@ def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
     if effort:
         request["extra_body"] = {"reasoning_effort": effort}
     response = client.chat.completions.create(**request)
-    return parse_session_synthesis_output(response.choices[0].message.content or "", source_capture_ids=source_capture_ids)
+    return parse_session_synthesis_output(
+        response.choices[0].message.content or "",
+        source_capture_ids=source_capture_ids,
+        report_language=processing_context.get("reportLanguage") if isinstance(processing_context, dict) else None,
+    )
 
 
 def session_synthesis_skip_output(reason: str) -> dict[str, Any]:

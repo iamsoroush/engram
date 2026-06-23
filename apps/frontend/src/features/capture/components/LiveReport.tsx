@@ -7,12 +7,37 @@ import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
 import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
+// Persian section titles, keyed by the fixed section id (mirrors the ai_engine's SYNTHESIS_SECTIONS).
+// Applied at render so EXISTING reports (synthesized before titles were localized) and the
+// deterministic baseline show Persian headings immediately when the report language is Persian.
+const REPORT_SECTION_TITLES_FA: Record<string, string> = {
+  "visit-summary": "خلاصه ویزیت",
+  "concern-goals": "نگرانی‌ها و اهداف",
+  "assessment": "ارزیابی",
+  "treatment-performed": "درمان انجام‌شده",
+  "media": "تصاویر",
+  "plan-followup": "برنامه و پیگیری",
+  "aftercare": "مراقبت‌های بعد از درمان",
+  "clinical-report": "گزارش بالینی",
+};
+
+function isPersianReport(reportLanguage?: string | null): boolean {
+  return Boolean(reportLanguage && reportLanguage.trim().toLowerCase().startsWith("fa"));
+}
+
+/** Localized section title for the report language (the stored/English title by default). */
+function localizedSectionTitle(sectionId: string, fallback: string, reportLanguage?: string | null): string {
+  if (isPersianReport(reportLanguage)) return REPORT_SECTION_TITLES_FA[sectionId] || fallback;
+  return fallback;
+}
+
 export function LiveReportView({
   isPro,
   session,
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  reportLanguage,
 }: {
   isPro: boolean;
   session: CaptureSession | null;
@@ -20,11 +45,13 @@ export function LiveReportView({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   /** Open the Sources drawer to correct a flagged treatment at its capture (Pro, unified layout). */
   onFixAtSource?: () => void;
+  /** Report-content language — localizes the section titles (distinct from app UI language). */
+  reportLanguage?: string | null;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} reportLanguage={reportLanguage} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -60,11 +87,13 @@ export function ProLiveReport({
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  reportLanguage,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFixAtSource?: () => void;
+  reportLanguage?: string | null;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
   // Render the report's structured sections (with their headers). This one path serves both report
@@ -129,7 +158,7 @@ export function ProLiveReport({
             const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && treatments.length > 0;
             return (
               <section className="workspace-report-section" key={section.id}>
-                {section.title ? <h3>{section.title}</h3> : null}
+                {section.title ? <h3 dir={textDirection(localizedSectionTitle(section.id, section.title, reportLanguage))}>{localizedSectionTitle(section.id, section.title, reportLanguage)}</h3> : null}
                 {renderTreatmentTable ? (
                   <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
                 ) : (
@@ -154,7 +183,9 @@ export function ProLiveReport({
       </section>
       {treatments.length && !hasTreatmentSection ? (
         <section className="structured-report-section treatments-performed">
-          <h3>Treatments performed</h3>
+          <h3 dir={textDirection(localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage))}>
+            {localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage)}
+          </h3>
           <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
         </section>
       ) : null}

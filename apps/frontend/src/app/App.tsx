@@ -1936,6 +1936,7 @@ export function App() {
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
+          reportLanguage={auth?.tenant.reportLanguage}
           offline={offline}
         />
       );
@@ -1976,6 +1977,7 @@ export function App() {
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
           tier={auth?.tenant.tier}
+          reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}
           lineupCard={sessionLineupCard}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}

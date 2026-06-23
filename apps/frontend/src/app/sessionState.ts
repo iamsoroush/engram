@@ -1,5 +1,5 @@
 import type { CaptureSession } from "../domain/types";
-import { createClientId, nowLabel } from "../features/capture/captureModel";
+import { createClientId, nowLabel, preservedReportModelContext } from "../features/capture/captureModel";
 
 // The Pro live-report job is auto-dispatched only after a session's capture chain drains, so
 // the later beats give that follow-on job time to land (Epic E).
@@ -22,7 +22,9 @@ export function mergeSessionUpdate(existing: CaptureSession, updated: CaptureSes
     !isReplacingGeneratedReport && existing.report?.isStale && updated.report?.status === "processed" && !updated.report.isStale
       ? { report: existing.report }
       : {};
-  return { ...existing, ...updated, ...preservedPatient, ...preservedReport, items };
+  // Keep the prior synthesized report visible while the new one is still organizing (no "Preparing…").
+  const preservedModel = preservedReportModelContext(existing, updated);
+  return { ...existing, ...updated, ...preservedPatient, ...preservedReport, ...preservedModel, items };
 }
 
 export function markReportStaleForPatientChange(existing: CaptureSession, updated: CaptureSession) {

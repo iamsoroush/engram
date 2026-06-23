@@ -38,6 +38,7 @@ export function mergeSessionItems(existing: CaptureSession | null | undefined, i
   const reportContext = existing && shouldKeepStaleReport(existing, incoming) ? { report: existing.report } : {};
   if (!existing?.items.length) return { ...incoming, ...patientContext, ...reportContext, items: incomingItems };
 
+  const modelContext = preservedReportModelContext(existing, incoming);
   const replacements = new Map<string, CaptureItem>();
   incomingItems.forEach((item) => replacements.set(item.id, item));
   const replacementItem = incomingItems[0];
@@ -54,7 +55,7 @@ export function mergeSessionItems(existing: CaptureSession | null | undefined, i
   incomingItems.forEach((item) => {
     if (!merged.some((current) => current.id === item.id)) merged.push(item);
   });
-  return { ...incoming, ...patientContext, ...reportContext, items: merged };
+  return { ...incoming, ...patientContext, ...reportContext, ...modelContext, items: merged };
 }
 
 export function mergeCaptureItemsPreservingPreview(existingItems: CaptureItem[], incomingItems: CaptureItem[]) {
@@ -114,6 +115,59 @@ function shouldKeepStaleReport(existing: CaptureSession, incoming: CaptureSessio
       incoming.report?.status === "processed" &&
       !incoming.report.isStale,
   );
+}
+
+// The fixed Pro-synthesis section ids (mirrors the ai_engine's SYNTHESIS_SECTIONS). A report model
+// carrying any of these IS the polished synthesis; anything else (by-type "Audio notes / Written
+// notes", a "Draft report", an empty model) is the deterministic baseline / a transient draft.
+const SYNTHESIZED_SECTION_IDS = new Set([
+  "visit-summary",
+  "concern-goals",
+  "assessment",
+  "treatment-performed",
+  "media",
+  "plan-followup",
+  "aftercare",
+]);
+
+function isSynthesizedReportModel(session: CaptureSession): boolean {
+  return Boolean(session.reportModel?.sections?.some((section) => SYNTHESIZED_SECTION_IDS.has(section.id) && section.blocks?.length));
+}
+
+/**
+ * Keep showing the previous **synthesized** report while a freshly-added capture is still being
+ * organized. Adding a capture marks the report stale and the session churns through a draft/baseline
+ * model (empty → "Draft report" → by-type "Audio notes / Written notes") before the new synthesis
+ * lands — rendering any of those makes the polished report visibly vanish/downgrade. So while the
+ * session is still working AND `incoming` is not yet a synthesis, we hold the prior synthesized model
+ * (the freshness/shimmer indicators still mark it as updating) and only swap in `incoming` once it
+ * carries a fresh synthesis again. Only guards a real synthesis, so the Basic baseline is untouched.
+ */
+function shouldKeepPreviousReportModel(existing: CaptureSession, incoming: CaptureSession): boolean {
+  if (!isSynthesizedReportModel(existing)) return false;
+  if (isSynthesizedReportModel(incoming)) return false;
+  const working =
+    incoming.processingStatus?.state === "processing" ||
+    incoming.report?.status === "generating" ||
+    incoming.report?.status === "pending" ||
+    incoming.report?.status === "partial" ||
+    incoming.report?.isStale === true;
+  return working;
+}
+
+/**
+ * Report-model fields to carry over from the previous session when a freshly-added capture is still
+ * processing (see {@link shouldKeepPreviousReportModel}). Used by BOTH the optimistic capture-add
+ * merge and the background processing-poll merge, so the report never blanks to "Preparing…" between
+ * "capture added" and "new synthesis ready". Empty object (no override) otherwise.
+ */
+export function preservedReportModelContext(
+  existing: CaptureSession | null | undefined,
+  incoming: CaptureSession,
+): Partial<CaptureSession> {
+  return existing && shouldKeepPreviousReportModel(existing, incoming)
+    ? { reportModel: existing.reportModel, extractedMetadata: existing.extractedMetadata }
+    : {};
 }
 
 export function isLocalSessionId(sessionId: string) {
