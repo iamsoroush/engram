@@ -133,9 +133,26 @@ export function CaptureScreen({
   const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
   const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
+  // A just-added capture is "in flight" the instant it lands (local → syncing → uploaded → processing)
+  // — before the backend's synthesis job flips processingStatus. Treat that as "editing" too, so the
+  // updating animation fires IMMEDIATELY on capture-add (the doctor feels their capture being included),
+  // not only once the server starts processing. Gated on connectivity: offline, nothing is organizing.
+  const captureBeingIncluded =
+    !offline &&
+    Boolean(
+      activeSession?.items?.some(
+        (item) =>
+          item.status === "saved" ||
+          item.status === "syncing" ||
+          item.status === "uploading" ||
+          item.status === "uploaded" ||
+          item.status === "processing",
+      ),
+    );
   // The live report regenerates automatically as captures land (Epic E); "updating" is a calm
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
-  const isUpdatingReport = isPro && (processingState === "processing" || activeSession?.report?.status === "generating");
+  const isUpdatingReport =
+    isPro && (processingState === "processing" || activeSession?.report?.status === "generating" || captureBeingIncluded);
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
