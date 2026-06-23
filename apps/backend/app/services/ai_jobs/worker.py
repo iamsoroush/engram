@@ -13,6 +13,7 @@ from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.config import settings
 from app.models import (
+    AftercareTemplate,
     AiJob,
     AiJobStatus,
     AiJobType,
@@ -238,6 +239,20 @@ def get_job_for_worker(db: DbSession, job_id: str) -> AiJob:
     return job
 
 
+def _aftercare_templates_for_synthesis(db: DbSession, tenant_id: uuid.UUID) -> list[dict[str, Any]]:
+    """Compact list of the tenant's ACTIVE aftercare protocols for the synthesizer to match against."""
+    rows = db.execute(
+        select(AftercareTemplate).where(
+            AftercareTemplate.tenant_id == tenant_id,
+            AftercareTemplate.is_active.is_(True),
+        )
+    ).scalars()
+    return [
+        {"id": str(template.id), "name": template.name, "procedureType": template.procedure_type, "body": template.body}
+        for template in rows
+    ]
+
+
 def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     """Serialize job input needed by the AI engine worker."""
     # Live per-task model + reasoning-effort selection, resolved per request so a change applies to
@@ -313,7 +328,13 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     # Stable session context for the synthesizer (captures, prior report draft + changeset,
     # prior-visit treatments, domain descriptor) plus the preferred report language.
     processing_context = build_session_processing_input(db, session)
-    processing_context = {**processing_context, "reportLanguage": tenant_report_language(db, job.tenant_id)}
+    processing_context = {
+        **processing_context,
+        "reportLanguage": tenant_report_language(db, job.tenant_id),
+        # The clinic's active aftercare protocols, so the synthesis decides — intelligently, by clinical
+        # relevance — which apply this visit and flags any that conflict with the clinician's dictation.
+        "aftercareTemplates": _aftercare_templates_for_synthesis(db, job.tenant_id),
+    }
     # `reportSynthesis` tells the worker to run the single-pass LLM synthesis (vs the legacy
     # placeholder pipeline). The backend only dispatches this job for synthesis-enabled tenants, so
     # the flag is the explicit contract; a gateway-less worker still degrades to the deterministic

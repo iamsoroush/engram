@@ -1611,6 +1611,15 @@ def report_synthesis_json_schema() -> dict[str, Any]:
         },
         "required": ["area", "product", "confidence", "sourceCaptureIds", "carriedForward"],
     }
+    aftercare_selection = {
+        "type": "object",
+        "properties": {
+            "templateId": {"type": "string"},
+            "status": {"type": "string", "enum": ["applies", "conflicts", "superseded"]},
+            "note": {"type": ["string", "null"]},
+        },
+        "required": ["templateId", "status"],
+    }
     return {
         "type": "object",
         "properties": {
@@ -1619,8 +1628,9 @@ def report_synthesis_json_schema() -> dict[str, Any]:
             "sections": {"type": "array", "items": section},
             "treatments": {"type": "array", "items": treatment},
             "uncertainties": {"type": "array", "items": {"type": "string"}},
+            "aftercareSelections": {"type": "array", "items": aftercare_selection},
         },
-        "required": ["summary", "language", "sections", "treatments", "uncertainties"],
+        "required": ["summary", "language", "sections", "treatments", "uncertainties", "aftercareSelections"],
     }
 
 
@@ -1650,7 +1660,7 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
             f"captions, and raw text notes) and the prior visit context. Invent nothing.",
             (
                 "Produce a strict JSON object with EXACTLY these keys: summary, language, sections, "
-                "treatments, uncertainties.\n"
+                "treatments, uncertainties, aftercareSelections.\n"
                 f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
                 "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
                 "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
@@ -1698,6 +1708,29 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
                 "مثل دفعه قبل). Then set carriedForward=true, LOWER the confidence, cite the prior visit "
                 "in sourceCaptureIds/evidence, and copy the referenced prior-visit treatment. NEVER "
                 "silently materialize a prior dose without an explicit cue."
+            ),
+            (
+                "AFTERCARE SELECTION (intelligent, not keyword): the clinic's reusable aftercare protocols "
+                "are in the context as `aftercareTemplates` [{id, name, procedureType, body}]. Decide by "
+                "CLINICAL RELEVANCE — judge the procedure, not a word match — and return one entry per "
+                "applicable protocol in `aftercareSelections` [{templateId, status, note}].\n"
+                "- COMPLETENESS: emit a selection for EVERY protocol whose procedure was actually performed "
+                "this visit (one per treatment area/product, e.g. a botox+filler visit → BOTH the botox and "
+                "filler protocols). Do not omit an applicable protocol just because another one conflicts. "
+                "Omit only protocols whose procedure was NOT performed; return [] if none were performed or "
+                "there are no templates.\n"
+                "- PER-PROCEDURE: compare a protocol ONLY against what the clinician dictated about that "
+                "SAME procedure/area — never judge the botox protocol against a filler instruction.\n"
+                "- status='applies': that procedure's protocol fits and the clinician dictated nothing that "
+                "contradicts it. note=null.\n"
+                "- status='conflicts': the clinician DICTATED aftercare for that procedure that DIFFERS from "
+                "its protocol (e.g. botox protocol says avoid sun 3 days, clinician said 1 week). The "
+                "clinician's words win — set note to ONE sentence in the report language naming the specific "
+                "difference and quoting both values.\n"
+                "- status='superseded': the clinician dictated their OWN full aftercare that REPLACES that "
+                "protocol entirely. note = one short sentence in the report language saying so.\n"
+                "Prefer the clinician's dictated aftercare over a fixed protocol whenever they differ; never "
+                "silently include a protocol that contradicts what the clinician said."
             ),
             (
                 "uncertainties: a list of short human-readable sentences for anything a clinician should "
@@ -1818,9 +1851,31 @@ def parse_session_synthesis_output(
         "treatments": treatments,
         "sourceReferences": source_references,
         "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
+        "aftercareSelections": _clean_aftercare_selections(parsed.get("aftercareSelections")),
         "generatedBy": "ai-engine",
         "generatedAt": utc_now().isoformat(),
     }
+
+
+def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
+    """Coerce the model's aftercare matches into validated {templateId, status, note} items."""
+    selections: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return selections
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        template_id = item.get("templateId")
+        status = item.get("status")
+        if not isinstance(template_id, str) or not template_id.strip():
+            continue
+        if status not in {"applies", "conflicts", "superseded"}:
+            continue
+        note = item.get("note")
+        selections.append(
+            {"templateId": template_id, "status": status, "note": note if isinstance(note, str) and note.strip() else None}
+        )
+    return selections
 
 
 def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -1895,6 +1950,8 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
         # The backend post-processes treatments (validate/supersede/carry-forward) before storing.
         "treatments": synthesis["treatments"],
         "uncertainties": synthesis["uncertainties"],
+        # The model's intelligent aftercare matches (which clinic protocols apply + dictation conflicts).
+        "aftercare_selections": synthesis.get("aftercareSelections", []),
         "processing_status": {
             "state": "complete",
             "label": "Complete",

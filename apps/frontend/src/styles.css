@@ -5919,6 +5919,22 @@ small {
 }
 .aftercare-included-remove:hover { background: #fdeaea; color: #c0392b; }
 
+/* The AI flagged that the doctor's dictated aftercare differs from a clinic protocol — the dictation
+   wins; this calm amber note explains the difference (never silently includes the contradiction). */
+.aftercare-conflict-note {
+  display: flex;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #f0d49a;
+  border-radius: 12px;
+  background: #fff8ea;
+  color: #6b4e12;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.aftercare-conflict-icon { flex: 0 0 auto; }
+.aftercare-conflict-source { color: #8a7330; font-weight: 600; }
+
 /* "Editing" animation while a freshly-added capture is being organized — the report stays visible
    and legible, with a diagonal shimmer that glides across the live content (mirrors the patient-history
    / patient-memory refresh sweep) plus a thin top progress line, so the update is clearly felt. */

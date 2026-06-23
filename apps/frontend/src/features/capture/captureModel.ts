@@ -842,6 +842,27 @@ export function sessionDismissedAftercare(session: CaptureSession | null): strin
   return raw.map((entry) => metadataText(entry)).filter(Boolean);
 }
 
+export type AftercareSelection = { templateId: string; status: "applies" | "conflicts" | "superseded"; note: string | null };
+
+/**
+ * The synthesis's intelligent aftercare matches — which clinic protocols apply this visit, and whether
+ * the clinician's dictation conflicts with one. `aiRan` distinguishes "the AI matched none" (empty
+ * list) from "the AI hasn't run yet" (caller falls back to the deterministic procedure match).
+ */
+export function sessionAftercareSelections(session: CaptureSession | null): { aiRan: boolean; selections: AftercareSelection[] } {
+  const raw = metadataRecord(session?.extractedMetadata).aftercare_selections;
+  if (!Array.isArray(raw)) return { aiRan: false, selections: [] };
+  const selections: AftercareSelection[] = [];
+  for (const entry of raw) {
+    const record = metadataRecord(entry);
+    const templateId = metadataText(record.templateId);
+    const status = metadataText(record.status);
+    if (!templateId || (status !== "applies" && status !== "conflicts" && status !== "superseded")) continue;
+    selections.push({ templateId, status, note: metadataText(record.note) || null });
+  }
+  return { aiRan: true, selections };
+}
+
 // Cross-language synonyms per aesthetics procedure, for matching the visit's extracted treatments
 // to the clinic's aftercare templates. Deterministic — the AI never authors aftercare; it only
 // surfaces WHICH of the clinic's own templates fit the procedure actually performed.

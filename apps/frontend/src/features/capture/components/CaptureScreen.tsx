@@ -12,7 +12,8 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, workspaceStructuredReportCopy } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
+import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
@@ -122,13 +123,31 @@ export function CaptureScreen({
   const isPro = tier !== "basic";
   // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
   // visit (deterministic match against the extracted treatments). Basic shows the flat list.
-  const aftercareSuggestedIds =
+  // Aftercare matching is AI-driven when the synthesis has run (it judges clinical relevance, not a
+  // keyword, and flags when the clinician's dictation conflicts with a protocol); it falls back to the
+  // deterministic procedure-synonym match until then (gateway-less Pro / pre-synthesis), so it's never
+  // blank.
+  const { aiRan: aftercareAiRan, selections: aftercareSelections } = sessionAftercareSelections(activeSession);
+  const deterministicAftercareIds =
     isPro && aftercareTemplates?.length ? suggestedAftercareTemplateIds(aftercareTemplates, workspaceTreatments(activeSession)) : new Set<string>();
-  const suggestedAftercare = (aftercareTemplates || []).filter((template) => aftercareSuggestedIds.has(template.id));
-  // Auto-include matched aftercare in the report by default (opt-out): show every matched clinic
-  // template the doctor hasn't removed for this visit.
+  const appliedAftercareIds = aftercareAiRan
+    ? new Set(aftercareSelections.filter((selection) => selection.status === "applies").map((selection) => selection.templateId))
+    : deterministicAftercareIds;
   const dismissedAftercare = new Set(sessionDismissedAftercare(activeSession));
-  const includedAftercare = suggestedAftercare.filter((template) => !dismissedAftercare.has(template.id));
+  // Auto-include matched aftercare in the report by default (opt-out), minus anything the doctor removed.
+  const includedAftercare = (aftercareTemplates || []).filter((template) => appliedAftercareIds.has(template.id) && !dismissedAftercare.has(template.id));
+  // Conflicts: the AI found the clinician dictated aftercare that differs from a clinic protocol — show
+  // it (the dictation wins) instead of silently including the contradicting protocol.
+  const aftercareConflicts = aftercareAiRan
+    ? aftercareSelections
+        .filter((selection) => (selection.status === "conflicts" || selection.status === "superseded") && !dismissedAftercare.has(selection.templateId))
+        .map((selection) => ({
+          template: (aftercareTemplates || []).find((template) => template.id === selection.templateId),
+          note: selection.note,
+          status: selection.status,
+        }))
+        .filter((conflict): conflict is { template: AftercareTemplate; note: string | null; status: AftercareSelection["status"] } => Boolean(conflict.template))
+    : [];
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
@@ -479,10 +498,12 @@ export function CaptureScreen({
             captureFeed
           )}
         </div>
-        {/* Content-driven aftercare, auto-included in the report (opt-out): when a performed procedure
-            matches a clinic template, its aftercare is added by default — the doctor only acts to remove
-            it. Persisted dismissals (per visit) survive re-synthesis; it flows into the patient share. */}
-        {useUnifiedLayout && !isHistorical && !readOnly && includedAftercare.length ? (
+        {/* Content-driven aftercare, AI-matched and auto-included in the report (opt-out): the synthesis
+            decides which clinic protocols apply this visit; each is added by default — the doctor only
+            acts to remove it. Persisted dismissals survive re-synthesis; it flows into the patient share.
+            When the doctor DICTATED aftercare that differs from a protocol, the dictation wins and a
+            conflict note is shown instead of silently including the contradicting protocol. */}
+        {useUnifiedLayout && !isHistorical && !readOnly && (includedAftercare.length || aftercareConflicts.length) ? (
           <section className="report-aftercare-included" aria-label="Aftercare for this visit">
             <span className="report-aftercare-included-label">Aftercare for this visit · from your clinic protocol</span>
             {includedAftercare.map((template) => (
@@ -502,6 +523,20 @@ export function CaptureScreen({
                     ✕
                   </button>
                 ) : null}
+              </div>
+            ))}
+            {aftercareConflicts.map((conflict) => (
+              <div className="aftercare-conflict-note" key={conflict.template.id} dir={textDirection(conflict.note || conflict.template.name)}>
+                <span className="aftercare-conflict-icon" aria-hidden="true">⚠</span>
+                <span>
+                  {conflict.note ? (
+                    <>
+                      {conflict.note} <span className="aftercare-conflict-source">(differs from your clinic’s “{conflict.template.name}” protocol)</span>
+                    </>
+                  ) : (
+                    <>Your dictated aftercare differs from your clinic’s “{conflict.template.name}” protocol — your words are used.</>
+                  )}
+                </span>
               </div>
             ))}
           </section>
