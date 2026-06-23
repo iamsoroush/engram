@@ -5887,8 +5887,9 @@ small {
 .aftercare-add-chip:hover { background: color-mix(in srgb, var(--color-primary) 12%, #fff); border-color: var(--color-primary); }
 .aftercare-add-plus { font-size: 1rem; font-weight: 800; line-height: 1; }
 
-/* "Updating" shimmer on the report card while a freshly-added capture is still processing — the
-   report stays visible (no blank), with a moving highlight line so the update is felt, not jarring. */
+/* "Editing" animation while a freshly-added capture is being organized — the report stays visible
+   and legible, with a diagonal shimmer that glides across the live content (mirrors the patient-history
+   / patient-memory refresh sweep) plus a thin top progress line, so the update is clearly felt. */
 .workspace-report-card.processing { position: relative; }
 .workspace-report-card.processing::after {
   content: "";
@@ -5902,10 +5903,31 @@ small {
   background-repeat: no-repeat;
   animation: report-refresh-shimmer 1.25s linear infinite;
   pointer-events: none;
+  z-index: 2;
 }
 @keyframes report-refresh-shimmer {
   0% { background-position: -50% 0; }
   100% { background-position: 150% 0; }
+}
+/* The report body holds the prior synthesis steady; its text dims slightly and a shimmer sweeps over
+   it while the new synthesis organizes (text stays fully legible underneath). */
+.workspace-report-body { position: relative; }
+.workspace-report-card.processing .workspace-report-body > .structured-report-view {
+  opacity: 0.78;
+  transition: opacity 0.2s ease;
+}
+.workspace-report-card.processing .workspace-report-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 30%, rgba(7, 94, 255, 0.14) 50%, transparent 70%);
+  background-size: 220% 100%;
+  animation: report-edit-sweep 1.5s ease-in-out infinite;
+}
+@keyframes report-edit-sweep {
+  0% { background-position: 140% 0; }
+  100% { background-position: -40% 0; }
 }
 
 .treatment-fix-at-source {
