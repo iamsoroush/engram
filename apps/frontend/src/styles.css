@@ -1715,6 +1715,53 @@ small {
   font-weight: 650;
   padding: 7px 10px;
 }
+
+/* Portal'd custom dropdown (SelectMenu) — positions at its trigger, never mis-placed/clipped. */
+.select-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 140px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.84rem;
+  font-weight: 650;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.select-menu-trigger:disabled { opacity: 0.6; cursor: default; }
+.select-menu-trigger:hover:not(:disabled) { border-color: var(--color-border-strong); }
+.select-menu-chev { color: var(--color-muted); font-size: 0.66rem; }
+.select-menu-layer { position: fixed; inset: 0; z-index: 80; }
+.select-menu-backdrop { position: fixed; inset: 0; }
+.select-menu-popup {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgb(8 14 24 / 16%);
+}
+.select-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.select-menu-option:hover { background: var(--color-primary-soft, #eef5ff); }
+.select-menu-option.selected { color: var(--color-primary); }
 .setting-text-input {
   width: min(220px, 46vw);
   border: 1px solid var(--color-border);

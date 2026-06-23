@@ -199,10 +199,11 @@ def main() -> None:
     created: list[str] = []
     skipped: list[str] = []
     try:
-        # Persian-first demo clinic: app UI + dates (Jalali) and report content both Persian.
+        # Demo clinic: English app UI (full Persian-UI i18n is a separate epic) but Persian REPORT
+        # content (the clinical record + share are written in Persian).
         tenant = db.get(Tenant, DEV_TENANT_ID)
         if tenant is not None:
-            tenant.app_language = "fa"
+            tenant.app_language = "en"
             tenant.report_language = "fa"
             db.commit()
 

@@ -1,6 +1,7 @@
 import React from "react";
 import type { AftercareTemplate, AftercareTemplateDraft, AiModelConfig, AuthSession, RolePermissions } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
+import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { isAdmin as isAdminViewer } from "../../shared/lib/multiseat";
 import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
 
@@ -195,27 +196,31 @@ export function SettingsScreen({
           <p>The app's interface + dates, how Memara transcribes audio, and how it writes the report.</p>
         </div>
         <SettingRow label="App" hint="The interface language and date calendar (Persian shows Jalali dates). Separate from the report's language.">
-          <select aria-label="App language" disabled={saving} onChange={(event) => save({ appLanguage: event.target.value })} value={auth.tenant.appLanguage || "en"}>
-            <option value="en">English</option>
-            <option value="fa">Persian</option>
-            <option value="ar">Arabic</option>
-          </select>
+          <SelectMenu
+            ariaLabel="App language"
+            disabled={saving}
+            value={auth.tenant.appLanguage || "en"}
+            onChange={(value) => save({ appLanguage: value })}
+            options={[{ value: "en", label: "English" }, { value: "fa", label: "Persian" }, { value: "ar", label: "Arabic" }]}
+          />
         </SettingRow>
         <SettingRow label="Transcription" hint="Auto transcribes verbatim in the spoken script — best for mixed-language clinics; avoids romanization that breaks name matching.">
-          <select aria-label="Transcription language" disabled={saving} onChange={(event) => save({ transcriptionLanguage: event.target.value })} value={auth.tenant.transcriptionLanguage || "auto"}>
-            <option value="auto">Auto (verbatim)</option>
-            <option value="fa">Persian</option>
-            <option value="en">English</option>
-            <option value="ar">Arabic</option>
-          </select>
+          <SelectMenu
+            ariaLabel="Transcription language"
+            disabled={saving}
+            value={auth.tenant.transcriptionLanguage || "auto"}
+            onChange={(value) => save({ transcriptionLanguage: value })}
+            options={[{ value: "auto", label: "Auto (verbatim)" }, { value: "fa", label: "Persian" }, { value: "en", label: "English" }, { value: "ar", label: "Arabic" }]}
+          />
         </SettingRow>
         <SettingRow label="Report" hint="The language the synthesized report is written in.">
-          <select aria-label="Report language" disabled={saving} onChange={(event) => save({ reportLanguage: event.target.value || null })} value={auth.tenant.reportLanguage || ""}>
-            <option value="">Report default</option>
-            <option value="fa">Persian</option>
-            <option value="en">English</option>
-            <option value="ar">Arabic</option>
-          </select>
+          <SelectMenu
+            ariaLabel="Report language"
+            disabled={saving}
+            value={auth.tenant.reportLanguage || ""}
+            onChange={(value) => save({ reportLanguage: value || null })}
+            options={[{ value: "", label: "Report default" }, { value: "fa", label: "Persian" }, { value: "en", label: "English" }, { value: "ar", label: "Arabic" }]}
+          />
         </SettingRow>
       </Card>
 
@@ -228,11 +233,13 @@ export function SettingsScreen({
           label="Auto-apply"
           hint="Strict = deterministic matches only. Balanced/Lenient also auto-apply a single high-confidence close match on an explicit instruction. The national-ID conflict guard and ambiguous routing apply at every level."
         >
-          <select aria-label="Auto-apply" disabled={saving} onChange={(event) => save({ matchStrictness: event.target.value })} value={auth.tenant.matchStrictness || "strict"}>
-            <option value="strict">Strict (exact only)</option>
-            <option value="balanced">Balanced (close match)</option>
-            <option value="lenient">Lenient (looser)</option>
-          </select>
+          <SelectMenu
+            ariaLabel="Auto-apply"
+            disabled={saving}
+            value={auth.tenant.matchStrictness || "strict"}
+            onChange={(value) => save({ matchStrictness: value })}
+            options={[{ value: "strict", label: "Strict (exact only)" }, { value: "balanced", label: "Balanced (close match)" }, { value: "lenient", label: "Lenient (looser)" }]}
+          />
         </SettingRow>
       </Card>
 
