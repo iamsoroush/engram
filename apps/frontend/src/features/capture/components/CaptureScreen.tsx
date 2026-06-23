@@ -11,7 +11,7 @@ import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { SessionVerifyBar } from "./SessionVerifyBar";
-import { AiCreatedPatientPanel, CaptureTimelineIcon } from "./CaptureBadges";
+import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
@@ -390,6 +390,13 @@ export function CaptureScreen({
               <ClipboardIcon />
             </span>
             <h2>Clinical report</h2>
+            {/* AI-provenance mark: the Pro report is AI-synthesized; the spark twinkles while the
+                synthesis is organizing (the "editing" phase), so the icon itself signals AI is at work. */}
+            {isPro ? (
+              <span className="report-ai-mark" role="img" aria-label="AI-synthesized report" title="AI-synthesized report">
+                <AiSpark working={isUpdatingReport} />
+              </span>
+            ) : null}
           </div>
           <div className="report-heading-actions">
             {isUpdatingReport ? (

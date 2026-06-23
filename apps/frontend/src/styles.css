@@ -5677,6 +5677,18 @@ small {
   font-weight: 900;
 }
 
+/* AI-provenance spark beside the report title (Pro). Tightened against the title; twinkles via
+   .ai-spark.working while the synthesis organizes. */
+.report-ai-mark {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: -5px;
+}
+.report-ai-mark .ai-spark svg {
+  width: 17px;
+  height: 17px;
+}
+
 .report-title-icon {
   display: grid;
   width: 30px;
