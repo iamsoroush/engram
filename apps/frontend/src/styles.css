@@ -5737,6 +5737,84 @@ small {
 }
 .report-share-button:hover { background: color-mix(in srgb, var(--color-primary) 10%, #fff); }
 
+/* FB8 unified Pro layout — sticky verify driver, verify region, and the Sources drawer. */
+.session-verify-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid #f0d49a;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff8ea, #fef3da);
+  box-shadow: 0 6px 18px -12px rgba(120, 90, 10, 0.55);
+}
+.session-verify-bar-icon { font-size: 1rem; line-height: 1; }
+.session-verify-bar-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #6b4e12;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.session-verify-bar-action {
+  flex: 0 0 auto;
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: #b9831b;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.session-verify-bar-action:hover { background: #a57314; }
+
+.session-verify-region {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  scroll-margin-top: 64px;
+}
+
+.sources-drawer {
+  border-top: 1px solid #dfe7f3;
+  scroll-margin-top: 56px;
+}
+.sources-drawer-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  background: #f7faff;
+  color: #3a4a63;
+  font-size: 0.82rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.sources-drawer-summary:hover { background: #eef4fc; }
+.sources-drawer-chev { font-size: 0.7rem; color: #6b7a90; }
+.sources-drawer-body { padding: 0 16px 12px; }
+
+.treatment-fix-at-source {
+  margin-inline-start: 8px;
+  padding: 2px 8px;
+  border: 1px solid #d7e1ee;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.treatment-fix-at-source:hover { background: #f2f7fd; }
+
 .report-view-switch {
   border: 0;
   border-radius: 0;

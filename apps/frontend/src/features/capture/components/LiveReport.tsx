@@ -12,16 +12,19 @@ export function LiveReportView({
   session,
   onResolveFile,
   onConfirmCarriedForward,
+  onFixAtSource,
 }: {
   isPro: boolean;
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
+  /** Open the Sources drawer to correct a flagged treatment at its capture (Pro, unified layout). */
+  onFixAtSource?: () => void;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -56,10 +59,12 @@ export function ProLiveReport({
   session,
   onResolveFile,
   onConfirmCarriedForward,
+  onFixAtSource,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
+  onFixAtSource?: () => void;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
   // Render the report's structured sections (with their headers). This one path serves both report
@@ -77,12 +82,13 @@ export function ProLiveReport({
   // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
   // low confidence, missing lot, free-text uncertainty) — rendered as calm chips below the report.
   const review = sessionTreatmentReview(session);
+  // Products the synthesis flagged as missing a lot/batch number — drives a soft inline "lot not
+  // captured · fix at source" hint on the matching treatment row (never counted as a blocker).
+  const missingLotProducts = new Set(
+    review.filter((item) => item.category === "missing_lot").map((item) => (item.product || "").trim()).filter(Boolean),
+  );
   // Q3: carried-forward doses the clinician has already confirmed (so they read as done, not pending).
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
-  // §2.5 trust signal: how many review items still need the clinician (excludes confirmed doses).
-  const toConfirmCount = review.filter(
-    (item) => !(item.category === "carried_forward" && item.key && confirmedCarriedForward.has(item.key)),
-  ).length;
   // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
@@ -114,11 +120,6 @@ export function ProLiveReport({
             )}
           </span>
         ) : null}
-        {toConfirmCount ? (
-          <span className="report-meta-confirm" title="Items below need your confirmation">
-            {toConfirmCount} to confirm
-          </span>
-        ) : null}
       </div>
       <section className="structured-report-section structured-report-body">
         {sections.length ? (
@@ -130,7 +131,7 @@ export function ProLiveReport({
               <section className="workspace-report-section" key={section.id}>
                 {section.title ? <h3>{section.title}</h3> : null}
                 {renderTreatmentTable ? (
-                  <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} />
+                  <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
                 ) : (
                   section.blocks.map((block, index) => (
                     <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
@@ -154,7 +155,7 @@ export function ProLiveReport({
       {treatments.length && !hasTreatmentSection ? (
         <section className="structured-report-section treatments-performed">
           <h3>Treatments performed</h3>
-          <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} />
+          <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
         </section>
       ) : null}
       {/* "Needs your confirmation" now lives at the session level (SessionConfirmations), so doses can
@@ -171,9 +172,15 @@ export function ProLiveReport({
 function TreatmentsList({
   treatments,
   confirmedCarriedForward,
+  missingLotProducts,
+  onFixAtSource,
 }: {
   treatments: SessionTreatment[];
   confirmedCarriedForward: Set<string>;
+  /** Products the synthesis flagged as missing a lot # (soft inline hint, not a counted blocker). */
+  missingLotProducts?: Set<string>;
+  /** Jump to the Sources drawer to correct a flagged treatment at its capture. */
+  onFixAtSource?: () => void;
 }) {
   return (
     <ul className="treatments-list">
@@ -181,9 +188,13 @@ function TreatmentsList({
         const label = treatmentLabel(treatment);
         const lowConfidence = isLowConfidenceTreatment(treatment);
         const attributeLines = treatmentAttributeLines(treatment);
+        const lotMissing = !treatment.lot && Boolean(treatment.product) && Boolean(missingLotProducts?.has((treatment.product || "").trim()));
+        // Soft, fixable extraction gaps point the doctor to the source capture (the lot/dose is fixed
+        // by editing what was captured, then the AI re-extracts — never overwritten by a manual edit).
+        const fixable = lowConfidence || lotMissing;
         return (
           <li
-            className={`treatment-item${lowConfidence ? " low-confidence" : ""}`}
+            className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}`}
             dir={textDirection(label)}
             key={`${index}-${label.slice(0, 24)}`}
           >
@@ -197,6 +208,12 @@ function TreatmentsList({
                 )
               ) : null}
               {lowConfidence ? <span className="treatment-flag low"> · low confidence</span> : null}
+              {lotMissing ? <span className="treatment-flag low"> · lot not captured</span> : null}
+              {fixable && onFixAtSource ? (
+                <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
+                  ✎ Fix at source
+                </button>
+              ) : null}
             </span>
             {attributeLines.length ? (
               <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>

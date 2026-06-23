@@ -763,6 +763,21 @@ export function sessionTreatmentReview(session: CaptureSession | null): SessionT
     .filter((item) => item.reason);
 }
 
+// Soft review categories that now render as inline hints on the treatment row itself (with a
+// "fix at source" deep-link) — so they are excluded from the session-level confirmation surface to
+// avoid showing the same flag twice. Everything else (carried-forward dose, ambiguous correction,
+// future categories) stays in "Needs your confirmation".
+const INLINE_HANDLED_REVIEW_CATEGORIES = new Set(["low_confidence", "missing_lot"]);
+
+/**
+ * Review items that belong in the session-level "Needs your confirmation" surface — the actionable /
+ * informational ones (carried-forward dose, ambiguous correction), excluding the soft per-row hints
+ * (low confidence, missing lot) that render inline on the treatment row.
+ */
+export function sessionConfirmationItems(session: CaptureSession | null): SessionTreatmentReview[] {
+  return sessionTreatmentReview(session).filter((item) => !INLINE_HANDLED_REVIEW_CATEGORIES.has(item.category));
+}
+
 /** Keys (area|product) of carried-forward doses the clinician has already confirmed (Q3). */
 export function sessionConfirmedCarriedForward(session: CaptureSession | null): string[] {
   const raw = metadataRecord(session?.extractedMetadata).confirmed_carried_forward;

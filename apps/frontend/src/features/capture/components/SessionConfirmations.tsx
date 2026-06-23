@@ -1,6 +1,6 @@
 import React from "react";
 import type { CaptureSession } from "../../../domain/types";
-import { sessionTreatmentReview, sessionConfirmedCarriedForward, textDirection } from "../captureModel";
+import { sessionConfirmationItems, sessionConfirmedCarriedForward, textDirection } from "../captureModel";
 
 /**
  * The session's "needs your confirmation" surface (Pro) — the synthesis's clinician-confirmation
@@ -17,7 +17,7 @@ export function SessionConfirmations({
   session: CaptureSession | null;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
 }) {
-  const review = sessionTreatmentReview(session);
+  const review = sessionConfirmationItems(session);
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
   const [confirming, setConfirming] = React.useState<string | null>(null);
   if (!session || !review.length) return null;

@@ -11,8 +11,9 @@ import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { SessionConfirmations } from "./SessionConfirmations";
+import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmationItems, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
@@ -150,6 +151,41 @@ export function CaptureScreen({
   const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
 
+  // FB8 unified Pro layout: the synthesized report is the primary surface, the raw captures become a
+  // collapsible "Sources" drawer, and a sticky bar drives verification. Basic keeps its Captures /
+  // Live-report tabs (it has no synthesized report to make primary).
+  const useUnifiedLayout = isPro;
+  // Sticky verify driver counts ONLY blockers — unconfirmed carried-forward doses + an AI-created
+  // patient awaiting identity verification. Soft warnings (missing lot, low confidence) stay inline
+  // in the report and never feed this count, keeping the bar calm ("warnings over blocking").
+  const treatmentReview = sessionTreatmentReview(activeSession);
+  // The session-level confirmation surface (excludes soft per-row hints now rendered inline).
+  const confirmationItems = sessionConfirmationItems(activeSession);
+  const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(activeSession));
+  const openDoseConfirmations = treatmentReview.filter(
+    (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key),
+  );
+  const patientVerifyNeeded = Boolean(aiPatientAction && onCompleteAiCreatedPatient);
+  const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0);
+  const verifyRegionRef = React.useRef<HTMLDivElement>(null);
+  const scrollToVerify = () => verifyRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // The Sources drawer opens by default while the report has no content yet (early capture, before
+  // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
+  const reportHasContent = Boolean(
+    activeSession?.reportModel?.sections?.some((section) => section.blocks?.length) ||
+      workspaceStructuredReportCopy(activeSession).length ||
+      workspaceTreatments(activeSession).length,
+  );
+  const [sourcesOpen, setSourcesOpen] = React.useState(false);
+  const sourcesShown = sourcesOpen || !reportHasContent;
+  const sourcesDrawerRef = React.useRef<HTMLElement>(null);
+  // "Fix at source" on a flagged treatment row: open the Sources drawer and scroll to it, so the
+  // doctor corrects the originating capture (transcript/caption) and the AI re-extracts.
+  const onFixAtSource = () => {
+    setSourcesOpen(true);
+    window.requestAnimationFrame(() => sourcesDrawerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+
   // The report is always live; default to the Captures feed and let the user toggle tabs.
   React.useEffect(() => {
     setReportView("draft");
@@ -171,6 +207,26 @@ export function CaptureScreen({
       window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
     }
   }, [activeSession?.items.length]);
+
+  // The raw capture feed — Basic's "Captures" tab and Pro's "Sources" drawer render the same element.
+  const captureFeed = (
+    <LiveDraftReport
+      isPro={isPro}
+      offline={offline}
+      session={activeSession}
+      currentUserId={currentUserId}
+      onApplyRelevant={onMarkRelevant}
+      onAssignPatient={onAssignPatient}
+      onDeleteCapture={onDeleteCapture}
+      onOpenCapture={setSelectedCapture}
+      onOpenResolver={onOpenResolver}
+      onRenameCapture={onRenameCapture}
+      onResolveFile={onResolveFile}
+      onUpdateCaptureCaption={onUpdateCaptureCaption}
+      onUpdateCaptureTranscript={onUpdateCaptureTranscript}
+      onUpdateNote={onUpdateNote}
+    />
+  );
 
   return (
     <section className="capture-current session-workspace" aria-label={isHistorical ? "Historical session review" : "Active session workspace"}>
@@ -231,6 +287,9 @@ export function CaptureScreen({
               : "Owned by another clinician — read-only for you. You can still add captures."}
           </span>
         </div>
+      ) : null}
+      {useUnifiedLayout && !isHistorical ? (
+        <SessionVerifyBar count={verifyCount} onReview={scrollToVerify} />
       ) : null}
       <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
         <span className="patient-context-avatar" aria-hidden="true">
@@ -327,12 +386,19 @@ export function CaptureScreen({
           </div>
         </section>
       ) : null}
-      {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
-        <AiCreatedPatientPanel
-          action={aiPatientAction}
-          session={activeSession}
-          onComplete={onCompleteAiCreatedPatient}
-        />
+      {!isHistorical && (aiPatientAction || (isPro && confirmationItems.length)) ? (
+        <div className="session-verify-region" ref={verifyRegionRef}>
+          {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
+            <AiCreatedPatientPanel
+              action={aiPatientAction}
+              session={activeSession}
+              onComplete={onCompleteAiCreatedPatient}
+            />
+          ) : null}
+          {isPro ? (
+            <SessionConfirmations session={activeSession} onConfirmCarriedForward={onConfirmCarriedForward} />
+          ) : null}
+        </div>
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
         <div className="report-heading">
@@ -351,23 +417,22 @@ export function CaptureScreen({
             ) : null}
           </div>
         </div>
-        {isPro && !isHistorical ? (
-          <SessionConfirmations session={activeSession} onConfirmCarriedForward={onConfirmCarriedForward} />
-        ) : null}
         <div className="report-toolbar">
           <div className="report-toolbar-actions">
-            <div className="report-view-switch" aria-label="Report view">
-              <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                Captures
-              </button>
-              <button
-                className={selectedReportView === "structured" ? "active" : ""}
-                onClick={() => setReportView("structured")}
-                type="button"
-              >
-                Live report
-              </button>
-            </div>
+            {!useUnifiedLayout ? (
+              <div className="report-view-switch" aria-label="Report view">
+                <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
+                  Captures
+                </button>
+                <button
+                  className={selectedReportView === "structured" ? "active" : ""}
+                  onClick={() => setReportView("structured")}
+                  type="button"
+                >
+                  Live report
+                </button>
+              </div>
+            ) : null}
             {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
               <button className="report-share-button" type="button" onClick={onShareVisit}>
                 Share with patient
@@ -385,32 +450,37 @@ export function CaptureScreen({
           />
         ) : null}
         <div className={`workspace-report-body ${reportState.kind}`}>
-          {selectedReportView === "structured" ? (
+          {/* Unified Pro layout: the synthesized report IS the surface (no Captures/Live-report tabs).
+              Basic keeps the tabs — its "Live report" is a chronological doc, not a synthesis. */}
+          {useUnifiedLayout || selectedReportView === "structured" ? (
             <LiveReportView
               isPro={isPro}
               session={activeSession}
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
+              onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
             />
           ) : (
-            <LiveDraftReport
-              isPro={isPro}
-              offline={offline}
-              session={activeSession}
-              currentUserId={currentUserId}
-              onApplyRelevant={onMarkRelevant}
-              onAssignPatient={onAssignPatient}
-              onDeleteCapture={onDeleteCapture}
-              onOpenCapture={setSelectedCapture}
-              onOpenResolver={onOpenResolver}
-              onRenameCapture={onRenameCapture}
-              onResolveFile={onResolveFile}
-              onUpdateCaptureCaption={onUpdateCaptureCaption}
-              onUpdateCaptureTranscript={onUpdateCaptureTranscript}
-              onUpdateNote={onUpdateNote}
-            />
+            captureFeed
           )}
         </div>
+        {useUnifiedLayout && captureCount > 0 ? (
+          // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,
+          // deleting, re-assigning and tapping into a capture all still live here (and via the report's
+          // own source links). Auto-expanded while the report has no content yet.
+          <section className="sources-drawer" ref={sourcesDrawerRef}>
+            <button
+              className="sources-drawer-summary"
+              type="button"
+              aria-expanded={sourcesShown}
+              onClick={() => setSourcesOpen((open) => !open)}
+            >
+              <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
+              <span>Sources · {captureCountLabel}</span>
+            </button>
+            {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
+          </section>
+        ) : null}
         <div className="workspace-report-footer">
           <div className="workspace-report-footer-copy">
             {isUpdatingReport ? (
