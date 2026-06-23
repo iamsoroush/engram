@@ -78,8 +78,13 @@ export function SharePatientSheet({
   // Story C (decision 2): optional plain-words "what we did" line (server-derived, generic).
   const [treatmentsIncluded, setTreatmentsIncluded] = React.useState(false);
   const [treatmentLines, setTreatmentLines] = React.useState<string[]>([]);
+  // Story C (decision 1): the clinical assessment is OPT-IN, default OFF — findings can alarm a
+  // patient out of context, so the doctor must deliberately choose to include it.
+  const [assessmentIncluded, setAssessmentIncluded] = React.useState(false);
+  const [assessmentBody, setAssessmentBody] = React.useState("");
   const fa = (shareLanguage || "").toLowerCase().startsWith("fa");
   const summaryLabel = fa ? "خلاصهٔ ویزیت" : "Visit summary";
+  const assessmentLabel = fa ? "ارزیابی" : "Assessment";
   const [media, setMedia] = React.useState<MediaChoice[]>([]);
   const [templates, setTemplates] = React.useState<AftercareTemplate[]>([]);
   const [aftercareId, setAftercareId] = React.useState<string>("");
@@ -127,6 +132,15 @@ export function SharePatientSheet({
               setNoteIncluded(true);
             }
             setTreatmentLines(treatmentShareLines(workspaceTreatments(session), Boolean(shareIncludeBrands)));
+            // The clinical assessment section, for the opt-in toggle (kept OFF by default).
+            const assessment = (session.reportModel?.sections || []).find((entry) => entry.id === "assessment");
+            setAssessmentBody(
+              (assessment?.blocks || [])
+                .filter((block) => block.type === "paragraph" && block.text)
+                .map((block) => block.text)
+                .join("\n\n")
+                .trim(),
+            );
           })
           .catch(() => undefined);
       }
@@ -170,7 +184,10 @@ export function SharePatientSheet({
       patientId,
       sessionId: sessionId || visit?.sessionId,
       title: title.trim() || "Your visit",
-      sections: noteIncluded && noteBody.trim() ? [{ label: summaryLabel, body: noteBody.trim() }] : [],
+      sections: [
+        ...(noteIncluded && noteBody.trim() ? [{ label: summaryLabel, body: noteBody.trim() }] : []),
+        ...(assessmentIncluded && assessmentBody.trim() ? [{ label: assessmentLabel, body: assessmentBody.trim() }] : []),
+      ],
       media: includedMedia.map((item) => ({ captureId: item.captureId, caption: item.caption || undefined })),
       aftercare: selectedTemplate ? { templateId: selectedTemplate.id } : undefined,
       includeTreatments: treatmentsIncluded,
@@ -276,6 +293,16 @@ export function SharePatientSheet({
                   <span>plain-words summary — no doses or lots{`; brands only if your clinic enabled it`}</span>
                 </div>
               </div>
+
+              {assessmentBody ? (
+                <div className={`share-incl-row${assessmentIncluded ? "" : " off"}`}>
+                  <Toggle on={assessmentIncluded} onChange={() => setAssessmentIncluded((value) => !value)} label="Include assessment" />
+                  <div className="share-incl-copy">
+                    <b>Assessment</b>
+                    <span>your clinical findings — off by default; can alarm out of context</span>
+                  </div>
+                </div>
+              ) : null}
 
               <div className={`share-incl-row${aftercareId ? "" : " off"}`}>
                 <Toggle on={Boolean(aftercareId)} onChange={() => setAftercareId(aftercareId ? "" : templates[0]?.id || "")} label="Include aftercare" />
