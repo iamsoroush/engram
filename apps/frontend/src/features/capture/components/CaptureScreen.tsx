@@ -12,7 +12,7 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, workspaceStructuredReportCopy } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
@@ -47,6 +47,7 @@ export function CaptureScreen({
   onShareVisit,
   onUseAsNote,
   aftercareTemplates,
+  onDismissAftercare,
   offline = false,
   sessionOrdinal = null,
   currentUserId = null,
@@ -103,6 +104,8 @@ export function CaptureScreen({
   onUseAsNote?: (text: string) => void;
   /** Clinic aftercare templates — one-tap deterministic follow-up instructions (both tiers). */
   aftercareTemplates?: AftercareTemplate[];
+  /** Opt an auto-included clinic aftercare template in/out of this visit (persisted). */
+  onDismissAftercare?: (sessionId: string, templateId: string, dismissed: boolean) => Promise<void>;
   /** No connection / backend unreachable — gates the only sync indicators we show. */
   offline?: boolean;
   /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
@@ -122,6 +125,10 @@ export function CaptureScreen({
   const aftercareSuggestedIds =
     isPro && aftercareTemplates?.length ? suggestedAftercareTemplateIds(aftercareTemplates, workspaceTreatments(activeSession)) : new Set<string>();
   const suggestedAftercare = (aftercareTemplates || []).filter((template) => aftercareSuggestedIds.has(template.id));
+  // Auto-include matched aftercare in the report by default (opt-out): show every matched clinic
+  // template the doctor hasn't removed for this visit.
+  const dismissedAftercare = new Set(sessionDismissedAftercare(activeSession));
+  const includedAftercare = suggestedAftercare.filter((template) => !dismissedAftercare.has(template.id));
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
   const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
@@ -472,26 +479,32 @@ export function CaptureScreen({
             captureFeed
           )}
         </div>
-        {/* Content-driven aftercare, folded into the report itself: a one-tap "+ {template}" that
-            appends the clinic's matching aftercare as a note (only when a performed procedure matches). */}
-        {useUnifiedLayout && !isHistorical && !readOnly && onUseAsNote && suggestedAftercare.length ? (
-          <div className="report-aftercare-suggest">
-            <span className="report-aftercare-suggest-label">Add aftercare for this visit</span>
-            <div className="report-aftercare-suggest-chips">
-              {suggestedAftercare.map((template) => (
-                <button
-                  key={template.id}
-                  className="aftercare-add-chip"
-                  type="button"
-                  title={template.body}
-                  onClick={() => onUseAsNote(template.body)}
-                >
-                  <span className="aftercare-add-plus" aria-hidden="true">+</span>
-                  <span dir="auto">{template.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+        {/* Content-driven aftercare, auto-included in the report (opt-out): when a performed procedure
+            matches a clinic template, its aftercare is added by default — the doctor only acts to remove
+            it. Persisted dismissals (per visit) survive re-synthesis; it flows into the patient share. */}
+        {useUnifiedLayout && !isHistorical && !readOnly && includedAftercare.length ? (
+          <section className="report-aftercare-included" aria-label="Aftercare for this visit">
+            <span className="report-aftercare-included-label">Aftercare for this visit · from your clinic protocol</span>
+            {includedAftercare.map((template) => (
+              <div className="aftercare-included-card" key={template.id}>
+                <div className="aftercare-included-body">
+                  <strong dir="auto">{template.name}</strong>
+                  <p dir="auto">{template.body}</p>
+                </div>
+                {onDismissAftercare && activeSession ? (
+                  <button
+                    className="aftercare-included-remove"
+                    type="button"
+                    aria-label={`Remove ${template.name}`}
+                    title="Remove from this visit"
+                    onClick={() => onDismissAftercare(activeSession.id, template.id, true)}
+                  >
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </section>
         ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,

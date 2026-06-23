@@ -835,6 +835,13 @@ export function sessionConfirmedCarriedForward(session: CaptureSession | null): 
   return raw.map((entry) => metadataText(entry)).filter(Boolean);
 }
 
+/** Template ids of auto-included clinic aftercare the clinician opted OUT of for this visit. */
+export function sessionDismissedAftercare(session: CaptureSession | null): string[] {
+  const raw = metadataRecord(session?.extractedMetadata).dismissed_aftercare;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => metadataText(entry)).filter(Boolean);
+}
+
 // Cross-language synonyms per aesthetics procedure, for matching the visit's extracted treatments
 // to the clinic's aftercare templates. Deterministic — the AI never authors aftercare; it only
 // surfaces WHICH of the clinic's own templates fit the procedure actually performed.

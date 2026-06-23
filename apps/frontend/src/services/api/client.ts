@@ -847,6 +847,16 @@ export async function confirmCarriedForward(apiFetch: ApiFetch, sessionId: strin
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+export async function setAftercareDismissed(apiFetch: ApiFetch, sessionId: string, templateId: string, dismissed: boolean) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/aftercare-dismissal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId, dismissed }),
+  });
+  if (!response.ok) throw new Error("Could not update aftercare");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
     method: "PATCH",

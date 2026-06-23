@@ -89,6 +89,7 @@ from app.services.therapy_reporting import (
 from app.services.sessions import (
     assign_session_patient,
     confirm_carried_forward_dose,
+    set_aftercare_dismissed,
     create_session,
     get_session,
     list_session_artifacts,
@@ -547,6 +548,18 @@ def confirm_carried_forward_route(
 ) -> dict[str, Any]:
     """Q3: confirm a carried-forward dose (by its area|product key) so the report can read Complete."""
     return confirm_carried_forward_dose(db, principal, session_id, key)
+
+
+@api_v1.post("/sessions/{session_id}/aftercare-dismissal")
+def set_aftercare_dismissal_route(
+    session_id: str,
+    templateId: str = Body(..., embed=True),
+    dismissed: bool = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Opt a clinic aftercare template (auto-included for a matched procedure) in/out of this visit."""
+    return set_aftercare_dismissed(db, principal, session_id, templateId, dismissed)
 
 
 @api_v1.post("/sessions/{session_id}/save")

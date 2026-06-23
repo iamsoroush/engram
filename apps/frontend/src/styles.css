@@ -5867,37 +5867,57 @@ small {
   background: #fff;
 }
 
-/* In-report content-driven aftercare: "+ {template}" add buttons inside the report card. */
-.report-aftercare-suggest {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 10px;
+/* Auto-included content-driven aftercare inside the report card (opt-out): the clinic's matching
+   protocol is shown by default; the doctor only acts to Remove it. */
+.report-aftercare-included {
+  display: grid;
+  gap: 8px;
   padding: 12px 16px 14px;
   border-top: 1px dashed #e1e9f5;
 }
-.report-aftercare-suggest-label {
+.report-aftercare-included-label {
   color: #5a6b85;
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
-.report-aftercare-suggest-chips { display: inline-flex; flex-wrap: wrap; gap: 8px; }
-.aftercare-add-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 13px 6px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, #dce6f2);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 6%, #fff);
-  color: var(--color-primary);
+.aftercare-included-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 22%, #dce6f2);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-primary) 5%, #fff);
+}
+.aftercare-included-body { flex: 1 1 auto; min-width: 0; }
+.aftercare-included-body strong {
+  display: block;
+  color: #10183f;
+  font-size: 0.84rem;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+.aftercare-included-body p {
+  margin: 0;
+  color: #43506a;
   font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  line-height: 1.5;
 }
-.aftercare-add-chip:hover { background: color-mix(in srgb, var(--color-primary) 12%, #fff); border-color: var(--color-primary); }
-.aftercare-add-plus { font-size: 1rem; font-weight: 800; line-height: 1; }
+.aftercare-included-remove {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8a98ad;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.aftercare-included-remove:hover { background: #fdeaea; color: #c0392b; }
 
 /* "Editing" animation while a freshly-added capture is being organized — the report stays visible
    and legible, with a diagonal shimmer that glides across the live content (mirrors the patient-history

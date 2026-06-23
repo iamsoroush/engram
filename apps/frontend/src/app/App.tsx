@@ -24,6 +24,7 @@ import { setAppLanguage } from "../shared/lib/datetime";
 import {
   assignSessionPatient,
   confirmCarriedForward,
+  setAftercareDismissed,
   unassignSessionPatient,
   checkDuplicatePatient,
   createAftercareTemplate,
@@ -81,6 +82,9 @@ import {
   mergeSessionItems,
   sessionWithLocalPreview,
   sessionsFromPending,
+  suggestedAftercareTemplateIds,
+  workspaceTreatments,
+  sessionDismissedAftercare,
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
 import { SharePatientSheet } from "../features/aesthetics/SharePatientSheet";
@@ -172,7 +176,7 @@ export function App() {
   // context card so Pro reads as a compact pre-visit brief instead of the raw deterministic digest.
   const [sessionLineupCard, setSessionLineupCard] = React.useState<LineupCard | null>(null);
   // Per-visit share, opened from the session screen (FB6) — curates THIS visit's report.
-  const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
+  const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[]; preferredAftercareId?: string } | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
   const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
@@ -1316,6 +1320,19 @@ export function App() {
     [apiFetch, applySessionUpdate],
   );
 
+  // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
+  const dismissAftercareTemplate = React.useCallback(
+    async (sessionId: string, templateId: string, dismissed: boolean) => {
+      try {
+        const updated = await setAftercareDismissed(apiFetch, sessionId, templateId, dismissed);
+        applySessionUpdate(sessionId, updated);
+      } catch {
+        setToast("Could not update aftercare. Try again.");
+      }
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
       if (draft.patientId) {
@@ -1818,10 +1835,20 @@ export function App() {
   const openSessionShare = () => {
     const session = activeSession;
     if (!session?.patientId) return;
+    // Keep the share consistent with the report's auto-included aftercare: default the share's
+    // aftercare to the matched clinic template the doctor hasn't removed for this visit.
+    const matchedIds = aftercareTemplates.length
+      ? suggestedAftercareTemplateIds(aftercareTemplates, workspaceTreatments(session))
+      : new Set<string>();
+    const dismissed = new Set(sessionDismissedAftercare(session));
+    const preferredAftercareId = aftercareTemplates.find(
+      (template) => template.isActive && matchedIds.has(template.id) && !dismissed.has(template.id),
+    )?.id;
     setSessionShare({
       id: session.patientId,
       name: session.patientName || "Patient",
       visits: [{ sessionId: session.id, title: "Visit", dateLabel: "" }],
+      preferredAftercareId,
     });
   };
 
@@ -1985,6 +2012,7 @@ export function App() {
           onShareVisit={openSessionShare}
           onUseAsNote={composeNoteFromText}
           aftercareTemplates={aftercareTemplates}
+          onDismissAftercare={dismissAftercareTemplate}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}
@@ -2112,6 +2140,7 @@ export function App() {
           patientName={sessionShare.name}
           visits={sessionShare.visits}
           sessionId={sessionShare.visits[0]?.sessionId}
+          preferredAftercareId={sessionShare.preferredAftercareId}
           onLoadLastVisit={loadLastVisitForPatient}
           onLoadSessionCaptures={loadSessionCaptures}
           onLoadSession={loadSession}

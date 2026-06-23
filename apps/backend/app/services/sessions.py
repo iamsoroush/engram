@@ -265,6 +265,35 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
     return session_payload(session, db)
 
 
+def set_aftercare_dismissed(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, template_id: str, dismissed: bool
+) -> dict[str, Any]:
+    """Record whether a clinic aftercare template auto-included for this visit was dismissed.
+
+    Aftercare matching a performed procedure is included in the report by default (opt-out); removing
+    it records the template id in ``extracted_metadata.dismissed_aftercare`` so it stays removed across
+    re-synthesis and reloads. Re-adding (``dismissed=False``) clears it. User state, not AI output.
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't change its aftercare.",
+        )
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    dismissed_ids = [str(value) for value in (metadata.get("dismissed_aftercare") or []) if isinstance(value, str)]
+    if dismissed and template_id not in dismissed_ids:
+        dismissed_ids.append(template_id)
+    elif not dismissed:
+        dismissed_ids = [value for value in dismissed_ids if value != template_id]
+    metadata["dismissed_aftercare"] = dismissed_ids
+    session.extracted_metadata = metadata
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.dismiss_aftercare", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
 def assign_session_patient(
     db: DbSession,
     principal: CurrentPrincipal,

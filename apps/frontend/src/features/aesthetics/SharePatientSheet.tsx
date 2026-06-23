@@ -46,11 +46,15 @@ export function SharePatientSheet({
   onCreateShare,
   onRevokeShare,
   onClose,
+  preferredAftercareId,
 }: {
   patientId: string;
   patientName: string;
   /** The patient's recent visits — used to build the before/after photo pool to curate from. */
   visits: GalleryVisit[];
+  /** Pre-select this aftercare template (the report's matched, non-dismissed clinic protocol) so the
+   * share stays consistent with what the doctor sees in the report. */
+  preferredAftercareId?: string;
   /** When sharing a SPECIFIC visit (from the session screen), the source session — its synthesized
    * summary, treatments, and id drive the share (not the patient's most-recent visit). */
   sessionId?: string;
@@ -143,13 +147,16 @@ export function SharePatientSheet({
       setMedia(pool);
       const active = (aftercare || []).filter((template) => template.isActive);
       setTemplates(active);
-      setAftercareId(active[0]?.id || "");
+      // Default to the report's matched protocol so the share matches what the doctor saw; if it was
+      // removed from the report (not in `active` / not preferred), fall back to the first template.
+      const preferred = active.find((template) => template.id === preferredAftercareId);
+      setAftercareId(preferred?.id || active[0]?.id || "");
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [patientId, visits, sessionId, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates, onLoadSession, shareIncludeBrands]);
+  }, [patientId, visits, sessionId, onLoadLastVisit, onLoadSessionCaptures, onListAftercareTemplates, onLoadSession, shareIncludeBrands, preferredAftercareId]);
 
   const selectedTemplate = templates.find((template) => template.id === aftercareId) || null;
   const includedMedia = media.filter((item) => item.included);
