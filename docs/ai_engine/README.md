@@ -8,6 +8,10 @@ AI engine docs describe the Celery worker boundary, placeholder processors, job 
   Pro enrichment (captions/decoration), deterministic report generation, durable retry, and the
   patient-identity/matching boundary (the now-implemented durable-retry + context-rich transcription
   + patient-extraction direction lives here and in [intelligence-layer.md](../intelligence-layer.md)).
+- [Eval epic](eval-epic.md): golden-set evals for every AI job (transcription, caption, synthesis =
+  treatments + aftercare + sections, patient memory, matching) + a runner (`eval/run_all.py`) that
+  scores them, and the **scenario catalog** for clinician-recorded audio/photo fixtures. Gate prompt/
+  model changes on the whole scorecard instead of tuning one job at a time.
 
 ## Direction
 
