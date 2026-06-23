@@ -118,6 +118,23 @@ export function ProLiveReport({
   );
   // Q3: carried-forward doses the clinician has already confirmed (so they read as done, not pending).
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(session));
+  // Carried-forward doses awaiting confirmation, keyed by `area|product` so the inline "Confirm dose"
+  // affordance lands on the matching treatment row (the confirmation now lives in the report itself,
+  // not in a separate section above it).
+  const carriedForwardReasons: Record<string, string> = {};
+  review
+    .filter((item) => item.category === "carried_forward" && item.key)
+    .forEach((item) => {
+      carriedForwardReasons[item.key as string] = item.reason;
+    });
+  const onConfirmCarried =
+    onConfirmCarriedForward && session ? (key: string) => onConfirmCarriedForward(session.id, key) : undefined;
+  // The synthesis's softer uncertainties (not the carried-forward dose, not the per-row low-confidence
+  // / missing-lot hints) — shown as calm notes beneath the treatments list.
+  const reviewNotes = review
+    .filter((item) => item.category !== "carried_forward" && item.category !== "low_confidence" && item.category !== "missing_lot")
+    .map((item) => item.reason)
+    .filter(Boolean);
   // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
@@ -160,7 +177,15 @@ export function ProLiveReport({
               <section className="workspace-report-section" key={section.id}>
                 {section.title ? <h3 dir={textDirection(localizedSectionTitle(section.id, section.title, reportLanguage))}>{localizedSectionTitle(section.id, section.title, reportLanguage)}</h3> : null}
                 {renderTreatmentTable ? (
-                  <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
+                  <TreatmentsList
+                    treatments={treatments}
+                    confirmedCarriedForward={confirmedCarriedForward}
+                    missingLotProducts={missingLotProducts}
+                    onFixAtSource={onFixAtSource}
+                    carriedForwardReasons={carriedForwardReasons}
+                    onConfirmCarried={onConfirmCarried}
+                    reviewNotes={reviewNotes}
+                  />
                 ) : (
                   section.blocks.map((block, index) => (
                     <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
@@ -186,25 +211,38 @@ export function ProLiveReport({
           <h3 dir={textDirection(localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage))}>
             {localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage)}
           </h3>
-          <TreatmentsList treatments={treatments} confirmedCarriedForward={confirmedCarriedForward} missingLotProducts={missingLotProducts} onFixAtSource={onFixAtSource} />
+          <TreatmentsList
+            treatments={treatments}
+            confirmedCarriedForward={confirmedCarriedForward}
+            missingLotProducts={missingLotProducts}
+            onFixAtSource={onFixAtSource}
+            carriedForwardReasons={carriedForwardReasons}
+            onConfirmCarried={onConfirmCarried}
+            reviewNotes={reviewNotes}
+          />
         </section>
       ) : null}
-      {/* "Needs your confirmation" now lives at the session level (SessionConfirmations), so doses can
-          be confirmed from either the captures or the report view — see CaptureScreen. */}
+      {/* The clinician's confirmations are embedded in the report itself — the carried-forward dose
+          confirm sits on its treatment row (above), not in a separate section. */}
     </div>
   );
 }
 
 /**
  * The structured performed-treatments list — the single treatment representation in the report
- * (area · product · dose · lot, verbatim quantity preserved). Carried-forward rows are flagged and,
- * until confirmed (Q3), point to the "Needs your confirmation" action below.
+ * (area · product · dose · lot, verbatim quantity preserved). The clinician's confirmations live
+ * INLINE here, where the data is: a carried-forward dose shows a "Confirm dose" action right on its
+ * own row (Q3), and the synthesis's softer uncertainties render as calm notes beneath the list — so
+ * there is no separate "Needs your confirmation" section floating above the report.
  */
 function TreatmentsList({
   treatments,
   confirmedCarriedForward,
   missingLotProducts,
   onFixAtSource,
+  carriedForwardReasons,
+  onConfirmCarried,
+  reviewNotes,
 }: {
   treatments: SessionTreatment[];
   confirmedCarriedForward: Set<string>;
@@ -212,49 +250,98 @@ function TreatmentsList({
   missingLotProducts?: Set<string>;
   /** Jump to the Sources drawer to correct a flagged treatment at its capture. */
   onFixAtSource?: () => void;
+  /** `area|product` → reason for carried-forward doses awaiting confirmation (Q3). */
+  carriedForwardReasons?: Record<string, string>;
+  /** Confirm a carried-forward dose by its `area|product` key. */
+  onConfirmCarried?: (key: string) => Promise<void>;
+  /** The synthesis's softer uncertainties (ambiguous notes), rendered calmly under the list. */
+  reviewNotes?: string[];
 }) {
+  const [confirmingKey, setConfirmingKey] = React.useState<string | null>(null);
   return (
-    <ul className="treatments-list">
-      {treatments.map((treatment, index) => {
-        const label = treatmentLabel(treatment);
-        const lowConfidence = isLowConfidenceTreatment(treatment);
-        const attributeLines = treatmentAttributeLines(treatment);
-        const lotMissing = !treatment.lot && Boolean(treatment.product) && Boolean(missingLotProducts?.has((treatment.product || "").trim()));
-        // Soft, fixable extraction gaps point the doctor to the source capture (the lot/dose is fixed
-        // by editing what was captured, then the AI re-extracts — never overwritten by a manual edit).
-        const fixable = lowConfidence || lotMissing;
-        return (
-          <li
-            className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}`}
-            dir={textDirection(label)}
-            key={`${index}-${label.slice(0, 24)}`}
-          >
-            <span className="treatment-item-line">
-              {label}
-              {treatment.carriedForward ? (
-                confirmedCarriedForward.has(`${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`) ? (
-                  <span className="treatment-flag confirmed"> · carried forward (confirmed)</span>
-                ) : (
-                  <span className="treatment-flag"> · carried forward — confirm below</span>
-                )
-              ) : null}
-              {lowConfidence ? <span className="treatment-flag low"> · low confidence</span> : null}
-              {lotMissing ? <span className="treatment-flag low"> · lot not captured</span> : null}
-              {fixable && onFixAtSource ? (
-                <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
-                  ✎ Fix at source
-                </button>
-              ) : null}
-            </span>
-            {attributeLines.length ? (
-              <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
-                {attributeLines.join(" · ")}
+    <>
+      <ul className="treatments-list">
+        {treatments.map((treatment, index) => {
+          const label = treatmentLabel(treatment);
+          const lowConfidence = isLowConfidenceTreatment(treatment);
+          const attributeLines = treatmentAttributeLines(treatment);
+          const lotMissing = !treatment.lot && Boolean(treatment.product) && Boolean(missingLotProducts?.has((treatment.product || "").trim()));
+          // Soft, fixable extraction gaps point the doctor to the source capture (the lot/dose is fixed
+          // by editing what was captured, then the AI re-extracts — never overwritten by a manual edit).
+          const fixable = lowConfidence || lotMissing;
+          const key = `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`;
+          const isCarried = Boolean(treatment.carriedForward);
+          const isConfirmed = isCarried && confirmedCarriedForward.has(key);
+          // A carried-forward dose needs confirmation only when the synthesis flagged it (key present) —
+          // keeps the inline confirm in lock-step with the sticky "N to confirm" bar's count.
+          const needsConfirm = isCarried && !isConfirmed && Boolean(onConfirmCarried) && Boolean(carriedForwardReasons && key in carriedForwardReasons);
+          const confirmReason = carriedForwardReasons?.[key];
+          return (
+            <li
+              className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}${needsConfirm ? " needs-confirm" : ""}`}
+              dir={textDirection(label)}
+              key={`${index}-${label.slice(0, 24)}`}
+            >
+              <span className="treatment-item-line">
+                {label}
+                {/* When the inline confirm box is shown it already says "carried forward", so the line
+                    flag would be redundant — only show it when there's no pending confirm box. */}
+                {isCarried && !needsConfirm ? (
+                  <span className={`treatment-flag${isConfirmed ? " confirmed" : ""}`}> · carried forward{isConfirmed ? " (confirmed)" : ""}</span>
+                ) : null}
+                {lowConfidence ? <span className="treatment-flag low"> · low confidence</span> : null}
+                {lotMissing ? <span className="treatment-flag low"> · lot not captured</span> : null}
+                {fixable && onFixAtSource ? (
+                  <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
+                    ✎ Fix at source
+                  </button>
+                ) : null}
               </span>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+              {attributeLines.length ? (
+                <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
+                  {attributeLines.join(" · ")}
+                </span>
+              ) : null}
+              {needsConfirm ? (
+                <span className="treatment-confirm">
+                  <span className="treatment-confirm-reason" dir={textDirection(confirmReason || "")}>
+                    {confirmReason || "Carried forward from a previous visit — confirm the dose."}
+                  </span>
+                  <button
+                    type="button"
+                    className="treatment-confirm-btn"
+                    disabled={confirmingKey === key}
+                    onClick={async () => {
+                      if (!onConfirmCarried) return;
+                      setConfirmingKey(key);
+                      try {
+                        await onConfirmCarried(key);
+                      } finally {
+                        setConfirmingKey(null);
+                      }
+                    }}
+                  >
+                    {confirmingKey === key ? "Confirming…" : "Confirm dose"}
+                  </button>
+                </span>
+              ) : isConfirmed ? (
+                <span className="treatment-confirmed">✓ Dose confirmed</span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      {reviewNotes?.length ? (
+        <ul className="treatment-review-notes" aria-label="Notes to review">
+          {reviewNotes.map((note, index) => (
+            <li key={`${index}-${note.slice(0, 24)}`} dir={textDirection(note)}>
+              <span className="treatment-review-note-icon" aria-hidden="true">ⓘ</span>
+              {note}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
   );
 }
 

@@ -5922,6 +5922,71 @@ small {
 }
 .treatment-fix-at-source:hover { background: #f2f7fd; }
 
+/* Inline carried-forward dose confirmation, embedded on its own treatment row (Q3) — replaces the
+   separate "Needs your confirmation" section. A calm amber highlight marks the row that needs a tap. */
+.treatment-item.needs-confirm {
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-inline: -10px;
+  background: #fff8ea;
+  box-shadow: inset 3px 0 0 #e6b450;
+}
+.treatment-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 7px;
+}
+.treatment-confirm-reason {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: #6b4e12;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.treatment-confirm-btn {
+  flex: 0 0 auto;
+  padding: 5px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #b9831b;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.treatment-confirm-btn:hover { background: #a57314; }
+.treatment-confirm-btn:disabled { opacity: 0.6; cursor: default; }
+.treatment-confirmed {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  color: #2e7d4f;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* The synthesis's softer uncertainties (ambiguous notes) — calm gray footnotes under the treatments,
+   never an alarming box. */
+.treatment-review-notes {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: #f6f8fb;
+  display: grid;
+  gap: 6px;
+}
+.treatment-review-notes li {
+  display: flex;
+  gap: 7px;
+  color: #5a6b85;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.treatment-review-note-icon { flex: 0 0 auto; color: #8a98ad; font-size: 0.82rem; }
+
 .report-view-switch {
   border: 0;
   border-radius: 0;

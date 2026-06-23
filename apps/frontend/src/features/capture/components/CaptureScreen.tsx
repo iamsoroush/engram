@@ -10,10 +10,9 @@ import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
-import { SessionConfirmations } from "./SessionConfirmations";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmationItems, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, workspaceStructuredReportCopy } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
 
 export function CaptureScreen({
@@ -163,8 +162,6 @@ export function CaptureScreen({
   // patient awaiting identity verification. Soft warnings (missing lot, low confidence) stay inline
   // in the report and never feed this count, keeping the bar calm ("warnings over blocking").
   const treatmentReview = sessionTreatmentReview(activeSession);
-  // The session-level confirmation surface (excludes soft per-row hints now rendered inline).
-  const confirmationItems = sessionConfirmationItems(activeSession);
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(activeSession));
   const openDoseConfirmations = treatmentReview.filter(
     (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key),
@@ -172,7 +169,12 @@ export function CaptureScreen({
   const patientVerifyNeeded = Boolean(aiPatientAction && onCompleteAiCreatedPatient);
   const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0);
   const verifyRegionRef = React.useRef<HTMLDivElement>(null);
-  const scrollToVerify = () => verifyRegionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // "Review" jumps to the first thing needing confirmation: a carried-forward dose now lives inline on
+  // its treatment row in the report; patient-identity verification is the panel above the report.
+  const scrollToVerify = () => {
+    const target = document.querySelector(".treatment-item.needs-confirm") || verifyRegionRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
   const reportHasContent = Boolean(
@@ -376,18 +378,9 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
-      {!isHistorical && (aiPatientAction || (isPro && confirmationItems.length)) ? (
+      {!isHistorical && activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
         <div className="session-verify-region" ref={verifyRegionRef}>
-          {activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
-            <AiCreatedPatientPanel
-              action={aiPatientAction}
-              session={activeSession}
-              onComplete={onCompleteAiCreatedPatient}
-            />
-          ) : null}
-          {isPro ? (
-            <SessionConfirmations session={activeSession} onConfirmCarriedForward={onConfirmCarriedForward} />
-          ) : null}
+          <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
         </div>
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
