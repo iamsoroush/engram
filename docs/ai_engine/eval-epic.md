@@ -19,7 +19,7 @@ docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
 
 | Job | Eval module | Quality the eval must gate | Fixtures | Status |
 |---|---|---|---|---|
-| **Transcription** (audio → text) | `transcription_eval.py` | Persian **native script** (no romanization), verbatim dose/brand/lot, digit handling, robustness to accent/noise | **real audio** (cannot be synthetic) | TODO |
+| **Transcription** (audio → text) | `transcription_eval.py` | Persian **native script** (no romanization), verbatim dose/brand/lot, digit handling, robustness to accent/noise | **real audio** (cannot be synthetic) | **harness done — needs audio** (8 gate self-tests + 3 judge smoke green) |
 | **Image caption** (Job 2) | `caption_eval.py` | Neutral **objective** description (never a diagnosis — the caption is a neutral image→text extractor, not a clinical read), lot read off a label, language | **real photos** | TODO |
 | **Report synthesis — treatments** (Job 3) | `treatments_eval.py` | area/product/brand split, quantity/unit verbatim, corrections vs additions, carry-forward, lot | synthetic transcripts (+ real) | **done (12 cases)** |
 | **Report synthesis — aftercare** (Job 3) | `aftercare_conflict_eval.py` | which clinic protocols apply (completeness, per-procedure), dictation-vs-protocol **conflict** attribution | synthetic (+ real) | **done (6 cases)** |
@@ -82,6 +82,48 @@ The `*_eval.py` for a job loads each `<case>.<media>` + its `<case>.json`, runs 
 asserts against `expect`. Expected outputs use **tolerant matchers** (substring / numeric / presence)
 because LLM phrasing varies — the clinical facts must hold, not the exact words.
 
+### 2a. Two-tier `.json` format (reference impl: `transcription_eval.py`)
+
+`transcription_eval.py` is the built reference for the two-tier pattern; the other media evals
+(caption, synthesis fixtures) follow the same `.json` shape. A fixture's `.json` carries up to two
+blocks — include only what a case needs to prove:
+
+```jsonc
+{
+  "said": "بیست واحد بوتاکس روی پیشانی زدم.",   // OPTIONAL ground-truth transcript — the LLM judge's
+                                                 // reference + documentation; judge skipped if absent.
+  "context": {"preferredLanguage": "fa"},        // OPTIONAL processing-context overrides (merged).
+
+  "expect": {                                    // SAFETY GATES — deterministic, HARD pass/fail (block ship)
+    "containsFa":     ["بوتاکس", "واحد"],        //   every string appears verbatim (script/ZWNJ/digit tolerant)
+    "containsAny":    [["بیست", "۲۰"]],          //   each group: ≥1 appears (dose as WORD or DIGITS)
+    "numbers":        [20],                       //   each number appears as a digit token (normalized to Latin)
+    "brandsVerbatim": ["ژوویدرم"],               //   brand strings appear verbatim
+    "lot":            "ABC123",                   //   lot/batch string appears verbatim
+    "noLatinWords":   true,                       //   no Latin-script words (anti-romanization)
+    "allowLatin":     ["Juvederm"],               //   exceptions to noLatinWords (brands legitimately Latin)
+    "forbidden":      ["میلی‌گرم"],              //   strings that must NOT appear (wrong unit / hallucination)
+    "language":       "fa"                        //   expected detected language code
+  },
+
+  "judge": {                                     // QUALITY — LLM-as-judge, scored 0..1 (tracked, advisory)
+    "dimensions": ["nativeScript", "doseFidelity", "brandLotFidelity", "completeness", "noHallucination"],
+    "minScore": 0.7
+  }
+}
+```
+
+**Scoring + exit code.** Safety gates are deterministic and HARD: any failure exits non-zero (this is
+the dose-token / no-romanization gate). Quality (the judge) is **advisory by default** — reported in
+the scorecard so prompt/model changes are visible, but LLM nondeterminism never flakes CI red. Set
+`EVAL_STRICT_QUALITY=1` to promote below-threshold quality (and judge-smoke misses) to blocking too.
+
+**Always-on harness checks** (so the eval is honest before any recordings exist): deterministic
+**gate self-tests** (positive + negative synthetic transcripts proving each matcher catches what it
+must — run even with no gateway) and gateway **judge smoke cases** (synthetic reference/candidate
+text proving the rubric separates clean Persian from romanized / wrong-dose output). When a fixture
+is later dropped in, it is scored on top of these with no code change.
+
 ## 3. Scenario catalog — what to record
 
 Each scenario below becomes one fixture (media + `.json`). Record in **natural clinical Farsi**, as
@@ -117,10 +159,12 @@ you actually dictate. Save under the path shown; the matching eval picks it up a
 
 ## 4. Sequencing
 
-1. **Now (done):** runner + the two synthesis evals (treatments, aftercare) green on synthetic cases.
-2. **Next (needs recordings):** transcription + caption evals — these are blocked on real media; the
-   scenario catalog above is the recording list. Each recording dropped in `fixtures/` + its `.json`
-   makes its eval real.
+1. **Now (done):** runner + the two synthesis evals (treatments, aftercare) green on synthetic cases;
+   **transcription harness built** (8 deterministic gate self-tests + 3 judge smoke cases green) and
+   wired into `run_all.py` — it scores real clips the moment they land.
+2. **Next (needs recordings):** transcription (built, awaiting audio) + caption evals — blocked on
+   real media; the scenario catalog above is the recording list. Each recording dropped in
+   `fixtures/` + its `.json` makes its eval real, no code change.
 3. **Then:** report-sections, patient-memory (multi-session fixture), patient-matching evals.
 4. **CI:** run `run_all.py` on a gateway-enabled runner; gate prompt/model PRs on the scorecard.
 
