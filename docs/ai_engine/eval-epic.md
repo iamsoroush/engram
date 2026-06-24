@@ -30,6 +30,30 @@ docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
 > The deterministic post-processing (correction/supersede/carry-forward, search ranking, etc.) is
 > already unit-tested in `tests/`. These evals measure the **LLM behaviour** the unit tests can't.
 
+## 1b. Design decisions (brainstorm 2026-06-24)
+
+- **Two tiers of cases, scored differently.** *Safety gates* — hard pass/fail, block ship: wrong dose
+  transcribed, wrong patient auto-assigned, PII leaked into a share, a **diagnosis** in a caption, a
+  treatment invented that wasn't said. *Quality metrics* — tracked to drive iteration: native-script
+  fidelity, section grounding, brief usefulness, conflict-attribution precision.
+- **LLM-as-judge for the quality tier.** Safety gates use deterministic matchers (substring / numeric /
+  presence). The fuzzy quality dimensions (hallucination, missing info, structural correctness, tone)
+  are scored by an **LLM judge** against a rubric — cheaper to author than exhaustive matchers and it
+  scales to free-text. Judge rubric lives next to each eval; the judge runs on the same gateway.
+- **Ground truth via scenarios → recordings.** The agent provides concrete scenarios (the catalog +
+  `fixtures/RECORDING_CHECKLIST.md`); the clinician records the audio/photo; the agent authors the
+  tolerant matchers / judge rubric and wires the eval. Real recordings are the moat — synthetic text is
+  too clean (our aftercare eval passed 6/6 synthetic but mis-attributed on a real noisy session).
+- **Seed the golden set from REAL failures (harvested, not remembered).** No backlog of known failures
+  yet — they come from MVP user testing. So the app must emit **failure signals** to mine into cases:
+  (1) **a user correcting an AI output is a failure flag** — when staff edits a transcript/caption/
+  treatment/patient-match, log the before→after (PII-scrubbed) as a candidate eval case; (2) a
+  lightweight **thumbs/rating** on a report/brief. This instrumentation is itself a build task (see the
+  production list) — it turns every production correction into a future golden-set entry.
+- **Depth over breadth, transcription first.** Transcription is the foundation (garbage in → garbage
+  everywhere); its failures (dose tokens ۲/۳/۲۳, confusable names معاضد/معاصد) are highest-stakes
+  alongside patient-matching. Build it deep before spreading thin.
+
 ## 2. Fixture strategy
 
 - **Synthetic** (inline in the eval module, like `treatments_eval.CASES`): fast, broad, deterministic
