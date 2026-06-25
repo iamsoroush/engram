@@ -1,0 +1,12 @@
+{
+  "said": "دو سی‌سی... نه اشتباه گفتم، سه سی‌سی.",
+  "expect": {
+    "containsAny": [["دو", "۲"], ["سه", "۳"]],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "doseFidelity", "noHallucination"],
+    "minScore": 0.7
+  }
+}

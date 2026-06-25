@@ -1,0 +1,13 @@
+{
+  "said": "یک سی‌سی ژل ژوویدرم توی گونه چپ.",
+  "expect": {
+    "containsFa": ["ژل", "گونه", "سی‌سی"],
+    "brandsVerbatim": ["ژوویدرم"],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "brandLotFidelity", "completeness"],
+    "minScore": 0.7
+  }
+}

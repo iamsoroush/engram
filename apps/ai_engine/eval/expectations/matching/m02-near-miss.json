@@ -1,0 +1,8 @@
+{
+  "_todo": "Say a name SLIGHTLY wrong vs an existing patient (one phoneme off — e.g. معاضد vs معاصد). Set \"nameContains\" to what you ACTUALLY say. The keystone gate is basisNot=explicit: a near-miss must never be classified as an explicit reassignment (the only basis the backend auto-applies a fuzzy match on). Then delete this _todo.",
+  "said": "بیمار ... .",
+  "expect": {
+    "basisNot": "explicit",
+    "noLatinInName": true
+  }
+}

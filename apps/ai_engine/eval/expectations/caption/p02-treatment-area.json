@@ -1,0 +1,13 @@
+{
+  "seen": "عکس ناحیه درمان (مثلاً گونه یا پیشانی).",
+  "expect": {
+    "isProductLabel": false,
+    "noDiagnosis": true,
+    "notOutOfContext": true,
+    "noLatinWords": true
+  },
+  "judge": {
+    "dimensions": ["objectiveNotDiagnostic", "nativeScript", "groundedNoInvention"],
+    "minScore": 0.7
+  }
+}

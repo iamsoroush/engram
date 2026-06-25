@@ -1,0 +1,14 @@
+{
+  "_note": "A plain statement of who the patient is → assignment present, basis IMPLICIT (not explicit). Use a real existing patient's name so the backend matcher has something to match.",
+  "said": "بیمار نگار محمدی.",
+  "expect": {
+    "nameContains": ["نگار", "محمدی"],
+    "assignmentPresent": true,
+    "basisNot": "explicit",
+    "noLatinInName": true
+  },
+  "judge": {
+    "dimensions": ["transliterationQuality"],
+    "minScore": 0.7
+  }
+}

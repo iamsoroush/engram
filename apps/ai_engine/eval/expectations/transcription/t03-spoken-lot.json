@@ -1,0 +1,11 @@
+{
+  "_todo": "After recording, set the spoken lot exactly. If you read Latin letters (e.g. 'A B C 1 2 3') add  \"lot\": \"ABC123\"  and  \"allowLatin\": [\"ABC123\"]  to expect. If you say Persian letters, set \"lot\" to that string. Then delete this _todo.",
+  "said": "شماره لات ... .",
+  "expect": {
+    "containsFa": ["لات"]
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "brandLotFidelity"],
+    "minScore": 0.7
+  }
+}
