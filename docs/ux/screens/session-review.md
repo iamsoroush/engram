@@ -15,6 +15,10 @@ All session states remain reviewable. State badges are informational and do not 
 - Add capture to continue the same session with refreshed progressive output.
 - Save title.
 - Open capture source preview.
+- Rate the synthesized report with a lightweight 👍 / 👎 (Pro report only; shown once the report has
+  real sections or treatments). One tap records a quiet AI-quality signal and collapses to a thank-you —
+  never a blocker. Feeds the eval golden-set harvester (`docs/ai_engine/eval-epic.md` §1b). Bilingual +
+  RTL-aware (labels follow the report language).
 
 ## Visible Data
 

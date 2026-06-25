@@ -10,6 +10,7 @@ from app.auth.service import audit
 from app.models import Artifact, CaptureStatus, CaptureType, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, CaptureUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
+from app.services.feedback import record_capture_text_correction
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
 from app.services.sessions import parse_uuid
 
@@ -38,6 +39,7 @@ def update_capture(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid capture status") from exc
     relevance_marked = False
+    previous_metadata = dict(capture.capture_metadata or {})
     if request.metadata is not None:
         incoming_metadata = dict(request.metadata)
         # Staff "Mark relevant" clears the AI out-of-context marker non-destructively so the
@@ -63,6 +65,9 @@ def update_capture(
             session = db.get(Session, capture.session_id)
             if session is not None and session.tenant_id == principal.tenant_id:
                 mark_session_stale_after_source_text_update(session, str(capture.id), "transcript-edit", "An audio transcript was edited after the last processed session output.", datetime.now(timezone.utc))
+        # Harvest a transcript/caption staff edit as a candidate eval case (eval-epic §1b). Staged in
+        # this same transaction (like audit); never raises into the edit.
+        record_capture_text_correction(db, principal, capture, previous_metadata, request.metadata)
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="capture.update", target_type="capture", target_id=capture.id)
     db.commit()
     db.refresh(capture)

@@ -24,6 +24,7 @@ import { setAppLanguage } from "../shared/lib/datetime";
 import {
   assignSessionPatient,
   confirmCarriedForward,
+  postFeedback,
   setAftercareDismissed,
   unassignSessionPatient,
   checkDuplicatePatient,
@@ -1320,6 +1321,15 @@ export function App() {
     [apiFetch, applySessionUpdate],
   );
 
+  // Report thumbs rating → the AI-quality feedback harvester (eval golden-set; eval-epic §1b).
+  // Fire-and-forget: a quiet "noted" toast, never blocks; failures are swallowed in postFeedback.
+  const rateReport = React.useCallback(
+    (sessionId: string, rating: number) => {
+      void postFeedback(apiFetch, { kind: "rating", aiOutputType: "report", rating, sessionId });
+    },
+    [apiFetch],
+  );
+
   // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
   const dismissAftercareTemplate = React.useCallback(
     async (sessionId: string, templateId: string, dismissed: boolean) => {
@@ -1962,6 +1972,7 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           offline={offline}
@@ -2003,6 +2014,7 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}

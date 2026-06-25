@@ -38,6 +38,7 @@ export function CaptureScreen({
   onStartNewSession,
   onMarkRelevant,
   onConfirmCarriedForward,
+  onRateReport,
   onFetchPatient,
   tier,
   reportLanguage,
@@ -87,6 +88,8 @@ export function CaptureScreen({
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   /** Q3 — confirm a carried-forward dose (by area|product key) so the Pro report can complete. */
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
+  /** Record a lightweight thumbs rating on the Pro report (eval golden-set harvester; eval-epic §1b). */
+  onRateReport?: (sessionId: string, rating: number) => void;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   tier?: string | null;
   /** Tenant report-content language (distinct from app UI language) — localizes the report's section
@@ -492,6 +495,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              onRateReport={onRateReport}
               reportLanguage={reportLanguage}
             />
           ) : (

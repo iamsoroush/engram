@@ -903,6 +903,37 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
 }
 
+export type FeedbackInput = {
+  kind?: "rating" | "correction" | "confirmation";
+  aiOutputType?: "report" | "brief" | "transcript" | "caption" | "treatment" | "patient_match";
+  rating?: number;
+  comment?: string;
+  before?: string;
+  after?: string;
+  sessionId?: string;
+  captureId?: string;
+  patientId?: string;
+  context?: Record<string, unknown>;
+};
+
+/**
+ * Send an AI-quality signal (eval golden-set harvester; eval-epic §1b). Fire-and-forget: a rating is
+ * a nice-to-have, never part of the clinical flow, so failures are swallowed and never surfaced.
+ * Staff *corrections* (transcript/caption/treatment/patient-match) are harvested server-side; this is
+ * the lightweight report/brief thumbs rating.
+ */
+export async function postFeedback(apiFetch: ApiFetch, input: FeedbackInput): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    // Feedback instrumentation must never disrupt the user.
+  }
+}
+
 export async function updateCaptureNote(apiFetch: ApiFetch, captureId: string, text: string) {
   // Basic note body edit — stored as a staff-edited note field (no AI involved).
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {

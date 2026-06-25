@@ -835,6 +835,52 @@ small {
   background: currentColor;
   animation: capture-status-pulse 1.45s ease-out infinite;
 }
+
+/* Lightweight report thumbs rating → the AI-quality feedback harvester (eval-epic §1b). */
+.report-feedback-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.report-feedback-prompt {
+  font-weight: 600;
+}
+.report-feedback-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.report-feedback-bar[dir="rtl"] .report-feedback-actions {
+  margin-right: auto;
+}
+.report-feedback-bar[dir="ltr"] .report-feedback-actions {
+  margin-left: auto;
+}
+.report-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.report-feedback-btn:hover {
+  border-color: var(--color-text-soft);
+}
+.report-feedback-thanks {
+  font-weight: 600;
+  color: var(--color-success, #0f766e);
+}
 .report-doc-status {
   color: var(--color-muted);
   font-size: 0.82rem;
