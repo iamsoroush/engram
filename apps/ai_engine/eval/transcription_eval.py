@@ -159,9 +159,16 @@ def run_gates(transcript: str, language: str | None, expect: dict[str, Any]) -> 
         problems.append(f"lot {expect['lot']!r} not verbatim")
 
     if expect.get("noLatinWords"):
-        allowed = {word.lower() for word in expect.get("allowLatin", [])}
+        # Expected verbatim Latin (lot codes, Latin brand names) is allowed — and auto-allowed from the
+        # `lot`/`brandsVerbatim` gates so you needn't duplicate them. The regex splits an alphanumeric
+        # lot like "ABC123" into "ABC", so an offender that is a fragment of a whitelisted token passes.
+        allowed = {
+            token.lower()
+            for token in [*expect.get("allowLatin", []), *expect.get("brandsVerbatim", []), *([expect["lot"]] if expect.get("lot") else [])]
+        }
         offenders = [
-            word for word in LATIN_WORD_RE.findall(str(transcript)) if word.lower() not in allowed
+            word for word in LATIN_WORD_RE.findall(str(transcript))
+            if word.lower() not in allowed and not any(word.lower() in token for token in allowed)
         ]
         if offenders:
             problems.append(f"romanized/Latin words present: {offenders}")
