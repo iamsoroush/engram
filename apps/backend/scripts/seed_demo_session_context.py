@@ -38,6 +38,7 @@ from app.models import (
 from app.services.ai_jobs.orchestration import maybe_refresh_stale_patient_memory
 from app.services.capture_storage import object_key_for_source
 from app.services.patients import replace_deterministic_patient_identifiers
+from app.services.photo_pairing import recompute_session_photo_pairing
 from app.storage.object_store import ObjectStore
 
 DOCTOR_USER_ID = uuid.uuid5(DEV_NAMESPACE, "user:doctor")
@@ -94,10 +95,16 @@ def add_media(
     filename: str,
     captured_at: datetime,
     caption: str | None = None,
+    pairing: dict | None = None,
 ) -> Capture:
     metadata: dict = {"detail": "", "original_filename": filename, "content_type": content_type}
     if caption:
-        metadata["caption"] = {"text": caption, "source": "seed"}
+        # `pairing` carries the Job-2 caption pairing attributes (region/laterality/view/phase) that
+        # `recompute_session_photo_pairing` turns into a deterministic before/after `photo_pairing`.
+        caption_block: dict = {"text": caption, "source": "seed"}
+        if pairing:
+            caption_block["pairing"] = pairing
+        metadata["caption"] = caption_block
     capture = Capture(
         tenant_id=DEV_TENANT_ID,
         session_id=session.id,
@@ -296,11 +303,66 @@ def main() -> None:
         else:
             skipped.append("لیلا کریمی")
 
+        # E — a real before/after pair: two captioned photos of the same site across phases, paired
+        # deterministically (Job-2 attrs → `recompute_session_photo_pairing`), surfaced in a Pro report
+        # `media` section so the before/after **slider** renders. The photos are visually distinct so the
+        # drag-to-compare is obvious.
+        donya = ensure_patient(
+            db, display_name="دنیا موسوی", first="دنیا", last="موسوی", phone="+98 912 500 5005",
+            notes="فیلر گونه — مستندسازی قبل/بعد.",
+        )
+        if donya:
+            ba = make_session(db, patient=donya, title="فیلر گونه چپ — قبل/بعد", days_ago=7)
+            cheek_pairing = {"region": "cheek", "laterality": "left", "view": "frontal"}
+            before = add_media(
+                db, store, ba, capture_type=CaptureType.photo, content=png_solid(240, 300, (208, 176, 168)),
+                content_type="image/png", filename="ba-cheek-before.png", captured_at=ba.captured_at - timedelta(minutes=20),
+                caption="گونه چپ، قبل از درمان", pairing={**cheek_pairing, "phase": "before"},
+            )
+            after = add_media(
+                db, store, ba, capture_type=CaptureType.photo, content=png_solid(240, 300, (228, 198, 188)),
+                content_type="image/png", filename="ba-cheek-after.png", captured_at=ba.captured_at,
+                caption="گونه چپ، بعد از درمان", pairing={**cheek_pairing, "phase": "after"},
+            )
+            db.flush()
+            # Deterministic pairing → each photo gets `photo_pairing {role, pairKey, pairedCaptureId}`.
+            recompute_session_photo_pairing(db, session=ba)
+            # A minimal Pro report whose `media` section references the pair, so the slider has a home.
+            ba.report_model = {
+                "schemaVersion": "2026-05-21.session-processing-output.v1",
+                "summary": "ویزیت فیلر گونه چپ با مستندسازی قبل و بعد.",
+                "sections": [
+                    {
+                        "id": "visit-summary",
+                        "title": "خلاصه ویزیت",
+                        "blocks": [{"type": "paragraph", "text": "یک سی‌سی فیلر به گونه چپ تزریق شد. تصاویر قبل و بعد ثبت شد."}],
+                    },
+                    {
+                        "id": "media",
+                        "title": "تصاویر",
+                        "blocks": [
+                            {"type": "image", "captureId": str(before.id), "caption": "گونه چپ، قبل از درمان"},
+                            {"type": "image", "captureId": str(after.id), "caption": "گونه چپ، بعد از درمان"},
+                        ],
+                    },
+                ],
+                "sourceReferences": [
+                    {"type": "capture", "captureId": str(before.id)},
+                    {"type": "capture", "captureId": str(after.id)},
+                ],
+                "generatedBy": "seed",
+            }
+            ba.organization_source = OrganizationSource.ai_engine
+            db.flush()
+            created.append("دنیا موسوی — before/after pair (slider in the Pro report media section)")
+        else:
+            skipped.append("دنیا موسوی")
+
         db.commit()
 
         # Index search identifiers (name aliases, phone) for every demo patient so they are matchable
         # (AI assignment) + searchable — the raw-ORM creation above skips this, unlike the API path.
-        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی"):
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی", "دنیا موسوی"):
             patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
             if patient is not None:
                 replace_deterministic_patient_identifiers(db, patient=patient, national_id=None, source="staff")

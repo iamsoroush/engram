@@ -135,6 +135,13 @@ generically (key·value), never a fixed schema, so new attributes appear without
 
 ### 2.4 Before/after media — side-by-side + slider compare
 
+> **BUILT (2026-06-25).** The `BeforeAfterSlider` component (side-by-side ⇄ draggable compare) renders
+> in the report `media` section ([LiveReport `MediaSection`](../../apps/frontend/src/features/capture/components/LiveReport.tsx)).
+> The rendering **consumes** the deterministic pairing: the backend attaches each media image block's
+> `photo_pairing` ({role, pairKey, pairedCaptureId}) at serialization (`capture_storage._report_model_with_media_pairing`),
+> so the client pairs before↔after without extra fetches; unpaired photos render as singles. Bilingual +
+> RTL-aware. A demo before/after pair is seeded (`scripts/seed_demo_session_context.py` — patient دنیا موسوی).
+
 From the `media` section's `image` blocks (each `{captureId, caption}`), resolved to files
 (`render_report_body_markdown` → file endpoint; **every `captureId` validated against the session,
 unknowns dropped** — the contract's assembly rule).

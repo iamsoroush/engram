@@ -6,6 +6,7 @@ import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
+import { BeforeAfterSlider } from "./BeforeAfterSlider";
 import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
 // Persian section titles, keyed by the fixed section id (mirrors the ai_engine's SYNTHESIS_SECTIONS).
@@ -192,6 +193,8 @@ export function ProLiveReport({
                     onConfirmCarried={onConfirmCarried}
                     reviewNotes={reviewNotes}
                   />
+                ) : section.id === "media" ? (
+                  <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
                 ) : (
                   section.blocks.map((block, index) => (
                     <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
@@ -361,6 +364,64 @@ export function formatReportBlock(block: StructuredReportBlock, onResolveFile?: 
   }
   if (block.text) return formatReportParagraph(block.text, onResolveFile);
   return null;
+}
+
+type MediaUnit =
+  | { kind: "pair"; before: StructuredReportBlock; after: StructuredReportBlock }
+  | { kind: "block"; block: StructuredReportBlock };
+
+/** Group a media section's image blocks into before/after pairs from their deterministic
+ * `photo_pairing` (the rendering consumes pairs, it never pairs). Unpaired blocks pass through. */
+export function pairMediaBlocks(blocks: StructuredReportBlock[]): MediaUnit[] {
+  const byCapture = new Map<string, StructuredReportBlock>();
+  for (const block of blocks) if (block.type === "image" && block.captureId) byCapture.set(block.captureId, block);
+  const consumed = new Set<string>();
+  const units: MediaUnit[] = [];
+  for (const block of blocks) {
+    if (block.type === "image" && block.captureId && consumed.has(block.captureId)) continue;
+    const partnerId = block.pairing?.pairedCaptureId || undefined;
+    const role = block.pairing?.role;
+    if (block.type === "image" && block.captureId && partnerId && byCapture.has(partnerId) && !consumed.has(partnerId) && (role === "before" || role === "after")) {
+      const partner = byCapture.get(partnerId) as StructuredReportBlock;
+      const before = role === "after" ? partner : block;
+      const after = role === "after" ? block : partner;
+      consumed.add(block.captureId);
+      consumed.add(partnerId);
+      units.push({ kind: "pair", before, after });
+    } else {
+      units.push({ kind: "block", block });
+    }
+  }
+  return units;
+}
+
+/** The report `media` section: before/after pairs render as the slider, the rest as plain images. */
+export function MediaSection({
+  blocks,
+  onResolveFile,
+  isPersian,
+}: {
+  blocks: StructuredReportBlock[];
+  onResolveFile: (endpoint: string) => Promise<string>;
+  isPersian?: boolean;
+}) {
+  return (
+    <>
+      {pairMediaBlocks(blocks).map((unit, index) =>
+        unit.kind === "pair" ? (
+          <BeforeAfterSlider
+            key={`pair-${unit.before.captureId}-${unit.after.captureId}`}
+            before={{ captureId: unit.before.captureId, caption: unit.before.caption }}
+            after={{ captureId: unit.after.captureId, caption: unit.after.caption }}
+            onResolveFile={onResolveFile}
+            isPersian={isPersian}
+          />
+        ) : (
+          <React.Fragment key={`block-${index}`}>{formatReportBlock(unit.block, onResolveFile)}</React.Fragment>
+        ),
+      )}
+    </>
+  );
 }
 
 export function BasicLiveReport({

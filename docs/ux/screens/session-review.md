@@ -24,6 +24,11 @@ All session states remain reviewable. State badges are informational and do not 
 
 - Session title, full summary, status, and actionable patient assignment.
 - Clinical report with local progressive state, passive assistant-state indicators, and live draft/structured view switching when generated report output is unavailable.
+- **Before/after media (Pro):** the report `media` section renders before/after photo pairs with two
+  modes — **side-by-side** (default) and a **draggable compare slider** (drag to reveal after-over-before).
+  Pairing is the deterministic backend `photo_pairing` (the rendering consumes pairs, it never pairs);
+  unpaired photos render as single images. Bilingual + RTL-aware. See
+  [redesign-pro-report §2.4](../redesign-pro-report.md).
 - Collapsible summary.
 - Collapsible extracted findings.
 - Source previews, statuses, and generated capture details through clickable live draft cards.
