@@ -73,7 +73,6 @@ sys.path.insert(0, "/app")
 
 from ai_engine.processing import (  # noqa: E402
     gateway_client,
-    gateway_settings_for,
     normalize_digits_to_latin,
     transcribe_audio_content,
     transcription_is_configured,
@@ -93,6 +92,10 @@ AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".flac", ".ogg", ".aac", ".opus", ".we
 JUDGE_DIMENSIONS = ("nativeScript", "doseFidelity", "brandLotFidelity", "completeness", "noHallucination")
 DEFAULT_MIN_SCORE = 0.7
 STRICT_QUALITY = os.environ.get("EVAL_STRICT_QUALITY", "").strip() not in ("", "0", "false", "False")
+# The judge runs on the shared gateway (base_url/key resolved from the transcription gateway) but on a
+# capable text model, independent of whichever model is under test. Eval-only config (not production
+# config.py); override with EVAL_JUDGE_MODEL to grade with a different model.
+JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "").strip() or "gpt-5.4-mini"
 
 try:
     HERE = pathlib.Path(__file__).resolve().parent
@@ -231,9 +234,8 @@ def judge_transcript(reference: str, candidate: str, dimensions: list[str]) -> d
     (so the caller can degrade to "judge unavailable" instead of treating it as a quality failure).
     """
     client = gateway_client("report_synthesis")
-    model = gateway_settings_for("report_synthesis")[2]
     response = client.chat.completions.create(
-        model=model,
+        model=JUDGE_MODEL,
         messages=[{"role": "user", "content": _judge_prompt(reference, candidate, dimensions)}],
     )
     return _parse_judge(response.choices[0].message.content or "", dimensions)

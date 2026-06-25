@@ -118,6 +118,10 @@ the dose-token / no-romanization gate). Quality (the judge) is **advisory by def
 the scorecard so prompt/model changes are visible, but LLM nondeterminism never flakes CI red. Set
 `EVAL_STRICT_QUALITY=1` to promote below-threshold quality (and judge-smoke misses) to blocking too.
 
+**Judge model.** The judge runs on **`gpt-5.4-mini`** (eval-only config; override with
+`EVAL_JUDGE_MODEL`). It uses the shared gateway but a model chosen for grading, kept **independent of
+whichever model is under test** so the grader doesn't move when you swap the transcription model.
+
 **Always-on harness checks** (so the eval is honest before any recordings exist): deterministic
 **gate self-tests** (positive + negative synthetic transcripts proving each matcher catches what it
 must — run even with no gateway) and gateway **judge smoke cases** (synthetic reference/candidate
