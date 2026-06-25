@@ -88,6 +88,15 @@ Use human-readable warnings:
 
 Avoid exposing backend validation, AI job, upload, or sync details unless the user must act to keep data safe.
 
+### Stale reference self-heal (deleted/merged patient)
+
+When a patient a visit still references has been deleted or merged away, any patient-scoped call (verify
+an AI-created patient, assign a patient, or a queued assignment in the outbox) returns `404`. The client
+**self-heals** instead of freezing: it clears the stale patient reference (the visit reverts to
+`Unassigned`), dismisses the AI-created **verify** panel, drops the queued operation so the outbox stops
+retrying, and shows one calm warning — `That patient record is no longer available — the visit was set
+back to unassigned. Please assign it again.` No error code, no stuck spinner, no manual cache reset.
+
 ## Empty
 
 - Active Session with no captures still shows the workspace and empty report surface.
