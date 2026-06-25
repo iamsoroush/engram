@@ -23,12 +23,25 @@ docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
 | **Image caption** (Job 2) | `caption_eval.py` | Neutral **objective** description (never a diagnosis — the caption is a neutral image→text extractor, not a clinical read), lot read off a label, language | **real photos** | **harness done — needs photos** (8 gate self-tests + 3 judge smoke green) |
 | **Report synthesis — treatments** (Job 3) | `treatments_eval.py` | area/product/brand split, quantity/unit verbatim, corrections vs additions, carry-forward, lot | synthetic transcripts (+ real) | **done (12 cases)** |
 | **Report synthesis — aftercare** (Job 3) | `aftercare_conflict_eval.py` | which clinic protocols apply (completeness, per-procedure), dictation-vs-protocol **conflict** attribution | synthetic (+ real) | **done (6 cases)** |
-| **Report synthesis — sections** (Job 3) | `report_sections_eval.py` | grounded prose (no invention), native script titles + body, image blocks reference real captureIds, empty sections stay empty | synthetic (+ real) | TODO |
-| **Patient memory** (Job 4) | `patient_memory_eval.py` | story-so-far accuracy, since-last-visit delta, flags, hero pick — over a multi-session fixture | multi-session fixtures | TODO |
-| **Patient matching** (AI auto-assign) | `patient_matching_eval.py` | **safety**: never auto-assign on a non-exact alias; correct exact-alias match; sane fuzzy SEARCH ranking | name fixtures (+ real audio names) | TODO |
+| **Report synthesis — sections** (Job 3) | `report_sections_eval.py` | grounded prose (no invention), native script titles + body, image blocks reference real captureIds, empty sections stay empty | synthetic transcripts (+ real) | **done (3 cases + 5 self-tests)** |
+| **Patient memory** (Job 4) | `patient_memory_eval.py` | story-so-far accuracy, since-last-visit delta, flags (no invented flags), no name-repeat (advisory) — over a multi-session fixture | synthetic multi-session (+ real) | **done (3 cases + 6 self-tests)** |
+| **Patient matching** (AI auto-assign) | `patient_matching_eval.py` | **safety (LLM seam)**: spoken name extracted faithfully + assignment **basis** not over-escalated (a mention/near-miss must NOT be `explicit`) so the backend never silently auto-assigns | name fixtures (+ real audio names) | **done (7 self-tests + 2 judge smoke)** |
 
-> The deterministic post-processing (correction/supersede/carry-forward, search ranking, etc.) is
-> already unit-tested in `tests/`. These evals measure the **LLM behaviour** the unit tests can't.
+> The deterministic post-processing (correction/supersede/carry-forward, search ranking, and the
+> exact-vs-fuzzy **auto-assign decision** itself) is already unit-tested in `tests/`
+> (`test_ai_assignment_gate.py`, `test_patient_identity_matching.py`). These evals measure the **LLM
+> behaviour** the unit tests can't — e.g. patient-matching here covers the transcription INPUT (name +
+> intent) that feeds the backend gate, not the (already-tested, backend-only) gate logic.
+
+> **Shared harness.** All five LLM evals run on `eval/_common.py` (tolerant Persian matching, the
+> `gpt-5.4-mini` judge, the fixture store, the exit-code policy). Treatments + aftercare predate it and
+> stay self-contained. A THIRD deterministic tier exists alongside safety/quality: **advisory**
+> deterministic checks (e.g. patient-memory name-repeat) — reported, never blocking.
+
+> **Fixture media live in object storage, never in git** (PII). `scripts/eval-fixtures.sh` stages a
+> local intake dir, pushes/pulls the `notari-eval-fixtures` MinIO bucket (via a `minio/mc` sidecar on
+> the `notari-shared` network), and the evals read fixtures from `EVAL_FIXTURES_DIR`. `fixtures/<job>/`
+> in the repo is gitignored except `.gitkeep`. See `scripts/eval-fixtures.sh` + the staging README.
 
 ## 1b. Design decisions (brainstorm 2026-06-24)
 

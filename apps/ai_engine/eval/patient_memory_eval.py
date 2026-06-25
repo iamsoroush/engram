@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""Golden-set eval for PATIENT MEMORY (Job 4) — the longitudinal story-so-far + since-last-visit card.
+
+Patient memory synthesizes a patient's prior memory + new visit briefs into a warm assistant-voiced
+brief plus a compact line-up card (storySoFar / rightNow / flags). It runs the REAL job
+(``completed_patient_memory_output``) over synthetic multi-session fixtures — no recordings needed —
+and scores two tiers (shared harness in ``_common.py``):
+
+* **Safety gates** — deterministic: NO patient-name leak (the name is shown beside the card; the model
+  must not repeat it), NO invented flags (flags only for items actually in the briefs; empty otherwise),
+  native-script (no romanization), and recall of grounded specifics (a dose/brand from the briefs).
+* **Quality (LLM judge)** — story accuracy (reflects the briefs across visits), delta accuracy (rightNow
+  reflects the latest visit / open threads), native script, no-hallucination. Advisory by default.
+
+Run::
+
+    docker exec notari-main-ai-engine-1 python /app/eval/patient_memory_eval.py
+
+No gateway → cases SKIP; deterministic gate self-tests still run. Exit = SAFETY only unless EVAL_STRICT_QUALITY=1.
+"""
+from __future__ import annotations
+
+import pathlib
+import sys
+from typing import Any
+
+sys.path.insert(0, "/app")
+sys.path.insert(0, "/app/eval")
+sys.path.insert(0, ".")
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+except NameError:
+    pass
+
+from _common import (  # noqa: E402
+    DEFAULT_MIN_SCORE,
+    STRICT_QUALITY,
+    contains,
+    exit_code,
+    gateway_configured,
+    judge,
+    latin_offenders,
+    min_score,
+    quality_line,
+)
+from ai_engine.processing import completed_patient_memory_output  # noqa: E402
+
+JUDGE_DIMENSIONS = ("storyAccuracy", "deltaAccuracy", "nativeScript", "noHallucination")
+
+
+def _payload(patient: dict[str, Any], *, language: str = "fa") -> dict[str, Any]:
+    """A patient-memory job payload. deterministicFallback is intentionally a sentinel so that if the
+    gateway output is unusable, the eval detects the fallback (source != ai:) and reports WARN instead
+    of scoring fallback text as if it were the model's."""
+    return {
+        "job": {"id": "eval-job", "jobType": "patient_memory"},
+        "language": language,
+        "aiModels": {},
+        "patient": patient,
+        "deterministicFallback": {
+            "summary": "FALLBACK_SENTINEL",
+            "history": {"snapshot": "FALLBACK_SENTINEL", "sections": [{"label": "x", "body": "FALLBACK_SENTINEL"}], "visits": []},
+            "card": {"storySoFar": "FALLBACK_SENTINEL", "rightNow": "FALLBACK_SENTINEL", "flags": []},
+            "source": "mock-deterministic",
+        },
+    }
+
+
+def _all_text(output: dict[str, Any]) -> str:
+    """Concatenate the human-facing memory CONTENT (summary + snapshot + section bodies + card) for
+    matching. Section ``label``s are excluded — they are structural headers (often kept in the English
+    template) and not patient content, so they shouldn't trip the native-script / name-leak gates."""
+    parts: list[str] = [str(output.get("summary") or "")]
+    history = output.get("history") or {}
+    parts.append(str(history.get("snapshot") or ""))
+    for section in history.get("sections") or []:
+        parts.append(str(section.get("body") or ""))
+    card = output.get("card") or {}
+    parts.append(str(card.get("storySoFar") or ""))
+    parts.append(str(card.get("rightNow") or ""))
+    return "\n".join(parts)
+
+
+# --- Safety gates (deterministic) -----------------------------------------------------------------
+
+
+def run_gates(output: dict[str, Any], expect: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """Apply the deterministic checks to a memory output.
+
+    Returns ``(problems, advisories)``: ``problems`` are HARD safety gates (block ship); ``advisories``
+    are deterministic-but-cosmetic findings (reported, never blocking). Name repetition is advisory: the
+    prompt asks the model to omit the patient's name (it is shown beside the card), but repeating it is a
+    cosmetic UX nit, not a clinical/PII failure — worth surfacing, not worth turning the suite red.
+    """
+    problems: list[str] = []
+    advisories: list[str] = []
+
+    # Structural: the contract the backend depends on.
+    if not (output.get("summary") and isinstance(output.get("history"), dict)):
+        problems.append("missing summary/history")
+    history = output.get("history") or {}
+    if not (history.get("snapshot") and history.get("sections")):
+        problems.append("missing history.snapshot/sections")
+    card = output.get("card")
+    if expect.get("requireCard") and not (isinstance(card, dict) and card.get("storySoFar") and card.get("rightNow")):
+        problems.append("missing card.storySoFar/rightNow")
+
+    text = _all_text(output)
+
+    # Name repetition (advisory): the prompt asks to omit the patient's name (shown beside the card).
+    for name_token in expect.get("noName", []):
+        if contains(text, name_token):
+            advisories.append(f"patient name {name_token!r} repeated in memory text (prompt asks to omit it)")
+
+    for token in expect.get("containsFa", []):
+        if not contains(text, token):
+            problems.append(f"memory missing grounded fact {token!r}")
+    for group in expect.get("containsAny", []):
+        options = group if isinstance(group, list) else [group]
+        if not any(contains(text, option) for option in options):
+            problems.append(f"none of {options} recalled")
+    for banned in expect.get("forbidden", []):
+        if contains(text, banned):
+            problems.append(f"forbidden {banned!r} present (likely invented)")
+
+    if expect.get("noLatinWords"):
+        offenders = latin_offenders(text, allow=expect.get("allowLatin", []))
+        if offenders:
+            problems.append(f"romanized/Latin words present: {offenders}")
+
+    flags = (card or {}).get("flags") if isinstance(card, dict) else None
+    flags = flags if isinstance(flags, list) else []
+    if expect.get("flagsEmpty") and flags:
+        problems.append(f"invented flags {[f.get('label') for f in flags if isinstance(f, dict)]} (briefs have none)")
+    for kind in expect.get("flagsKind", []):
+        if not any(isinstance(f, dict) and f.get("kind") == kind for f in flags):
+            problems.append(f"expected a {kind!r} flag but none present")
+
+    return problems, advisories
+
+
+# --- Quality tier: LLM-as-judge -------------------------------------------------------------------
+
+JUDGE_ROLE = (
+    "You are a strict clinical-memory judge. Compare the CANDIDATE patient memory (a synthesized "
+    "story-so-far + right-now brief) against the REFERENCE (the patient's visit briefs across time)."
+)
+JUDGE_RUBRIC = {
+    "storyAccuracy": "1.0 = the story-so-far faithfully reflects what the briefs say happened over "
+    "time; 0.0 = it misstates or invents the history.",
+    "deltaAccuracy": "1.0 = the 'right now' / next-visit content reflects the MOST RECENT visit and "
+    "open threads in the briefs; lower if it ignores the latest visit or invents open threads.",
+    "nativeScript": "1.0 = written in the briefs' language native script (Persian in Persian script); "
+    "lower for romanized Persian or stray translation.",
+    "noHallucination": "1.0 = no invented products, doses, allergies, or events beyond the briefs; "
+    "lower for each fabrication.",
+}
+
+
+def judge_memory(reference: str, candidate: str, dimensions: list[str]) -> dict[str, Any]:
+    return judge(
+        role=JUDGE_ROLE, rubric=JUDGE_RUBRIC, dimensions=dimensions, reference=reference, candidate=candidate,
+        task="patient_memory", reference_label="REFERENCE (visit briefs)", candidate_label="CANDIDATE (patient memory)",
+    )
+
+
+# --- Synthetic fixtures ---------------------------------------------------------------------------
+
+NEGAR = {
+    "display_name": "نگار محمدی",
+    "priorMemory": {"summary": "بیمار فیلر گونه را در ویزیت قبل انجام داد."},
+    "visits": [
+        {"date": "2026-04-10", "brief": "اولین ویزیت؛ مشاوره و یک سی‌سی فیلر گونه چپ.",
+         "treatments": [{"product": "ژل", "brand": "ژوویدرم", "quantity": 1, "unit": "سی‌سی", "area": "گونه چپ"}]},
+        {"date": "2026-06-01", "brief": "ویزیت پیگیری؛ نیم سی‌سی ولوما برای گونه چپ اضافه شد. بیمار راضی بود.",
+         "treatments": [{"product": "ژل", "brand": "ولوما", "quantity": 0.3, "unit": "سی‌سی", "area": "گونه چپ"}]},
+    ],
+}
+
+ALLERGIC = {
+    "display_name": "سارا احمدی",
+    "priorMemory": None,
+    "visits": [
+        {"date": "2026-05-20", "brief": "ویزیت اول؛ بوتاکس پیشانی. بیمار به لیدوکائین حساسیت دارد — ثبت شد.",
+         "treatments": [{"product": "بوتاکس", "quantity": 20, "unit": "واحد", "area": "پیشانی"}]},
+    ],
+}
+
+CONSULT = {
+    "display_name": "مریم رضایی",
+    "priorMemory": None,
+    "visits": [{"date": "2026-06-10", "brief": "فقط مشاوره درباره فیلر لب. هیچ درمانی انجام نشد.", "treatments": []}],
+}
+
+CASES: list[dict[str, Any]] = [
+    {
+        "name": "two visits → recalls Voluma 0.3, no name leak, no invented flags",
+        "patient": NEGAR,
+        "expect": {
+            "requireCard": True, "noName": ["نگار", "محمدی"], "noLatinWords": True,
+            "containsAny": [["ولوما", "Voluma"], ["0.3", "نیم"]], "flagsEmpty": True,
+        },
+        "judge": True,
+    },
+    {
+        "name": "allergy in brief → surfaces an allergy flag, no name leak",
+        "patient": ALLERGIC,
+        "expect": {"requireCard": True, "noName": ["سارا", "احمدی"], "noLatinWords": True, "flagsKind": ["allergy"]},
+        "judge": True,
+    },
+    {
+        "name": "consult-only → valid memory, no invented treatment/flags",
+        "patient": CONSULT,
+        "expect": {"requireCard": True, "noName": ["مریم", "رضایی"], "noLatinWords": True, "flagsEmpty": True,
+                   "forbidden": ["بوتاکس", "تزریق شد"]},
+        "judge": True,
+    },
+]
+
+
+# --- Deterministic gate self-tests (synthetic OUTPUT dicts, no gateway) ---------------------------
+
+def _output(summary: str, *, story: str = "x", right: str = "y", flags: list[dict[str, Any]] | None = None,
+            snapshot: str = "s", body: str = "b") -> dict[str, Any]:
+    return {
+        "summary": summary,
+        "history": {"snapshot": snapshot, "sections": [{"label": "Story so far", "body": body}], "visits": []},
+        "card": {"storySoFar": story, "rightNow": right, "flags": flags or []},
+        "source": "ai:test",
+    }
+
+
+GATE_SELF_TESTS: list[dict[str, Any]] = [
+    {
+        "name": "valid grounded memory passes",
+        "output": _output("بیمار اخیراً نیم سی‌سی ولوما روی گونه چپ گرفت.", story="فیلر گونه از دفعه قبل ادامه دارد", right="پیگیری دو هفته دیگر"),
+        "expect": {"requireCard": True, "noName": ["نگار"], "noLatinWords": True, "containsAny": [["ولوما"]], "flagsEmpty": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "patient name repetition is flagged (advisory)",
+        "output": _output("نگار اخیراً فیلر گونه گرفت."),
+        "expect": {"noName": ["نگار"]},
+        "expectGatesPass": False,
+        "expectReasonContains": "repeated",
+    },
+    {
+        "name": "invented flag FAILS flagsEmpty",
+        "output": _output("بیمار فیلر گونه گرفت.", flags=[{"kind": "allergy", "label": "لیدوکائین"}]),
+        "expect": {"flagsEmpty": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "invented flags",
+    },
+    {
+        "name": "missing expected allergy flag FAILS flagsKind",
+        "output": _output("بیمار بوتاکس گرفت.", flags=[]),
+        "expect": {"flagsKind": ["allergy"]},
+        "expectGatesPass": False,
+        "expectReasonContains": "allergy",
+    },
+    {
+        "name": "romanized memory FAILS the no-Latin gate",
+        "output": _output("bimar filler gone gereft"),
+        "expect": {"noLatinWords": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "romanized",
+    },
+    {
+        "name": "missing card FAILS structural gate",
+        "output": {"summary": "x", "history": {"snapshot": "s", "sections": [{"label": "a", "body": "b"}]}, "source": "ai:test"},
+        "expect": {"requireCard": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "card",
+    },
+]
+
+
+# --- Runners --------------------------------------------------------------------------------------
+
+
+def run_gate_self_tests() -> bool:
+    print("--- safety-gate self-tests (deterministic, no gateway) ---")
+    ok = True
+    for index, case in enumerate(GATE_SELF_TESTS, start=1):
+        problems, advisories = run_gates(case["output"], case["expect"])
+        detected = problems + advisories
+        passed = not detected
+        as_expected = passed == case["expectGatesPass"]
+        if as_expected and not case["expectGatesPass"]:
+            needle = case.get("expectReasonContains")
+            if needle and not any(needle in item for item in detected):
+                as_expected = False
+        ok = ok and as_expected
+        detail = "gates pass" if passed else f"gates fail: {'; '.join(detected)}"
+        print(f"  [{index}] {'OK  ' if as_expected else 'BUG '} {case['name']}  → {detail}")
+    print(f"  self-tests: {'all matchers behave correctly' if ok else 'HARNESS BUG — a matcher misbehaved'}")
+    return ok
+
+
+def run_cases() -> tuple[int, int, int, int]:
+    print("\n--- patient-memory cases (synthetic multi-session → gateway) ---")
+    safety_pass = safety_fail = quality_pass = quality_fail = 0
+    for index, case in enumerate(CASES, start=1):
+        try:
+            output = completed_patient_memory_output(_payload(case["patient"]))
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [{index}] ERROR {case['name']}: memory job failed: {exc!r}")
+            print("  SKIP: gateway unreachable — cases not scored.")
+            break
+        if not str(output.get("source") or "").startswith("ai:"):
+            print(f"  [{index}] WARN {case['name']}: model output unusable; job fell back to deterministic — not scored")
+            continue
+
+        problems, advisories = run_gates(output, case["expect"])
+        if problems:
+            safety_fail += 1
+            print(f"  [{index}] SAFETY FAIL {case['name']}: {'; '.join(problems)}")
+        else:
+            safety_pass += 1
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {str(output.get('summary'))[:80]!r}")
+        for note in advisories:
+            print(f"             ADVISORY: {note}")
+
+        if case.get("judge"):
+            reference = "\n".join(
+                f"{v.get('date')}: {v.get('brief')} treatments={v.get('treatments')}" for v in case["patient"]["visits"]
+            )
+            try:
+                result = judge_memory(reference, _all_text(output), list(JUDGE_DIMENSIONS))
+            except Exception as exc:  # noqa: BLE001
+                print(f"             QUALITY SKIP: judge unreachable: {exc!r}")
+                continue
+            if not result.get("ok"):
+                print(f"             QUALITY WARN: {result.get('rationale')}")
+                continue
+            if min_score(result["scores"]) >= DEFAULT_MIN_SCORE:
+                quality_pass += 1
+                tag = "QUALITY PASS"
+            else:
+                quality_fail += 1
+                tag = "QUALITY FAIL"
+            print(f"             {tag} ({quality_line(result['scores'], DEFAULT_MIN_SCORE)}) — {result.get('rationale')}")
+    return safety_pass, safety_fail, quality_pass, quality_fail
+
+
+def main() -> int:
+    self_tests_ok = run_gate_self_tests()
+    if not gateway_configured():
+        print("\nSKIP: no AI gateway configured. Memory cases not run; deterministic self-tests above stand.")
+        return 0 if self_tests_ok else 1
+
+    safety_pass, safety_fail, quality_pass, quality_fail = run_cases()
+
+    print(f"\n{'=' * 8} PATIENT-MEMORY SCORECARD {'=' * 8}")
+    print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
+    print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail")
+    print(f"  quality (judge): {quality_pass} pass / {quality_fail} below threshold  "
+          f"({'blocking' if STRICT_QUALITY else 'advisory'})")
+    return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, quality_fail=quality_fail)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,85 +1,58 @@
 #!/usr/bin/env python3
 """Golden-set eval for AUDIO TRANSCRIPTION — the foundation job (garbage in → garbage everywhere).
 
-Transcription is the highest-stakes AI job: a mis-heard dose token (۲ vs ۳ vs ۲۳), a romanized
-Persian name, or a dropped brand/lot poisons everything downstream (treatments, matching, the
-patient share). This eval runs the REAL gateway against fixed cases and scores it on TWO tiers:
+Transcription is the highest-stakes AI job: a mis-heard dose token (۲ vs ۳ vs ۲۳), a romanized Persian
+name, or a dropped brand/lot poisons everything downstream (treatments, matching, the patient share).
+This eval scores the real gateway on two tiers (shared harness in ``_common.py``):
 
 * **Safety gates** — deterministic matchers (substring / numeric-token / presence / no-Latin). HARD
-  pass/fail; a failure blocks ship and exits non-zero. This is the dose-token / no-romanization gate.
-* **Quality (LLM-as-judge)** — a rubric (native-script fidelity, dose fidelity, brand/lot fidelity,
-  completeness, no-hallucination) scored 0..1 by a judge on the same gateway. Tracked to drive
-  iteration; advisory by default (set ``EVAL_STRICT_QUALITY=1`` to make below-threshold blocking too).
+  pass/fail; the dose-token / no-romanization gate.
+* **Quality (LLM judge)** — native-script / dose / brand-lot fidelity, completeness, no-hallucination,
+  scored 0..1. Advisory by default (``EVAL_STRICT_QUALITY=1`` to gate on it too).
 
-Transcription can only be truly evaluated on REAL AUDIO, so the suite is fixture-driven: drop a clip
-at ``eval/fixtures/transcription/<case>.m4a`` plus a sibling ``<case>.json`` (the expected facts,
-format documented below) and it is scored automatically — see ``fixtures/RECORDING_CHECKLIST.md``.
-Until recordings land, two layers keep the harness honest and runnable:
+Transcription can only be truly evaluated on REAL AUDIO, so it is fixture-driven: drop a clip at the
+fixtures dir (``EVAL_FIXTURES_DIR`` or in-repo ``eval/fixtures/transcription/``) as ``<case>.m4a`` plus
+a sibling ``<case>.json`` (format in ``docs/ai_engine/eval-epic.md`` §2a) and it is scored. Until
+recordings land, deterministic **gate self-tests** + gateway **judge smoke cases** keep it honest.
 
-* **Deterministic gate self-tests** — synthetic ``(transcript, expect)`` pairs (positive + negative)
-  that prove the safety matchers catch what they must. Pure Python, run ALWAYS (no gateway needed).
-* **Judge smoke cases** — synthetic ``(reference, candidate)`` text pairs run through the LLM judge to
-  prove the rubric discriminates clean Persian from romanized/dropped-dose output. Need the gateway.
-
-Run where a gateway is reachable::
+Run::
 
     docker exec notari-main-ai-engine-1 python /app/eval/transcription_eval.py
 
-No gateway → the gateway portion SKIPS; the deterministic self-tests still run. Exit code is driven by
-SAFETY only (deterministic self-tests + real-fixture gates); LLM-judge outcomes are reported but never
-flake CI red unless ``EVAL_STRICT_QUALITY=1``.
-
-----------------------------------------------------------------------------------------------------
-``<case>.json`` expectation format
-----------------------------------------------------------------------------------------------------
-::
-
-    {
-      "said": "بیست واحد بوتاکس روی پیشانی زدم.",   // OPTIONAL ground-truth transcript: the LLM judge's
-                                                     // reference + documentation. Judge skipped if absent.
-      "context": {"preferredLanguage": "fa"},        // OPTIONAL transcription context overrides (merged).
-
-      "expect": {                                    // SAFETY GATES — deterministic, HARD pass/fail.
-        "containsFa":     ["بوتاکس", "واحد"],        //   every string must appear verbatim (script/ZWNJ/digit tolerant)
-        "containsAny":    [["بیست", "۲۰"]],          //   each group: AT LEAST ONE must appear (dose as word OR digits)
-        "numbers":        [20],                       //   each number must appear as a digit token (digits normalized to Latin)
-        "brandsVerbatim": ["ژوویدرم"],               //   brand strings must appear verbatim
-        "lot":            "ABC123",                   //   the lot/batch string must appear verbatim
-        "noLatinWords":   true,                       //   transcript must contain NO Latin-script words (anti-romanization)
-        "allowLatin":     ["Juvederm"],               //   exceptions to noLatinWords (brands legitimately in Latin)
-        "forbidden":      ["میلی‌گرم"],              //   strings that must NOT appear (wrong unit / hallucination)
-        "language":       "fa"                        //   expected detected language code (fa|en|mixed|unknown)
-      },
-
-      "judge": {                                     // QUALITY — LLM-as-judge, advisory unless EVAL_STRICT_QUALITY=1.
-        "dimensions": ["nativeScript", "doseFidelity", "brandLotFidelity", "completeness", "noHallucination"],
-        "minScore": 0.7                               //   every requested dimension must score >= this
-      }
-    }
-
-All of ``expect`` and ``judge`` are optional — include only what a case needs to prove.
+No gateway → the gateway tier SKIPS; self-tests still run. Exit code is SAFETY only unless EVAL_STRICT_QUALITY=1.
 """
 from __future__ import annotations
 
-import json
-import os
 import pathlib
-import re
 import sys
 from typing import Any
 
-sys.path.insert(0, ".")
 sys.path.insert(0, "/app")
+sys.path.insert(0, "/app/eval")
+sys.path.insert(0, ".")
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+except NameError:
+    pass
 
-from ai_engine.processing import (  # noqa: E402
-    gateway_client,
-    normalize_digits_to_latin,
-    transcribe_audio_content,
-    transcription_is_configured,
+from _common import (  # noqa: E402
+    AUDIO_SUFFIXES,
+    DEFAULT_MIN_SCORE,
+    STRICT_QUALITY,
+    contains,
+    exit_code,
+    gateway_configured,
+    judge,
+    latin_offenders,
+    load_fixtures,
+    min_score,
+    number_tokens,
+    quality_line,
 )
+from ai_engine.processing import transcribe_audio_content  # noqa: E402
 
 # Realistic aesthetics-clinic framing so the gateway prompt matches production (vertical-agnostic by
-# contract — supplied as data, never assumed). A fixture's "context" is merged over this.
+# contract — supplied as data). A fixture's "context" is merged over this.
 TRANSCRIPTION_CONTEXT: dict[str, Any] = {
     "preferredLanguage": "auto",
     "domain": {
@@ -87,45 +60,7 @@ TRANSCRIPTION_CONTEXT: dict[str, Any] = {
         "vocabulary": ["بوتاکس", "فیلر", "ژل", "واحد", "سی‌سی", "ژوویدرم", "رستیلین", "کانولا"],
     },
 }
-
-AUDIO_SUFFIXES = {".m4a", ".mp3", ".wav", ".flac", ".ogg", ".aac", ".opus", ".webm", ".mp4"}
 JUDGE_DIMENSIONS = ("nativeScript", "doseFidelity", "brandLotFidelity", "completeness", "noHallucination")
-DEFAULT_MIN_SCORE = 0.7
-STRICT_QUALITY = os.environ.get("EVAL_STRICT_QUALITY", "").strip() not in ("", "0", "false", "False")
-# The judge runs on the shared gateway (base_url/key resolved from the transcription gateway) but on a
-# capable text model, independent of whichever model is under test. Eval-only config (not production
-# config.py); override with EVAL_JUDGE_MODEL to grade with a different model.
-JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "").strip() or "gpt-5.4-mini"
-
-try:
-    HERE = pathlib.Path(__file__).resolve().parent
-except NameError:  # piped via stdin (python - < transcription_eval.py)
-    HERE = pathlib.Path("/app/eval")
-FIXTURES_DIR = HERE / "fixtures" / "transcription"
-
-# A "Latin word" = a run of >=2 ASCII letters. Single letters (a spelled-out lot "A B C") are allowed
-# so a dictated lot does not trip the anti-romanization gate; romanized Persian words (>=2 letters) do.
-LATIN_WORD_RE = re.compile(r"[A-Za-z]{2,}")
-NUMBER_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?")
-# Common Arabic↔Persian confusables the gateway may emit interchangeably; fold them so a verbatim
-# clinical token still matches regardless of which code point the model chose.
-_ARABIC_TO_PERSIAN = str.maketrans({"ي": "ی", "ك": "ک", "ﻪ": "ه", "ة": "ه", "ﻱ": "ی"})
-
-
-def _canon(text: Any) -> str:
-    """Canonicalize for tolerant substring matching: Latin digits, Persian forms, no ZWNJ/extra space."""
-    value = normalize_digits_to_latin(str(text or "")).translate(_ARABIC_TO_PERSIAN)
-    return re.sub(r"\s+", " ", value.replace("‌", "")).strip().lower()
-
-
-def _loose(text: Any) -> str:
-    """Even more tolerant: also drop spaces, so «سی‌سی» / «سی سی» / «سیسی» all compare equal."""
-    return _canon(text).replace(" ", "")
-
-
-def _contains(haystack: str, needle: Any) -> bool:
-    """True if ``needle`` appears in ``haystack`` under either canonical or space-insensitive folding."""
-    return _canon(needle) in _canon(haystack) or _loose(needle) in _loose(haystack)
 
 
 # --- Safety gates (deterministic) -----------------------------------------------------------------
@@ -136,57 +71,52 @@ def run_gates(transcript: str, language: str | None, expect: dict[str, Any]) -> 
     problems: list[str] = []
 
     for token in expect.get("containsFa", []):
-        if not _contains(transcript, token):
+        if not contains(transcript, token):
             problems.append(f"missing required {token!r}")
 
     for group in expect.get("containsAny", []):
         options = group if isinstance(group, list) else [group]
-        if not any(_contains(transcript, option) for option in options):
+        if not any(contains(transcript, option) for option in options):
             problems.append(f"none of {options} present")
 
     if expect.get("numbers"):
-        present = set(NUMBER_TOKEN_RE.findall(normalize_digits_to_latin(str(transcript))))
+        present = number_tokens(transcript)
         for number in expect["numbers"]:
             token = str(number).rstrip("0").rstrip(".") if isinstance(number, float) else str(number)
             if str(number) not in present and token not in present:
                 problems.append(f"number {number} not transcribed as a digit token (have {sorted(present) or '∅'})")
 
     for brand in expect.get("brandsVerbatim", []):
-        if not _contains(transcript, brand):
+        if not contains(transcript, brand):
             problems.append(f"brand {brand!r} not verbatim")
 
-    if expect.get("lot") and not _contains(transcript, expect["lot"]):
+    if expect.get("lot") and not contains(transcript, expect["lot"]):
         problems.append(f"lot {expect['lot']!r} not verbatim")
 
     if expect.get("noLatinWords"):
-        # Expected verbatim Latin (lot codes, Latin brand names) is allowed — and auto-allowed from the
-        # `lot`/`brandsVerbatim` gates so you needn't duplicate them. The regex splits an alphanumeric
-        # lot like "ABC123" into "ABC", so an offender that is a fragment of a whitelisted token passes.
-        allowed = {
-            token.lower()
-            for token in [*expect.get("allowLatin", []), *expect.get("brandsVerbatim", []), *([expect["lot"]] if expect.get("lot") else [])]
-        }
-        offenders = [
-            word for word in LATIN_WORD_RE.findall(str(transcript))
-            if word.lower() not in allowed and not any(word.lower() in token for token in allowed)
-        ]
+        allow = [*expect.get("allowLatin", []), *expect.get("brandsVerbatim", []), *([expect["lot"]] if expect.get("lot") else [])]
+        offenders = latin_offenders(transcript, allow=allow)
         if offenders:
             problems.append(f"romanized/Latin words present: {offenders}")
 
     for banned in expect.get("forbidden", []):
-        if _contains(transcript, banned):
+        if contains(transcript, banned):
             problems.append(f"forbidden {banned!r} present (wrong unit / hallucination)")
 
-    expected_language = expect.get("language")
-    if expected_language and language and language != expected_language:
-        problems.append(f"language {language!r}≠{expected_language!r}")
+    if expect.get("language") and language and language != expect["language"]:
+        problems.append(f"language {language!r}≠{expect['language']!r}")
 
     return problems
 
 
 # --- Quality tier: LLM-as-judge -------------------------------------------------------------------
 
-_JUDGE_DIMENSION_RUBRIC = {
+JUDGE_ROLE = (
+    "You are a strict transcription-quality judge for a clinical memory system. Compare a CANDIDATE "
+    "transcript (produced by a speech-to-text model) against the REFERENCE transcript (ground truth: "
+    "what was actually said)."
+)
+JUDGE_RUBRIC = {
     "nativeScript": "1.0 = the candidate is written ENTIRELY in the spoken language's native script "
     "(Persian speech in Persian script); 0.0 = romanized into Latin or translated. Penalize EVERY "
     "romanized Persian word. Latin brand names or spelled-out letters are acceptable.",
@@ -202,61 +132,15 @@ _JUDGE_DIMENSION_RUBRIC = {
 }
 
 
-def _judge_prompt(reference: str, candidate: str, dimensions: list[str]) -> str:
-    rubric = "\n".join(f"- {dim}: {_JUDGE_DIMENSION_RUBRIC[dim]}" for dim in dimensions if dim in _JUDGE_DIMENSION_RUBRIC)
-    keys = ", ".join(f'"{dim}": 0.0' for dim in dimensions if dim in _JUDGE_DIMENSION_RUBRIC)
-    return (
-        "You are a strict transcription-quality judge for a clinical memory system. Compare a CANDIDATE "
-        "transcript (produced by a speech-to-text model) against the REFERENCE transcript (ground truth: "
-        "what was actually said). Score ONLY the requested dimensions, each from 0.0 to 1.0.\n\n"
-        f"Dimensions:\n{rubric}\n\n"
-        f"REFERENCE (ground truth):\n{reference}\n\n"
-        f"CANDIDATE (to score):\n{candidate}\n\n"
-        "Return STRICT JSON only, no markdown, exactly this shape:\n"
-        f'{{"scores": {{{keys}}}, "rationale": "one short sentence"}}'
-    )
-
-
-def _parse_judge(raw_text: str, dimensions: list[str]) -> dict[str, Any]:
-    text = (raw_text or "").strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return {"scores": {}, "rationale": "judge returned non-JSON", "ok": False}
-    raw_scores = parsed.get("scores") if isinstance(parsed.get("scores"), dict) else {}
-    scores: dict[str, float] = {}
-    for dim in dimensions:
-        value = raw_scores.get(dim)
-        scores[dim] = max(0.0, min(float(value), 1.0)) if isinstance(value, int | float) and not isinstance(value, bool) else 0.0
-    return {"scores": scores, "rationale": str(parsed.get("rationale") or "").strip(), "ok": True}
-
-
 def judge_transcript(reference: str, candidate: str, dimensions: list[str]) -> dict[str, Any]:
-    """Score a candidate transcript against the reference via the gateway LLM judge.
-
-    Returns ``{scores: {dim: 0..1}, rationale, ok}``. ``ok`` is False when the judge call/parse failed
-    (so the caller can degrade to "judge unavailable" instead of treating it as a quality failure).
-    """
-    client = gateway_client("report_synthesis")
-    response = client.chat.completions.create(
-        model=JUDGE_MODEL,
-        messages=[{"role": "user", "content": _judge_prompt(reference, candidate, dimensions)}],
-    )
-    return _parse_judge(response.choices[0].message.content or "", dimensions)
-
-
-def _min_score(scores: dict[str, float]) -> float:
-    return min(scores.values()) if scores else 0.0
+    """Score a candidate transcript against the reference via the gateway LLM judge."""
+    return judge(role=JUDGE_ROLE, rubric=JUDGE_RUBRIC, dimensions=dimensions, reference=reference, candidate=candidate)
 
 
 # --- Synthetic cases (run before any recordings exist) --------------------------------------------
 
 # Deterministic gate self-tests: prove the safety matchers catch what they must. Pure Python — these
-# run with or without a gateway. Each declares whether the gates should PASS; negative cases also
-# name a phrase the failure reason must contain, so we know the RIGHT gate fired.
+# run with or without a gateway. Negative cases name a phrase the failure reason must contain.
 GATE_SELF_TESTS: list[dict[str, Any]] = [
     {
         "name": "clean fa botox dose passes all gates",
@@ -329,14 +213,14 @@ JUDGE_SMOKE_TESTS: list[dict[str, Any]] = [
         "reference": "بیست واحد بوتاکس روی پیشانی زدم و یک سی‌سی ژل ژوویدرم توی گونه چپ",
         "candidate": "بیست واحد بوتاکس روی پیشانی زدم و یک سی‌سی ژل ژوویدرم توی گونه چپ",
         "dimensions": ["nativeScript", "doseFidelity", "brandLotFidelity"],
-        "expectHigh": True,  # every requested dimension should clear DEFAULT_MIN_SCORE
+        "expectHigh": True,
     },
     {
         "name": "romanized candidate scores low on nativeScript",
         "reference": "بیست واحد بوتاکس روی پیشانی زدم",
         "candidate": "bist vahed botox rooye pishani zadam",
         "dimensions": ["nativeScript"],
-        "expectHigh": False,  # nativeScript should fall BELOW DEFAULT_MIN_SCORE
+        "expectHigh": False,
     },
     {
         "name": "wrong dose candidate scores low on doseFidelity",
@@ -346,34 +230,6 @@ JUDGE_SMOKE_TESTS: list[dict[str, Any]] = [
         "expectHigh": False,
     },
 ]
-
-
-# --- Fixture loading ------------------------------------------------------------------------------
-
-
-def _load_fixtures() -> list[dict[str, Any]]:
-    """Discover ``fixtures/transcription/<case>.<audio>`` + sibling ``<case>.json`` (skip if no json)."""
-    if not FIXTURES_DIR.is_dir():
-        return []
-    fixtures: list[dict[str, Any]] = []
-    for media in sorted(FIXTURES_DIR.iterdir()):
-        if media.suffix.lower() not in AUDIO_SUFFIXES:
-            continue
-        spec_path = media.with_suffix(".json")
-        if not spec_path.exists():
-            fixtures.append({"name": media.name, "media": media, "spec": None})
-            continue
-        try:
-            spec = json.loads(spec_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            fixtures.append({"name": media.name, "media": media, "spec": None, "error": str(exc)})
-            continue
-        fixtures.append({"name": media.name, "media": media, "spec": spec})
-    return fixtures
-
-
-def _quality_line(scores: dict[str, float], min_score: float) -> str:
-    return ", ".join(f"{dim}={value:.2f}{'' if value >= min_score else '↓'}" for dim, value in scores.items())
 
 
 # --- Runners --------------------------------------------------------------------------------------
@@ -400,11 +256,7 @@ def run_gate_self_tests() -> bool:
 
 
 def run_judge_smoke() -> bool:
-    """Run the LLM-judge smoke cases. Returns True iff every case matched its expected verdict.
-
-    Advisory: LLM nondeterminism means this is reported but does not block the exit code unless
-    EVAL_STRICT_QUALITY=1. A gateway error degrades to a SKIP (returns True) rather than a failure.
-    """
+    """Run the LLM-judge smoke cases. Advisory; a gateway error degrades to a SKIP (returns True)."""
     print("\n--- judge smoke cases (LLM-as-judge on the gateway) ---")
     ok = True
     for index, case in enumerate(JUDGE_SMOKE_TESTS, start=1):
@@ -417,31 +269,26 @@ def run_judge_smoke() -> bool:
             print(f"  [{index}] WARN {case['name']}: {result.get('rationale')}")
             ok = False
             continue
-        scores = result["scores"]
-        worst = _min_score(scores)
-        high = worst >= DEFAULT_MIN_SCORE
-        matched = high == case["expectHigh"]
+        worst = min_score(result["scores"])
+        matched = (worst >= DEFAULT_MIN_SCORE) == case["expectHigh"]
         ok = ok and matched
-        verdict = "OK  " if matched else "MISS"
         want = "≥" if case["expectHigh"] else "<"
-        print(f"  [{index}] {verdict} {case['name']}  → {_quality_line(scores, DEFAULT_MIN_SCORE)} (want min {want}{DEFAULT_MIN_SCORE:.2f})")
+        print(f"  [{index}] {'OK  ' if matched else 'MISS'} {case['name']}  → {quality_line(result['scores'], DEFAULT_MIN_SCORE)} (want min {want}{DEFAULT_MIN_SCORE:.2f})")
     return ok
 
 
 def run_fixtures() -> tuple[int, int, int, int]:
     """Run real-audio fixtures. Returns (safety_pass, safety_fail, quality_pass, quality_fail)."""
-    fixtures = _load_fixtures()
-    print(f"\n--- real-audio fixtures ({FIXTURES_DIR}) ---")
+    fixtures = load_fixtures("transcription", AUDIO_SUFFIXES)
+    print("\n--- real-audio fixtures ---")
     if not fixtures:
-        print("  (no recordings yet — drop clips per fixtures/RECORDING_CHECKLIST.md to make this real)")
+        print("  (no recordings yet — drop clips per the capture manifest to make this real)")
         return 0, 0, 0, 0
     safety_pass = safety_fail = quality_pass = quality_fail = 0
     for index, fixture in enumerate(fixtures, start=1):
-        name = fixture["name"]
-        spec = fixture.get("spec")
+        name, spec = fixture["name"], fixture.get("spec")
         if spec is None:
-            reason = fixture.get("error", "no sibling .json with expected facts")
-            print(f"  [{index}] SKIP {name}: {reason}")
+            print(f"  [{index}] SKIP {name}: {fixture.get('error', 'no sibling .json with expected facts')}")
             continue
         context = {**TRANSCRIPTION_CONTEXT, **(spec.get("context") or {})}
         try:
@@ -450,8 +297,7 @@ def run_fixtures() -> tuple[int, int, int, int]:
             print(f"  [{index}] ERROR {name}: transcription failed: {exc!r}")
             print("  SKIP: gateway/ffmpeg unreachable — fixtures not scored. Re-run where reachable.")
             break
-        transcript = output.get("transcript") or ""
-        language = output.get("language")
+        transcript, language = output.get("transcript") or "", output.get("language")
 
         problems = run_gates(transcript, language, spec.get("expect") or {})
         if spec.get("expect"):
@@ -462,11 +308,10 @@ def run_fixtures() -> tuple[int, int, int, int]:
                 safety_pass += 1
                 print(f"  [{index}] SAFETY PASS {name}  → {transcript!r}")
 
-        judge_spec = spec.get("judge")
-        reference = spec.get("said")
+        judge_spec, reference = spec.get("judge"), spec.get("said")
         if judge_spec and reference:
-            dimensions = [d for d in (judge_spec.get("dimensions") or JUDGE_DIMENSIONS) if d in _JUDGE_DIMENSION_RUBRIC]
-            min_score = float(judge_spec.get("minScore", DEFAULT_MIN_SCORE))
+            dimensions = [d for d in (judge_spec.get("dimensions") or JUDGE_DIMENSIONS) if d in JUDGE_RUBRIC]
+            threshold = float(judge_spec.get("minScore", DEFAULT_MIN_SCORE))
             try:
                 result = judge_transcript(reference, transcript, dimensions)
             except Exception as exc:  # noqa: BLE001
@@ -475,23 +320,21 @@ def run_fixtures() -> tuple[int, int, int, int]:
             if not result.get("ok"):
                 print(f"             QUALITY WARN: {result.get('rationale')}")
                 continue
-            scores = result["scores"]
-            if _min_score(scores) >= min_score:
+            if min_score(result["scores"]) >= threshold:
                 quality_pass += 1
                 tag = "QUALITY PASS"
             else:
                 quality_fail += 1
                 tag = "QUALITY FAIL"
-            print(f"             {tag} ({_quality_line(scores, min_score)}) — {result.get('rationale')}")
+            print(f"             {tag} ({quality_line(result['scores'], threshold)}) — {result.get('rationale')}")
     return safety_pass, safety_fail, quality_pass, quality_fail
 
 
 def main() -> int:
     self_tests_ok = run_gate_self_tests()
-
-    if not transcription_is_configured():
-        print("\nSKIP: no AI gateway configured (AI_ENGINE_TRANSCRIPTION_BASE_URL empty). "
-              "Gateway-backed transcription + judge not run; deterministic self-tests above stand.")
+    if not gateway_configured():
+        print("\nSKIP: no AI gateway configured. Gateway-backed transcription + judge not run; "
+              "deterministic self-tests above stand.")
         return 0 if self_tests_ok else 1
 
     judge_smoke_ok = run_judge_smoke()
@@ -503,13 +346,7 @@ def main() -> int:
     print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail  (real fixtures)")
     print(f"  quality (judge): {quality_pass} pass / {quality_fail} below threshold  "
           f"({'blocking' if STRICT_QUALITY else 'advisory'})")
-
-    # Exit code: SAFETY only by default — deterministic self-tests + real-fixture gates. Quality and
-    # judge-smoke are tracked, not gated, so LLM nondeterminism never flakes CI (override: EVAL_STRICT_QUALITY).
-    blocking_failed = (not self_tests_ok) or safety_fail > 0
-    if STRICT_QUALITY:
-        blocking_failed = blocking_failed or quality_fail > 0 or not judge_smoke_ok
-    return 1 if blocking_failed else 0
+    return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, quality_fail=quality_fail, judge_smoke_ok=judge_smoke_ok)
 
 
 if __name__ == "__main__":

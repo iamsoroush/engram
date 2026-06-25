@@ -27,6 +27,13 @@ test-results/
 # Local prototype uploads
 captures/
 
+# AI eval fixtures: capture media (audio/photos) + their expectation .json are PII and live in object
+# storage / a local staging dir, never in git. Keep only the dir scaffolding + the recording checklist.
+apps/ai_engine/eval/fixtures/*/*
+!apps/ai_engine/eval/fixtures/*/.gitkeep
+# Local cache populated by `scripts/eval-fixtures.sh pull`.
+.eval-fixtures-cache/
+
 # Notebooks
 notebooks/
 
