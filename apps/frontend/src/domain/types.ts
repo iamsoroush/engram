@@ -91,6 +91,8 @@ export type StructuredReportBlock = {
   caption?: string;
   /** Present on `media` image blocks: the photo's deterministic before/after pairing (slider). */
   pairing?: PhotoPairing;
+  /** Captures this block was grounded in — a tap opens the source capture ("assistive + cited"). */
+  sourceCaptureIds?: string[];
 };
 
 export type StructuredReportSection = {
@@ -148,6 +150,8 @@ export type SessionTreatment = {
   carriedForward?: boolean;
   /** Open technique map the synthesis extracted (needleGauge, depth, device, sessions…). */
   attributes?: Record<string, unknown> | null;
+  /** Captures this treatment was extracted from — a tap opens the source capture (§2.3 traceability). */
+  sourceCaptureIds?: string[];
 };
 
 /**

@@ -29,6 +29,10 @@ All session states remain reviewable. State badges are informational and do not 
   Pairing is the deterministic backend `photo_pairing` (the rendering consumes pairs, it never pairs);
   unpaired photos render as single images. Bilingual + RTL-aware. See
   [redesign-pro-report §2.4](../redesign-pro-report.md).
+- **Per-claim source citations (Pro):** treatment rows and cited prose blocks show a `↗ source` tap that
+  opens the grounding capture in the source preview — "tap a claim → its source capture" (assistive +
+  cited). Resolves same-session captures locally; fetches by id for a carried-forward claim that cites a
+  prior visit. See [redesign-pro-report §2.3](../redesign-pro-report.md).
 - Collapsible summary.
 - Collapsible extracted findings.
 - Source previews, statuses, and generated capture details through clickable live draft cards.

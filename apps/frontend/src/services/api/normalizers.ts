@@ -162,6 +162,10 @@ function normalizeStructuredReportBlock(block: Record<string, unknown>): Structu
           pairedCaptureId: typeof pairing.pairedCaptureId === "string" ? pairing.pairedCaptureId : null,
         }
       : undefined,
+    // Per-claim source citations: the captures this block was grounded in (tap → source capture).
+    sourceCaptureIds: Array.isArray(block.sourceCaptureIds)
+      ? block.sourceCaptureIds.filter((id): id is string => typeof id === "string")
+      : undefined,
   };
 }
 

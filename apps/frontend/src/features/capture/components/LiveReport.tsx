@@ -39,6 +39,7 @@ export function LiveReportView({
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  onOpenSource,
   onRateReport,
   reportLanguage,
 }: {
@@ -48,6 +49,8 @@ export function LiveReportView({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   /** Open the Sources drawer to correct a flagged treatment at its capture (Pro, unified layout). */
   onFixAtSource?: () => void;
+  /** Tap a claim (treatment row / cited block) → open its source capture ("assistive + cited"). */
+  onOpenSource?: (captureId: string) => void;
   /** Record a lightweight thumbs rating on the report (eval golden-set harvester; eval-epic §1b). */
   onRateReport?: (sessionId: string, rating: number) => void;
   /** Report-content language — localizes the section titles (distinct from app UI language). */
@@ -56,7 +59,7 @@ export function LiveReportView({
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onRateReport={onRateReport} reportLanguage={reportLanguage} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onOpenSource={onOpenSource} onRateReport={onRateReport} reportLanguage={reportLanguage} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -92,6 +95,7 @@ export function ProLiveReport({
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  onOpenSource,
   onRateReport,
   reportLanguage,
 }: {
@@ -99,6 +103,7 @@ export function ProLiveReport({
   onResolveFile: (endpoint: string) => Promise<string>;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFixAtSource?: () => void;
+  onOpenSource?: (captureId: string) => void;
   onRateReport?: (sessionId: string, rating: number) => void;
   reportLanguage?: string | null;
 }) {
@@ -189,6 +194,8 @@ export function ProLiveReport({
                     confirmedCarriedForward={confirmedCarriedForward}
                     missingLotProducts={missingLotProducts}
                     onFixAtSource={onFixAtSource}
+                    onOpenSource={onOpenSource}
+                    isPersian={isPersianReport(reportLanguage)}
                     carriedForwardReasons={carriedForwardReasons}
                     onConfirmCarried={onConfirmCarried}
                     reviewNotes={reviewNotes}
@@ -197,7 +204,10 @@ export function ProLiveReport({
                   <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
                 ) : (
                   section.blocks.map((block, index) => (
-                    <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
+                    <React.Fragment key={index}>
+                      {formatReportBlock(block, onResolveFile)}
+                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersianReport(reportLanguage)} />
+                    </React.Fragment>
                   ))
                 )}
               </section>
@@ -225,6 +235,8 @@ export function ProLiveReport({
             confirmedCarriedForward={confirmedCarriedForward}
             missingLotProducts={missingLotProducts}
             onFixAtSource={onFixAtSource}
+            onOpenSource={onOpenSource}
+            isPersian={isPersianReport(reportLanguage)}
             carriedForwardReasons={carriedForwardReasons}
             onConfirmCarried={onConfirmCarried}
             reviewNotes={reviewNotes}
@@ -241,6 +253,33 @@ export function ProLiveReport({
 }
 
 /**
+ * A per-claim source citation: a small "↗ source" tap that opens the cited capture (the redesign's
+ * "assistive + cited" principle — every clinical claim is traceable to a capture). Renders nothing
+ * when there's no citation or no handler, so it's safe to drop next to any treatment row or block.
+ */
+function SourceCitation({
+  captureIds,
+  onOpenSource,
+  isPersian,
+}: {
+  captureIds?: string[];
+  onOpenSource?: (captureId: string) => void;
+  isPersian?: boolean;
+}) {
+  const first = captureIds?.find((id) => typeof id === "string" && id.trim());
+  if (!onOpenSource || !first) return null;
+  const label = isPersian ? "منبع" : "source";
+  const title = isPersian ? "نمایش ضبط منبع" : "Open the source capture";
+  const more = (captureIds?.length || 0) > 1 ? ` ·${captureIds?.length}` : "";
+  return (
+    <button type="button" className="source-citation" onClick={() => onOpenSource(first)} title={title}>
+      ↗ {label}
+      {more}
+    </button>
+  );
+}
+
+/**
  * The structured performed-treatments list — the single treatment representation in the report
  * (area · product · dose · lot, verbatim quantity preserved). The clinician's confirmations live
  * INLINE here, where the data is: a carried-forward dose shows a "Confirm dose" action right on its
@@ -252,6 +291,8 @@ function TreatmentsList({
   confirmedCarriedForward,
   missingLotProducts,
   onFixAtSource,
+  onOpenSource,
+  isPersian,
   carriedForwardReasons,
   onConfirmCarried,
   reviewNotes,
@@ -262,6 +303,10 @@ function TreatmentsList({
   missingLotProducts?: Set<string>;
   /** Jump to the Sources drawer to correct a flagged treatment at its capture. */
   onFixAtSource?: () => void;
+  /** Tap a treatment row's citation → open its source capture (§2.3 traceability). */
+  onOpenSource?: (captureId: string) => void;
+  /** Localize the citation label to the report language. */
+  isPersian?: boolean;
   /** `area|product` → reason for carried-forward doses awaiting confirmation (Q3). */
   carriedForwardReasons?: Record<string, string>;
   /** Confirm a carried-forward dose by its `area|product` key. */
@@ -308,6 +353,7 @@ function TreatmentsList({
                     ✎ Fix at source
                   </button>
                 ) : null}
+                <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
               </span>
               {attributeLines.length ? (
                 <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>

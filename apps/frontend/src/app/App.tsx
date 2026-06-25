@@ -40,6 +40,7 @@ import {
   cancelWorklistEntry,
   createSession,
   createWorklistEntry,
+  fetchCapture,
   fetchClinicMembers,
   fetchLastVisit,
   fetchSessionContext,
@@ -1343,6 +1344,10 @@ export function App() {
     [apiFetch],
   );
 
+  // Resolve a citation's source capture by id when it isn't in the open session (a carried-forward
+  // claim cites a prior visit) — for "tap a claim → its source capture".
+  const fetchCaptureById = React.useCallback((captureId: string) => fetchCapture(apiFetch, captureId), [apiFetch]);
+
   // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
   const dismissAftercareTemplate = React.useCallback(
     async (sessionId: string, templateId: string, dismissed: boolean) => {
@@ -2050,6 +2055,7 @@ export function App() {
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
           onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           offline={offline}
@@ -2092,6 +2098,7 @@ export function App() {
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
           onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}

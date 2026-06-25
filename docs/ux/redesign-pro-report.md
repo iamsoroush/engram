@@ -129,6 +129,12 @@ blank — it's a known uncertainty the contract raises (`missing-but-expected lo
 Each row links to its `sourceCaptureIds` ("from your 14:08 dictation") so every clinical claim is
 traceable to a capture. *Why:* the report's authority is that **nothing is invented** — one tap proves it.
 
+> **BUILT (2026-06-25).** A per-claim **`↗ source` citation** ([LiveReport `SourceCitation`](../../apps/frontend/src/features/capture/components/LiveReport.tsx))
+> renders on each treatment row carrying `sourceCaptureIds` **and** on any cited prose block — one tap
+> opens that capture in the source preview (same-session captures resolve locally; a carried-forward
+> claim cites a prior visit, so it falls back to fetching the capture by id). `sourceCaptureIds` now
+> survive client normalization (treatments + blocks). Bilingual (`source` / `منبع`).
+
 **`attributes`** (open map: needleGauge, depth, device, sessions…) render as a **secondary line under
 the row** (`23G · 2mm depth`) — present when the LLM extracted them, absent otherwise. Open map → render
 generically (key·value), never a fixed schema, so new attributes appear without a code change.

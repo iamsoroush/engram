@@ -313,6 +313,10 @@ def main() -> None:
         )
         if donya:
             ba = make_session(db, patient=donya, title="فیلر گونه چپ — قبل/بعد", days_ago=7)
+            # The dictation a clinical claim is grounded in — the citation tap opens THIS capture.
+            dictation = add_note(
+                db, ba, detail="یک سی‌سی فیلر ژوویدرم به گونه چپ تزریق شد. لات D-4471.", captured_at=ba.captured_at,
+            )
             cheek_pairing = {"region": "cheek", "laterality": "left", "view": "frontal"}
             before = add_media(
                 db, store, ba, capture_type=CaptureType.photo, content=png_solid(240, 300, (208, 176, 168)),
@@ -327,7 +331,20 @@ def main() -> None:
             db.flush()
             # Deterministic pairing → each photo gets `photo_pairing {role, pairKey, pairedCaptureId}`.
             recompute_session_photo_pairing(db, session=ba)
-            # A minimal Pro report whose `media` section references the pair, so the slider has a home.
+            # Extracted treatment, cited to the dictation (sourceCaptureIds) — drives the treatment
+            # table + its "↗ source" citation tap.
+            ba.extracted_metadata = {
+                "treatments": [
+                    {
+                        "area": "گونه چپ", "product": "فیلر", "brand": "ژوویدرم",
+                        "quantity": 1, "unit": "cc", "quantityText": "۱ سی‌سی",
+                        "lot": "D-4471", "confidence": 0.9, "carriedForward": False,
+                        "sourceCaptureIds": [str(dictation.id)],
+                    }
+                ],
+                "source_capture_ids": [str(before.id), str(after.id), str(dictation.id)],
+            }
+            # A minimal Pro report: a cited summary block + the before/after `media` section.
             ba.report_model = {
                 "schemaVersion": "2026-05-21.session-processing-output.v1",
                 "summary": "ویزیت فیلر گونه چپ با مستندسازی قبل و بعد.",
@@ -335,7 +352,13 @@ def main() -> None:
                     {
                         "id": "visit-summary",
                         "title": "خلاصه ویزیت",
-                        "blocks": [{"type": "paragraph", "text": "یک سی‌سی فیلر به گونه چپ تزریق شد. تصاویر قبل و بعد ثبت شد."}],
+                        "blocks": [
+                            {
+                                "type": "paragraph",
+                                "text": "یک سی‌سی فیلر به گونه چپ تزریق شد. تصاویر قبل و بعد ثبت شد.",
+                                "sourceCaptureIds": [str(dictation.id)],
+                            }
+                        ],
                     },
                     {
                         "id": "media",
@@ -347,6 +370,7 @@ def main() -> None:
                     },
                 ],
                 "sourceReferences": [
+                    {"type": "capture", "captureId": str(dictation.id)},
                     {"type": "capture", "captureId": str(before.id)},
                     {"type": "capture", "captureId": str(after.id)},
                 ],
@@ -354,7 +378,7 @@ def main() -> None:
             }
             ba.organization_source = OrganizationSource.ai_engine
             db.flush()
-            created.append("دنیا موسوی — before/after pair (slider in the Pro report media section)")
+            created.append("دنیا موسوی — before/after pair + cited treatment (slider + source citations)")
         else:
             skipped.append("دنیا موسوی")
 

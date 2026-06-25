@@ -40,6 +40,7 @@ export function CaptureScreen({
   onConfirmCarriedForward,
   onRateReport,
   onFetchPatient,
+  onFetchCapture,
   tier,
   reportLanguage,
   sessionContext,
@@ -91,6 +92,8 @@ export function CaptureScreen({
   /** Record a lightweight thumbs rating on the Pro report (eval golden-set harvester; eval-epic §1b). */
   onRateReport?: (sessionId: string, rating: number) => void;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  /** Resolve a citation's source capture not in the loaded set (cross-visit) — for "tap a claim → source". */
+  onFetchCapture?: (captureId: string) => Promise<CaptureItem | null>;
   tier?: string | null;
   /** Tenant report-content language (distinct from app UI language) — localizes the report's section
    * titles so a Persian report doesn't show English headings. */
@@ -236,6 +239,20 @@ export function CaptureScreen({
   const onFixAtSource = () => {
     setSourcesOpen(true);
     window.requestAnimationFrame(() => sourcesDrawerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  // "Tap a claim → its source capture" (the redesign's assistive+cited principle): open the cited
+  // capture in the source preview. It is usually one of this session's captures; a carried-forward
+  // claim cites a prior visit, so fall back to fetching the capture by id when it isn't loaded here.
+  const openSourceCapture = async (captureId: string) => {
+    const local = (activeSession?.items || []).find((item) => item.id === captureId);
+    if (local) {
+      setSelectedCapture(local);
+      return;
+    }
+    if (onFetchCapture) {
+      const fetched = await onFetchCapture(captureId);
+      if (fetched) setSelectedCapture(fetched);
+    }
   };
   // Capture-type breakdown for the Sources drawer chips (voice folds into audio).
   const captureTypeCounts = (activeSession?.items || []).reduce<Record<string, number>>((counts, item) => {
@@ -495,6 +512,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              onOpenSource={openSourceCapture}
               onRateReport={onRateReport}
               reportLanguage={reportLanguage}
             />

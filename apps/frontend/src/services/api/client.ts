@@ -945,6 +945,13 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
 }
 
+/** Fetch one capture by id (for opening a citation's source capture that isn't in the loaded set). */
+export async function fetchCapture(apiFetch: ApiFetch, captureId: string): Promise<CaptureItem | null> {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`);
+  if (!response.ok) return null;
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
 export type FeedbackInput = {
   kind?: "rating" | "correction" | "confirmation";
   aiOutputType?: "report" | "brief" | "transcript" | "caption" | "treatment" | "patient_match";
