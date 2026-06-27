@@ -363,7 +363,7 @@ export function CaptureScreen({
                   {sessionStatusChip.label}
                 </span>
               </div>
-              <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+              <p data-testid="session-meta">{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
             </>
           )}
         </div>
