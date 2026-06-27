@@ -176,7 +176,7 @@ export function LiveDraftCaptureItem({
   const t = useT();
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
-  const title = captureDraftLabel(item, sequence);
+  const title = captureDraftLabel(item, sequence, t);
   const generatedText = generatedTextForReport(item);
   // Only Pro photos are AI-captioned, so only they show the "Reading image" cue while processing.
   // Basic photos are never captioned → go straight to a manual "Add caption" (no AI badge/spinner).
@@ -189,7 +189,7 @@ export function LiveDraftCaptureItem({
   const captionReviewReason = captureNeedsReview(item);
   // Model-authored Markdown variant of the caption (clean text for AI jobs; **bold** for the UI).
   const captionDisplayText = captionDisplay(item);
-  const textAttribution = captureTextAttribution(item);
+  const textAttribution = captureTextAttribution(item, t);
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
   const outOfContext = captureOutOfContext(item) && !markedRelevant;
@@ -296,7 +296,7 @@ export function LiveDraftCaptureItem({
                 ) : (
                   <>
                     <CaptureGeneratedHeading label={t("draft.transcript")} attribution={pendingGeneratedAttribution(item)} />
-                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item, t)} />
                   </>
                 )}
               </section>

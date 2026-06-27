@@ -7,7 +7,7 @@ import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, aiOrganizingNotice, generatedTextForReport, textDirection } from "../captureModel";
 
 // Persian section titles, keyed by the fixed section id (mirrors the ai_engine's SYNTHESIS_SECTIONS).
 // Applied at render so EXISTING reports (synthesized before titles were localized) and the
@@ -159,7 +159,7 @@ export function ProLiveReport({
         {organizing ? (
           <span className="report-freshness updating" aria-live="polite">
             <span className="report-freshness-dot" aria-hidden="true" />
-            {AI_ORGANIZING_NOTICE}
+            {aiOrganizingNotice(t)}
           </span>
         ) : freshness ? (
           <span className={`report-freshness ${freshness.current ? "current" : "updating"}`} aria-live="polite">

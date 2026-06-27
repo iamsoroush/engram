@@ -4,7 +4,7 @@ import { CaptureMetadataSummary, generatedMetadataFor, metadataDisplay, metadata
 import { getCachedCapture } from "../../../services/storage/captureStorage";
 import { Card, Dialog } from "../../../shared/ui/primitives";
 import { appDateTimeFormat } from "../../../shared/lib/datetime";
-import { useT } from "../../../shared/i18n";
+import { useT, type Translator } from "../../../shared/i18n";
 import { StatusBadge } from "./StatusBadges";
 
 /**
@@ -296,9 +296,9 @@ function CaptureDetailSheet({
   const [textError, setTextError] = React.useState("");
   const [copyState, setCopyState] = React.useState<"idle" | "copied" | "failed">("idle");
   const fileName = item.fileName || sourceName || "capture-file";
-  const status = captureStatusLabel(item.status);
+  const status = captureStatusLabel(item.status, t);
   const duration = captureDuration(item, generated);
-  const captured = captureDateTime(item);
+  const captured = captureDateTime(item, t);
   const canUpdateText = isAudio ? Boolean(onUpdateTranscript) : Boolean(onUpdateCaption);
 
   React.useEffect(() => {
@@ -401,7 +401,7 @@ function CaptureDetailSheet({
                 value={textDraft}
               />
               <div className="capture-editor-save-row">
-                <span>{savingText ? t("source.savingTranscript") : textError || editAttributionText(editorName, "Transcript") || t("source.editsSaveOnBlur")}</span>
+                <span>{savingText ? t("source.savingTranscript") : textError || editAttributionText(editorName, "transcript", t) || t("source.editsSaveOnBlur")}</span>
                 <button disabled={!canUpdateText || savingText || !textDraft.trim() || textDraft.trim() === text} onClick={saveText} type="button">
                   {t("source.save")}
                 </button>
@@ -421,7 +421,7 @@ function CaptureDetailSheet({
               value={textDraft}
             />
             <div className="capture-editor-save-row">
-              <span>{savingText ? t("source.savingCaption") : textError || (isPro ? editAttributionText(editorName, "Caption") : "") || t("source.editsSaveOnBlur")}</span>
+              <span>{savingText ? t("source.savingCaption") : textError || (isPro ? editAttributionText(editorName, "caption", t) : "") || t("source.editsSaveOnBlur")}</span>
               <button disabled={!canUpdateText || savingText || textDraft.trim() === text.trim()} onClick={saveText} type="button">
                 {t("source.save")}
               </button>
@@ -490,11 +490,14 @@ function generatedSourceFor(item: CaptureItem) {
   };
 }
 
-function editAttributionText(editorName: string, label: string) {
-  return editorName ? `${label} edited by ${editorName}.` : "";
+function editAttributionText(editorName: string, field: "transcript" | "caption", t: Translator) {
+  if (!editorName) return "";
+  return field === "transcript"
+    ? t("model.attribution.transcriptEditedBy", { name: editorName })
+    : t("model.attribution.captionEditedBy", { name: editorName });
 }
 
-function captureDateTime(item: CaptureItem) {
+function captureDateTime(item: CaptureItem, t: Translator) {
   const value = item.capturedAt || item.time;
   const date = new Date(value);
   if (!Number.isNaN(date.getTime())) {
@@ -508,15 +511,25 @@ function captureDateTime(item: CaptureItem) {
       minute: "2-digit",
       hour12: false,
     }).format(date);
-    return `${dateLabel} at ${timeLabel}`;
+    return t("model.capture.dateAtTime", { date: dateLabel, time: timeLabel });
   }
-  return item.time || "Recently";
+  return item.time || t("model.capture.recently");
 }
 
-function captureStatusLabel(status: CaptureItem["status"]) {
-  if (!status || status === "ready" || status === "processed") return "Processed";
-  if (status === "needsReview") return "Needs review";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+function captureStatusLabel(status: CaptureItem["status"], t: Translator) {
+  if (!status || status === "ready" || status === "processed") return t("model.captureStatus.processed");
+  if (status === "needsReview") return t("model.captureStatus.needsReview");
+  if (status === "saved") return t("model.captureStatus.saved");
+  if (status === "syncing") return t("model.captureStatus.syncing");
+  if (status === "uploaded") return t("model.captureStatus.uploaded");
+  if (status === "uploading") return t("model.captureStatus.uploading");
+  if (status === "processing") return t("model.captureStatus.processing");
+  if (status === "failed") return t("model.captureStatus.failed");
+  if (status === "missing") return t("model.captureStatus.missing");
+  // Every member of the (closed) status union is handled above; this defensive fallback capitalizes
+  // any unforeseen runtime value verbatim, as the original did.
+  const raw = status as string;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
 function captureDuration(item: CaptureItem, generated: Record<string, unknown>) {

@@ -13,7 +13,7 @@ import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
@@ -166,7 +166,7 @@ export function CaptureScreen({
   // name. Title = the patient's Nth session when assigned, else the session date+time. Sync state
   // only shows when offline/unreachable (calm when everything is fine).
   const lightHeader = !isPro && !isHistorical;
-  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
+  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal, t);
   const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
   // A just-added capture is "in flight" the instant it lands (local → syncing → uploaded → processing)
@@ -192,21 +192,23 @@ export function CaptureScreen({
   // Surface-by-exception: instead of a persistent "everything's fine" line, show a calm "Organizing…"
   // pulse on the Sources header only while captures are still being processed into the report.
   const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
-  const reportState = workspaceReportState(activeSession);
+  const reportState = workspaceReportState(activeSession, t);
   const selectedReportView = reportView;
-  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
+  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical, t);
   // Pro keeps its status chip + meta, but the title gets the same meaningful naming as Basic — a
   // real AI report title when there is one, otherwise "{patient}'s Nth session" / the date+time
-  // (instead of a raw "Session <timestamp>" label).
+  // (instead of a raw "Session <timestamp>" label). The generic-title test is language-independent
+  // (isPlaceholderSessionTitle) so it survives translation; the raw "Session <ts>" label case is a
+  // local/backend label, still matched textually.
   const proTitle =
-    !isHistorical && (sessionTitle === "Current session" || /^session\s/i.test(sessionTitle))
-      ? lightSessionTitle(activeSession, sessionOrdinal)
+    !isHistorical && (isPlaceholderSessionTitle(activeSession, isHistorical) || /^session\s/i.test(sessionTitle))
+      ? lightSessionTitle(activeSession, sessionOrdinal, t)
       : sessionTitle;
-  const patientName = sessionPatientName(activeSession);
+  const patientName = sessionPatientName(activeSession, t);
   const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
   const captureCountLabel = t(captureCount === 1 ? "capture.captureCountOne" : "capture.captureCountOther", { count: captureCount });
-  const sessionStatusChip = sessionSummaryStatusChip(activeSession);
+  const sessionStatusChip = sessionSummaryStatusChip(activeSession, t);
   const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
 
@@ -401,7 +403,7 @@ export function CaptureScreen({
           <p>
             {activeSession?.patientId || activeSession?.patientName
               ? activeSession.assignmentSource
-                ? assignmentSourceLabel(activeSession.assignmentSource)
+                ? assignmentSourceLabel(activeSession.assignmentSource, t)
                 : t("capture.assignedManually")
               : t("capture.captureFirstAssignWhenReady")}
           </p>
@@ -508,7 +510,7 @@ export function CaptureScreen({
             {isUpdatingReport ? (
               <span className="report-updating" aria-live="polite">
                 <span className="report-updating-spinner" aria-hidden="true" />
-                {reportUpdatingLabel(activeSession)}
+                {reportUpdatingLabel(activeSession, t)}
               </span>
             ) : null}
             {/* Compact share affordance in the header (a share icon, not a full sentence on its own

@@ -1,12 +1,14 @@
 import type { CaptureItem } from "../../domain/types";
+import type { Translator } from "../../shared/i18n";
 import { Badge } from "../../shared/ui/primitives";
 
-export function assignmentSourceLabel(source?: string | null) {
-  if (source === "staff") return "Assigned by staff";
-  if (source === "ai_engine" || source === "ai-engine") return "Suggested by AI";
-  if (source === "ai_matched") return "Matched by AI";
-  if (source === "ai_created") return "Created and assigned by AI";
-  return source ? `Assigned by ${source}` : "";
+export function assignmentSourceLabel(source: string | null | undefined, t: Translator) {
+  if (source === "staff") return t("model.assignment.staff");
+  if (source === "ai_engine" || source === "ai-engine") return t("model.assignment.aiSuggested");
+  if (source === "ai_matched") return t("model.assignment.aiMatched");
+  if (source === "ai_created") return t("model.assignment.aiCreated");
+  // An unknown source value (content, not a known enum) is shown verbatim in the "Assigned by …" frame.
+  return source ? t("model.assignment.bySource", { source }) : "";
 }
 
 export function metadataRecord(value: unknown) {

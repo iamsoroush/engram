@@ -2,7 +2,8 @@ import React from "react";
 import type { LastVisitMedia, LineupCard as LineupCardModel, SessionContext } from "../../domain/appTypes";
 import { LineupCard } from "../memory/components/MemoryCards";
 import { formatDate } from "../../shared/lib/datetime";
-import { useT } from "../../shared/i18n";
+import { useT, type Translator } from "../../shared/i18n";
+import { ORDINAL_WORDS } from "../capture/captureModel";
 import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
@@ -75,7 +76,7 @@ export function SessionContextCard({
     <section className="session-context-card" aria-label={t("context.patientContext")}>
       <header className="session-context-head">
         <span className="session-context-ordinal">
-          {t("context.ordinalVisit", { ordinal: ordinalText(visitOrdinal) })}
+          {t("context.ordinalVisit", { ordinal: ordinalText(visitOrdinal, t) })}
           {totalPriorVisits > 0 ? ` · ${t("context.priorCount", { n: totalPriorVisits })}` : ` · ${t("context.newPatient")}`}
         </span>
       </header>
@@ -228,11 +229,10 @@ function VoiceMemo({ memo, index, onResolveFile }: { memo: LastVisitMedia; index
   );
 }
 
-function ordinalText(n: number): string {
-  if (!Number.isFinite(n) || n < 1) return "Next";
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
-  return `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`;
+function ordinalText(n: number, t: Translator): string {
+  if (!Number.isFinite(n) || n < 1) return t("model.ordinal.next");
+  if (n >= 1 && n <= 10) return t(`model.ordinal.${ORDINAL_WORDS[n]}`);
+  return t("model.ordinal.nth", { n });
 }
 
 function formatVisitDate(value?: string | null) {

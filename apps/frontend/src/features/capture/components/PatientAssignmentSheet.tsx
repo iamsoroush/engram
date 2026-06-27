@@ -107,7 +107,7 @@ export function PatientAssignmentSheet({
               <PatientIcon />
             </span>
             <div className="assignment-patient-copy">
-              <small>{session.assignmentSource ? t("assign.currentlyAssignedSource", { source: assignmentSourceLabel(session.assignmentSource) }) : t("assign.currentlyAssigned")}</small>
+              <small>{session.assignmentSource ? t("assign.currentlyAssignedSource", { source: assignmentSourceLabel(session.assignmentSource, t) }) : t("assign.currentlyAssigned")}</small>
               <strong>{currentAssignedPatient.displayName}</strong>
               {assignedDetails.length ? (
                 <dl className="assignment-patient-details">
@@ -119,7 +119,7 @@ export function PatientAssignmentSheet({
                   ))}
                 </dl>
               ) : (
-                <span>{patientIdentifierLabel(currentAssignedPatient)}</span>
+                <span>{patientIdentifierLabel(currentAssignedPatient, t)}</span>
               )}
             </div>
             <button
@@ -162,7 +162,7 @@ export function PatientAssignmentSheet({
                 </span>
                 <div className="assignment-patient-copy">
                   <strong>{patient.displayName}</strong>
-                  <span>{patientIdentifierLabel(patient)}</span>
+                  <span>{patientIdentifierLabel(patient, t)}</span>
                   <small>
                     {alreadyAssigned
                       ? t("assign.matchAssignedToVisit")
