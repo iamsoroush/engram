@@ -1,4 +1,5 @@
 import React from "react";
+import { setAppLanguage } from "../lib/datetime";
 import { LANGS, MESSAGES, type Lang } from "./messages";
 
 export { LANGS, LANG_LABEL, MESSAGES } from "./messages";
@@ -97,4 +98,73 @@ export function useUiLang(): UiLang {
   const t = React.useCallback<Translator>((key, vars) => translate(lang, key, vars), [lang]);
 
   return { lang, setLang, toggleLang, t, dir: dirFor(lang) };
+}
+
+// ---------------------------------------------------------------------------
+// Authenticated-app language seam
+//
+// The public surfaces own their UI language locally (`useUiLang` + localStorage). The AUTHENTICATED
+// app instead follows the tenant's APP language (`auth.tenant.appLanguage`) — distinct from
+// `reportLanguage`, which scopes only clinical CONTENT. `AppLangProvider` is the single source that
+// drives `t()` (chrome) + the document direction for every authed surface.
+// ---------------------------------------------------------------------------
+
+/** Layout effect in the browser; a passive effect under SSR/test renderers that have no DOM. */
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? React.useLayoutEffect : React.useEffect;
+
+/**
+ * Normalize a tenant's stored app-language string to a supported UI language. Total + deterministic,
+ * never throws: `fa`/`fa-*` → Persian; everything else (`en`, `ar` (ships later), null, garbage) →
+ * English, the safe default. New languages get a branch here, not a second seam.
+ */
+export function toLang(value: string | null | undefined): Lang {
+  return typeof value === "string" && value.toLowerCase().startsWith("fa") ? "fa" : "en";
+}
+
+/** App-language bundle for authed components: the active language, a bound translator, and direction. */
+export interface AppLang {
+  lang: Lang;
+  t: Translator;
+  dir: "rtl" | "ltr";
+}
+
+const AppLangContext = React.createContext<AppLang | null>(null);
+
+/**
+ * App-language context for the AUTHENTICATED app. Provides `t()` (chrome only — never clinical
+ * content) and reflects the tenant's app language on `<html>` (dir + lang). This is the SOLE authority
+ * that writes `<html dir/lang>` on authed surfaces: on login it overrides whatever the public shell
+ * (`useUiLang` + `engram-ui-lang` localStorage) left there. Date/Jalali formatting is kept in lockstep
+ * via `setAppLanguage`, set during render (before children render) so the first authed paint already
+ * formats dates in the correct calendar — no flash.
+ */
+export function AppLangProvider({ lang, children }: { lang: Lang; children: React.ReactNode }): React.ReactElement {
+  setAppLanguage(lang);
+
+  const value = React.useMemo<AppLang>(
+    () => ({ lang, t: (key, vars) => translate(lang, key, vars), dir: dirFor(lang) }),
+    [lang],
+  );
+
+  // Apply direction + lang to <html> before paint, so RTL/LTR is correct on the first authed frame
+  // and any leftover public-surface direction is overridden cleanly (no stale dir, no flash).
+  useIsomorphicLayoutEffect(() => {
+    applyDocumentLang(lang);
+  }, [lang]);
+
+  return React.createElement(AppLangContext.Provider, { value }, children);
+}
+
+/** App-language bundle ({ lang, t, dir }) for authed components. Throws if used outside the provider. */
+export function useAppLang(): AppLang {
+  const ctx = React.useContext(AppLangContext);
+  if (!ctx) {
+    throw new Error("useAppLang must be used within <AppLangProvider> (authenticated app).");
+  }
+  return ctx;
+}
+
+/** Bound translator for authed components — sugar for `useAppLang().t`. */
+export function useT(): Translator {
+  return useAppLang().t;
 }

@@ -20,7 +20,7 @@ import type {
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
-import { setAppLanguage } from "../shared/lib/datetime";
+import { AppLangProvider, toLang } from "../shared/i18n";
 import {
   assignSessionPatient,
   confirmCarriedForward,
@@ -159,9 +159,9 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
-  // Drive app-wide UI language + date formatting (Jalali when Persian) from the tenant's APP
-  // language — distinct from report language, which scopes only report/share content.
-  setAppLanguage(auth?.tenant.appLanguage ?? null);
+  // App-wide UI language, date/Jalali formatting, and document direction are all driven from the
+  // tenant's APP language (distinct from report language, which scopes only report/share content) by
+  // <AppLangProvider>, which wraps every authed render branch below.
   const [authReady, setAuthReady] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
   // First-run guided capture: shown once for a freshly signed-up founder (flagged in handleRegister),
@@ -2266,17 +2266,26 @@ export function App() {
   }
 
   if (auth.user.persona === "patient-preview") {
-    return <PatientPreviewGate auth={auth} onLogout={handleLogout} />;
+    return (
+      <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+        <PatientPreviewGate auth={auth} onLogout={handleLogout} />
+      </AppLangProvider>
+    );
   }
 
   // Therapy vertical is a greenfield surface (note-first capture, two-plane synthesis, federated
   // caseloads) — render its own self-contained app rather than the aesthetics capture shell.
   if (auth.tenant.vertical === "therapy") {
-    return <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />;
+    return (
+      <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+        <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />
+      </AppLangProvider>
+    );
   }
 
   return (
-    <>
+    <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+      <>
       {!onboardingDismissed && isOnboardingPending(auth.user.id) ? (
         <OnboardingOverlay
           canInviteTeam={auth.memberships.some(
@@ -2388,7 +2397,8 @@ export function App() {
         />
       ) : null}
       <Toast message={toast} />
-    </>
+      </>
+    </AppLangProvider>
   );
 }
 

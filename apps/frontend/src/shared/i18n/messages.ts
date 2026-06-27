@@ -19,6 +19,23 @@ const en: Dict = {
 
   "common.back": "Back",
 
+  // Glossary — canonical clinical/UI terms. The single source of truth for terminology: reuse these
+  // exact words when composing chrome strings so the app reads consistently (and the fa column reads
+  // like a Persian clinician wrote it). Extend this list as new core nouns appear; don't coin synonyms.
+  "glossary.visit": "Visit",
+  "glossary.session": "Session",
+  "glossary.capture": "Capture",
+  "glossary.report": "Report",
+  "glossary.summary": "Summary",
+  "glossary.patient": "Patient",
+  "glossary.treatment": "Treatment",
+  "glossary.dose": "Dose",
+  "glossary.aftercare": "Aftercare",
+  "glossary.sources": "Sources",
+  "glossary.note": "Note",
+  "glossary.photo": "Photo",
+  "glossary.audio": "Audio",
+
   // Landing
   "landing.eyebrow": "Capture-first clinical memory",
   "landing.title": "Capture the visit. Engram organizes the memory.",
@@ -131,6 +148,22 @@ const fa: Dict = {
   "lang.aria": "تغییر زبان",
 
   "common.back": "بازگشت",
+
+  // Glossary — canonical clinical/UI terms (Persian). Keep terminology consistent across every chrome
+  // string; reuse these exact words rather than coining synonyms per screen.
+  "glossary.visit": "ویزیت",
+  "glossary.session": "جلسه",
+  "glossary.capture": "ثبت",
+  "glossary.report": "گزارش",
+  "glossary.summary": "خلاصه",
+  "glossary.patient": "بیمار",
+  "glossary.treatment": "درمان",
+  "glossary.dose": "دوز",
+  "glossary.aftercare": "مراقبت‌های پس از درمان",
+  "glossary.sources": "منابع",
+  "glossary.note": "یادداشت",
+  "glossary.photo": "عکس",
+  "glossary.audio": "صدا",
 
   // Landing
   "landing.eyebrow": "حافظهٔ بالینیِ «اول‌ ثبت»",
