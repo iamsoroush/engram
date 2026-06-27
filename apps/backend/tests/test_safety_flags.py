@@ -3,6 +3,7 @@ import uuid
 
 from app.models import Patient, Session
 from app.services.patient_safety import (
+    drop_session_safety_flags,
     patient_safety_flags,
     patient_safety_flags_payload,
     safety_flag_key,
@@ -113,6 +114,17 @@ class PatientSyncTests(unittest.TestCase):
         sync_patient_safety_flags(patient, s1)
         kinds = {f["kind"] for f in patient_safety_flags(patient)}
         self.assertEqual(kinds, {"contraindication", "consent"})
+
+    def test_drop_removes_only_that_sessions_contribution(self):
+        # Mirrors assignment/reassignment: dropping one visit's contribution leaves others intact.
+        patient = _patient(None)
+        s1 = _session({"safety_flags": [_flag("allergy", "حساسیت به لیدوکائین")]})
+        s2 = _session({"safety_flags": [_flag("consent", "رضایت‌نامه گرفته شد")]})
+        sync_patient_safety_flags(patient, s1)
+        sync_patient_safety_flags(patient, s2)
+        drop_session_safety_flags(patient, s1.id)
+        kinds = {f["kind"] for f in patient_safety_flags(patient)}
+        self.assertEqual(kinds, {"consent"})
 
     def test_payload_dedupes_by_key(self):
         patient = _patient(None)

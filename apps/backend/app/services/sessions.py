@@ -12,7 +12,7 @@ from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSour
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 from app.services.feedback import record_feedback_event
-from app.services.patient_safety import session_detected_safety_flags, sync_patient_safety_flags
+from app.services.patient_safety import drop_session_safety_flags, session_detected_safety_flags, sync_patient_safety_flags
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -461,6 +461,17 @@ def assign_session_patient(
                 "match_candidate": match_candidate if isinstance(match_candidate, dict) else None,
             },
         )
+    # Safety flags are detected during synthesis regardless of assignment, but only persist to a
+    # PATIENT once one is known — and assignment does NOT re-run synthesis. So project this visit's
+    # kept safety flags onto the (re)assigned patient now, and drop this visit's contribution from a
+    # prior patient on reassignment/unassignment, so the cross-visit safety store stays correct even
+    # for the capture-first flow (flag dictated while unassigned, patient assigned later).
+    if previous is not None and (next_patient_id is None or str(previous) != str(next_patient_id)):
+        old_patient = db.get(Patient, previous)
+        if old_patient is not None:
+            drop_session_safety_flags(old_patient, session.id)
+    if patient is not None:
+        sync_patient_safety_flags(patient, session)
     audit(
         db,
         tenant_id=principal.tenant_id,

@@ -116,6 +116,15 @@ def sync_patient_safety_flags(patient: Patient, session: Session) -> None:
     patient.safety_flags = others + current
 
 
+def drop_session_safety_flags(patient: Patient, session_id: Any) -> None:
+    """Remove one session's contribution from the patient store (on reassignment/unassignment).
+
+    The patient mutation is staged on the ORM object; the caller commits.
+    """
+    session_id = str(session_id)
+    patient.safety_flags = [flag for flag in patient_safety_flags(patient) if flag.get("sourceSessionId") != session_id]
+
+
 def patient_safety_flags_payload(patient: Patient) -> list[dict[str, Any]]:
     """Deduped, glanceable patient safety flags for the session-context card + timeline.
 
