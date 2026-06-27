@@ -32,7 +32,7 @@ export function ClipboardIcon() {
 
 export function ShareIcon() {
   return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M12 14V3.5" />
       <path d="m8 7 4-4 4 4" />
       <path d="M7 11H4.5v9h15v-9H17" />

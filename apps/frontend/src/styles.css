@@ -2692,12 +2692,6 @@ small {
   justify-content: space-between;
   gap: 12px;
 }
-.report-heading-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
 
 .report-toolbar {
   display: flex;
@@ -2719,6 +2713,7 @@ small {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .report-heading-actions .btn {
@@ -6506,7 +6501,9 @@ small {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .report-heading-actions {
+  /* Keep the header actions on mobile so the compact share icon shows (it used to hold only the
+     inline "updating" spinner, which was hidden here — that spinner stays hidden, the share shows). */
+  .report-heading-actions .report-updating {
     display: none;
   }
 
