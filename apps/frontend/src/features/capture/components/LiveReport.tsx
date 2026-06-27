@@ -177,7 +177,9 @@ export function ProLiveReport({
           </span>
         ) : null}
       </div>
-      <section className="structured-report-section structured-report-body">
+      {/* CONTENT region — report prose/blocks render here in the REPORT language (reportLanguage),
+          never app `t()`. `data-content` marks it so a no-English-leak chrome scan can exclude it. */}
+      <section className="structured-report-section structured-report-body" data-content data-testid="report-body">
         {sections.length ? (
           sections.map((section) => {
             // The treatment slot renders the structured table (single source of truth), not the
@@ -185,7 +187,7 @@ export function ProLiveReport({
             const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && treatments.length > 0;
             return (
               <section className="workspace-report-section" key={section.id}>
-                {section.title ? <h3 dir={textDirection(localizedSectionTitle(section.id, section.title, reportLanguage))}>{localizedSectionTitle(section.id, section.title, reportLanguage)}</h3> : null}
+                {section.title ? <h3 data-testid="report-section-title" dir={textDirection(localizedSectionTitle(section.id, section.title, reportLanguage))}>{localizedSectionTitle(section.id, section.title, reportLanguage)}</h3> : null}
                 {renderTreatmentTable ? (
                   <TreatmentsList
                     treatments={treatments}

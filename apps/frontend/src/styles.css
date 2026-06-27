@@ -5973,6 +5973,10 @@ small {
   cursor: pointer;
 }
 .session-verify-bar-action:hover { background: #a57314; }
+/* The verify-bar "Review →" affordance: the arrow is split out (so the label goes through t()).
+   It points toward the content; mirror it under RTL so it points to the inline-start edge. */
+.verify-arrow { display: inline-block; margin-inline-start: 4px; }
+[dir="rtl"] .verify-arrow { transform: scaleX(-1); }
 
 .session-verify-region {
   display: grid;
@@ -10092,7 +10096,7 @@ small {
   margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--color-text);
   padding: 7px 9px; border-radius: 8px; background: #fff8ec; border: 1px solid #f5d9a8;
 }
-.session-context-facts-label { font-weight: 700; color: #8a5a12; margin-right: 4px; }
+.session-context-facts-label { font-weight: 700; color: #8a5a12; margin-inline-end: 4px; }
 .session-context-digest { display: flex; flex-direction: column; gap: 7px; }
 .session-context-digest-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.8rem; color: var(--color-text); }
 .session-context-counts { color: var(--color-muted); font-size: 0.74rem; }
