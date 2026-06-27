@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import timedelta
 
@@ -5,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.security import create_jwt, decode_jwt, hash_token, utc_now, verify_password
+from app.auth.security import create_jwt, decode_jwt, hash_password, hash_token, utc_now, verify_password
 from app.config import settings
 from app.models import (
     AuditEvent,
@@ -289,6 +290,14 @@ def roles_for_tenant(db: Session, user_id: uuid.UUID, tenant_id: uuid.UUID) -> l
     ]
 
 
+def _membership_profiles(memberships: list[TenantMembership]) -> list[MembershipProfile]:
+    """Client-facing memberships incl. clinic name, so a multi-clinic user can switch between them."""
+    return [
+        MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value, tenantName=membership.tenant.name)
+        for membership in memberships
+    ]
+
+
 def profile_response(db: Session, user: User, tenant: Tenant, persona: str | None, tokens: tuple[str, str]) -> AuthResponse:
     memberships = active_memberships(db, user.id)
     return AuthResponse(
@@ -296,9 +305,7 @@ def profile_response(db: Session, user: User, tenant: Tenant, persona: str | Non
         refreshToken=tokens[1],
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
         tenant=tenant_profile(tenant),
-        memberships=[
-            MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
-        ],
+        memberships=_membership_profiles(memberships),
     )
 
 
@@ -307,9 +314,7 @@ def me_response(db: Session, user: User, tenant: Tenant, persona: str | None = N
     return MeResponse(
         user=UserProfile(id=str(user.id), email=user.email, displayName=user.full_name, persona=persona),
         tenant=tenant_profile(tenant),
-        memberships=[
-            MembershipProfile(tenantId=str(membership.tenant_id), role=membership.role.value) for membership in memberships
-        ],
+        memberships=_membership_profiles(memberships),
     )
 
 
@@ -349,7 +354,8 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         tenant.share_include_brands = bool(provided["shareIncludeBrands"])
     if "rolePermissions" in provided:
         # AES-905: admin-only — role permissions are the clinic's org policy, not a per-user pref.
-        if "admin" not in principal.roles:
+        # The clinic ``owner`` (founder) administers the tenant too, so it shares this gate with admin.
+        if not principal.roles & {"owner", "admin"}:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only an admin can change role permissions")
         # Merge the provided per-role presets over the stored map. Only configurable roles and valid
         # presets are accepted (400 otherwise) — admin/owner are always full and can't be set here.
@@ -381,6 +387,32 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
             "share_include_brands": tenant.share_include_brands,
             "role_permissions": tenant.role_permissions,
         },
+    )
+    db.commit()
+    db.refresh(tenant)
+    return tenant_profile(tenant)
+
+
+PLAN_TIERS = {"basic", "pro"}
+
+
+def set_tenant_plan(db: Session, principal: "CurrentPrincipal", *, tier: str) -> TenantProfile:
+    """Switch the tenant's plan/tier (basic | pro). Owner/admin only (gated at the route); no payment."""
+    tier_value = str(tier or "").strip().lower()
+    if tier_value not in PLAN_TIERS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Plan must be basic or pro")
+    tenant = db.get(Tenant, principal.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    tenant.tier = tier_value
+    audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=principal.user_id,
+        action="tenant.set_plan",
+        target_type="tenant",
+        target_id=tenant.id,
+        details={"tier": tier_value},
     )
     db.commit()
     db.refresh(tenant)
@@ -457,6 +489,112 @@ def login(db: Session, email: str, password: str, tenant_id: str | None) -> Auth
     user.last_login_at = utc_now()
     tokens = issue_tokens(db, user, tenant.id)
     audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="auth.login")
+    db.commit()
+    return profile_response(db, user, tenant, None, tokens)
+
+
+def switch_tenant(db: Session, principal: "CurrentPrincipal", *, tenant_id: str) -> AuthResponse:
+    """Re-issue a session for another tenant the current user is an active member of (clinic switch)."""
+    try:
+        target_id = uuid.UUID(tenant_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid tenant id") from exc
+    user = principal.user
+    if target_id not in {m.tenant_id for m in active_memberships(db, user.id)}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No active membership for that clinic")
+    tenant = db.get(Tenant, target_id)
+    if tenant is None or tenant.status != TenantStatus.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Clinic is not active")
+    tokens = issue_tokens(db, user, target_id)
+    audit(db, tenant_id=target_id, actor_user_id=user.id, action="auth.switch_tenant")
+    db.commit()
+    return profile_response(db, user, tenant, None, tokens)
+
+
+# A pragmatic email shape check (the model stores plain strings; we avoid the email-validator dep).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# New self-serve clinics start on Basic (works without the AI synthesis gateway); tier is upgraded
+# out-of-band and is read-only to the clinic.
+DEFAULT_SIGNUP_TIER = "basic"
+
+
+def _slugify(name: str) -> str:
+    """A url-safe tenant slug from a clinic name; falls back to ``clinic`` (e.g. for Persian names)."""
+    base = re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
+    return base or "clinic"
+
+
+def _unique_tenant_slug(db: Session, name: str) -> str:
+    """A slug guaranteed unique against existing tenants (numeric suffix, then a hex suffix)."""
+    base = _slugify(name)
+    candidate = base
+    suffix = 2
+    while db.execute(select(Tenant.id).where(Tenant.slug == candidate)).scalar_one_or_none() is not None:
+        if suffix > 1000:
+            return f"{base}-{uuid.uuid4().hex[:8]}"
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def register(
+    db: Session, *, clinic_name: str, full_name: str, email: str, password: str, app_language: str | None
+) -> AuthResponse:
+    """Onboard a clinic: create the tenant + its founding ``owner`` user, then issue session tokens.
+
+    The owner is a full superset (captures + administers). Works in any auth mode — this is the real
+    sign-up path and never depends on dev seeding.
+    """
+    normalized_email = email.strip().lower()
+    clinic = clinic_name.strip()
+    name = full_name.strip()
+    if not _EMAIL_RE.match(normalized_email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email address")
+    if not clinic or not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Clinic name and your name are required")
+    if len(password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+
+    if db.execute(select(User.id).where(User.email == normalized_email)).scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists")
+
+    language = (app_language or "fa").strip().lower()
+    if language not in APP_LANGUAGE_OPTIONS:
+        language = "fa"
+
+    tenant = Tenant(
+        name=clinic,
+        slug=_unique_tenant_slug(db, clinic),
+        status=TenantStatus.active,
+        tier=DEFAULT_SIGNUP_TIER,
+        vertical="aesthetics",
+        app_language=language,
+    )
+    db.add(tenant)
+    db.flush()  # assign tenant.id
+
+    user = User(
+        email=normalized_email,
+        full_name=name,
+        password_hash=hash_password(password),
+        status=UserStatus.active,
+        last_login_at=utc_now(),
+    )
+    db.add(user)
+    db.flush()  # assign user.id
+
+    db.add(
+        TenantMembership(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role=MembershipRole.owner,
+            status=MembershipStatus.active,
+        )
+    )
+    db.flush()  # the membership must exist before issue_tokens reads roles
+
+    tokens = issue_tokens(db, user, tenant.id)
+    audit(db, tenant_id=tenant.id, actor_user_id=user.id, action="auth.register", details={"role": "owner"})
     db.commit()
     return profile_response(db, user, tenant, None, tokens)
 

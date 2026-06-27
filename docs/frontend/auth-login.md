@@ -4,23 +4,41 @@
 
 The frontend owns the login experience but not authorization. The backend issues and validates tokens. Frontend route hiding is only a usability layer.
 
-## Login Entry
+## Unauthenticated shell
 
-When no valid access token is available, show a login screen before the capture shell.
+When no valid access token is available, `UnauthShell` renders before the capture shell as a
+three-view state machine — **landing → login** / **landing → sign-up** — bilingual fa/en + RTL (see
+[i18n](#bilingual--rtl-app-language) below). The authenticated app remains English-only for now.
+
+- **Landing** (`LandingPage`): what Memara is + CTAs to sign up or log in.
+- **Sign-up** (`SignUpGate`): clinic name, your name, email, password. Calls `POST /api/v1/auth/register`,
+  which creates the tenant + a founding `owner` user and returns the same response shape as login.
+- **Login** (`LoginGate`): email + password via `POST /api/v1/auth/login`.
 
 Development mode:
 
-- Show quick persona buttons for `doctor`, `assistant`, `admin`, and `patient-preview`.
-- Call `POST /api/v1/auth/dev-login`.
-- Store returned user, tenant, memberships, and token state.
-- Staff personas enter the capture-first app.
-- Patient preview must enter a separate placeholder patient experience or show an access-limited state; it must not receive staff capture/review permissions.
+- The login view also shows a separated "Developer sign-in" block: quick persona buttons for
+  `doctor`, `assistant`, `admin`, `patient-preview` (+ a Pro/Basic/Therapy tier switch) via
+  `POST /api/v1/auth/dev-login`. The real email/password form is shown in every build, so real auth
+  is testable without leaving dev mode.
+- Staff personas enter the capture-first app; patient preview gets the access-limited screen and no
+  staff capture/review permissions.
 
 Production mode:
 
-- Show a normal login form.
-- Call `POST /api/v1/auth/login`.
-- Use the same response shape as dev login.
+- Only the real landing/login/sign-up forms (no persona block). Same response shape throughout.
+
+## Bilingual + RTL (app language)
+
+The public surfaces use a lightweight `shared/i18n` seam (fa/en catalog + `t()` + `dir`/`lang` on
+`<html>`). The UI language is persisted in `localStorage`, defaults from the browser (Persian
+fallback, Iran-first), and is toggleable. `UnauthShell` resets `<html>` to LTR/English on unmount.
+On sign-up the chosen language is sent as the new tenant's `app_language`.
+
+## First-run onboarding
+
+A brand-new founder (set at registration) is shown a one-time guided "capture your first visit"
+overlay over the live capture screen; see [onboarding screen](../ux/screens/onboarding.md).
 
 ## Token Handling
 

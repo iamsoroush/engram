@@ -53,13 +53,22 @@ The infra tasks above make prod *safe*; these make it *usable by a real user who
 
 | Pri | Item | Notes |
 |---|---|---|
-| **A** | **Real auth: login / sign-up** (today only dev-login personas; `BACKEND_AUTH_MODE=production` disables them) + a **landing page** | Sign-up = a clinic onboards (tenant + first user); login for existing users. Backend already has JWT auth + roles/tenants (`docs/backend/auth.md`) — extend with real credentials. Iran-first (phone vs email?), bilingual (app language). |
-| **A** | **First-use onboarding / training** | Capture-first is unfamiliar — a guided first capture or short coachmark tour so a new clinician isn't lost. |
+| **A ✅ built** | **Real auth: login / sign-up** + a **landing page** | **Done.** `POST /auth/register` onboards a clinic (tenant + founding `owner` user) and signs the founder in; email + password (phone/OTP deferred). Bilingual fa/en + RTL landing/login/sign-up (`shared/i18n` seam; authed app still English). Dev-login unchanged + still gated by `BACKEND_AUTH_MODE`. New tenants default to Basic. See [auth](backend/auth.md), [unauthenticated shell](ux/screens/login.md). |
+| **A ✅ built** | **First-use onboarding / training** | **Done.** Animated guided "capture your first visit": a **spotlight** coachmark on the live capture bar with a **live first capture**, **tier-accurate** content (Basic = capture/organize, no AI claims, + a Pro upsell; Pro = AI report + memory/Q&A), "Invite your team" + "See the Pro plan" links, and **Replay guide** in the account menu. See [onboarding](ux/screens/onboarding.md). |
+| **A ✅ built** | **Clinic member management + plans** | **Done.** Owner/admin **Team** screen + `clinic/team` endpoints: add members with a temp password **or attach an existing Memara account across clinics**, change role/status (owner + self protected). **Plan** screen + `PATCH /clinic/plan` to switch Basic↔Pro (no payment). See [Team](ux/screens/team.md), [Plan](ux/screens/plan.md). |
 | **B** | **AI-feedback instrumentation** | Log staff **corrections** of any AI output (transcript/caption/treatment/patient-match: before→after, PII-scrubbed) + a thumbs/rating on report/brief. Doubles as the **eval golden-set harvester** (see `docs/ai_engine/eval-epic.md` §1b). |
 | **B** | **Stale-client robustness** | A patient merge/delete must invalidate client caches; a 404 on a now-deleted patient should self-heal (no stuck "verify" panel). Surfaced by a real incident: deleting a merged patient left the client PATCHing a dead id → 404. |
 
-The **A-tier (auth + landing + onboarding)** is the gate to handing the MVP to a real user; **B-tier** is the
+The **A-tier (auth + landing + onboarding)** is **built** — the MVP is handable to a real user; **B-tier** is the
 feedback loop that turns that user's testing into eval data + fixes a known rough edge.
+
+An evaluator pass hardened A: per-request **live-membership authorization** (disable/role-change apply
+immediately, not at token expiry), the **capture bar hidden on account screens**, **tier-honest landing**
+(how-it-works/trust/placeholder-pricing; Basic led, Pro as the upgrade lane), **multi-clinic switch**
+(`/auth/switch-tenant` + a switcher), sharper sign-up errors, and committed **e2e specs** (`tests/e2e/`).
+Remaining A follow-ups: phone/OTP credentials, password reset, and — the top adoption risk for an
+Iran-first launch — **translating the authenticated app** (the app is still English-only; the public
+surfaces + onboarding are bilingual). That full-app i18n is the deferred next epic.
 
 ## What to monitor (T6 detail)
 API error rate + p95 latency · **failed uploads** (product-critical) · **AI-job failure rate + Celery/Redis

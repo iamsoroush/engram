@@ -10916,3 +10916,654 @@ small {
 .report-review .report-review-chip.confirmed { border-color: #bfe3c4; background: #f1faf2; color: #2f6b3a; }
 .report-review .report-review-chip-confirmed { flex: 0 0 auto; font-weight: 700; }
 .treatments-performed .treatment-flag.confirmed { color: #2f6b3a; }
+
+/* ============================================================================
+   Public / first-run surfaces: landing, login, sign-up, onboarding.
+   Bilingual + RTL-aware — all flow uses logical/symmetric layout so `dir="rtl"`
+   on `.auth-root` mirrors correctly with no per-rule overrides.
+   ============================================================================ */
+.auth-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-page);
+  color: var(--color-text);
+}
+.auth-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px clamp(16px, 5vw, 40px);
+}
+.auth-brand {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--color-primary);
+}
+.auth-lang-toggle {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.auth-lang-toggle:hover {
+  border-color: var(--color-border-strong);
+}
+/* A quiet text link used under the auth forms (switch to login / sign-up). */
+.auth-link {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  padding: 2px;
+  text-align: center;
+}
+.auth-link:hover {
+  text-decoration: underline;
+}
+.field-hint {
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  margin-bottom: 4px;
+}
+/* Inside the unauthenticated shell the card sits below the top bar — top-align it (with breathing
+   room) instead of dead-centering in a full viewport, which left a large empty band on mobile. */
+.auth-root .login-shell {
+  min-height: 0;
+  flex: 1;
+  align-items: start;
+  padding-top: clamp(16px, 5vh, 48px);
+}
+/* Developer-only persona sign-in, separated from the real form. */
+.dev-signin {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--color-border);
+}
+
+/* --- Landing --- */
+.landing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(36px, 6vw, 64px);
+  padding: clamp(12px, 3vw, 28px) clamp(16px, 5vw, 40px) 48px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+/* Hero: single column on mobile, two columns (copy | product preview) on desktop. */
+.landing-hero {
+  display: grid;
+  gap: clamp(24px, 4vw, 44px);
+  align-items: center;
+}
+.landing-hero-copy {
+  display: grid;
+  gap: 16px;
+  max-width: 560px;
+}
+.landing-title {
+  font-size: clamp(1.9rem, 5.5vw, 2.9rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.landing-subtitle {
+  font-size: clamp(1rem, 2.4vw, 1.15rem);
+  line-height: 1.6;
+  color: var(--color-muted);
+  margin: 0;
+}
+.landing-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.landing-hero-visual {
+  display: flex;
+  justify-content: center;
+}
+
+/* Product preview — a stylized phone built from the app's own tokens (not a screenshot). */
+.landing-preview {
+  margin: 0;
+  width: min(300px, 100%);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.landing-preview-screen {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-float);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.landing-preview-topbar {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+.landing-preview-brand {
+  font-weight: 800;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+}
+.landing-preview-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+.landing-preview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--green);
+}
+.landing-preview-chip {
+  justify-self: start;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 5px 11px;
+}
+.landing-preview-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.landing-preview-line {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+}
+.landing-preview-line.w90 {
+  width: 90%;
+}
+.landing-preview-line.w70 {
+  width: 70%;
+}
+.landing-preview-line.w55 {
+  width: 55%;
+}
+.landing-preview-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.landing-preview-action {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 4px;
+}
+.landing-preview-action.primary {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.landing-preview-action svg,
+.landing-step-chip svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.landing-preview-caption {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* Generic landing section */
+.landing-section {
+  display: grid;
+  gap: 18px;
+}
+.landing-section-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 3vw, 1.7rem);
+  letter-spacing: -0.01em;
+}
+
+/* How it works */
+.landing-steps,
+.landing-trust {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.landing-step {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.landing-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.landing-step h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.landing-step p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+  font-size: var(--text-md);
+}
+.landing-step-modalities {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.landing-step-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+/* Trust */
+.landing-trust-item {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.landing-trust-item h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.landing-trust-item p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+  font-size: var(--text-sm);
+}
+
+/* Pro tag — reused on the Pro plan teaser. */
+.landing-pro-tag {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--violet);
+  background: var(--violet-soft);
+  border: 1px solid var(--violet-border);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+}
+
+/* Pricing */
+.landing-pricing-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.landing-pricing-note {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+}
+.landing-plans {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.landing-plan {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.landing-plan-pro {
+  border-color: var(--violet-border);
+  background: linear-gradient(180deg, var(--violet-soft), var(--color-surface) 55%);
+}
+.landing-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.landing-plan-head h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.landing-plan-price {
+  margin: 0;
+  font-weight: 700;
+}
+.landing-plan-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.landing-plan-features li {
+  position: relative;
+  padding-inline-start: 22px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.landing-plan-features li::before {
+  content: "✓";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--color-success);
+  font-weight: 800;
+}
+.landing-footer {
+  color: var(--color-muted-2);
+  font-size: var(--text-sm);
+  padding-top: 8px;
+}
+
+@media (min-width: 860px) {
+  .landing-hero {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+  .landing-preview {
+    width: min(320px, 100%);
+  }
+}
+
+/* --- Onboarding (guided first capture) --- */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(8 13 45 / 55%);
+  backdrop-filter: blur(2px);
+  animation: onboarding-fade 0.2s ease-out;
+}
+@keyframes onboarding-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes onboarding-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+.onboarding-card {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+  animation: onboarding-pop 0.22s ease-out;
+}
+/* A small step pill, shared by the modal card + the spotlight bubble. */
+.onboarding-step-index {
+  justify-self: start;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.onboarding-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+.onboarding-card p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+.onboarding-dots {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0;
+}
+.onboarding-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.onboarding-dot.active {
+  width: 18px;
+  background: var(--color-primary);
+}
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* --- Team (member management) --- */
+.team-add-form {
+  margin-top: 4px;
+}
+.team-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.team-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+.team-member-id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.team-member-id strong {
+  font-size: var(--text-md);
+}
+.team-member-id small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.team-member-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Onboarding spotlight (coachmark on the live capture bar) --- */
+.onboarding-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  /* The container spans the viewport, so it must not itself swallow clicks — only the dim panels
+     (which surround the target) and the bubble are interactive; the target hole stays clickable. */
+  pointer-events: none;
+}
+/* Four dim panels around the highlighted target leave it uncovered (so it stays clickable). */
+.onboarding-dim {
+  position: fixed;
+  background: rgb(8 13 45 / 55%);
+  pointer-events: auto;
+}
+.onboarding-ring {
+  position: fixed;
+  border: 2px solid var(--color-primary);
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow: 0 0 0 4px rgb(7 94 255 / 25%);
+  animation: onboarding-pulse 1.6s ease-in-out infinite;
+}
+@keyframes onboarding-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgb(7 94 255 / 25%);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgb(7 94 255 / 8%);
+  }
+}
+.onboarding-bubble {
+  position: fixed;
+  max-width: 460px;
+  margin: 0 auto;
+  background: var(--color-surface);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--shadow-float);
+  display: grid;
+  gap: 10px;
+  pointer-events: auto;
+  animation: onboarding-pop 0.22s ease-out;
+}
+.onboarding-bubble h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.onboarding-bubble p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+/* --- Plan (Basic vs Pro) --- */
+.plan-intro {
+  margin-top: -4px;
+}
+.plan-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.plan-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.plan-card-pro {
+  border-color: var(--violet-border);
+  background: linear-gradient(180deg, var(--violet-soft), var(--color-surface) 60%);
+}
+.plan-card-current {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+.plan-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-card-head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.plan-card-tagline {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.plan-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.plan-features li {
+  position: relative;
+  padding-inline-start: 22px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.plan-features li::before {
+  content: "✓";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--color-success);
+  font-weight: 800;
+}
+/* The "Everything in Basic, plus:" lead-in row reads as a heading, not a checklist item. */
+.plan-card-pro .plan-features li:first-child {
+  font-weight: 700;
+  color: var(--color-text);
+}
+.plan-card-pro .plan-features li:first-child::before {
+  content: "";
+}

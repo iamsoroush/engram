@@ -40,6 +40,10 @@ class UserStatus(str, enum.Enum):
 
 
 class MembershipRole(str, enum.Enum):
+    # ``owner`` is the clinic's founding user (created by self-serve sign-up): a full superset that
+    # can both capture (like staff) and administer the tenant (like admin), and is always ``full`` in
+    # the multi-seat permission model. Additive — it never changes doctor/assistant/admin semantics.
+    owner = "owner"
     doctor = "doctor"
     assistant = "assistant"
     admin = "admin"

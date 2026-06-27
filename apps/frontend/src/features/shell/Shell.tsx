@@ -12,6 +12,7 @@ export function Shell({
   auth,
   syncHealth,
   onLogout,
+  onReplayGuide,
   qaPendingCount = 0,
 }: {
   screen: Screen;
@@ -22,11 +23,21 @@ export function Shell({
   auth: AuthSession;
   syncHealth: SyncHealth;
   onLogout: () => void;
+  onReplayGuide?: () => void;
   qaPendingCount?: number;
 }) {
   const menuRef = React.useRef<HTMLDetailsElement>(null);
   const displayName = auth.user.displayName || auth.user.email;
-  const role = auth.memberships[0]?.role || auth.user.persona || "user";
+  // The role for the ACTIVE tenant (a cross-clinic user has a membership per clinic).
+  const activeMembership = auth.memberships.find((membership) => membership.tenantId === auth.tenant.id);
+  const role = activeMembership?.role || auth.user.persona || "user";
+  // Member management is owner/admin only (the backend enforces it; we also hide the entry).
+  const canManageTeam = activeMembership?.role === "owner" || activeMembership?.role === "admin";
+  // Offer a clinic switcher only to users who belong to more than one clinic.
+  const multiClinic = new Set(auth.memberships.map((membership) => membership.tenantId)).size > 1;
+  // Account / utility pages have no capture context — the capture bar would overlap their content.
+  const isAccountScreen =
+    screen === "settings" || screen === "profile" || screen === "team" || screen === "plan" || screen === "switch-clinic";
   const isOffline = !syncHealth.online;
   const closeMenu = () => menuRef.current?.removeAttribute("open");
   const goTo = (target: Screen) => {
@@ -121,6 +132,37 @@ export function Shell({
                 <SettingsMenuIcon />
                 Settings
               </button>
+              {canManageTeam ? (
+                <button className="user-menu-item" onClick={() => goTo("team")} type="button">
+                  <TeamMenuIcon />
+                  Team
+                </button>
+              ) : null}
+              {canManageTeam ? (
+                <button className="user-menu-item" onClick={() => goTo("plan")} type="button">
+                  <PlanMenuIcon />
+                  Plan
+                </button>
+              ) : null}
+              {multiClinic ? (
+                <button className="user-menu-item" onClick={() => goTo("switch-clinic")} type="button">
+                  <SwitchClinicMenuIcon />
+                  Switch clinic
+                </button>
+              ) : null}
+              {onReplayGuide ? (
+                <button
+                  className="user-menu-item"
+                  onClick={() => {
+                    closeMenu();
+                    onReplayGuide();
+                  }}
+                  type="button"
+                >
+                  <GuideMenuIcon />
+                  Replay guide
+                </button>
+              ) : null}
               <button className="user-menu-item user-menu-item-danger" onClick={onLogout} type="button">
                 <LogoutMenuIcon />
                 Logout
@@ -131,7 +173,9 @@ export function Shell({
       </header>
       {isOffline ? <p className="global-offline-status">Offline · Captures are saved on this device</p> : null}
       {children}
-      <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} tier={auth.tenant.tier} />
+      {isAccountScreen ? null : (
+        <CaptureActions compact contextLabel={isOffline ? "Saving on this device" : captureContextLabel} onAction={onCapture} tier={auth.tenant.tier} />
+      )}
       <footer className="app-version">MVP v2</footer>
     </main>
   );
@@ -151,6 +195,46 @@ function SettingsMenuIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 3.5v2M12 18.5v2M4.7 7.5l1.7 1M17.6 15.5l1.7 1M4.7 16.5l1.7-1M17.6 8.5l1.7-1" />
+    </svg>
+  );
+}
+
+function TeamMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3.5 19a5.5 5.5 0 0 1 11 0" />
+      <path d="M16 5.5a3 3 0 0 1 0 5.8" />
+      <path d="M17 13.2a5.5 5.5 0 0 1 3.5 5.1" />
+    </svg>
+  );
+}
+
+function PlanMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M5 7h14v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7Z" />
+      <path d="M9 4.5h6V7H9z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+function SwitchClinicMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M4 8h13l-3-3" />
+      <path d="M20 16H7l3 3" />
+    </svg>
+  );
+}
+
+function GuideMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-.9.7-.9 1.4v.4" />
+      <path d="M12 16.5h.01" />
     </svg>
   );
 }

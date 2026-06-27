@@ -78,7 +78,9 @@ def role_permission_level(roles: frozenset[str] | set[str], role_permissions: di
     A non-owner with no recognized staff role still gets the ``contribute`` floor (append never
     blocks). Ownership is handled by the callers below, not here.
     """
-    if "admin" in roles:
+    # ``owner`` (clinic founder) and ``admin`` are always full everywhere — neither carries a
+    # configurable per-role preset.
+    if roles & {"owner", "admin"}:
         return FULL
     level = CONTRIBUTE
     for role in roles:

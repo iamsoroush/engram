@@ -8,6 +8,8 @@ The UX keeps capture first while moving long-term review toward Clinical Memory:
 
 ## Main Users
 
+- Owner: the clinic's founding user from sign-up; a full superset of doctor + admin (captures and
+  administers the tenant).
 - Doctor: captures clinical material and reviews generated session output.
 - Assistant: captures, assigns patients, and reviews session memory.
 - Admin: can load staff-facing session lists, but cannot perform staff-only capture or assignment APIs.
@@ -21,7 +23,10 @@ The UX keeps capture first while moving long-term review toward Clinical Memory:
 
 ## Main Screens
 
-- [Login](screens/login.md)
+- [Landing / Login / Sign-up](screens/login.md) (bilingual fa/en + RTL; self-serve clinic sign-up)
+- [First-run onboarding](screens/onboarding.md)
+- [Team (member management)](screens/team.md) (owner/admin)
+- [Plan (Basic vs Pro)](screens/plan.md) (owner/admin)
 - [Capture / Active Session](screens/capture.md)
 - [Clinical Memory](screens/patients.md)
 - [Search](screens/search.md)

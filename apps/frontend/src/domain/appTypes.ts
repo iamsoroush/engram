@@ -92,6 +92,7 @@ export type AuthTenant = {
 export type AuthMembership = {
   tenantId: string;
   role: string;
+  tenantName?: string;
 };
 
 export type AuthSession = {

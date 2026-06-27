@@ -55,6 +55,40 @@ export async function loginWithPassword(email: string, password: string) {
   return (await response.json()) as AuthSession;
 }
 
+export interface RegisterClinicInput {
+  clinicName: string;
+  fullName: string;
+  email: string;
+  password: string;
+  appLanguage: string;
+}
+
+/** Self-serve clinic sign-up. Throws an Error tagged with `.status` so the form can map 409/422. */
+export async function registerClinic(input: RegisterClinicInput) {
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = new Error("Registration failed") as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+  return (await response.json()) as AuthSession;
+}
+
+/** Switch the signed-in user's active clinic (re-issues a session for another of their tenants). */
+export async function switchTenant(apiFetch: ApiFetch, tenantId: string) {
+  const response = await apiFetch(`${API_BASE}/auth/switch-tenant`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId }),
+  });
+  if (!response.ok) throw new Error("Could not switch clinic");
+  return (await response.json()) as AuthSession;
+}
+
 export async function refreshAuthToken(refreshToken: string) {
   const response = await fetch(`${API_BASE}/auth/refresh`, {
     method: "POST",
@@ -635,6 +669,71 @@ export async function updateTenantSettings(
     matchStrictness?: string;
     rolePermissions?: RolePermissions;
   };
+}
+
+export interface TeamMember {
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+  status: string;
+  isSelf: boolean;
+  isOwner: boolean;
+}
+
+export interface CreateMemberInput {
+  fullName: string;
+  email: string;
+  // Required for a brand-new person; omit for an existing Memara account (added across clinics).
+  password?: string;
+  role: string;
+}
+
+export async function fetchTeamMembers(apiFetch: ApiFetch): Promise<TeamMember[]> {
+  const response = await apiFetch(`${API_BASE}/clinic/team`);
+  if (!response.ok) throw new Error("Could not load members");
+  return ((await response.json()) as { items: TeamMember[] }).items;
+}
+
+/** Create or attach a clinic member (`created` is false when an existing account was added across
+ * clinics). Throws an Error tagged with `.status` so the form can map 409/422. */
+export async function createTeamMember(apiFetch: ApiFetch, input: CreateMemberInput): Promise<TeamMember & { created: boolean }> {
+  const response = await apiFetch(`${API_BASE}/clinic/team`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = new Error("Could not add member") as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+  return (await response.json()) as TeamMember & { created: boolean };
+}
+
+/** Switch the clinic plan/tier (basic | pro). Returns the updated tenant profile. */
+export async function setClinicPlan(apiFetch: ApiFetch, tier: string): Promise<{ tier: string }> {
+  const response = await apiFetch(`${API_BASE}/clinic/plan`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier }),
+  });
+  if (!response.ok) throw new Error("Could not change plan");
+  return (await response.json()) as { tier: string };
+}
+
+export async function updateTeamMember(
+  apiFetch: ApiFetch,
+  userId: string,
+  patch: { role?: string; status?: string },
+): Promise<TeamMember> {
+  const response = await apiFetch(`${API_BASE}/clinic/team/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) throw new Error("Could not update member");
+  return (await response.json()) as TeamMember;
 }
 
 // --- E9 multi-seat: clinic directory + worklist (AES-903) ---

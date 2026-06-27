@@ -57,6 +57,9 @@ import {
   logoutSession,
   markCaptureRelevant,
   refreshAuthToken,
+  registerClinic,
+  type RegisterClinicInput,
+  switchTenant,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
@@ -87,9 +90,15 @@ import {
   sessionDismissedAftercare,
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
+import { TeamScreen } from "../features/account/TeamScreen";
+import { PlanScreen } from "../features/account/PlanScreen";
+import { SwitchClinicScreen } from "../features/account/SwitchClinicScreen";
 import { SharePatientSheet } from "../features/aesthetics/SharePatientSheet";
 import type { GalleryVisit } from "../features/aesthetics/PatientPhotoGallery";
-import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
+import { PatientPreviewGate } from "../features/auth/AuthGates";
+import { UnauthShell } from "../features/auth/UnauthShell";
+import { OnboardingOverlay } from "../features/onboarding/OnboardingOverlay";
+import { clearOnboardingPending, isOnboardingPending, markOnboardingPending } from "../features/onboarding/onboardingState";
 import { TherapyApp } from "../features/therapy/TherapyApp";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
@@ -151,6 +160,9 @@ export function App() {
   setAppLanguage(auth?.tenant.appLanguage ?? null);
   const [authReady, setAuthReady] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
+  // First-run guided capture: shown once for a freshly signed-up founder (flagged in handleRegister),
+  // dismissed (and the flag cleared) when they finish or skip the tour.
+  const [onboardingDismissed, setOnboardingDismissed] = React.useState(false);
   const authRef = React.useRef<AuthSession | null>(null);
   const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
@@ -1720,6 +1732,44 @@ export function App() {
     }
   };
 
+  // Self-serve clinic sign-up. Lets the error propagate so the sign-up form can map 409/422; on
+  // success we flag the new founder for the guided first-capture tour before entering the app.
+  const handleRegister = async (input: RegisterClinicInput) => {
+    setAuthError("");
+    const next = await registerClinic(input);
+    markOnboardingPending(next.user.id);
+    commitAuth(next);
+    navigateScreen(defaultScreenForAuth(next));
+  };
+
+  // Plan switch (Plan screen): reflect the new tier in the in-app tenant so capabilities + UI follow.
+  const handleTierChanged = (tier: string) => {
+    const current = authRef.current;
+    if (!current) return;
+    const next = { ...current, tenant: { ...current.tenant, tier } };
+    authRef.current = next;
+    setAuth(next);
+    persistAuthProfile(next);
+    setToast(`Switched to ${tier === "pro" ? "Pro" : "Basic"}.`);
+  };
+
+  // Multi-clinic switch: re-issue a session for another of the user's clinics. Lets the error
+  // propagate so the chooser can show it; on success we commit the new tenant + tokens.
+  const handleSwitchClinic = async (tenantId: string) => {
+    const next = await switchTenant(apiFetch, tenantId);
+    commitAuth(next);
+    navigateScreen(defaultScreenForAuth(next));
+  };
+
+  // Re-arm the first-run guide so a user who skipped it can replay it (from the account menu).
+  const handleReplayGuide = () => {
+    const current = authRef.current;
+    if (!current) return;
+    markOnboardingPending(current.user.id);
+    setOnboardingDismissed(false);
+    navigateScreen("active-session");
+  };
+
   const handleUpdateTenantSettings = React.useCallback(
     async (settings: {
       transcriptionLanguage?: string;
@@ -1876,7 +1926,8 @@ export function App() {
   const handleShellNavigate = (nextScreen: Screen) => {
     // Settings/Profile are utility pages reached from the account menu; remember where we came
     // from so Back returns there (don't record an account page as its own return target).
-    if ((nextScreen === "settings" || nextScreen === "profile") && screen !== "settings" && screen !== "profile") {
+    const accountScreens: Screen[] = ["settings", "profile", "team", "plan", "switch-clinic"];
+    if (accountScreens.includes(nextScreen) && !accountScreens.includes(screen)) {
       accountReturnRef.current = screen;
     }
     setClinicalMemoryReturnContext(null);
@@ -1928,6 +1979,24 @@ export function App() {
           onClearLocal={() => void clearLocalPendingCaptures()}
           onLogout={handleLogout}
         />
+      );
+    }
+    if (screen === "team" && auth) {
+      return <TeamScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
+    }
+    if (screen === "plan" && auth) {
+      return (
+        <PlanScreen
+          auth={auth}
+          apiFetch={apiFetch}
+          onBack={() => navigateScreen(accountReturnRef.current)}
+          onTierChanged={handleTierChanged}
+        />
+      );
+    }
+    if (screen === "switch-clinic" && auth) {
+      return (
+        <SwitchClinicScreen auth={auth} onBack={() => navigateScreen(accountReturnRef.current)} onSwitch={handleSwitchClinic} />
       );
     }
     if (screen !== "active-session" && selectedSession) {
@@ -2090,11 +2159,12 @@ export function App() {
 
   if (!auth) {
     return (
-      <LoginGate
+      <UnauthShell
         error={authError}
-        pendingCount={pendingCount}
         onLogin={handlePasswordLogin}
         onPersonaLogin={handlePersonaLogin}
+        onRegister={handleRegister}
+        pendingCount={pendingCount}
       />
     );
   }
@@ -2111,11 +2181,38 @@ export function App() {
 
   return (
     <>
+      {!onboardingDismissed && isOnboardingPending(auth.user.id) ? (
+        <OnboardingOverlay
+          canInviteTeam={auth.memberships.some(
+            (m) => m.tenantId === auth.tenant.id && (m.role === "owner" || m.role === "admin"),
+          )}
+          captureCount={activeSession?.items.length ?? 0}
+          captureDialogOpen={textOpen || photoOpen || audioOpen}
+          displayName={auth.user.displayName || auth.user.email || ""}
+          lang={auth.tenant.appLanguage === "fa" ? "fa" : "en"}
+          onFinish={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+          }}
+          onInviteTeam={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+            navigateScreen("team");
+          }}
+          onSeePlan={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+            navigateScreen("plan");
+          }}
+          tier={auth.tenant.tier ?? "basic"}
+        />
+      ) : null}
       <Shell
         auth={auth}
         captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient)}
         onCapture={beginCapture}
         onLogout={handleLogout}
+        onReplayGuide={handleReplayGuide}
         screen={screen}
         syncHealth={syncHealth}
         onNavigate={handleShellNavigate}

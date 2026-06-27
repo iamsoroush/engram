@@ -53,7 +53,10 @@ export function CaptureActions({
     return (
       <div className="capture-pills">
         {contextLabel ? <div className="capture-pills-context">{contextLabel}</div> : null}
-        <div className="capture-pills-actions">{actionButtons}</div>
+        {/* data-onboarding anchors the first-run spotlight tour to the live capture bar. */}
+        <div className="capture-pills-actions" data-onboarding="capture-bar">
+          {actionButtons}
+        </div>
       </div>
     );
   }
