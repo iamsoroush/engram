@@ -138,6 +138,19 @@ class PatientSyncTests(unittest.TestCase):
         self.assertEqual(payload[0]["kind"], "allergy")
         self.assertNotIn("sourceSessionId", payload[0])  # payload is glanceable, no provenance
 
+    def test_payload_excludes_current_session(self):
+        # The active-session context card passes excludeSessionId so a flag detected THIS visit (shown
+        # in the "this visit" panel) is not also repeated here as cross-visit history.
+        patient = _patient(None)
+        prior = _session({"safety_flags": [_flag("allergy", "حساسیت به پنی‌سیلین")]})
+        current = _session({"safety_flags": [_flag("contraindication", "بارداری")]})
+        sync_patient_safety_flags(patient, prior)
+        sync_patient_safety_flags(patient, current)
+        full = patient_safety_flags_payload(patient)
+        self.assertEqual({f["kind"] for f in full}, {"allergy", "contraindication"})
+        scoped = patient_safety_flags_payload(patient, exclude_session_id=current.id)
+        self.assertEqual([f["kind"] for f in scoped], ["allergy"])  # only the PRIOR visit's flag
+
 
 if __name__ == "__main__":
     unittest.main()

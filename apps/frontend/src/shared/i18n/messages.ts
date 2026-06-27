@@ -132,9 +132,9 @@ const en: Dict = {
   "capture.safety.label": "Safety flags · this visit",
   "capture.safety.hint": "Kept by default — reject any that's wrong.",
   "capture.safety.reject": "Reject this flag",
-  // Cross-visit patient safety flags (session-context card + patient timeline)
-  "context.safety.label": "Safety",
-  "context.safety.aria": "Patient safety flags",
+  // Cross-visit patient safety flags (session-context card + patient timeline) — prior visits / record
+  "context.safety.label": "Safety · on record",
+  "context.safety.aria": "Patient safety flags on record",
 };
 
 const fa: Dict = {
@@ -256,9 +256,9 @@ const fa: Dict = {
   "capture.safety.label": "هشدارهای ایمنی · این ویزیت",
   "capture.safety.hint": "به‌صورت پیش‌فرض نگه داشته می‌شود — موارد نادرست را رد کنید.",
   "capture.safety.reject": "رد این مورد",
-  // Cross-visit patient safety flags
-  "context.safety.label": "ایمنی",
-  "context.safety.aria": "هشدارهای ایمنی بیمار",
+  // Cross-visit patient safety flags — prior visits / record
+  "context.safety.label": "ایمنی · در سوابق",
+  "context.safety.aria": "هشدارهای ایمنی بیمار در سوابق",
 };
 
 export const MESSAGES: Record<Lang, Dict> = { en, fa };

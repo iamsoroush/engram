@@ -125,15 +125,22 @@ def drop_session_safety_flags(patient: Patient, session_id: Any) -> None:
     patient.safety_flags = [flag for flag in patient_safety_flags(patient) if flag.get("sourceSessionId") != session_id]
 
 
-def patient_safety_flags_payload(patient: Patient) -> list[dict[str, Any]]:
+def patient_safety_flags_payload(patient: Patient, *, exclude_session_id: Any = None) -> list[dict[str, Any]]:
     """Deduped, glanceable patient safety flags for the session-context card + timeline.
 
     Deduped by stable key (the first occurrence wins, keeping its provenance); clinical ``text`` is
     returned verbatim in the report language. Shape: ``[{key, kind, text}]``.
+
+    ``exclude_session_id`` drops flags contributed by that session — passed for the active session's
+    context card so a flag detected THIS visit (already shown in the opt-out "this visit" panel) is not
+    also repeated here as cross-visit history; the card then carries only PRIOR visits' flags.
     """
+    exclude = str(exclude_session_id) if exclude_session_id is not None else None
     seen: set[str] = set()
     payload: list[dict[str, Any]] = []
     for flag in patient_safety_flags(patient):
+        if exclude is not None and flag.get("sourceSessionId") == exclude:
+            continue
         key = flag.get("key") or safety_flag_key(str(flag.get("kind")), str(flag.get("text")))
         if key in seen:
             continue
