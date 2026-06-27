@@ -2,6 +2,7 @@
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
 import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
+import { useT } from "../../../shared/i18n";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
@@ -67,19 +68,20 @@ export function LiveReportView({
  * needs its letterhead. The patient share renders its own clinic header (PatientSharePage).
  */
 export function ReportDocHeader({ session }: { session: CaptureSession | null }) {
+  const t = useT();
   const clinic = session?.report?.template?.clinic;
   const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session);
   return (
     <>
       <section className="structured-report-section">
-        <h3>Clinic Information</h3>
-        <p>Clinic: {clinic?.name || "Clinic"}</p>
-        {(clinic?.information?.length ? clinic.information : ["Clinical memory report"]).map((line) => (
+        <h3>{t("report.clinicInfo")}</h3>
+        <p>{t("report.clinicPrefix", { name: clinic?.name || t("report.clinicFallback") })}</p>
+        {(clinic?.information?.length ? clinic.information : [t("report.clinicFallbackLine")]).map((line) => (
           <p key={line}>{line}</p>
         ))}
       </section>
       <section className="structured-report-section">
-        <h3>Patient Information</h3>
+        <h3>{t("report.patientInfo")}</h3>
         <PatientInformationRows patientInformation={patientInformation} />
       </section>
     </>
@@ -101,6 +103,7 @@ export function ProLiveReport({
   onOpenSource?: (captureId: string) => void;
   reportLanguage?: string | null;
 }) {
+  const t = useT();
   const bodyParagraphs = workspaceStructuredReportCopy(session);
   // Render the report's structured sections (with their headers). This one path serves both report
   // models: the deterministic baseline's by-type grouping (Audio notes / Written notes / Photos) AND
@@ -145,7 +148,8 @@ export function ProLiveReport({
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
   const isUpdating = session?.processingStatus?.state === "processing" || session?.report?.status === "generating";
-  const templateLabel = session?.report?.template?.key === "default" || !session?.report?.template?.key ? "Default template" : `${session?.report?.template?.key} template`;
+  const templateKey = session?.report?.template?.key;
+  const templateLabel = templateKey === "default" || !templateKey ? t("report.templateDefault") : t("report.templateNamed", { key: templateKey });
   // Explicit "what this report is based on" status (Pro): current = reflects all captures.
   const freshness = reportFreshness(session, true);
   return (
@@ -161,13 +165,13 @@ export function ProLiveReport({
           <span className={`report-freshness ${freshness.current ? "current" : "updating"}`} aria-live="polite">
             {freshness.current ? (
               <>
-                ✓ Reflects all {freshness.included} capture{freshness.included === 1 ? "" : "s"}
-                {freshness.setAside > 0 ? ` · ${freshness.setAside} set aside` : ""}
+                {t("report.reflectsAll", { n: freshness.included })}
+                {freshness.setAside > 0 ? t("report.setAside", { n: freshness.setAside }) : ""}
               </>
             ) : (
               <>
                 <span className="report-freshness-dot" aria-hidden="true" />
-                Updating · {freshness.pending} of {freshness.included + freshness.pending} captures not yet in this report
+                {t("report.updatingCount", { pending: freshness.pending, total: freshness.included + freshness.pending })}
               </>
             )}
           </span>
@@ -214,9 +218,9 @@ export function ProLiveReport({
             </section>
           ))
         ) : isUpdating || session?.items.length ? (
-          <p className="report-doc-status">Preparing the report from your captures…</p>
+          <p className="report-doc-status">{t("report.preparing")}</p>
         ) : (
-          <p className="report-doc-status">The report builds here automatically as captures land.</p>
+          <p className="report-doc-status">{t("report.buildsHere")}</p>
         )}
       </section>
       {treatments.length && !hasTreatmentSection ? (
@@ -308,6 +312,7 @@ function TreatmentsList({
   reviewNotes?: string[];
 }) {
   const [confirmingKey, setConfirmingKey] = React.useState<string | null>(null);
+  const t = useT();
   return (
     <>
       <ul className="treatments-list">
@@ -337,13 +342,13 @@ function TreatmentsList({
                 {/* When the inline confirm box is shown it already says "carried forward", so the line
                     flag would be redundant — only show it when there's no pending confirm box. */}
                 {isCarried && !needsConfirm ? (
-                  <span className={`treatment-flag${isConfirmed ? " confirmed" : ""}`}> · carried forward{isConfirmed ? " (confirmed)" : ""}</span>
+                  <span className={`treatment-flag${isConfirmed ? " confirmed" : ""}`}>{t("report.flagCarriedForward")}{isConfirmed ? t("report.flagConfirmedSuffix") : ""}</span>
                 ) : null}
-                {lowConfidence ? <span className="treatment-flag low"> · low confidence</span> : null}
-                {lotMissing ? <span className="treatment-flag low"> · lot not captured</span> : null}
+                {lowConfidence ? <span className="treatment-flag low">{t("report.flagLowConfidence")}</span> : null}
+                {lotMissing ? <span className="treatment-flag low">{t("report.flagLotMissing")}</span> : null}
                 {fixable && onFixAtSource ? (
                   <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
-                    ✎ Fix at source
+                    {t("report.fixAtSource")}
                   </button>
                 ) : null}
                 <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
@@ -356,7 +361,7 @@ function TreatmentsList({
               {needsConfirm ? (
                 <span className="treatment-confirm">
                   <span className="treatment-confirm-reason" dir={textDirection(confirmReason || "")}>
-                    {confirmReason || "Carried forward from a previous visit — confirm the dose."}
+                    {confirmReason || t("report.confirmReasonDefault")}
                   </span>
                   <button
                     type="button"
@@ -372,18 +377,18 @@ function TreatmentsList({
                       }
                     }}
                   >
-                    {confirmingKey === key ? "Confirming…" : "Confirm dose"}
+                    {confirmingKey === key ? t("report.confirming") : t("report.confirmDose")}
                   </button>
                 </span>
               ) : isConfirmed ? (
-                <span className="treatment-confirmed">✓ Dose confirmed</span>
+                <span className="treatment-confirmed">{t("report.doseConfirmed")}</span>
               ) : null}
             </li>
           );
         })}
       </ul>
       {reviewNotes?.length ? (
-        <ul className="treatment-review-notes" aria-label="Notes to review">
+        <ul className="treatment-review-notes" aria-label={t("report.notesToReview")}>
           {reviewNotes.map((note, index) => (
             <li key={`${index}-${note.slice(0, 24)}`} dir={textDirection(note)}>
               <span className="treatment-review-note-icon" aria-hidden="true">ⓘ</span>
@@ -470,6 +475,7 @@ export function BasicLiveReport({
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   const items = session?.items || [];
   return (
     <div className="structured-report-view basic-live-report">
@@ -477,14 +483,14 @@ export function BasicLiveReport({
         {items.length ? (
           items.map((item) => <BasicReportEntry item={item} key={item.sourceUrl || item.id} onResolveFile={onResolveFile} />)
         ) : (
-          <p className="report-doc-status">Captures will appear here, in order, as the session develops.</p>
+          <p className="report-doc-status">{t("report.basicEmpty")}</p>
         )}
       </section>
       {items.length ? (
         <TryProTeaser
           className="report-teaser"
-          title="Try Pro — turn your notes into a structured treatment report"
-          subtitle="Visit summary, assessment, and a Treatment-performed table extracted from your words — no form-filling."
+          title={t("report.tryProTitle")}
+          subtitle={t("report.tryProSubtitle")}
         />
       ) : null}
     </div>
@@ -525,16 +531,17 @@ export function BasicReportEntry({
  * and marks them added); anything else (still processing, or pending/updating) is not yet included.
  */
 export function PatientInformationRows({ patientInformation }: { patientInformation: StructuredPatientInformation | null }) {
-  if (!patientInformation || patientInformation.status !== "assigned") return <p>Patient: Unassigned</p>;
+  const t = useT();
+  if (!patientInformation || patientInformation.status !== "assigned") return <p>{t("report.patientUnassigned")}</p>;
   const rows = [
-    ["Full name", patientInformation.displayName],
-    ["National ID", patientInformation.nationalId],
-    ["Date of birth", patientInformation.dateOfBirth],
-    ["Sex", patientInformation.sex],
-    ["Phone", patientInformation.phone],
-    ["Email", patientInformation.email],
+    [t("report.field.fullName"), patientInformation.displayName],
+    [t("report.field.nationalId"), patientInformation.nationalId],
+    [t("report.field.dob"), patientInformation.dateOfBirth],
+    [t("report.field.sex"), patientInformation.sex],
+    [t("report.field.phone"), patientInformation.phone],
+    [t("report.field.email"), patientInformation.email],
   ].filter((row): row is [string, string] => Boolean(row[1]));
-  if (!rows.length) return <p>Patient assigned</p>;
+  if (!rows.length) return <p>{t("report.patientAssigned")}</p>;
   return (
     <dl className="structured-report-patient-info">
       {rows.map(([label, value]) => (
@@ -599,6 +606,7 @@ export function MarkdownImage({
   src: string;
   onResolveFile?: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   const [resolvedUrl, setResolvedUrl] = React.useState("");
 
   React.useEffect(() => {
@@ -622,5 +630,5 @@ export function MarkdownImage({
   }, [resolvedUrl]);
 
   const imageSrc = resolvedUrl || (src.startsWith("/api/v1/") ? "" : src);
-  return imageSrc ? <img alt={alt} className="structured-report-body-image" src={imageSrc} /> : <p>Image preview unavailable</p>;
+  return imageSrc ? <img alt={alt} className="structured-report-body-image" src={imageSrc} /> : <p>{t("report.imageUnavailable")}</p>;
 }
