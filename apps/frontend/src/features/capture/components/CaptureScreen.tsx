@@ -10,6 +10,7 @@ import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
+import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
@@ -513,7 +514,6 @@ export function CaptureScreen({
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
               onOpenSource={openSourceCapture}
-              onRateReport={onRateReport}
               reportLanguage={reportLanguage}
             />
           ) : (
@@ -562,6 +562,15 @@ export function CaptureScreen({
               </div>
             ))}
           </section>
+        ) : null}
+        {/* Report thumbs rating (eval golden-set harvester; eval-epic §1b) — a quiet end-cap AFTER the
+            aftercare section so it reads "rate-after-reading" and never splits the clinical content;
+            on mobile it's the last thing before the collapsible raw Sources. Pro report only. */}
+        {useUnifiedLayout && onRateReport && activeSession && reportHasContent ? (
+          <ReportFeedbackBar
+            isPersian={Boolean(reportLanguage && reportLanguage.trim().toLowerCase().startsWith("fa"))}
+            onRate={(rating) => onRateReport(activeSession.id, rating)}
+          />
         ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,

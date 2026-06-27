@@ -5,7 +5,6 @@ import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientIn
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
-import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
 import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
@@ -40,7 +39,6 @@ export function LiveReportView({
   onConfirmCarriedForward,
   onFixAtSource,
   onOpenSource,
-  onRateReport,
   reportLanguage,
 }: {
   isPro: boolean;
@@ -51,15 +49,13 @@ export function LiveReportView({
   onFixAtSource?: () => void;
   /** Tap a claim (treatment row / cited block) → open its source capture ("assistive + cited"). */
   onOpenSource?: (captureId: string) => void;
-  /** Record a lightweight thumbs rating on the report (eval golden-set harvester; eval-epic §1b). */
-  onRateReport?: (sessionId: string, rating: number) => void;
   /** Report-content language — localizes the section titles (distinct from app UI language). */
   reportLanguage?: string | null;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onOpenSource={onOpenSource} onRateReport={onRateReport} reportLanguage={reportLanguage} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onOpenSource={onOpenSource} reportLanguage={reportLanguage} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -96,7 +92,6 @@ export function ProLiveReport({
   onConfirmCarriedForward,
   onFixAtSource,
   onOpenSource,
-  onRateReport,
   reportLanguage,
 }: {
   session: CaptureSession | null;
@@ -104,7 +99,6 @@ export function ProLiveReport({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFixAtSource?: () => void;
   onOpenSource?: (captureId: string) => void;
-  onRateReport?: (sessionId: string, rating: number) => void;
   reportLanguage?: string | null;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
@@ -244,10 +238,9 @@ export function ProLiveReport({
         </section>
       ) : null}
       {/* The clinician's confirmations are embedded in the report itself — the carried-forward dose
-          confirm sits on its treatment row (above), not in a separate section. */}
-      {onRateReport && session && (sections.length > 0 || treatments.length > 0) ? (
-        <ReportFeedbackBar isPersian={isPersianReport(reportLanguage)} onRate={(rating) => onRateReport(session.id, rating)} />
-      ) : null}
+          confirm sits on its treatment row (above), not in a separate section. The report thumbs
+          rating is an end-cap rendered by CaptureScreen AFTER the aftercare section (rate-after-
+          reading), not here mid-report. */}
     </div>
   );
 }
