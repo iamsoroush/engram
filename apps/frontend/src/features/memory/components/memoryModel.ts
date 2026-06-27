@@ -3,6 +3,13 @@
 import type { CaptureDraft, PatientMemoryDetailResponse, PatientMemoryTimelineSession, PatientMemoryRow as ApiPatientMemoryRow, PatientSummary, SmartPatientMatch, SyncHealth } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
 import { appDateTimeFormat } from "../../../shared/lib/datetime";
+import type { Translator } from "../../../shared/i18n";
+
+/** Stable, language-independent tone for a patient-card badge (drives its CSS class, not its text). */
+export type PatientBadgeKind = "needs-input" | "complete" | "neutral";
+
+/** A patient-card badge: localized text + a stable kind the UI branches on for styling. */
+export type PatientBadge = { label: string; kind: PatientBadgeKind };
 
 export type ClinicalMemoryTab = "today" | "patients" | "needs-input";
 export type PatientFilter = "recent" | "active" | "all";
@@ -35,9 +42,9 @@ export type PatientRowModel = {
   name: string;
   summary: string;
   memoryStatus: "ready" | "updating" | string;
-  badges: string[];
+  badges: PatientBadge[];
   action: PatientPrimaryAction;
-  actionLabel: "Continue" | "View history" | "Review summary" | "Assign patient" | "Choose patient" | "Resolve conflict" | "Verify patient" | "Review items";
+  actionLabel: string;
   isActive: boolean;
   needsInput: boolean;
   needsInputItems: PatientNeedsInputItem[];
@@ -52,10 +59,11 @@ export type PatientPrimaryAction = "continue" | "open-memory" | "review-summary"
 export type PatientNeedsInputItem = {
   id: string;
   sessionId: string | null;
-  label: "Needs input: review summary" | "Needs input: assign patient" | "Needs input: choose patient" | "Needs input: resolve conflict" | "Needs input: verify patient";
+  label: string;
   action: Exclude<PatientPrimaryAction, "continue" | "open-memory" | "review-items">;
   title: string;
   detail: string;
+  /** Session time as data (no "Session:" prefix — the component renders its own localized label). */
   sessionLabel: string;
   reason: string;
   sortTime: number;
@@ -68,10 +76,13 @@ export type NeedsInputCardItem = {
   id: string;
   kind: NeedsInputKind;
   title: string;
+  /** Patient display name as data (no "Patient:" prefix — the component renders its own label). */
   contextLabel?: string;
   session?: CaptureSession;
   sessionId?: string | null;
+  /** Session time as data (no "Session:" prefix). */
   sessionLabel?: string;
+  /** "Needs input since" time as data (no prefix). */
   needsInputSinceLabel?: string;
   explanation: string;
   action: NeedsInputAction;
@@ -92,26 +103,28 @@ export function buildNeedsInputItems({
   resolvedDecisionIds,
   sessions,
   storageWarning,
+  t,
 }: {
   activeSession: CaptureSession | null;
   resolvedDecisionIds: Set<string>;
   sessions: CaptureSession[];
   storageWarning: StorageWarningDecision | null;
+  t: Translator;
 }): NeedsInputCardItem[] {
   const sessionItems = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
     .filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session)))
-    .map(needsInputCardFromSession)
+    .map((session) => needsInputCardFromSession(session, t))
     .filter((item): item is NeedsInputCardItem => Boolean(item));
   const storageItem = storageWarning
     ? [
         {
           id: "storage-warning",
           kind: "review-storage" as const,
-          title: "Storage getting full",
-          contextLabel: "Offline safety warning",
-          explanation: "Storage is getting full. New offline captures may not be safely saved soon.",
+          title: t("memmodel.storage.title"),
+          contextLabel: t("memmodel.storage.context"),
+          explanation: t("memmodel.storage.explanation"),
           action: "review-storage" as const,
-          actionLabel: "Review storage",
+          actionLabel: t("memmodel.action.reviewStorage"),
           tone: "amber" as const,
           icon: "storage" as const,
           sortTime: Date.now(),
@@ -121,7 +134,7 @@ export function buildNeedsInputItems({
   return [...storageItem, ...sessionItems].sort((a, b) => b.sortTime - a.sortTime);
 }
 
-export function needsInputCardFromSession(session: CaptureSession): NeedsInputCardItem | null {
+export function needsInputCardFromSession(session: CaptureSession, t: Translator): NeedsInputCardItem | null {
   const action = decisionActionForSession(session);
   if (!action) return null;
   const sortTime = latestSessionTime(session);
@@ -130,19 +143,19 @@ export function needsInputCardFromSession(session: CaptureSession): NeedsInputCa
     id: `${session.id}-${action}`,
     session,
     sessionId: session.id,
-    sessionLabel: `Session: ${sessionTimeLabel(session)}`,
-    needsInputSinceLabel: `Needs input since: ${formatSessionTime(sortTime)}`,
+    sessionLabel: sessionTimeLabel(session, t),
+    needsInputSinceLabel: formatSessionTime(sortTime, t),
     sortTime,
   };
   if (action === "verify") {
     return {
       ...base,
       kind: "verify",
-      title: "Verify AI-created patient",
-      contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
-      explanation: "I created this patient from the visit. Confirm the details before it enters memory.",
+      title: t("memmodel.title.verify"),
+      contextLabel: patientLabel || undefined,
+      explanation: t("memmodel.reason.verify"),
       action,
-      actionLabel: "Verify patient",
+      actionLabel: t("memmodel.action.verify"),
       tone: "blue",
       icon: "match",
     };
@@ -151,10 +164,10 @@ export function needsInputCardFromSession(session: CaptureSession): NeedsInputCa
     return {
       ...base,
       kind: "assign-patient",
-      title: "Unassigned visit",
-      explanation: needsInputSummary(session),
+      title: t("memmodel.title.assignPatient"),
+      explanation: needsInputSummary(session, t),
       action,
-      actionLabel: "Assign patient",
+      actionLabel: t("memmodel.action.assignPatient"),
       tone: "amber",
       icon: "assign",
     };
@@ -164,12 +177,12 @@ export function needsInputCardFromSession(session: CaptureSession): NeedsInputCa
     return {
       ...base,
       kind: "choose-patient",
-      title: "Patient match uncertain",
+      title: t("memmodel.title.choosePatient"),
       explanation: possiblePatients.length >= 2
-        ? `This visit may belong to ${formatNameList(possiblePatients)}. Please choose the correct patient.`
-        : "I found a possible patient match before updating memory. Please choose the correct patient.",
+        ? t("memmodel.reason.choosePatientNamed", { names: formatNameList(possiblePatients, t) })
+        : t("memmodel.reason.choosePatient"),
       action,
-      actionLabel: "Choose patient",
+      actionLabel: t("memmodel.action.choosePatient"),
       possiblePatients,
       tone: "purple",
       icon: "match",
@@ -179,11 +192,11 @@ export function needsInputCardFromSession(session: CaptureSession): NeedsInputCa
     return {
       ...base,
       kind: "resolve-conflict",
-      title: "Conflicting patient information",
-      contextLabel: patientLabel ? `Patient: ${patientLabel}` : undefined,
-      explanation: "I found patient details that conflict with existing memory. Please review before I update it.",
+      title: t("memmodel.title.resolveConflict"),
+      contextLabel: patientLabel || undefined,
+      explanation: t("memmodel.reason.resolveConflict"),
       action,
-      actionLabel: "Resolve conflict",
+      actionLabel: t("memmodel.action.resolveConflict"),
       tone: "amber",
       icon: "conflict",
     };
@@ -191,30 +204,30 @@ export function needsInputCardFromSession(session: CaptureSession): NeedsInputCa
   return null;
 }
 
-export function needsInputCardPresentation(action: PatientNeedsInputItem["action"]): {
+export function needsInputCardPresentation(action: PatientNeedsInputItem["action"], t: Translator): {
   kind: NeedsInputKind;
   title: string;
   tone: NeedsInputCardItem["tone"];
   icon: NeedsInputCardItem["icon"];
   actionLabel: string;
 } {
-  if (action === "assign-patient") return { kind: "assign-patient", title: "Unassigned visit", tone: "amber", icon: "assign", actionLabel: "Assign patient" };
-  if (action === "choose-patient") return { kind: "choose-patient", title: "Patient match uncertain", tone: "purple", icon: "match", actionLabel: "Choose patient" };
-  if (action === "resolve-conflict") return { kind: "resolve-conflict", title: "Conflicting patient information", tone: "amber", icon: "conflict", actionLabel: "Resolve conflict" };
-  if (action === "verify") return { kind: "verify", title: "Verify AI-created patient", tone: "blue", icon: "match", actionLabel: "Verify patient" };
-  return { kind: "review-summary", title: "Summary ready for confirmation", tone: "blue", icon: "summary", actionLabel: "Review summary" };
+  if (action === "assign-patient") return { kind: "assign-patient", title: t("memmodel.title.assignPatient"), tone: "amber", icon: "assign", actionLabel: t("memmodel.action.assignPatient") };
+  if (action === "choose-patient") return { kind: "choose-patient", title: t("memmodel.title.choosePatient"), tone: "purple", icon: "match", actionLabel: t("memmodel.action.choosePatient") };
+  if (action === "resolve-conflict") return { kind: "resolve-conflict", title: t("memmodel.title.resolveConflict"), tone: "amber", icon: "conflict", actionLabel: t("memmodel.action.resolveConflict") };
+  if (action === "verify") return { kind: "verify", title: t("memmodel.title.verify"), tone: "blue", icon: "match", actionLabel: t("memmodel.action.verify") };
+  return { kind: "review-summary", title: t("memmodel.title.reviewSummary"), tone: "blue", icon: "summary", actionLabel: t("memmodel.action.reviewSummary") };
 }
 
-export function needsInputCardFromApi(row: ApiPatientMemoryRow, item: PatientNeedsInputItem): NeedsInputCardItem {
-  const presentation = needsInputCardPresentation(item.action);
+export function needsInputCardFromApi(row: ApiPatientMemoryRow, item: PatientNeedsInputItem, t: Translator): NeedsInputCardItem {
+  const presentation = needsInputCardPresentation(item.action, t);
   return {
     id: item.id,
     kind: presentation.kind,
     title: presentation.title,
-    contextLabel: row.displayName ? `Patient: ${row.displayName}` : undefined,
+    contextLabel: row.displayName || undefined,
     sessionId: item.sessionId,
     sessionLabel: item.sessionLabel,
-    needsInputSinceLabel: item.sortTime ? `Needs input since: ${formatSessionTime(item.sortTime)}` : undefined,
+    needsInputSinceLabel: item.sortTime ? formatSessionTime(item.sortTime, t) : undefined,
     explanation: item.reason,
     action: item.action,
     actionLabel: presentation.actionLabel,
@@ -229,11 +242,13 @@ export function buildTodayModel({
   resolvedDecisionIds,
   sessions,
   syncHealth,
+  t,
 }: {
   activeSession: CaptureSession | null;
   resolvedDecisionIds: Set<string>;
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
+  t: Translator;
 }): TodayModel {
   const isOffline = !syncHealth.online;
   const todaySessions = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session))).filter(
@@ -251,9 +266,9 @@ export function buildTodayModel({
     .slice(0, 3)
     .map((session) => ({
       session,
-      statusLabel: updatedTodayStatus(session, isOffline),
-      title: sessionVisitTitle(session),
-      summary: updatedTodaySummary(session),
+      statusLabel: updatedTodayStatus(session, isOffline, t),
+      title: sessionVisitTitle(session, t),
+      summary: updatedTodaySummary(session, t),
       tone: "blue" as const,
     }));
 
@@ -261,9 +276,9 @@ export function buildTodayModel({
     currentVisit: currentSession
       ? {
           session: currentSession,
-          statusLabel: isOffline ? "Saved on this device" : "In progress",
-          title: sessionVisitTitle(currentSession),
-          summary: currentVisitSummary(currentSession, isOffline),
+          statusLabel: isOffline ? t("memmodel.status.savedOnDevice") : t("memmodel.status.inProgress"),
+          title: sessionVisitTitle(currentSession, t),
+          summary: currentVisitSummary(currentSession, isOffline, t),
           tone: currentSession.patientName || currentSession.patientId ? "green" : "amber",
         }
       : undefined,
@@ -271,15 +286,15 @@ export function buildTodayModel({
     needsInputPreview: needsInputPreview
       ? {
           session: needsInputPreview,
-          statusLabel: "Needs your input",
-          title: needsInputTitle(needsInputPreview),
-          summary: needsInputSummary(needsInputPreview),
+          statusLabel: t("memmodel.status.needsYourInput"),
+          title: needsInputTitle(needsInputPreview, t),
+          summary: needsInputSummary(needsInputPreview, t),
           tone: "amber",
         }
       : undefined,
     needsInputSessions,
     recentMemory,
-    recentMemoryBadge: isOffline ? `${recentMemory.length} saved on this device` : `${recentMemory.length} updated today`,
+    recentMemoryBadge: isOffline ? t("memmodel.badge.savedOnDevice", { n: recentMemory.length }) : t("memmodel.badge.updatedToday", { n: recentMemory.length }),
   };
 }
 
@@ -287,10 +302,12 @@ export function buildPatientRows({
   activeSession,
   resolvedDecisionIds,
   sessions,
+  t,
 }: {
   activeSession: CaptureSession | null;
   resolvedDecisionIds: Set<string>;
   sessions: CaptureSession[];
+  t: Translator;
 }): PatientRowModel[] {
   const groups = new Map<string, CaptureSession[]>();
   uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)))
@@ -309,28 +326,24 @@ export function buildPatientRows({
       const activeCount = activeSessions.length;
       const needsInputItems = sortedSessions
         .filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session)))
-        .map(patientNeedsInputItem)
+        .map((session) => patientNeedsInputItem(session, t))
         .filter((item): item is PatientNeedsInputItem => Boolean(item));
       const needsInput = needsInputItems.length > 0;
       const complete = sortedSessions.some((session) => Boolean(session.complete));
-      const primary = patientPrimaryAction({ activeCount, needsInputItems });
+      const primary = patientPrimaryAction({ activeCount, needsInputItems }, t);
       return {
         id,
         name,
-        summary: patientCardSummary(sortedSessions),
+        summary: patientCardSummary(sortedSessions, t),
         memoryStatus: "ready" as const, // local fallback rows are deterministic, never "updating"
-        badges: [
-          // "Active session" is intentionally not shown on patient cards — live work lives in Today.
-          visitCountLabel(sortedSessions.length),
-          complete && !needsInput ? "Complete" : undefined,
-          needsInputBadgeLabel(needsInputItems),
-        ].filter((badge): badge is string => Boolean(badge)),
+        // "Active session" is intentionally not shown on patient cards — live work lives in Today.
+        badges: patientBadges({ sessionCount: sortedSessions.length, complete, needsInput, needsInputItems, t }),
         action: primary.action,
         actionLabel: primary.label,
         isActive: Boolean(activeCount),
         needsInput,
         needsInputItems,
-        latestVisitLabel: latestVisitLabelFromTimestamp(sessionVisitTimestamp(primarySession)),
+        latestVisitLabel: latestVisitLabelFromTimestamp(sessionVisitTimestamp(primarySession), t),
         latestSessionId: primarySession.id,
         activeSessionId: activeSessions[0]?.id || null,
         sessionCount: sortedSessions.length,
@@ -339,44 +352,65 @@ export function buildPatientRows({
     .sort((a, b) => latestSessionTimeById(b.latestSessionId, sessions, activeSession) - latestSessionTimeById(a.latestSessionId, sessions, activeSession));
 }
 
-export function patientRowFromApi(row: ApiPatientMemoryRow): PatientRowModel {
+export function patientRowFromApi(row: ApiPatientMemoryRow, t: Translator): PatientRowModel {
   const isActive = row.activeSessionCount > 0;
-  const needsInputItems = patientNeedsInputItemsFromApi(row);
-  const primary = patientPrimaryAction({ activeCount: row.activeSessionCount, needsInputItems });
+  const needsInputItems = patientNeedsInputItemsFromApi(row, t);
+  const needsInput = needsInputItems.length > 0;
+  const primary = patientPrimaryAction({ activeCount: row.activeSessionCount, needsInputItems }, t);
   return {
     id: row.patientId,
     name: row.displayName,
-    summary: row.summary || "No memory summary yet.",
+    summary: row.summary || t("memmodel.summary.none"),
     memoryStatus: row.memoryStatus === "updating" ? "updating" : "ready",
-    badges: [
-      // "Active session" is intentionally not shown on patient cards — live work lives in Today.
-      visitCountLabel(row.sessionCount),
-      row.complete && needsInputItems.length === 0 ? "Complete" : undefined,
-      needsInputBadgeLabel(needsInputItems),
-    ].filter((badge): badge is string => Boolean(badge)),
+    // "Active session" is intentionally not shown on patient cards — live work lives in Today.
+    badges: patientBadges({ sessionCount: row.sessionCount, complete: Boolean(row.complete), needsInput, needsInputItems, t }),
     action: primary.action,
     actionLabel: primary.label,
     isActive,
-    needsInput: needsInputItems.length > 0,
+    needsInput,
     needsInputItems,
-    latestVisitLabel: latestVisitLabelFromApi(row),
+    latestVisitLabel: latestVisitLabelFromApi(row, t),
     latestSessionId: row.latestSessionId || null,
     activeSessionId: row.activeSessionId || null,
     sessionCount: row.sessionCount,
   };
 }
 
+/**
+ * Build the patient-card badges (visit count + optional Complete + optional needs-input). Each badge
+ * carries a stable `kind` so the UI styles by enum, never by parsing the localized text.
+ */
+export function patientBadges({
+  sessionCount,
+  complete,
+  needsInput,
+  needsInputItems,
+  t,
+}: {
+  sessionCount: number;
+  complete: boolean;
+  needsInput: boolean;
+  needsInputItems: PatientNeedsInputItem[];
+  t: Translator;
+}): PatientBadge[] {
+  const badges: PatientBadge[] = [{ label: visitCountLabel(sessionCount, t), kind: "neutral" }];
+  if (complete && !needsInput) badges.push({ label: t("memmodel.badge.complete"), kind: "complete" });
+  const needsInputLabel = needsInputBadgeLabel(needsInputItems, t);
+  if (needsInputLabel) badges.push({ label: needsInputLabel, kind: "needs-input" });
+  return badges;
+}
+
 // AES-204 — a smart-search match rendered as a minimal patient row (so it can open the detail by id).
 /** Minimal placeholder row used while a patient opened by id (e.g. from the worklist) loads. */
-export function patientRowStub(id: string, name: string): PatientRowModel {
+export function patientRowStub(id: string, name: string, t: Translator): PatientRowModel {
   return {
     id,
     name,
-    summary: "Loading patient…",
+    summary: t("memmodel.summary.loading"),
     memoryStatus: "ready",
     badges: [],
     action: "open-memory",
-    actionLabel: "View history",
+    actionLabel: t("memmodel.action.viewHistory"),
     isActive: false,
     needsInput: false,
     needsInputItems: [],
@@ -387,36 +421,36 @@ export function patientRowStub(id: string, name: string): PatientRowModel {
   };
 }
 
-export function patientRowFromSmartMatch(match: SmartPatientMatch): PatientRowModel {
+export function patientRowFromSmartMatch(match: SmartPatientMatch, t: Translator): PatientRowModel {
   return {
     id: match.id,
     name: match.displayName,
-    summary: match.reason || "Matched patient record.",
+    summary: match.reason || t("memmodel.summary.matchedRecord"),
     memoryStatus: "ready",
-    badges: smartMatchBadges(match),
+    badges: smartMatchBadges(match, t),
     action: "open-memory",
-    actionLabel: "View history",
+    actionLabel: t("memmodel.action.viewHistory"),
     isActive: false,
     needsInput: false,
     needsInputItems: [],
-    latestVisitLabel: match.lastVisit ? `Last visit ${formatPatientLastVisit(match.lastVisit)}` : null,
+    latestVisitLabel: match.lastVisit ? t("memmodel.label.lastVisit", { date: formatPatientLastVisit(match.lastVisit, t) }) : null,
     latestSessionId: null,
     activeSessionId: null,
     sessionCount: 0,
   };
 }
 
-export function smartMatchBadges(match: SmartPatientMatch): string[] {
+export function smartMatchBadges(match: SmartPatientMatch, t: Translator): PatientBadge[] {
   const labels: Record<string, string> = {
-    national_id: "✓ national ID",
-    phone: "✓ phone",
-    email: "✓ email",
-    name: "✓ name",
-    name_prefix: "name prefix",
-    name_fuzzy: "fuzzy name",
-    contact_partial: "partial contact",
+    national_id: t("memmodel.match.nationalId"),
+    phone: t("memmodel.match.phone"),
+    email: t("memmodel.match.email"),
+    name: t("memmodel.match.name"),
+    name_prefix: t("memmodel.match.namePrefix"),
+    name_fuzzy: t("memmodel.match.nameFuzzy"),
+    contact_partial: t("memmodel.match.contactPartial"),
   };
-  return match.matchedOn.map((key) => labels[key] || key).slice(0, 3);
+  return match.matchedOn.map((key) => ({ label: labels[key] || key, kind: "neutral" as const })).slice(0, 3);
 }
 
 export function patientPrimaryAction({
@@ -425,38 +459,38 @@ export function patientPrimaryAction({
 }: {
   activeCount: number;
   needsInputItems: PatientNeedsInputItem[];
-}): { action: PatientPrimaryAction; label: PatientRowModel["actionLabel"] } {
-  if (needsInputItems.length > 1) return { action: "review-items", label: "Review items" };
+}, t: Translator): { action: PatientPrimaryAction; label: string } {
+  if (needsInputItems.length > 1) return { action: "review-items", label: t("memmodel.action.reviewItems") };
   const item = needsInputItems[0];
-  if (item) return { action: item.action, label: labelForDecisionAction(item.action) };
-  if (activeCount > 0) return { action: "continue", label: "Continue" };
-  return { action: "open-memory", label: "View history" };
+  if (item) return { action: item.action, label: labelForDecisionAction(item.action, t) };
+  if (activeCount > 0) return { action: "continue", label: t("memmodel.action.continue") };
+  return { action: "open-memory", label: t("memmodel.action.viewHistory") };
 }
 
-export function labelForDecisionAction(action: PatientNeedsInputItem["action"]): PatientRowModel["actionLabel"] {
-  if (action === "review-summary") return "Review summary";
-  if (action === "assign-patient") return "Assign patient";
-  if (action === "choose-patient") return "Choose patient";
-  if (action === "verify") return "Verify patient";
-  return "Resolve conflict";
+export function labelForDecisionAction(action: PatientNeedsInputItem["action"], t: Translator): string {
+  if (action === "review-summary") return t("memmodel.action.reviewSummary");
+  if (action === "assign-patient") return t("memmodel.action.assignPatient");
+  if (action === "choose-patient") return t("memmodel.action.choosePatient");
+  if (action === "verify") return t("memmodel.action.verify");
+  return t("memmodel.action.resolveConflict");
 }
 
-export function todayNeedsInputActionLabel(session: CaptureSession) {
+export function todayNeedsInputActionLabel(session: CaptureSession, t: Translator) {
   const action = decisionActionForSession(session);
-  return action ? labelForDecisionAction(action) : "Open visit";
+  return action ? labelForDecisionAction(action, t) : t("memmodel.action.openVisit");
 }
 
-export function activeSectionBadge(session: CaptureSession) {
+export function activeSectionBadge(session: CaptureSession, t: Translator) {
   const action = decisionActionForSession(session);
-  return action ? needsInputLabelForAction(action) : "In progress";
+  return action ? needsInputLabelForAction(action, t) : t("memmodel.status.inProgress");
 }
 
-export function needsInputBadgeLabel(items: PatientNeedsInputItem[]) {
-  if (items.length > 1) return `${items.length} decisions need input`;
+export function needsInputBadgeLabel(items: PatientNeedsInputItem[], t: Translator) {
+  if (items.length > 1) return t("memmodel.badge.decisionsNeedInput", { n: items.length });
   return items[0]?.label;
 }
 
-export function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): PatientNeedsInputItem[] {
+export function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow, t: Translator): PatientNeedsInputItem[] {
   // The backend is the single source of truth for typed needs-input items. No synthesized
   // fallback: if there are no items, the patient needs nothing.
   return (row.needsInputItems || []).map((item, index) => {
@@ -465,66 +499,66 @@ export function patientNeedsInputItemsFromApi(row: ApiPatientMemoryRow): Patient
     return {
       id: item.id || `${row.patientId}-needs-input-${index}`,
       sessionId: item.sessionId || row.latestSessionId || row.activeSessionId || null,
-      label: needsInputLabelForAction(action),
+      label: needsInputLabelForAction(action, t),
       action,
-      title: titleForDecisionAction(action),
-      detail: item.reason || reasonForDecisionAction(action),
-      sessionLabel: apiNeedsInputSessionLabel(row, item.createdAt),
-      reason: item.reason || reasonForDecisionAction(action),
+      title: titleForDecisionAction(action, t),
+      detail: item.reason || reasonForDecisionAction(action, t),
+      sessionLabel: apiNeedsInputSessionLabel(row, t, item.createdAt),
+      reason: item.reason || reasonForDecisionAction(action, t),
       sortTime: item.createdAt ? new Date(item.createdAt).getTime() || 0 : 0,
     };
   }).filter((item): item is PatientNeedsInputItem => Boolean(item)).sort((a, b) => b.sortTime - a.sortTime);
 }
 
-export function patientNeedsInputItem(session: CaptureSession): PatientNeedsInputItem | null {
+export function patientNeedsInputItem(session: CaptureSession, t: Translator): PatientNeedsInputItem | null {
   const action = decisionActionForSession(session);
   if (!action) return null;
-  const label = needsInputLabelForAction(action);
+  const label = needsInputLabelForAction(action, t);
   return {
     id: `${session.id}-${action}`,
     sessionId: session.id,
     label,
     action,
-    title: titleForSessionDecision(session, action),
-    detail: needsInputSummary(session),
-    sessionLabel: `Session: ${sessionTimeLabel(session)}`,
-    reason: reasonForSessionDecision(session, action),
+    title: titleForSessionDecision(session, action, t),
+    detail: needsInputSummary(session, t),
+    sessionLabel: sessionTimeLabel(session, t),
+    reason: reasonForSessionDecision(session, action, t),
     sortTime: latestSessionTime(session),
   };
 }
 
-export function titleForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"]) {
-  if (action === "review-summary") return hasMissingClinicalField(session) ? "Clinically important field missing" : "Summary ready for confirmation";
-  return titleForDecisionAction(action);
+export function titleForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"], t: Translator) {
+  if (action === "review-summary") return hasMissingClinicalField(session) ? t("memmodel.title.missingField") : t("memmodel.title.reviewSummary");
+  return titleForDecisionAction(action, t);
 }
 
-export function titleForDecisionAction(action: PatientNeedsInputItem["action"]) {
-  if (action === "assign-patient") return "Unassigned visit";
-  if (action === "choose-patient") return "Patient match uncertain";
-  if (action === "resolve-conflict") return "Conflicting patient information";
-  if (action === "verify") return "Verify AI-created patient";
-  return "Summary ready for confirmation";
+export function titleForDecisionAction(action: PatientNeedsInputItem["action"], t: Translator) {
+  if (action === "assign-patient") return t("memmodel.title.assignPatient");
+  if (action === "choose-patient") return t("memmodel.title.choosePatient");
+  if (action === "resolve-conflict") return t("memmodel.title.resolveConflict");
+  if (action === "verify") return t("memmodel.title.verify");
+  return t("memmodel.title.reviewSummary");
 }
 
-export function reasonForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"]) {
-  if (action === "assign-patient") return "This visit is saved, but I do not know which patient it belongs to.";
+export function reasonForSessionDecision(session: CaptureSession, action: PatientNeedsInputItem["action"], t: Translator) {
+  if (action === "assign-patient") return t("memmodel.reason.assignPatient");
   if (action === "choose-patient") {
     const possiblePatients = possiblePatientNames(session);
     return possiblePatients.length >= 2
-      ? `This visit may belong to ${formatNameList(possiblePatients)}. Please choose the correct patient.`
-      : "I found a possible patient match before updating memory. Please choose the correct patient.";
+      ? t("memmodel.reason.choosePatientNamed", { names: formatNameList(possiblePatients, t) })
+      : t("memmodel.reason.choosePatient");
   }
-  if (action === "resolve-conflict") return "I found patient details that conflict with existing memory. Please review before I update it.";
-  if (hasMissingClinicalField(session)) return "This visit is missing a clinically important detail before it becomes patient memory.";
-  return "Review before it becomes part of patient memory.";
+  if (action === "resolve-conflict") return t("memmodel.reason.resolveConflict");
+  if (hasMissingClinicalField(session)) return t("memmodel.reason.missingField");
+  return t("memmodel.reason.reviewSummary");
 }
 
-export function reasonForDecisionAction(action: PatientNeedsInputItem["action"]) {
-  if (action === "assign-patient") return "This visit is saved, but I do not know which patient it belongs to.";
-  if (action === "choose-patient") return "I found more than one possible patient match before updating memory.";
-  if (action === "resolve-conflict") return "I found patient details that conflict with existing memory.";
-  if (action === "verify") return "I created this patient from the visit. Confirm the details before it enters memory.";
-  return "Review before it becomes part of patient memory.";
+export function reasonForDecisionAction(action: PatientNeedsInputItem["action"], t: Translator) {
+  if (action === "assign-patient") return t("memmodel.reason.assignPatient");
+  if (action === "choose-patient") return t("memmodel.reason.choosePatientApi");
+  if (action === "resolve-conflict") return t("memmodel.reason.resolveConflictApi");
+  if (action === "verify") return t("memmodel.reason.verify");
+  return t("memmodel.reason.reviewSummary");
 }
 
 export function decisionActionForSession(session: CaptureSession): PatientNeedsInputItem["action"] | null {
@@ -564,12 +598,12 @@ export function decisionActionFromKind(value: string): PatientNeedsInputItem["ac
   return null;
 }
 
-export function needsInputLabelForAction(action: PatientNeedsInputItem["action"]): PatientNeedsInputItem["label"] {
-  if (action === "assign-patient") return "Needs input: assign patient";
-  if (action === "choose-patient") return "Needs input: choose patient";
-  if (action === "resolve-conflict") return "Needs input: resolve conflict";
-  if (action === "verify") return "Needs input: verify patient";
-  return "Needs input: review summary";
+export function needsInputLabelForAction(action: PatientNeedsInputItem["action"], t: Translator): string {
+  if (action === "assign-patient") return t("memmodel.needsInput.assignPatient");
+  if (action === "choose-patient") return t("memmodel.needsInput.choosePatient");
+  if (action === "resolve-conflict") return t("memmodel.needsInput.resolveConflict");
+  if (action === "verify") return t("memmodel.needsInput.verify");
+  return t("memmodel.needsInput.reviewSummary");
 }
 
 export function uniqueSessions(sessions: CaptureSession[]) {
@@ -643,7 +677,7 @@ export function patientChoiceCandidates(session: CaptureSession): PatientSummary
   }));
 }
 
-export function extractedPatientMatchHint(session: CaptureSession) {
+export function extractedPatientMatchHint(session: CaptureSession, t: Translator) {
   const metadata = session.extractedMetadata || {};
   const patientMatch = metadata.patient_match;
   if (patientMatch && typeof patientMatch === "object") {
@@ -652,7 +686,7 @@ export function extractedPatientMatchHint(session: CaptureSession) {
     if (hint) return sanitizePatientMatchHint(hint);
   }
   if (session.items.some((item) => item.type === "audio" || item.type === "voice")) {
-    return "Audio from this visit mentions a patient name.";
+    return t("memmodel.hint.audioMentionsName");
   }
   return "";
 }
@@ -689,10 +723,10 @@ export function uniqueNames(names: string[]) {
   });
 }
 
-export function formatNameList(names: string[]) {
-  if (names.length <= 1) return names[0] || "a possible patient";
-  if (names.length === 2) return `${names[0]} or ${names[1]}`;
-  return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
+export function formatNameList(names: string[], t: Translator) {
+  if (names.length <= 1) return names[0] || t("memmodel.names.aPossiblePatient");
+  if (names.length === 2) return t("memmodel.names.pair", { a: names[0], b: names[1] });
+  return t("memmodel.names.many", { list: names.slice(0, -1).join(", "), last: names[names.length - 1] });
 }
 
 export function filterPatientMatches(patients: PatientSummary[], query: string) {
@@ -703,28 +737,28 @@ export function filterPatientMatches(patients: PatientSummary[], query: string) 
   );
 }
 
-export function resolverCaptureSummary(session: CaptureSession) {
-  const counts = captureCounts(session);
-  if (!counts.length) return "No captures";
+export function resolverCaptureSummary(session: CaptureSession, t: Translator) {
+  const counts = captureCounts(session, t);
+  if (!counts.length) return t("memmodel.capture.none");
   return counts
     .map((item) => {
-      const label = item.type === "audio" ? "audio" : item.count === 1 ? item.singular : item.label;
+      const label = item.type === "audio" ? item.label : item.count === 1 ? item.singular : item.label;
       return `${item.count} ${label}`;
     })
-    .join(", ");
+    .join(t("memmodel.capture.separator"));
 }
 
-export function patientHint(patient: PatientSummary, index: number) {
-  if (patient.lastVisit) return `Recently active · ${formatPatientLastVisit(patient.lastVisit)}`;
-  if (index === 0) return "Recently active";
-  if (index === 1) return "Similar name mentioned";
-  return "Existing patient";
+export function patientHint(patient: PatientSummary, index: number, t: Translator) {
+  if (patient.lastVisit) return t("memmodel.hint.recentlyActiveOn", { date: formatPatientLastVisit(patient.lastVisit, t) });
+  if (index === 0) return t("memmodel.hint.recentlyActive");
+  if (index === 1) return t("memmodel.hint.similarName");
+  return t("memmodel.hint.existingPatient");
 }
 
-export function formatPatientLastVisit(value: string) {
+export function formatPatientLastVisit(value: string, t: Translator) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  if (isToday(date.toISOString())) return "today";
+  if (isToday(date.toISOString())) return t("memmodel.date.today");
   return appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
 }
 
@@ -753,70 +787,81 @@ export function needsHumanInput(session: CaptureSession) {
   return Boolean(decisionActionForSession(session));
 }
 
-export function needsInputTitle(session: CaptureSession) {
+export function needsInputTitle(session: CaptureSession, t: Translator) {
   const action = decisionActionForSession(session);
-  if (action === "choose-patient") return "Patient match uncertain";
-  if (action === "resolve-conflict") return "Conflicting patient information";
-  if (action === "review-summary") return hasMissingClinicalField(session) ? "Clinically important field missing" : "Summary ready for confirmation";
-  if (!session.patientName && !session.patientId) return "Unassigned visit";
-  return sessionVisitTitle(session);
+  if (action === "choose-patient") return t("memmodel.title.choosePatient");
+  if (action === "resolve-conflict") return t("memmodel.title.resolveConflict");
+  if (action === "review-summary") return hasMissingClinicalField(session) ? t("memmodel.title.missingField") : t("memmodel.title.reviewSummary");
+  if (!session.patientName && !session.patientId) return t("memmodel.title.unassignedVisit");
+  return sessionVisitTitle(session, t);
 }
 
-export function needsInputSummary(session: CaptureSession) {
+export function needsInputSummary(session: CaptureSession, t: Translator) {
   if (!session.patientName && !session.patientId) {
     const count = session.items.length;
-    return `${count || "No"} capture${count === 1 ? "" : "s"} saved. I could not confidently attach this visit to a patient.`;
+    return count === 1 ? t("memmodel.summary.unassignedOne") : t("memmodel.summary.unassignedMany", { n: count || t("memmodel.count.no") });
   }
-  return "Review this visit before it becomes part of patient memory.";
+  return t("memmodel.summary.reviewBeforeMemory");
 }
 
-export function sessionVisitTitle(session: CaptureSession) {
-  const title = session.report?.title || session.reportModel?.title || sanitizeSessionLabel(session.label);
-  if (title && title.toLowerCase() === "unassigned visit" && (session.patientName || session.patientId)) return "Visit";
+export function sessionVisitTitle(session: CaptureSession, t: Translator) {
+  const title = session.report?.title || session.reportModel?.title || sanitizeSessionLabel(session.label, t);
+  if (title && title.toLowerCase() === "unassigned visit" && (session.patientName || session.patientId)) return t("memmodel.title.visit");
   if (title) return title;
-  if (!session.patientName && !session.patientId) return "Unassigned visit";
-  return isActiveVisit(session) ? "Follow-up visit" : "Visit";
+  if (!session.patientName && !session.patientId) return t("memmodel.title.unassignedVisit");
+  return isActiveVisit(session) ? t("memmodel.title.followUpVisit") : t("memmodel.title.visit");
 }
 
-export function sanitizeSessionLabel(label?: string | null) {
+export function sanitizeSessionLabel(label: string | null | undefined, t: Translator) {
   const trimmed = label?.trim();
   if (!trimmed) return "";
-  if (/^session\s+\d{1,2}:\d{2}/i.test(trimmed)) return "Follow-up visit";
-  if (/^\d{1,2}:\d{2}\s*(am|pm)?\s*-\s*capture session$/i.test(trimmed)) return "Follow-up visit";
+  if (/^session\s+\d{1,2}:\d{2}/i.test(trimmed)) return t("memmodel.title.followUpVisit");
+  if (/^\d{1,2}:\d{2}\s*(am|pm)?\s*-\s*capture session$/i.test(trimmed)) return t("memmodel.title.followUpVisit");
   if (/^session$/i.test(trimmed)) return "";
   return trimmed;
 }
 
-export function updatedTodayStatus(session: CaptureSession, isOffline: boolean) {
-  if (isOffline) return "Saved on this device";
-  if (session.assignmentSource || session.patientName || session.patientId) return "Updated today · Patient assigned";
-  return "Memory updated today";
+export function updatedTodayStatus(session: CaptureSession, isOffline: boolean, t: Translator) {
+  if (isOffline) return t("memmodel.status.savedOnDevice");
+  if (session.assignmentSource || session.patientName || session.patientId) return t("memmodel.status.updatedTodayAssigned");
+  return t("memmodel.status.memoryUpdatedToday");
 }
 
-export function updatedTodaySummary(session: CaptureSession) {
-  const counts = captureCounts(session);
-  const typeSummary = captureTypeSummary(counts);
-  if (typeSummary) return `${capitalize(typeSummary)} ${countsTotal(counts) === 1 ? "was" : "were"} attached to this visit today.`;
-  const summary = naturalSessionSummary(session);
-  return summary || "This visit was updated today.";
+export function updatedTodaySummary(session: CaptureSession, t: Translator) {
+  const counts = captureCounts(session, t);
+  const typeSummary = captureTypeSummary(counts, t);
+  if (typeSummary) {
+    return countsTotal(counts) === 1
+      ? t("memmodel.summary.attachedTodayOne", { captures: capitalize(typeSummary) })
+      : t("memmodel.summary.attachedTodayMany", { captures: capitalize(typeSummary) });
+  }
+  const summary = naturalSessionSummary(session, t);
+  return summary || t("memmodel.summary.updatedToday");
 }
 
-export function visitCountLabel(count: number) {
-  return `${count} visit${count === 1 ? "" : "s"}`;
+export function visitCountLabel(count: number, t: Translator) {
+  return count === 1 ? t("memmodel.label.visitCountOne", { n: count }) : t("memmodel.label.visitCountMany", { n: count });
 }
 
-export function currentVisitSummary(session: CaptureSession, isOffline: boolean) {
-  const counts = captureCounts(session);
+export function currentVisitSummary(session: CaptureSession, isOffline: boolean, t: Translator) {
+  const counts = captureCounts(session, t);
   const captureTotal = session.items.length;
   if (isOffline) {
-    return `${captureTotal || "No"} capture${captureTotal === 1 ? "" : "s"} saved on this device. I'll organize ${captureTotal === 1 ? "it" : "them"} when connection returns.`;
+    return captureTotal === 1
+      ? t("memmodel.summary.offlineOne")
+      : t("memmodel.summary.offlineMany", { n: captureTotal || t("memmodel.count.no") });
   }
-  if (!captureTotal) return "No captures yet. Start with audio, photo, or note.";
-  const typeSummary = captureTypeSummary(counts);
-  return `${captureTotal} capture${captureTotal === 1 ? "" : "s"} saved${typeSummary ? `: ${typeSummary}` : ""}. I'm preparing the visit summary.`;
+  if (!captureTotal) return t("memmodel.summary.noCapturesYet");
+  const typeSummary = captureTypeSummary(counts, t);
+  if (typeSummary) {
+    return captureTotal === 1
+      ? t("memmodel.summary.capturesSavedWithTypesOne", { n: captureTotal, types: typeSummary })
+      : t("memmodel.summary.capturesSavedWithTypesMany", { n: captureTotal, types: typeSummary });
+  }
+  return captureTotal === 1 ? t("memmodel.summary.capturesSavedOne", { n: captureTotal }) : t("memmodel.summary.capturesSavedMany", { n: captureTotal });
 }
 
-export function patientCardSummary(sessions: CaptureSession[]) {
+export function patientCardSummary(sessions: CaptureSession[], t: Translator) {
   const orderedSessions = [...sessions].sort((a, b) => latestSessionTime(b) - latestSessionTime(a));
   const aiSummary = orderedSessions
     .map((session) => session.summaries)
@@ -827,18 +872,22 @@ export function patientCardSummary(sessions: CaptureSession[]) {
     });
   if (aiSummary?.short) return aiSummary.short;
 
-  const ruleBased = orderedSessions.map((session) => naturalSessionSummary(session)).find(Boolean);
+  const ruleBased = orderedSessions.map((session) => naturalSessionSummary(session, t)).find(Boolean);
   if (ruleBased) return ruleBased;
 
   const latest = orderedSessions[0];
   if (latest && (sessionTouchTimestamps(latest).length || latest.items.length)) {
-    const updated = naturalUpdatedDate(latest);
+    const updated = naturalUpdatedDate(latest, t);
     const captureCount = latest.items.length;
-    if (captureCount) return `Last updated ${updated}. ${captureCount} capture${captureCount === 1 ? "" : "s"} in the latest visit.`;
-    return `Last updated ${updated}.`;
+    if (captureCount) {
+      return captureCount === 1
+        ? t("memmodel.summary.lastUpdatedWithCapturesOne", { date: updated })
+        : t("memmodel.summary.lastUpdatedWithCapturesMany", { date: updated, n: captureCount });
+    }
+    return t("memmodel.summary.lastUpdated", { date: updated });
   }
 
-  return "No memory summary yet.";
+  return t("memmodel.summary.none");
 }
 
 export function patientSessionsForDetail(patient: PatientRowModel, sessions: CaptureSession[], activeSession: CaptureSession | null) {
@@ -847,11 +896,11 @@ export function patientSessionsForDetail(patient: PatientRowModel, sessions: Cap
     .sort((a, b) => sessionVisitTimestamp(b) - sessionVisitTimestamp(a));
 }
 
-export function buildTimelineGroups(detail: PatientMemoryDetailResponse | undefined, localSessions: CaptureSession[]): TimelineGroupModel[] {
+export function buildTimelineGroups(detail: PatientMemoryDetailResponse | undefined, localSessions: CaptureSession[], t: Translator): TimelineGroupModel[] {
   const localById = new Map(localSessions.map((session) => [session.id, session]));
   const detailSessions = detail?.sessions.length
     ? detail.sessions.map((session) => ({ ...session, groupLabel: normalizeTimelineGroupLabel(session.groupLabel), localSession: localById.get(session.sessionId) }))
-    : localSessions.map(timelineSessionFromLocal);
+    : localSessions.map((session) => timelineSessionFromLocal(session, t));
   const groups = new Map<TimelineGroupModel["label"], TimelineSessionModel[]>();
   detailSessions
     .sort((a, b) => timelineSortTime(b) - timelineSortTime(a))
@@ -864,13 +913,13 @@ export function buildTimelineGroups(detail: PatientMemoryDetailResponse | undefi
     .filter((group) => group.sessions.length);
 }
 
-export function timelineSessionFromLocal(session: CaptureSession): TimelineSessionModel {
+export function timelineSessionFromLocal(session: CaptureSession, t: Translator): TimelineSessionModel {
   const visitTime = sessionVisitTimestamp(session);
   return {
     sessionId: session.id,
-    title: sessionVisitTitle(session),
+    title: sessionVisitTitle(session, t),
     status: session.status,
-    summary: naturalSessionSummary(session) || "This visit is saved in patient memory.",
+    summary: naturalSessionSummary(session, t) || t("memmodel.summary.savedInMemory"),
     generatedSummary: session.summaries?.short || null,
     ruleBasedSummary: null,
     captureCount: session.items.length,
@@ -906,38 +955,48 @@ export function timelineSortTime(session: Pick<TimelineSessionModel, "sortDate" 
     .sort((a, b) => b - a)[0] || 0;
 }
 
-export function timelineSessionTimeLabel(session: TimelineSessionModel, localSession?: CaptureSession) {
-  if (localSession) return sessionTimeLabel(localSession);
+export function timelineSessionTimeLabel(session: TimelineSessionModel, t: Translator, localSession?: CaptureSession) {
+  if (localSession) return sessionTimeLabel(localSession, t);
   const timestamp = timelineSortTime({ sortDate: session.capturedAt || session.sortDate, capturedAt: session.capturedAt, updatedAt: null });
-  return explicitDateTimeLabel(timestamp);
+  return explicitDateTimeLabel(timestamp, t);
 }
 
-export function timelineUpdatedLabel(session: TimelineSessionModel, localSession?: CaptureSession) {
+/**
+ * "Updated …" metadata for a timeline card. Returns the localized text plus a stable `assignedToday`
+ * flag so the card can branch on the flag (success styling / hide its own "Updated" heading) instead
+ * of string-matching the now-localized label. Empty `label` means "no meaningful update to show".
+ */
+export function timelineUpdatedLabel(session: TimelineSessionModel, t: Translator, localSession?: CaptureSession): { label: string; assignedToday: boolean } {
   const sessionTime = localSession ? sessionVisitTimestamp(localSession) : timelineSortTime({ sortDate: session.capturedAt || session.sortDate, capturedAt: session.capturedAt, updatedAt: null });
   const updatedTime = localSession ? latestSessionTime(localSession) : timelineSortTime({ sortDate: session.updatedAt, capturedAt: null, updatedAt: session.updatedAt });
-  if (!updatedTime || !sessionTime || updatedTime - sessionTime < 60000) return "";
-  if (isToday(new Date(updatedTime).toISOString()) && (localSession?.assignmentSource || localSession?.patientId)) return "Updated today · Patient assigned";
-  return formatSessionTime(updatedTime);
+  if (!updatedTime || !sessionTime || updatedTime - sessionTime < 60000) return { label: "", assignedToday: false };
+  if (isToday(new Date(updatedTime).toISOString()) && (localSession?.assignmentSource || localSession?.patientId)) {
+    return { label: t("memmodel.status.updatedTodayAssigned"), assignedToday: true };
+  }
+  return { label: formatSessionTime(updatedTime, t), assignedToday: false };
 }
 
-export function timelineSessionStatus(session: TimelineSessionModel, localSession?: CaptureSession) {
+/**
+ * Status badge for a timeline card: localized `label` + a stable `tone` the card styles on (it used to
+ * re-derive the tone by string-matching the label, which breaks once the label is translated).
+ */
+export function timelineSessionStatus(session: TimelineSessionModel, t: Translator, localSession?: CaptureSession): { label: string; tone: "amber" | "blue" | "green" } {
   const action = timelineDecisionAction(session, localSession);
-  if (action) return needsInputLabelForAction(action);
-  if (localSession && isActiveVisit(localSession)) return "In progress";
-  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return "In progress";
-  if (session.complete || localSession?.complete) return "Complete";
-  if (localSession?.id.startsWith("local-session-")) return "Saved on this device";
-  return "Saved on this device";
+  if (action) return { label: needsInputLabelForAction(action, t), tone: "amber" };
+  if (localSession && isActiveVisit(localSession)) return { label: t("memmodel.status.inProgress"), tone: "green" };
+  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { label: t("memmodel.status.inProgress"), tone: "green" };
+  if (session.complete || localSession?.complete) return { label: t("memmodel.status.complete"), tone: "blue" };
+  return { label: t("memmodel.status.savedOnDevice"), tone: "green" };
 }
 
-export function timelineSessionAction(session: TimelineSessionModel, localSession?: CaptureSession): { kind: "continue" | "open" | "review" | "assign"; label: string } {
+export function timelineSessionAction(session: TimelineSessionModel, t: Translator, localSession?: CaptureSession): { kind: "continue" | "open" | "review" | "assign"; label: string } {
   const action = timelineDecisionAction(session, localSession);
-  if (action === "assign-patient" || action === "choose-patient" || action === "resolve-conflict") return { kind: "assign", label: labelForDecisionAction(action) };
-  if (action === "verify") return { kind: "open", label: "Verify patient" };
-  if (localSession && isActiveVisit(localSession)) return { kind: "continue", label: "Continue visit" };
-  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { kind: "continue", label: "Continue visit" };
-  if (session.complete || localSession?.complete) return { kind: "open", label: "Open visit" };
-  return { kind: "open", label: "Open visit" };
+  if (action === "assign-patient" || action === "choose-patient" || action === "resolve-conflict") return { kind: "assign", label: labelForDecisionAction(action, t) };
+  if (action === "verify") return { kind: "open", label: t("memmodel.action.verify") };
+  if (localSession && isActiveVisit(localSession)) return { kind: "continue", label: t("memmodel.action.continueVisit") };
+  if (!localSession && ["current", "draft", "reopened", "processing"].includes(session.status)) return { kind: "continue", label: t("memmodel.action.continueVisit") };
+  if (session.complete || localSession?.complete) return { kind: "open", label: t("memmodel.action.openVisit") };
+  return { kind: "open", label: t("memmodel.action.openVisit") };
 }
 
 export function timelineDecisionAction(session: TimelineSessionModel, localSession?: CaptureSession): PatientNeedsInputItem["action"] | null {
@@ -959,20 +1018,20 @@ export function firstSeenLabel(detailSessions: PatientMemoryTimelineSession[] | 
   return appDateTimeFormat({ month: "short", day: "numeric", year: "numeric" }).format(new Date(Math.min(...timestamps)));
 }
 
-export function naturalSessionSummary(session: CaptureSession) {
+export function naturalSessionSummary(session: CaptureSession, t: Translator) {
   if (session.summaries?.short) return session.summaries.short;
   if (session.summaries?.patientHistory) return session.summaries.patientHistory;
   const summary = sanitizeSummary(session.summary);
   if (summary) return summary;
-  const counts = captureCounts(session);
-  const captureSummary = captureTypeSummary(counts);
-  return captureSummary ? `Latest visit includes ${captureSummary}.` : "";
+  const counts = captureCounts(session, t);
+  const captureSummary = captureTypeSummary(counts, t);
+  return captureSummary ? t("memmodel.summary.latestVisitIncludes", { captures: captureSummary }) : "";
 }
 
-export function reviewSummaryText(session: CaptureSession) {
+export function reviewSummaryText(session: CaptureSession, t: Translator) {
   return (
-    naturalSessionSummary(session) ||
-    "Follow-up visit focused on headache patterns, sleep quality, and next steps. Photos and an audio note were captured. Education and follow-up plan are being prepared."
+    naturalSessionSummary(session, t) ||
+    t("memmodel.summary.reviewPlaceholder")
   );
 }
 
@@ -1006,12 +1065,13 @@ export function latestSessionTimeById(sessionId: string | null, sessions: Captur
   return session ? latestSessionTime(session) : 0;
 }
 
-export function latestVisitLabelFromApi(row: ApiPatientMemoryRow) {
+export function latestVisitLabelFromApi(row: ApiPatientMemoryRow, t: Translator) {
   const timestamp = latestApiVisitTimestamp(row);
-  return latestVisitLabelFromTimestamp(timestamp);
+  return latestVisitLabelFromTimestamp(timestamp, t);
 }
 
-export function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, fallbackTimestamp?: string | null) {
+/** Session time as data (no "Session:" prefix — callers render their own localized label). */
+export function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, t: Translator, fallbackTimestamp?: string | null) {
   const timestamp = [
     row.latestSessionMetadata?.capturedAt,
     row.latestVisitAt,
@@ -1022,11 +1082,11 @@ export function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, fallbackTime
     .map((value) => (value ? new Date(value).getTime() : 0))
     .filter((value) => value && !Number.isNaN(value))
     .sort((a, b) => b - a)[0];
-  if (!timestamp) return "Session: Recent visit";
+  if (!timestamp) return t("memmodel.date.recentVisit");
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+  const dateLabel = isToday(date.toISOString()) ? t("memmodel.date.today") : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
   const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
-  return `Session: ${dateLabel} · ${timeLabel}`;
+  return `${dateLabel} · ${timeLabel}`;
 }
 
 export function latestApiVisitTimestamp(row: ApiPatientMemoryRow) {
@@ -1042,34 +1102,34 @@ export function latestApiVisitTimestamp(row: ApiPatientMemoryRow) {
     .sort((a, b) => b - a)[0] || 0;
 }
 
-export function latestVisitLabelFromTimestamp(timestamp: number) {
+export function latestVisitLabelFromTimestamp(timestamp: number, t: Translator) {
   if (!timestamp) return null;
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+  const dateLabel = isToday(date.toISOString()) ? t("memmodel.date.today") : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
   const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
-  return `Latest visit: ${dateLabel} · ${timeLabel}`;
+  return t("memmodel.label.latestVisit", { when: `${dateLabel} · ${timeLabel}` });
 }
 
-export function naturalUpdatedDate(session: CaptureSession) {
+export function naturalUpdatedDate(session: CaptureSession, t: Translator) {
   const timestamp = latestSessionTime(session);
-  if (!timestamp) return "recently";
+  if (!timestamp) return t("memmodel.date.recently");
   const date = new Date(timestamp);
-  if (isToday(date.toISOString())) return "today";
+  if (isToday(date.toISOString())) return t("memmodel.date.today");
   return appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
 }
 
-export function captureCounts(session: CaptureSession) {
+export function captureCounts(session: CaptureSession, t: Translator) {
   return [
-    { label: "photos", singular: "photo", type: "photo" as const, count: session.items.filter((item) => item.type === "photo").length },
-    { label: "audio", singular: "audio note", type: "audio" as const, count: session.items.filter((item) => item.type === "audio" || item.type === "voice").length },
-    { label: "notes", singular: "note", type: "note" as const, count: session.items.filter((item) => item.type === "note").length },
+    { label: t("memmodel.capture.photosPlural"), singular: t("memmodel.capture.photoSingular"), type: "photo" as const, count: session.items.filter((item) => item.type === "photo").length },
+    { label: t("memmodel.capture.audioPlural"), singular: t("memmodel.capture.audioSingular"), type: "audio" as const, count: session.items.filter((item) => item.type === "audio" || item.type === "voice").length },
+    { label: t("memmodel.capture.notesPlural"), singular: t("memmodel.capture.noteSingular"), type: "note" as const, count: session.items.filter((item) => item.type === "note").length },
   ].filter((item) => item.count);
 }
 
-export function captureTypeSummary(counts: ReturnType<typeof captureCounts>) {
+export function captureTypeSummary(counts: ReturnType<typeof captureCounts>, t: Translator) {
   const parts = counts.map((item) => `${item.count} ${item.count === 1 ? item.singular : item.label}`);
   if (parts.length <= 1) return parts[0] || "";
-  return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return t("memmodel.capture.joinAnd", { list: parts.slice(0, -1).join(", "), last: parts[parts.length - 1] });
 }
 
 export function countsTotal(counts: ReturnType<typeof captureCounts>) {
@@ -1081,20 +1141,20 @@ export function capitalize(value: string) {
   return `${value[0].toUpperCase()}${value.slice(1)}`;
 }
 
-export function sessionTimeLabel(session: CaptureSession) {
-  return [session.dateLabel, session.time].filter(Boolean).join(" · ") || "Recent visit";
+export function sessionTimeLabel(session: CaptureSession, t: Translator) {
+  return [session.dateLabel, session.time].filter(Boolean).join(" · ") || t("memmodel.date.recentVisit");
 }
 
-export function formatSessionTime(timestamp: number) {
-  if (!timestamp) return "recently";
+export function formatSessionTime(timestamp: number, t: Translator) {
+  if (!timestamp) return t("memmodel.date.recently");
   return appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
 }
 
-export function explicitDateTimeLabel(timestamp: number) {
-  if (!timestamp) return "Recent visit";
+export function explicitDateTimeLabel(timestamp: number, t: Translator) {
+  if (!timestamp) return t("memmodel.date.recentVisit");
   const date = new Date(timestamp);
-  const dateLabel = isToday(date.toISOString()) ? "Today" : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
-  return `${dateLabel} · ${formatSessionTime(timestamp)}`;
+  const dateLabel = isToday(date.toISOString()) ? t("memmodel.date.today") : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
+  return `${dateLabel} · ${formatSessionTime(timestamp, t)}`;
 }
 
 export function formatBytes(bytes: number) {
@@ -1113,8 +1173,8 @@ export function avatarInitials(label: string) {
   return words.slice(0, 2).map((word) => word[0].toUpperCase()).join("");
 }
 
-export function captureKindLabel(kind: CaptureDraft["kind"]) {
-  if (kind === "audio") return "Audio";
-  if (kind === "photo") return "Take photo";
-  return "Write note";
+export function captureKindLabel(kind: CaptureDraft["kind"], t: Translator) {
+  if (kind === "audio") return t("memmodel.captureKind.audio");
+  if (kind === "photo") return t("memmodel.captureKind.takePhoto");
+  return t("memmodel.captureKind.writeNote");
 }

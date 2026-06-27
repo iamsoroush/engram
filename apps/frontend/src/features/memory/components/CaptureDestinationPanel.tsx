@@ -3,6 +3,7 @@
 import type { CaptureDraft } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
 import { Button } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { captureKindLabel } from "./memoryModel";
 
 export function CaptureDestinationPanel({
@@ -22,28 +23,29 @@ export function CaptureDestinationPanel({
   onNewSession: () => void;
   onUseSession: (sessionId: string) => void;
 }) {
+  const t = useT();
   const options = [selectedSession, activeSession, ...sessions]
     .filter((session): session is CaptureSession => Boolean(session))
     .filter((session, index, all) => all.findIndex((candidate) => candidate.id === session.id) === index)
     .slice(0, 3);
   return (
-    <section className="capture-destination-panel" aria-label="Capture destination">
+    <section className="capture-destination-panel" aria-label={t("capturedest.ariaLabel")}>
       <div>
-        <p className="eyebrow">Capture destination</p>
-        <h2>{captureKindLabel(kind)}</h2>
-        <p>Choose where this capture should be saved.</p>
+        <p className="eyebrow">{t("capturedest.eyebrow")}</p>
+        <h2>{captureKindLabel(kind, t)}</h2>
+        <p>{t("capturedest.chooseWhere")}</p>
       </div>
       <div className="capture-destination-actions">
         {options.map((session) => (
-          <Button key={session.id} onClick={() => onUseSession(session.id)} size="sm" type="button" variant="secondary">
+          <Button key={session.id} onClick={() => onUseSession(session.id)} size="sm" type="button" variant="secondary" data-content>
             {session.label}
           </Button>
         ))}
         <Button onClick={onNewSession} size="sm" type="button">
-          New session
+          {t("capturedest.newSession")}
         </Button>
         <Button onClick={onCancel} size="sm" type="button" variant="secondary">
-          Cancel
+          {t("capturedest.cancel")}
         </Button>
       </div>
     </section>

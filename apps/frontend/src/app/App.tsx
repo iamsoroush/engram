@@ -1458,7 +1458,7 @@ export function App() {
         current && (current.id === sessionId || (deadPatientId && current.patientId === deadPatientId)) ? stripPatient(current) : current,
       );
       setAssignmentSessionId((current) => (current === sessionId ? "" : current));
-      setToast("That patient record is no longer available — the visit was set back to unassigned. Please assign it again.");
+      setToast(appT("memory.toastPatientRecordGone"));
     },
     [apiFetch, applySessionUpdate],
   );
@@ -1481,7 +1481,7 @@ export function App() {
             payload: { unassign: true },
           });
         }
-        setToast("Visit unassigned.");
+        setToast(appT("memory.toastVisitUnassigned"));
         void processOutbox();
         return;
       }
@@ -1623,7 +1623,7 @@ export function App() {
         const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
         setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
         setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
-        setToast("AI-created patient verified.");
+        setToast(appT("memory.toastAiPatientVerified"));
       } catch (error) {
         // The AI-created patient was deleted/merged out from under the panel: self-heal instead of
         // leaving the verify panel frozen on a dead id (the known incident).
@@ -1645,7 +1645,7 @@ export function App() {
         );
         setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
       }
-      setToast("Patient details updated.");
+      setToast(appT("memory.toastPatientDetailsUpdated"));
     },
     [apiFetch],
   );
@@ -1653,10 +1653,10 @@ export function App() {
     async (draft: PatientAssignmentDraft): Promise<PatientSummary | null> => {
       try {
         const patient = await createPatient(apiFetch, draft);
-        setToast("Patient created.");
+        setToast(appT("memory.toastPatientCreated"));
         return patient;
       } catch {
-        setToast("Could not create patient.");
+        setToast(appT("memory.toastCouldNotCreatePatient"));
         return null;
       }
     },
@@ -1710,7 +1710,7 @@ export function App() {
       };
       setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
       setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
-      setToast("Summary added to patient memory");
+      setToast(appT("memory.toastSummaryAdded"));
     },
     [],
   );
@@ -1809,7 +1809,7 @@ export function App() {
         setSessions((current) => current.map(applySession));
         setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
         await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
-        setToast("Note updated.");
+        setToast(appT("memory.toastNoteUpdated"));
         return;
       }
       const updated = await updateCaptureNote(apiFetch, captureId, text);
@@ -1818,7 +1818,7 @@ export function App() {
         session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
       setSessions((current) => current.map(mergeSession));
       setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
-      setToast("Note updated.");
+      setToast(appT("memory.toastNoteUpdated"));
     },
     [apiFetch],
   );

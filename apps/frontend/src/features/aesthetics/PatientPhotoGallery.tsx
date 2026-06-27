@@ -1,5 +1,6 @@
 import React from "react";
 import type { CaptureItem } from "../../domain/types";
+import { useT } from "../../shared/i18n";
 
 export type GalleryVisit = {
   sessionId: string;
@@ -27,6 +28,7 @@ export function PatientPhotoGallery({
   onOpenVisit?: (sessionId: string) => void;
   maxVisits?: number;
 }) {
+  const t = useT();
   const [loaded, setLoaded] = React.useState<LoadedVisit[]>([]);
   const [loading, setLoading] = React.useState(true);
   const candidateKey = visits.slice(0, maxVisits).map((visit) => visit.sessionId).join("|");
@@ -59,10 +61,10 @@ export function PatientPhotoGallery({
 
   if (loading) {
     return (
-      <section className="patient-gallery-card" aria-label="Photo gallery">
+      <section className="patient-gallery-card" aria-label={t("gallery.title")}>
         <div className="patient-gallery-head">
-          <h2>Photo gallery</h2>
-          <span className="patient-gallery-meta">by visit</span>
+          <h2>{t("gallery.title")}</h2>
+          <span className="patient-gallery-meta">{t("gallery.byVisit")}</span>
         </div>
         <div className="patient-gallery-skeleton" aria-hidden="true">
           <span />
@@ -75,17 +77,17 @@ export function PatientPhotoGallery({
   if (!loaded.length) return null;
 
   return (
-    <section className="patient-gallery-card" aria-label="Photo gallery">
+    <section className="patient-gallery-card" aria-label={t("gallery.title")}>
       <div className="patient-gallery-head">
-        <h2>Photo gallery</h2>
-        <span className="patient-gallery-meta">by visit</span>
+        <h2>{t("gallery.title")}</h2>
+        <span className="patient-gallery-meta">{t("gallery.byVisit")}</span>
       </div>
       {loaded.map((visit) => (
         <div className="patient-gallery-visit" key={visit.sessionId}>
           <div className="patient-gallery-visit-head">
-            {visit.dateLabel}
-            {visit.title ? ` · ${visit.title}` : ""}
-            <span className="patient-gallery-visit-meta"> · {visit.photos.length} photo{visit.photos.length === 1 ? "" : "s"}</span>
+            <span data-content>{visit.dateLabel}</span>
+            {visit.title ? <span data-content>{` · ${visit.title}`}</span> : ""}
+            <span className="patient-gallery-visit-meta"> · {visit.photos.length === 1 ? t("gallery.photoCountOne", { n: visit.photos.length }) : t("gallery.photoCountMany", { n: visit.photos.length })}</span>
           </div>
           <div className="patient-gallery-photos">
             {visit.photos.map((photo) => (
@@ -95,7 +97,7 @@ export function PatientPhotoGallery({
         </div>
       ))}
       <p className="patient-gallery-note">
-        No tagging — your photos, grouped by visit, recent first. You compare by eye; <b>Pro</b> labels &amp; pairs them with a slider.
+        {t("gallery.noteLead")} <b>{t("gallery.noteProName")}</b> {t("gallery.noteTrail")}
       </p>
     </section>
   );
@@ -110,6 +112,7 @@ function GalleryPhoto({
   onResolveFile: (endpoint: string) => Promise<string>;
   onOpen?: () => void;
 }) {
+  const t = useT();
   const [url, setUrl] = React.useState(() => (photo.sourceUrl?.startsWith("blob:") ? photo.sourceUrl : ""));
   React.useEffect(() => {
     if (photo.sourceUrl?.startsWith("blob:")) {
@@ -133,8 +136,8 @@ function GalleryPhoto({
   }, [url, photo.sourceUrl]);
 
   return (
-    <button className="patient-gallery-photo" onClick={onOpen} type="button" aria-label="Open visit">
-      {url ? <img alt="Patient photo" src={url} /> : <span className="patient-gallery-photo-empty" aria-hidden="true" />}
+    <button className="patient-gallery-photo" onClick={onOpen} type="button" aria-label={t("gallery.openVisit")}>
+      {url ? <img alt={t("gallery.photoAlt")} src={url} /> : <span className="patient-gallery-photo-empty" aria-hidden="true" />}
     </button>
   );
 }

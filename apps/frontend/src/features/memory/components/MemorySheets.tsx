@@ -5,6 +5,7 @@ import type { AssignmentSuggestionResponse, LastVisitInfo, PatientAssignmentDraf
 import type { CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { PatientForm } from "../../patient/PatientForm";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
 import { PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, labelForDecisionAction, patientChoiceCandidates, extractedPatientMatchHint, filterPatientMatches, resolverCaptureSummary, patientHint, sessionVisitTitle, naturalSessionSummary, reviewSummaryText, sessionTimeLabel, formatBytes, avatarInitials } from "./memoryModel";
@@ -24,6 +25,7 @@ export function PatientIdentityEditor({
   onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
 }) {
+  const t = useT();
   const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [initial, setInitial] = React.useState<Partial<{ displayName: string; nationalId: string; phone: string; dateOfBirth: string; sex: string; notes: string }>>({ displayName: patient.name || "" });
@@ -51,7 +53,7 @@ export function PatientIdentityEditor({
   if (!open || !onUpdatePatient) return null;
 
   return (
-    <section className="patient-edit-card" aria-label="Edit patient details">
+    <section className="patient-edit-card" aria-label={t("memsheet.editPatientDetails")}>
       <PatientForm
         busy={saving}
         initial={initial}
@@ -71,7 +73,7 @@ export function PatientIdentityEditor({
             .then(onClose)
             .finally(() => setSaving(false));
         }}
-        submitLabel="Save details"
+        submitLabel={t("memsheet.saveDetails")}
       />
     </section>
   );
@@ -102,6 +104,7 @@ export function PatientRecapSheet({
   onOpenFullTimeline: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [detail, setDetail] = React.useState<PatientMemoryDetailResponse | null>(null);
   const [detailLoading, setDetailLoading] = React.useState(true);
   const [lastVisit, setLastVisit] = React.useState<LastVisitInfo | null>(null);
@@ -135,15 +138,15 @@ export function PatientRecapSheet({
 
   return (
     <div className="resolver-backdrop patient-recap-backdrop" role="presentation">
-      <Card className="resolver-sheet patient-recap-sheet" role="dialog" aria-modal="true" aria-label={`${patientName} recap`}>
+      <Card className="resolver-sheet patient-recap-sheet" role="dialog" aria-modal="true" aria-label={t("memsheet.recapAria", { name: patientName })}>
         <div className="resolver-heading">
           <div>
-            <p className="eyebrow">Up next</p>
-            <h2>{patientName}</h2>
-            <p>A quick recap before you start — {isPro ? "AI history" : "recent visits"} and before/after.</p>
+            <p className="eyebrow">{t("memsheet.upNext")}</p>
+            <h2 data-content>{patientName}</h2>
+            <p>{t("memsheet.recapLead", { source: isPro ? t("memsheet.recapSourceAi") : t("memsheet.recapSourceRecent") })}</p>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+            {t("memsheet.close")}
           </Button>
         </div>
 
@@ -159,18 +162,18 @@ export function PatientRecapSheet({
           {lastVisit?.hasPriorVisit && lastVisit.visit && onResolveFile ? (
             <LastVisitStrip lastVisit={lastVisit} onResolveFile={onResolveFile} />
           ) : !detailLoading ? (
-            <p className="worklist-recap-note">No prior photos yet — this looks like a first visit.</p>
+            <p className="worklist-recap-note">{t("memsheet.noPriorPhotos")}</p>
           ) : null}
         </div>
 
         <div className="patient-recap-actions">
           {canStartVisit && onStartVisit ? (
             <Button onClick={() => onStartVisit(patientId, worklistEntryId)} size="sm" type="button">
-              Start visit
+              {t("memsheet.startVisit")}
             </Button>
           ) : null}
           <Button onClick={onOpenFullTimeline} size="sm" type="button" variant="secondary">
-            Open full timeline
+            {t("memsheet.openFullTimeline")}
           </Button>
         </div>
       </Card>
@@ -189,17 +192,18 @@ export function PatientDecisionListSheet({
   onClose: () => void;
   onItemAction: (item: PatientNeedsInputItem) => void;
 }) {
+  const t = useT();
   return (
     <div className="resolver-backdrop patient-decision-backdrop" role="presentation">
-      <Card className="resolver-sheet patient-decision-sheet" role="dialog" aria-modal="true" aria-label={`${patient.name} needs input`}>
+      <Card className="resolver-sheet patient-decision-sheet" role="dialog" aria-modal="true" aria-label={t("memsheet.patientNeedsInputAria", { name: patient.name })}>
         <div className="resolver-heading">
           <div>
-            <p className="eyebrow">Patient decisions</p>
-            <h2>{patient.name} needs your input</h2>
-            <p>Review the decisions needed to keep this memory accurate.</p>
+            <p className="eyebrow">{t("memsheet.patientDecisions")}</p>
+            <h2><span data-content>{patient.name}</span> {t("memsheet.needsYourInput")}</h2>
+            <p>{t("memsheet.decisionListLead")}</p>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+            {t("memsheet.close")}
           </Button>
         </div>
 
@@ -208,30 +212,30 @@ export function PatientDecisionListSheet({
             {patient.needsInputItems.map((item) => (
               <div className="patient-decision-item" key={item.id}>
                 <div className="patient-decision-copy">
-                  <strong>{item.title}</strong>
-                  <div className="visit-metadata" aria-label="Decision context">
+                  <strong data-content>{item.title}</strong>
+                  <div className="visit-metadata" aria-label={t("memsheet.decisionContext")}>
                     <div>
-                      <span>Session:</span>
-                      <strong>{item.sessionLabel.replace(/^Session:\s*/, "")}</strong>
+                      <span>{t("memsheet.sessionLabel")}</span>
+                      <strong data-content>{item.sessionLabel}</strong>
                     </div>
                   </div>
-                  <p>{item.reason || item.detail}</p>
+                  <p data-content>{item.reason || item.detail}</p>
                 </div>
                 <Button onClick={() => onItemAction(item)} size="sm" type="button" variant="secondary">
-                  {labelForDecisionAction(item.action)}
+                  {labelForDecisionAction(item.action, t)}
                   <ChevronIcon />
                 </Button>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyClinicalState title={`All caught up for ${patient.name}.`} copy="No patient decisions need review right now." />
+          <EmptyClinicalState title={t("memsheet.allCaughtUpFor", { name: patient.name })} copy={t("memsheet.noDecisionsNeedReview")} />
         )}
 
         {onOpenMemory ? (
           <div className="patient-decision-secondary">
             <Button onClick={onOpenMemory} size="sm" type="button" variant="ghost">
-              View patient history
+              {t("memsheet.viewPatientHistory")}
             </Button>
           </div>
         ) : null}
@@ -251,12 +255,13 @@ export function SummaryReviewSheet({
   onConfirm: (summary: string) => Promise<void>;
   onOpenVisit: () => void;
 }) {
-  const initialSummary = reviewSummaryText(session);
+  const t = useT();
+  const initialSummary = reviewSummaryText(session, t);
   const [summary, setSummary] = React.useState(initialSummary);
   const [editing, setEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const trimmedSummary = summary.trim();
-  const captureSummary = resolverCaptureSummary(session);
+  const captureSummary = resolverCaptureSummary(session, t);
 
   const confirmSummary = () => {
     if (!trimmedSummary || saving) return;
@@ -266,60 +271,61 @@ export function SummaryReviewSheet({
 
   return (
     <div className="resolver-backdrop" role="presentation">
-      <Card className="resolver-sheet summary-review-sheet" role="dialog" aria-modal="true" aria-label="Review summary">
+      <Card className="resolver-sheet summary-review-sheet" role="dialog" aria-modal="true" aria-label={t("memsheet.reviewSummary")}>
         <div className="resolver-heading">
           <div>
-            <p className="eyebrow">Patient memory</p>
-            <h2>Review summary</h2>
+            <p className="eyebrow">{t("memsheet.patientMemory")}</p>
+            <h2>{t("memsheet.reviewSummary")}</h2>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+            {t("memsheet.close")}
           </Button>
         </div>
 
-        <div className="summary-review-context" aria-label="Visit context">
+        <div className="summary-review-context" aria-label={t("memsheet.visitContext")}>
           <div>
-            <span>Patient:</span>
-            <strong>{session.patientName || session.patientId || "Unassigned visit"}</strong>
+            <span>{t("memsheet.patientLabel")}</span>
+            <strong data-content>{session.patientName || session.patientId || t("memsheet.unassignedVisit")}</strong>
           </div>
           <div>
-            <span>Session:</span>
-            <strong>{sessionTimeLabel(session)}</strong>
+            <span>{t("memsheet.sessionLabel")}</span>
+            <strong data-content>{sessionTimeLabel(session, t)}</strong>
           </div>
           <div>
-            <span>Captures:</span>
-            <strong>{captureSummary}</strong>
+            <span>{t("memsheet.capturesLabel")}</span>
+            <strong data-content>{captureSummary}</strong>
           </div>
         </div>
 
         <section className="summary-review-section" aria-labelledby="summary-review-draft-title">
           <div className="summary-review-section-heading">
-            <h3 id="summary-review-draft-title">Summary</h3>
-            {editing ? <span>Editing</span> : null}
+            <h3 id="summary-review-draft-title">{t("memsheet.summaryHeading")}</h3>
+            {editing ? <span>{t("memsheet.editingBadge")}</span> : null}
           </div>
           {editing ? (
             <textarea
-              aria-label="Edit summary"
+              aria-label={t("memsheet.editSummary")}
               className="summary-review-editor"
+              data-content
               onChange={(event) => setSummary(event.target.value)}
               rows={6}
               value={summary}
             />
           ) : (
-            <p>{trimmedSummary}</p>
+            <p data-content>{trimmedSummary}</p>
           )}
         </section>
 
-        <section className="summary-review-section compact" aria-label="Source captures">
+        <section className="summary-review-section compact" aria-label={t("memsheet.sourceCaptures")}>
           <div className="summary-review-section-heading">
-            <h3>Sources</h3>
+            <h3>{t("memsheet.sourcesHeading")}</h3>
           </div>
           <CaptureChips session={session} tone="blue" />
         </section>
 
         <div className="resolver-actions summary-review-actions">
           <Button disabled={!trimmedSummary || saving} onClick={confirmSummary} size="sm" type="button">
-            Confirm summary
+            {t("memsheet.confirmSummary")}
           </Button>
           <Button
             disabled={saving}
@@ -328,10 +334,10 @@ export function SummaryReviewSheet({
             type="button"
             variant="secondary"
           >
-            {editing ? "Save edit" : "Edit summary"}
+            {editing ? t("memsheet.saveEdit") : t("memsheet.editSummary")}
           </Button>
           <Button disabled={saving} onClick={onOpenVisit} size="sm" type="button" variant="ghost">
-            Open visit
+            {t("memsheet.openVisit")}
           </Button>
         </div>
       </Card>
@@ -348,6 +354,7 @@ export function StorageReviewSheet({
   onExport?: () => Promise<void> | void;
   storageWarning: StorageWarningDecision | null;
 }) {
+  const t = useT();
   const [exporting, setExporting] = React.useState(false);
   const percentUsed = storageWarning ? Math.round(storageWarning.usageRatio * 100) : null;
   const remaining = storageWarning ? formatBytes(storageWarning.remainingBytes) : null;
@@ -358,29 +365,29 @@ export function StorageReviewSheet({
   };
   return (
     <div className="resolver-backdrop" role="presentation">
-      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label="Review storage">
+      <Card className="resolver-sheet" role="dialog" aria-modal="true" aria-label={t("memsheet.reviewStorage")}>
         <div className="resolver-heading">
           <div>
-            <p className="eyebrow">Offline safety warning</p>
-            <h2>Storage getting full</h2>
+            <p className="eyebrow">{t("memsheet.offlineSafetyWarning")}</p>
+            <h2>{t("memsheet.storageGettingFull")}</h2>
           </div>
           <Button onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+            {t("memsheet.close")}
           </Button>
         </div>
         <div className="resolver-summary">
-          <span>Device storage</span>
-          <strong>{percentUsed ? `${percentUsed}% used${remaining ? ` · ${remaining} free` : ""}` : "Space is limited"}</strong>
-          <p>Free device storage before capturing offline. Captures already saved remain available, but new offline captures may soon need more room. Export queued captures first to keep them safe.</p>
+          <span>{t("memsheet.deviceStorage")}</span>
+          <strong>{percentUsed ? (remaining ? t("memsheet.storageUsedWithFree", { percent: percentUsed, remaining }) : t("memsheet.storageUsed", { percent: percentUsed })) : t("memsheet.spaceIsLimited")}</strong>
+          <p>{t("memsheet.storageWarningBody")}</p>
         </div>
         <div className="resolver-actions">
           {onExport ? (
             <Button disabled={exporting} onClick={exportQueued} size="sm" type="button" variant="secondary">
-              {exporting ? "Exporting…" : "Export queued captures"}
+              {exporting ? t("memsheet.exporting") : t("memsheet.exportQueuedCaptures")}
             </Button>
           ) : null}
           <Button onClick={onClose} size="sm" type="button">
-            Done
+            {t("memsheet.done")}
           </Button>
         </div>
       </Card>
@@ -401,6 +408,7 @@ export function ChoosePatientResolver({
   onKeepUnassigned: () => void;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
 }) {
+  const t = useT();
   const candidatePatients = React.useMemo(() => patientChoiceCandidates(session), [session]);
   const [query, setQuery] = React.useState("");
   const [patients, setPatients] = React.useState<PatientSummary[]>([]);
@@ -411,8 +419,8 @@ export function ChoosePatientResolver({
   const [saving, setSaving] = React.useState(false);
   const trimmedQuery = query.trim();
   const visiblePatients = React.useMemo(() => filterPatientMatches(patients, trimmedQuery), [patients, trimmedQuery]);
-  const captureSummary = resolverCaptureSummary(session);
-  const hint = extractedPatientMatchHint(session);
+  const captureSummary = resolverCaptureSummary(session, t);
+  const hint = extractedPatientMatchHint(session, t);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -468,33 +476,33 @@ export function ChoosePatientResolver({
         <div className="assign-resolver-handle" aria-hidden="true" />
         <div className="assign-resolver-heading">
           <div>
-            <p className="eyebrow">Patient match</p>
-            <h2 id="choose-patient-title">Choose patient</h2>
+            <p className="eyebrow">{t("memsheet.patientMatch")}</p>
+            <h2 id="choose-patient-title">{t("memsheet.choosePatient")}</h2>
           </div>
-          <Button aria-label="Close choose patient" onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+          <Button aria-label={t("memsheet.closeChoosePatient")} onClick={onClose} size="sm" type="button" variant="ghost">
+            {t("memsheet.close")}
           </Button>
         </div>
 
-        <p className="choose-patient-explanation">This visit may belong to more than one patient. Choose the correct patient.</p>
+        <p className="choose-patient-explanation">{t("memsheet.choosePatientExplanation")}</p>
 
-        <div className="assign-context" aria-label="Visit being resolved">
-          <strong>{sessionVisitTitle(session)}</strong>
+        <div className="assign-context" aria-label={t("memsheet.visitBeingResolved")}>
+          <strong data-content>{sessionVisitTitle(session, t)}</strong>
           <div className="assign-context-grid">
-            <span>Session: {sessionTimeLabel(session)}</span>
-            <span>Captures: {captureSummary}</span>
+            <span>{t("memsheet.sessionLabel")} <span data-content>{sessionTimeLabel(session, t)}</span></span>
+            <span>{t("memsheet.capturesLabel")} <span data-content>{captureSummary}</span></span>
           </div>
-          {hint ? <p>{hint}</p> : null}
+          {hint ? <p data-content>{hint}</p> : null}
         </div>
 
         <div className="assign-resolver-section">
           <div className="assign-section-heading">
-            <h3>Suggested patients</h3>
+            <h3>{t("memsheet.suggestedPatients")}</h3>
           </div>
           <div className="assign-patient-list">
             {candidatePatients.map((patient, index) => (
               <PatientChoiceButton
-                hint={patientHint(patient, index)}
+                hint={patientHint(patient, index, t)}
                 key={patient.id}
                 patient={patient}
                 selected={selectedMode === "patient" && selectedPatient?.id === patient.id}
@@ -506,15 +514,15 @@ export function ChoosePatientResolver({
 
         <div className="assign-resolver-section">
           <div className="assign-section-heading">
-            <h3>Search another patient</h3>
-            {searching ? <span>Searching...</span> : null}
+            <h3>{t("memsheet.searchAnotherPatient")}</h3>
+            {searching ? <span>{t("memsheet.searching")}</span> : null}
           </div>
           <label className="assign-search-field">
             <SearchIcon />
             <Input
-              aria-label="Search another patient"
+              aria-label={t("memsheet.searchAnotherPatient")}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search another patient"
+              placeholder={t("memsheet.searchAnotherPatient")}
               value={query}
             />
           </label>
@@ -523,7 +531,7 @@ export function ChoosePatientResolver({
               {visiblePatients.length ? (
                 visiblePatients.slice(0, 5).map((patient, index) => (
                   <PatientChoiceButton
-                    hint={patientHint(patient, index)}
+                    hint={patientHint(patient, index, t)}
                     key={patient.id}
                     patient={patient}
                     selected={selectedMode === "patient" && selectedPatient?.id === patient.id}
@@ -531,13 +539,13 @@ export function ChoosePatientResolver({
                   />
                 ))
               ) : (
-                <p className="assign-empty">{searchError ? "Patient search is unavailable right now." : "No patient matches yet."}</p>
+                <p className="assign-empty">{searchError ? t("memsheet.patientSearchUnavailable") : t("memsheet.noPatientMatchesYet")}</p>
               )}
             </div>
           ) : null}
         </div>
 
-        <div className="assign-manual-options choose-patient-options" aria-label="Additional patient options">
+        <div className="assign-manual-options choose-patient-options" aria-label={t("memsheet.additionalPatientOptions")}>
           <Button
             disabled={!trimmedQuery || saving}
             onClick={() => choosePatient({ id: `new-patient:${trimmedQuery.toLowerCase().replace(/\s+/g, "-")}`, displayName: trimmedQuery })}
@@ -545,7 +553,7 @@ export function ChoosePatientResolver({
             type="button"
             variant="secondary"
           >
-            Create new patient
+            {t("memsheet.createNewPatient")}
           </Button>
           <Button
             aria-pressed={selectedMode === "unassigned"}
@@ -558,13 +566,13 @@ export function ChoosePatientResolver({
             type="button"
             variant={selectedMode === "unassigned" ? "secondary" : "ghost"}
           >
-            Keep unassigned
+            {t("memsheet.keepUnassigned")}
           </Button>
         </div>
 
         <div className="assign-confirm-bar">
           <Button disabled={saving || (selectedMode === "patient" && !selectedPatient)} onClick={confirmPatient} type="button">
-            Confirm patient
+            {t("memsheet.confirmPatient")}
           </Button>
         </div>
       </section>
@@ -583,6 +591,7 @@ export function PatientChoiceButton({
   selected: boolean;
   onChoose: () => void;
 }) {
+  const t = useT();
   return (
     <button
       aria-pressed={selected}
@@ -594,10 +603,10 @@ export function PatientChoiceButton({
         {avatarInitials(patient.displayName)}
       </span>
       <span className="assign-patient-copy">
-        <strong>{patient.displayName}</strong>
-        <small>{hint}</small>
+        <strong data-content>{patient.displayName}</strong>
+        <small data-content>{hint}</small>
       </span>
-      <span className="assign-patient-select">{selected ? "Selected" : "Select"}</span>
+      <span className="assign-patient-select">{selected ? t("memsheet.selected") : t("memsheet.select")}</span>
     </button>
   );
 }
@@ -620,6 +629,7 @@ export function AssignPatientResolver({
   /** AES-301/603 — the deterministic "Assign to …?" suggestion (active/recent patient). */
   onLoadSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
+  const t = useT();
   const [query, setQuery] = React.useState("");
   const [patients, setPatients] = React.useState<PatientSummary[]>([]);
   const [selectedPatient, setSelectedPatient] = React.useState<PatientSummary | null>(null);
@@ -682,8 +692,8 @@ export function AssignPatientResolver({
     void onAssign(draft).finally(() => setSaving(false));
   };
 
-  const summary = naturalSessionSummary(session);
-  const captureSummary = resolverCaptureSummary(session);
+  const summary = naturalSessionSummary(session, t);
+  const captureSummary = resolverCaptureSummary(session, t);
 
   return (
     <div className="assign-resolver-backdrop" role="presentation">
@@ -691,34 +701,34 @@ export function AssignPatientResolver({
         <div className="assign-resolver-handle" aria-hidden="true" />
         <div className="assign-resolver-heading">
           <div>
-            <p className="eyebrow">Patient assignment</p>
-            <h2 id="assign-resolver-title">Assign patient</h2>
+            <p className="eyebrow">{t("memsheet.patientAssignment")}</p>
+            <h2 id="assign-resolver-title">{t("memsheet.assignPatient")}</h2>
           </div>
-          <Button aria-label="Close assign patient" onClick={onClose} size="sm" type="button" variant="ghost">
-            Close
+          <Button aria-label={t("memsheet.closeAssignPatient")} onClick={onClose} size="sm" type="button" variant="ghost">
+            {t("memsheet.close")}
           </Button>
         </div>
 
-        <div className="assign-context" aria-label="Visit being assigned">
-          <strong>Unassigned visit</strong>
+        <div className="assign-context" aria-label={t("memsheet.visitBeingAssigned")}>
+          <strong>{t("memsheet.unassignedVisit")}</strong>
           <div className="assign-context-grid">
-            <span>Session: {sessionTimeLabel(session)}</span>
-            <span>Captures: {captureSummary}</span>
+            <span>{t("memsheet.sessionLabel")} <span data-content>{sessionTimeLabel(session, t)}</span></span>
+            <span>{t("memsheet.capturesLabel")} <span data-content>{captureSummary}</span></span>
           </div>
-          {summary ? <p>{summary}</p> : null}
+          {summary ? <p data-content>{summary}</p> : null}
         </div>
 
         {suggestion?.suggestion ? (
-          <div className="assign-suggestion" aria-label="Suggested patient">
+          <div className="assign-suggestion" aria-label={t("memsheet.suggestedPatient")}>
             <p className="assign-suggestion-label">
-              Suggested {suggestion.suggestion.basis === "active_patient" ? "— in chair now" : "— recently seen"}
-              <span className="det-note">deterministic</span>
+              {suggestion.suggestion.basis === "active_patient" ? t("memsheet.suggestedInChair") : t("memsheet.suggestedRecentlySeen")}
+              <span className="det-note">{t("memsheet.deterministic")}</span>
             </p>
             <div className="assign-suggestion-row">
               <span className="assign-patient-initials" aria-hidden="true">{avatarInitials(suggestion.suggestion.displayName)}</span>
               <div className="assign-suggestion-copy">
-                <strong>{suggestion.suggestion.displayName}</strong>
-                <small>{suggestion.suggestion.reason}</small>
+                <strong data-content>{suggestion.suggestion.displayName}</strong>
+                <small data-content>{suggestion.suggestion.reason}</small>
               </div>
               <Button
                 disabled={saving}
@@ -728,7 +738,7 @@ export function AssignPatientResolver({
                 size="sm"
                 type="button"
               >
-                Assign
+                {t("memsheet.assign")}
               </Button>
             </div>
           </div>
@@ -737,18 +747,18 @@ export function AssignPatientResolver({
         <label className="assign-search-field">
           <SearchIcon />
           <Input
-            aria-label="Search patient"
+            aria-label={t("memsheet.searchPatient")}
             autoFocus
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search patient"
+            placeholder={t("memsheet.searchPatient")}
             value={query}
           />
         </label>
 
         <div className="assign-resolver-section">
           <div className="assign-section-heading">
-            <h3>{trimmedQuery ? "Matching patients" : "Suggested matches"}</h3>
-            {searching ? <span>Searching...</span> : null}
+            <h3>{trimmedQuery ? t("memsheet.matchingPatients") : t("memsheet.suggestedMatches")}</h3>
+            {searching ? <span>{t("memsheet.searching")}</span> : null}
           </div>
           <div className="assign-patient-list" aria-live="polite">
             {visiblePatients.length ? (
@@ -766,20 +776,20 @@ export function AssignPatientResolver({
                       {avatarInitials(patient.displayName)}
                     </span>
                     <span className="assign-patient-copy">
-                      <strong>{patient.displayName}</strong>
-                      <small>{patientHint(patient, index)}</small>
+                      <strong data-content>{patient.displayName}</strong>
+                      <small data-content>{patientHint(patient, index, t)}</small>
                     </span>
-                    <span className="assign-patient-select">{selected ? "Selected" : "Select"}</span>
+                    <span className="assign-patient-select">{selected ? t("memsheet.selected") : t("memsheet.select")}</span>
                   </button>
                 );
               })
             ) : (
-              <p className="assign-empty">{searchError ? "Patient search is unavailable right now." : "No patient matches yet."}</p>
+              <p className="assign-empty">{searchError ? t("memsheet.patientSearchUnavailable") : t("memsheet.noPatientMatchesYet")}</p>
             )}
           </div>
         </div>
 
-        <div className="assign-manual-options" aria-label="Manual options">
+        <div className="assign-manual-options" aria-label={t("memsheet.manualOptions")}>
           <Button
             disabled={!canCreate || saving}
             onClick={() => assignDraft({ displayName: trimmedQuery })}
@@ -787,13 +797,13 @@ export function AssignPatientResolver({
             type="button"
             variant="secondary"
           >
-            Create new patient
+            {t("memsheet.createNewPatient")}
           </Button>
           <Button disabled={saving} onClick={onKeepUnassigned} size="sm" type="button" variant="ghost">
-            Keep unassigned
+            {t("memsheet.keepUnassigned")}
           </Button>
           <Button disabled={saving} onClick={onOpenVisit} size="sm" type="button" variant="ghost">
-            Open visit
+            {t("memsheet.openVisit")}
           </Button>
         </div>
 
@@ -810,7 +820,7 @@ export function AssignPatientResolver({
             }}
             type="button"
           >
-            {selectedPatient ? `Assign to ${selectedPatient.displayName}` : "Choose a patient"}
+            {selectedPatient ? t("memsheet.assignTo", { name: selectedPatient.displayName }) : t("memsheet.chooseAPatient")}
           </Button>
         </div>
       </section>
