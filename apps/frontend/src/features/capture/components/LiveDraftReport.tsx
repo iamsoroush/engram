@@ -186,7 +186,7 @@ export function LiveDraftCaptureItem({
   // passthrough now — no AI "decoration" — so the card shows the raw note, inline-editable.
   const noteRawText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
   // §7: a low-confidence / flagged photo caption surfaces a "Needs review" chip with the reason.
-  const captionReviewReason = captureNeedsReview(item);
+  const captionReviewReason = captureNeedsReview(item, t);
   // Model-authored Markdown variant of the caption (clean text for AI jobs; **bold** for the UI).
   const captionDisplayText = captionDisplay(item);
   const textAttribution = captureTextAttribution(item, t);

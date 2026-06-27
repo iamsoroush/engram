@@ -70,7 +70,7 @@ export function LiveReportView({
 export function ReportDocHeader({ session }: { session: CaptureSession | null }) {
   const t = useT();
   const clinic = session?.report?.template?.clinic;
-  const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session);
+  const patientInformation = session?.report?.patientInformation || patientInformationFromSession(session, t);
   return (
     <>
       <section className="structured-report-section">
@@ -481,7 +481,7 @@ export function BasicLiveReport({
   const items = session?.items || [];
   return (
     <div className="structured-report-view basic-live-report">
-      <section className="structured-report-section structured-report-body">
+      <section className="structured-report-section structured-report-body" data-content data-testid="report-body">
         {items.length ? (
           items.map((item) => <BasicReportEntry item={item} key={item.sourceUrl || item.id} onResolveFile={onResolveFile} />)
         ) : (

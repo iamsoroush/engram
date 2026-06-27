@@ -209,8 +209,8 @@ export function CaptureScreen({
   const captureCount = activeSession?.items.length || 0;
   const captureCountLabel = t(captureCount === 1 ? "capture.captureCountOne" : "capture.captureCountOther", { count: captureCount });
   const sessionStatusChip = sessionSummaryStatusChip(activeSession, t);
-  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
-  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
+  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession, t);
+  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession, t);
 
   // FB8 unified Pro layout: the synthesized report is the primary surface, the raw captures become a
   // collapsible "Sources" drawer, and a sticky bar drives verification. Basic keeps its Captures /

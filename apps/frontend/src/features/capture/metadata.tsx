@@ -1,5 +1,5 @@
 import type { CaptureItem } from "../../domain/types";
-import type { Translator } from "../../shared/i18n";
+import { useT, type Translator } from "../../shared/i18n";
 import { Badge } from "../../shared/ui/primitives";
 
 export function assignmentSourceLabel(source: string | null | undefined, t: Translator) {
@@ -37,28 +37,29 @@ export function isGeneratedMetadata(metadata: Record<string, unknown>) {
 }
 
 export function CaptureMetadataSummary({ item }: { item: CaptureItem }) {
+  const t = useT();
   const metadata = metadataRecord(item.metadata);
   const generated = generatedMetadataFor(item);
-  const generatedLabel = isGeneratedMetadata(generated) ? "AI-generated - not verified" : "";
+  const generatedLabel = isGeneratedMetadata(generated) ? t("model.meta.aiGeneratedUnverified") : "";
   const rows: Array<{ label: string; value: string }> = [];
 
   if (item.type === "audio" || item.type === "voice") {
     rows.push(
-      { label: "Transcript status", value: metadataDisplay(generated.status || metadata.transcript_status) },
-      { label: "Language", value: metadataDisplay(generated.language || metadata.language) },
-      { label: "Duration", value: metadataDisplay(generated.duration || metadata.duration) },
+      { label: t("model.meta.transcriptStatus"), value: metadataDisplay(generated.status || metadata.transcript_status) },
+      { label: t("model.meta.language"), value: metadataDisplay(generated.language || metadata.language) },
+      { label: t("model.meta.duration"), value: metadataDisplay(generated.duration || metadata.duration) },
     );
   } else if (item.type === "photo") {
     const width = metadataDisplay(generated.width || metadata.width);
     const height = metadataDisplay(generated.height || metadata.height);
     rows.push(
-      { label: "Caption status", value: metadataDisplay(generated.status || metadata.caption_status || metadata.ocr_status) },
-      { label: "Dimensions", value: width && height ? `${width} x ${height}` : "" },
-      { label: "Thumbnail", value: metadataDisplay(metadata.thumbnail || metadata.thumbnail_url || metadata.thumbnailUrl) },
+      { label: t("model.meta.captionStatus"), value: metadataDisplay(generated.status || metadata.caption_status || metadata.ocr_status) },
+      { label: t("model.meta.dimensions"), value: width && height ? `${width} x ${height}` : "" },
+      { label: t("model.meta.thumbnail"), value: metadataDisplay(metadata.thumbnail || metadata.thumbnail_url || metadata.thumbnailUrl) },
     );
   } else {
     rows.push(
-      { label: "Extraction status", value: metadataDisplay(generated.status || metadata.extraction_status) },
+      { label: t("model.meta.extractionStatus"), value: metadataDisplay(generated.status || metadata.extraction_status) },
     );
   }
 

@@ -332,12 +332,14 @@ export function sessionsFromPending(captures: PendingCapture[]) {
 }
 
 // --- Pure capture/report/assignment helpers (moved verbatim from components/CaptureScreen.tsx) ---
-export function patientDetailRows(info?: StructuredPatientInformation | null): Array<[string, string]> {
+export function patientDetailRows(info: StructuredPatientInformation | null | undefined, t: Translator): Array<[string, string]> {
   if (!info || info.status !== "assigned") return [];
+  // Field labels reuse the existing report.field.* catalog (the same labels the report's patient rows
+  // use); the VALUES are patient content shown verbatim.
   return ([
-    ["National ID", info.nationalId],
-    ["Phone", info.phone],
-    ["Date of birth", info.dateOfBirth],
+    [t("report.field.nationalId"), info.nationalId],
+    [t("report.field.phone"), info.phone],
+    [t("report.field.dob"), info.dateOfBirth],
   ] as Array<[string, string | null | undefined]>).filter((row): row is [string, string] => Boolean(row[1]));
 }
 
@@ -374,12 +376,12 @@ export function detectedSessionPatients(session: CaptureSession, excludeId?: str
   return out;
 }
 
-export function currentSessionPatient(session: CaptureSession) {
+export function currentSessionPatient(session: CaptureSession, t: Translator) {
   if (!session.patientName && !session.patientId) return [];
   return [
     {
       id: session.patientId || "current-session-patient",
-      displayName: session.patientName || "Assigned patient",
+      displayName: session.patientName || t("model.patient.assigned"),
       nationalId: session.patientId || null,
       lastVisit: session.report?.updatedAt || null,
     },
@@ -429,8 +431,8 @@ export function maskPhone(value: string) {
   return `${visible}....`;
 }
 
-export function formatLastVisit(value?: string | null) {
-  if (!value) return "Not recorded";
+export function formatLastVisit(value: string | null | undefined, t: Translator) {
+  if (!value) return t("model.patient.notRecorded");
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return appDateTimeFormat({ month: "short", day: "numeric", year: "numeric" }).format(date);
@@ -505,12 +507,12 @@ export function reportUpdatingLabel(session: CaptureSession | null, t: Translato
   return t("model.status.updatingFor", { labels: `${labels.join(", ")}${suffix}` });
 }
 
-export function patientInformationFromSession(session: CaptureSession | null): StructuredPatientInformation | null {
+export function patientInformationFromSession(session: CaptureSession | null, t: Translator): StructuredPatientInformation | null {
   if (!session?.patientId && !session?.patientName) return { status: "unassigned" };
   return {
     status: "assigned",
     patientId: session.patientId || null,
-    displayName: session.patientName || session.patientId || "Assigned patient",
+    displayName: session.patientName || session.patientId || t("model.patient.assigned"),
   };
 }
 
@@ -624,11 +626,12 @@ export function textDirection(text: string): "rtl" | "ltr" {
 
 /** A low-confidence / flagged photo caption the backend raised for review (§7): the reason to show
  * on the capture's "Needs review" chip, or "" when there's nothing to review. */
-export function captureNeedsReview(item: CaptureItem): string {
+export function captureNeedsReview(item: CaptureItem, t: Translator): string {
   if (item.type !== "photo") return "";
   const marker = metadataRecord(metadataRecord(item.metadata).needs_review);
   if (marker.present !== true) return "";
-  return metadataText(marker.reason) || "Low-confidence caption — please review.";
+  // A backend-provided reason is content (shown verbatim); the generic fallback is chrome.
+  return metadataText(marker.reason) || t("model.review.lowConfidenceCaption");
 }
 
 /** The model-authored Markdown display variant of a photo caption (the clean `text` is for AI jobs;
@@ -793,17 +796,17 @@ export function alternateCandidateForCapture(
   return candidate;
 }
 
-export function sessionSummaryCreatedLabel(session: CaptureSession | null) {
-  if (!session) return "Created now";
+export function sessionSummaryCreatedLabel(session: CaptureSession | null, t: Translator) {
+  if (!session) return t("model.session.createdNow");
   const source = session.capturedAt || session.createdAt || session.dateLabel || session.time;
   const label = sessionDateTimeLabel(source, session.time);
-  return label ? `Created ${label}` : "Created recently";
+  return label ? t("model.session.createdAt", { label }) : t("model.session.createdRecently");
 }
 
-export function sessionSummaryUpdatedLabel(session: CaptureSession | null) {
+export function sessionSummaryUpdatedLabel(session: CaptureSession | null, t: Translator) {
   const source = session?.report?.updatedAt || session?.processingStatus?.updatedAt || session?.time;
   const label = sessionDateTimeLabel(source);
-  return `Updated ${label || "recently"}`;
+  return label ? t("model.session.updatedAt", { label }) : t("model.session.updatedRecently");
 }
 
 export function sessionDateTimeLabel(source?: string | null, fallbackTime?: string | null) {

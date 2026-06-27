@@ -30,7 +30,7 @@ export function PatientAssignmentSheet({
   const [searching, setSearching] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const trimmedQuery = query.trim();
-  const currentPatient = React.useMemo(() => currentSessionPatient(session), [session]);
+  const currentPatient = React.useMemo(() => currentSessionPatient(session, t), [session, t]);
   const currentAssignedPatient = currentPatient[0] || null;
   const localMatches = React.useMemo(() => filterPatientMatches(currentPatient, trimmedQuery), [currentPatient, trimmedQuery]);
   // Smart suggestions: patients already detected in this session's captures come first.
@@ -41,8 +41,8 @@ export function PatientAssignmentSheet({
   // Prefer the DB patient info the report carries; otherwise fetch it (covers sessions without
   // a report model — e.g. Basic, or before the first Pro report job runs).
   const [fetchedPatient, setFetchedPatient] = React.useState<StructuredPatientInformation | null>(null);
-  const reportDetails = patientDetailRows(session.report?.patientInformation);
-  const assignedDetails = reportDetails.length ? reportDetails : patientDetailRows(fetchedPatient);
+  const reportDetails = patientDetailRows(session.report?.patientInformation, t);
+  const assignedDetails = reportDetails.length ? reportDetails : patientDetailRows(fetchedPatient, t);
 
   React.useEffect(() => {
     if (!onSearchPatients) {
@@ -168,7 +168,7 @@ export function PatientAssignmentSheet({
                       ? t("assign.matchAssignedToVisit")
                       : detectedIds.has(patient.id)
                         ? t("assign.matchDetectedInSession")
-                        : t("assign.matchLastVisit", { date: formatLastVisit(patient.lastVisit) })}
+                        : t("assign.matchLastVisit", { date: formatLastVisit(patient.lastVisit, t) })}
                   </small>
                 </div>
                 <Button
