@@ -1,54 +1,13 @@
 {
   "src/features/account/AccountScreens.tsx": [
-    "AI models",
-    "Back",
-    "Clear local capture cache",
-    "Debug",
-    "How aggressively AI auto-assigns a close (fuzzy) name match.",
-    "Include brands in patient shares",
-    "Languages",
-    "Logout",
-    "Patient matching",
-    "Patient sharing",
-    "Plan",
-    "Profile",
-    "Promise",
-    "Role permissions",
-    "Saved",
-    "Settings",
-    "The app's interface + dates, how Engram transcribes audio, and how it writes the report.",
-    "What a curated patient share may include. Doses, lots, and the treatment table are always withheld.",
-    "Worker default"
-  ],
-  "src/features/account/PlanScreen.tsx": [
-    "Back",
-    "Current plan",
-    "Plan",
-    "Your current plan"
+    "Promise"
   ],
   "src/features/account/SwitchClinicScreen.tsx": [
-    "Back",
-    "Current",
-    "Promise",
-    "Switch clinic",
-    "You're a member of more than one clinic. Choose which one to work in."
+    "Promise"
   ],
   "src/features/account/TeamScreen.tsx": [
     ") : listError ? (",
-    ") : member.isSelf ? (",
-    "Add a member",
-    "Back",
-    "Create a teammate's account and share the temporary password with them. They sign in with their email.",
-    "Disabled",
-    "Email",
-    "For a new person (≥ 8 chars), to share with them. Leave blank if they already have a Engram account.",
-    "Full name",
-    "Loading…",
-    "Members",
-    "Owner",
-    "Role",
-    "Team",
-    "Temporary password"
+    ") : member.isSelf ? ("
   ],
   "src/features/aesthetics/AftercareTemplatesSettings.tsx": [
     "Add template",
@@ -98,29 +57,9 @@
   ],
   "src/features/aesthetics/SharePatientSheet.tsx": [
     ") : created ? (",
-    "A short summary for the patient",
-    "Aftercare instructions",
-    "Aftercare template",
-    "Always withheld: raw audio, internal notes, lot numbers, national ID, other visits.",
-    "Assessment",
-    "Before / after photos",
-    "Caption (optional)",
-    "Close",
-    "Done",
-    "No photos on file for this patient yet — capture some on a visit to share before/after.",
-    "Patient link",
-    "Preparing the share…",
     "Promise",
-    "Revoke access",
-    "Share with patient",
-    "Shared photo",
-    "Title",
-    "Visit summary",
     "What the patient sees",
-    "What we did",
-    "Your visit",
-    "[] as Array",
-    "auto-written from the report — editable"
+    "[] as Array"
   ],
   "src/features/aesthetics/TryProTeaser.tsx": [
     "Close",

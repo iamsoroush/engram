@@ -1830,7 +1830,7 @@ export function App() {
       commitAuth(next);
       navigateScreen(defaultScreenForAuth(next));
     } catch {
-      setAuthError("Could not sign in with that persona.");
+      setAuthError(appT("auth.toastCouldNotSignInPersona"));
     }
   };
 
@@ -1909,18 +1909,18 @@ export function App() {
         });
         setToast(
           changingPermissions
-            ? "Role permissions updated."
+            ? appT("settings.toastRolePermsUpdated")
             : changingStrictness
-              ? "Patient-matching preference updated."
-              : "Language preferences updated.",
+              ? appT("settings.toastMatchingUpdated")
+              : appT("settings.toastLanguageUpdated"),
         );
       } catch {
         setToast(
           changingPermissions
-            ? "Could not update role permissions."
+            ? appT("settings.toastCouldNotUpdateRolePerms")
             : changingStrictness
-              ? "Could not update matching preference."
-              : "Could not update language preferences.",
+              ? appT("settings.toastCouldNotUpdateMatching")
+              : appT("settings.toastCouldNotUpdateLanguage"),
         );
       }
     },
