@@ -15,7 +15,8 @@ import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
-import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
+import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
+import { isPersianLocale } from "../../../shared/lib/datetime";
 
 export function CaptureScreen({
   activeSession,
@@ -469,11 +470,20 @@ export function CaptureScreen({
                 {reportUpdatingLabel(activeSession)}
               </span>
             ) : null}
+            {/* Compact share affordance in the header (a share icon, not a full sentence on its own
+                row) — a curated clinic→patient action; opens the curate+preview sheet. */}
+            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
+              <button className="report-share-button" type="button" onClick={onShareVisit} aria-label="Share with patient" title="Share with patient">
+                <ShareIcon />
+                <span className="report-share-button-label">Share</span>
+              </button>
+            ) : null}
           </div>
         </div>
-        <div className="report-toolbar">
-          <div className="report-toolbar-actions">
-            {!useUnifiedLayout ? (
+        {/* Basic keeps the Captures / Live-report tab switch; Pro's unified layout has no toolbar row. */}
+        {!useUnifiedLayout ? (
+          <div className="report-toolbar">
+            <div className="report-toolbar-actions">
               <div className="report-view-switch" aria-label="Report view">
                 <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
                   Captures
@@ -486,14 +496,9 @@ export function CaptureScreen({
                   Live report
                 </button>
               </div>
-            ) : null}
-            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
-              <button className="report-share-button" type="button" onClick={onShareVisit}>
-                Share with patient
-              </button>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {assignmentOpen && activeSession && onAssignPatient ? (
           <PatientAssignmentSheet
             session={activeSession}
@@ -567,10 +572,9 @@ export function CaptureScreen({
             aftercare section so it reads "rate-after-reading" and never splits the clinical content;
             on mobile it's the last thing before the collapsible raw Sources. Pro report only. */}
         {useUnifiedLayout && onRateReport && activeSession && reportHasContent ? (
-          <ReportFeedbackBar
-            isPersian={Boolean(reportLanguage && reportLanguage.trim().toLowerCase().startsWith("fa"))}
-            onRate={(rating) => onRateReport(activeSession.id, rating)}
-          />
+          // The rating prompt is app chrome, so it follows the APP UI language (isPersianLocale),
+          // not the report's CONTENT language — a Persian report under an English app shows English.
+          <ReportFeedbackBar isPersian={isPersianLocale()} onRate={(rating) => onRateReport(activeSession.id, rating)} />
         ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,

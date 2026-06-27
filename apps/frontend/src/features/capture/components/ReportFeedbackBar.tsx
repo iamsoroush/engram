@@ -29,11 +29,12 @@ export function ReportFeedbackBar({
         <>
           <span className="report-feedback-prompt">{t.prompt}</span>
           <span className="report-feedback-actions">
-            <button type="button" className="report-feedback-btn" onClick={() => rate(1)} aria-label={t.up}>
-              <span aria-hidden="true">👍</span> {t.up}
+            {/* Icon-only thumbs — the label lives in aria-label/title (tooltip), not on the button. */}
+            <button type="button" className="report-feedback-btn" onClick={() => rate(1)} aria-label={t.up} title={t.up}>
+              👍
             </button>
-            <button type="button" className="report-feedback-btn" onClick={() => rate(-1)} aria-label={t.down}>
-              <span aria-hidden="true">👎</span> {t.down}
+            <button type="button" className="report-feedback-btn" onClick={() => rate(-1)} aria-label={t.down} title={t.down}>
+              👎
             </button>
           </span>
         </>

@@ -842,8 +842,11 @@ small {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-top: 16px;
-  padding-top: 12px;
+  /* Sits between the aftercare section and the collapsible Sources drawer; the bottom margin keeps
+     it from crowding Sources, the top divider separates it from the report content above, and the
+     horizontal padding aligns the prompt with the report body / aftercare text (which are inset). */
+  margin: 4px 0 18px;
+  padding: 16px 16px 0;
   border-top: 1px solid var(--color-border);
   font-size: 0.78rem;
   color: var(--color-muted);
@@ -864,14 +867,14 @@ small {
 .report-feedback-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
+  justify-content: center;
+  min-width: 40px;
+  padding: 5px 10px;
   border: 1px solid var(--color-border);
   border-radius: 999px;
   background: var(--color-surface, #fff);
-  color: var(--color-text-soft);
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 1.02rem;
+  line-height: 1;
   cursor: pointer;
 }
 .report-feedback-btn:hover {
@@ -1545,11 +1548,11 @@ small {
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -2684,10 +2687,16 @@ small {
    indicator is the only cue; no pointer-events block or dimming here. */
 
 .report-heading {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
+}
+.report-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .report-toolbar {
@@ -5344,11 +5353,11 @@ small {
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -5470,7 +5479,8 @@ small {
 .patient-context-avatar path,
 .report-title-icon path,
 .edit-patient-button path,
-.capture-action-icon path {
+.capture-action-icon path,
+.report-share-button path {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -5905,15 +5915,23 @@ small {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 13px;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-pill, 999px);
   background: transparent;
   color: var(--color-primary);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
+}
+.report-share-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.9;
+}
+.report-share-button-label {
+  line-height: 1;
 }
 .report-share-button:hover { background: color-mix(in srgb, var(--color-primary) 10%, #fff); }
 
@@ -5988,10 +6006,13 @@ small {
 .sources-drawer-chev {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.66rem;
-  color: #5a6b85;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #e7eefb;
+  font-size: 0.82rem;
+  line-height: 1;
+  color: #3b537e;
 }
 .sources-drawer-title {
   font-size: 0.86rem;
