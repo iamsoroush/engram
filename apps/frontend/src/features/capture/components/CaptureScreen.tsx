@@ -239,11 +239,14 @@ export function CaptureScreen({
       : [];
   const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0) + patientConflicts.length;
   const verifyRegionRef = React.useRef<HTMLDivElement>(null);
-  // "Review" jumps to the first thing needing confirmation: a carried-forward dose now lives inline on
-  // its treatment row in the report; patient-identity verification is the panel above the report.
+  // "Review" jumps to the TOPMOST unresolved item. Every counted blocker is reachable without opening
+  // the Sources drawer: patient conflicts + AI-created-patient identity live in the verify region
+  // (above the report), and a carried-forward dose lives inline on its treatment row in the report. The
+  // region (when present) is highest on the page, so it wins; otherwise the first inline dose row.
   const scrollToVerify = () => {
-    const target = document.querySelector(".treatment-item.needs-confirm") || verifyRegionRef.current;
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const region = verifyRegionRef.current;
+    const target = region || document.querySelector(".treatment-item.needs-confirm");
+    target?.scrollIntoView({ behavior: "smooth", block: region ? "start" : "center" });
   };
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
