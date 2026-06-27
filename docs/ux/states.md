@@ -66,6 +66,19 @@ Do not show `Failed` as a default state in normal memory surfaces. If something 
 
 ## Success
 
+Surface success **by exception** — a calm UI signals "all good" by the *absence* of warnings, not by a
+persistent confirmation. The Pro report has **no** standing "✓ Complete · captures processed, patient
+assigned, report up to date" line; completeness is already read from the `Complete` badge + the
+`✓ Reflects all N captures` freshness line. The underlying concerns surface only when they need
+attention, at their source:
+
+- **Captures still processing** → a calm `Organizing…` pulse on the **Sources** header (hidden once all
+  are processed).
+- **Report not up to date** → the `Updating · N of M captures not yet in this report` freshness line +
+  the header AI spark.
+- **No patient yet** → the patient card takes a **soft amber** attention state (never a red error —
+  capture-first / assign-when-ready stays non-blocking) with the primary `Assign` action.
+
 Examples:
 
 - `Saved.`

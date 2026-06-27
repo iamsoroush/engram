@@ -5716,8 +5716,12 @@ small {
   padding: 12px 14px;
 }
 
+/* Unassigned visit: a calm AMBER attention (matches the verify-bar palette), never a red error —
+   capture-first means "assign when ready" stays non-blocking; the amber + the primary Assign CTA
+   draw the eye without alarming. */
 .patient-context-card.unassigned {
-  background: var(--color-surface-soft);
+  background: #fff8ea;
+  border-color: #f0d49a;
 }
 
 .patient-context-avatar {
@@ -5732,8 +5736,8 @@ small {
 }
 
 .patient-context-card.unassigned .patient-context-avatar {
-  background: #eef2f9;
-  color: var(--color-muted);
+  background: #fdeccb;
+  color: #b07d1e;
 }
 
 .patient-context-avatar svg {
@@ -6008,6 +6012,22 @@ small {
   font-size: 0.82rem;
   line-height: 1;
   color: #3b537e;
+}
+.sources-drawer-organizing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2456d6;
+}
+.sources-organizing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: capture-status-pulse 1.45s ease-out infinite;
 }
 .sources-drawer-title {
   font-size: 0.86rem;

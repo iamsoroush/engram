@@ -187,6 +187,9 @@ export function CaptureScreen({
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
   const isUpdatingReport =
     isPro && (processingState === "processing" || activeSession?.report?.status === "generating" || captureBeingIncluded);
+  // Surface-by-exception: instead of a persistent "everything's fine" line, show a calm "Organizing…"
+  // pulse on the Sources header only while captures are still being processed into the report.
+  const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
@@ -591,6 +594,12 @@ export function CaptureScreen({
                 <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
                 <span className="sources-drawer-title">Sources</span>
                 <span className="sources-drawer-count">{captureCount}</span>
+                {sourcesProcessing ? (
+                  <span className="sources-drawer-organizing" aria-live="polite">
+                    <span className="sources-organizing-dot" aria-hidden="true" />
+                    Organizing…
+                  </span>
+                ) : null}
               </span>
               <span className="sources-drawer-types" aria-hidden="true">
                 {(["audio", "photo", "note"] as const).map((type) =>
@@ -606,15 +615,6 @@ export function CaptureScreen({
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>
         ) : null}
-        <div className="workspace-report-footer">
-          <div className="workspace-report-footer-copy">
-            {isUpdatingReport ? (
-              <span>{reportUpdatingLabel(activeSession)}</span>
-            ) : isPro && activeSession?.complete ? (
-              <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
-            ) : null}
-          </div>
-        </div>
       </Card>
       <SourcePreviewDialog
         item={selectedCapture}
