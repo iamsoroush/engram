@@ -10667,7 +10667,7 @@ small {
 .share-incl-copy { display: flex; flex-direction: column; min-width: 0; }
 .share-incl-copy b { font-size: 0.84rem; }
 .share-incl-copy span { font-size: 0.7rem; color: var(--color-muted); }
-.share-aftercare-select { width: auto; margin-left: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
+.share-aftercare-select { width: auto; margin-inline-start: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
 .share-toggle {
   flex: 0 0 auto;
   width: 36px;
@@ -10682,16 +10682,16 @@ small {
 .share-toggle span {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 17px;
   height: 17px;
   border-radius: 50%;
   background: #fff;
-  transition: left 140ms ease;
+  transition: inset-inline-start 140ms ease;
 }
 .share-toggle.on { background: var(--color-primary); }
-.share-toggle.on span { left: 17px; }
-.share-note-input { margin-left: 46px; }
+.share-toggle.on span { inset-inline-start: 17px; }
+.share-note-input { margin-inline-start: 46px; }
 .share-photo-thumb {
   flex: 0 0 auto;
   width: 46px;
@@ -10730,7 +10730,7 @@ small {
 .share-preview-photo img { width: 100%; height: 96px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: block; }
 .share-preview-photo figcaption { font-size: 0.68rem; color: var(--color-muted); margin-top: 3px; }
 .share-preview-note { margin: 0 0 9px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
-.share-preview-treatments { margin: 0 0 9px; padding-left: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
+.share-preview-treatments { margin: 0 0 9px; padding-inline-start: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
 .share-preview-aftercare h4 { margin: 0 0 3px; font-size: 0.8rem; }
 .share-preview-aftercare p { margin: 0; font-size: 0.82rem; color: var(--color-text-soft); line-height: 1.5; }
 .share-actions { display: flex; gap: 9px; margin-top: 14px; }

@@ -1885,6 +1885,7 @@ export function App() {
 
   const handleUpdateTenantSettings = React.useCallback(
     async (settings: {
+      appLanguage?: string;
       transcriptionLanguage?: string;
       reportLanguage?: string | null;
       matchStrictness?: string;
@@ -1900,6 +1901,8 @@ export function App() {
           ...currentAuth,
           tenant: {
             ...currentAuth.tenant,
+            // Propagate the app language so changing it LIVE re-renders <AppLangProvider> (no reload).
+            appLanguage: updated.appLanguage ?? settings.appLanguage ?? currentAuth.tenant.appLanguage,
             transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
             reportLanguage: updated.reportLanguage ?? null,
             matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,

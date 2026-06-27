@@ -697,6 +697,7 @@ export async function updateAiModels(apiFetch: ApiFetch, models: Record<string, 
 export async function updateTenantSettings(
   apiFetch: ApiFetch,
   settings: {
+    appLanguage?: string;
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
@@ -714,6 +715,7 @@ export async function updateTenantSettings(
     id: string;
     name: string;
     tier?: string;
+    appLanguage?: string;
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
