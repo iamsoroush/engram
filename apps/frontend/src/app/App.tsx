@@ -20,7 +20,7 @@ import type {
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
-import { AppLangProvider, toLang } from "../shared/i18n";
+import { AppLangProvider, toLang, translate, type Translator } from "../shared/i18n";
 import {
   assignSessionPatient,
   confirmCarriedForward,
@@ -168,6 +168,12 @@ export function App() {
   // dismissed (and the flag cleared) when they finish or skip the tour.
   const [onboardingDismissed, setOnboardingDismissed] = React.useState(false);
   const authRef = React.useRef<AuthSession | null>(null);
+  // App() renders ABOVE <AppLangProvider>, so it can't useT(); bind a translator to the live app
+  // language (via authRef, always current) for the capture-flow chrome/toasts produced here.
+  const appT = React.useCallback<Translator>(
+    (key, vars) => translate(toLang(authRef.current?.tenant.appLanguage), key, vars),
+    [],
+  );
   const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
@@ -960,7 +966,7 @@ export function App() {
     setSelectedSessionId("");
     setAssignmentSessionId("");
     navigateScreen("active-session");
-    setToast("New session ready.");
+    setToast(appT("capture.toastNewSessionReady"));
   };
 
   // AES-903 — worklist "Start visit": open a fresh session already assigned to the patient, mark the
@@ -985,7 +991,7 @@ export function App() {
         // Capture-for-patient: drop straight into the recorder/photo/note for the new visit.
         if (openCaptureKind) openCaptureDialog(openCaptureKind);
       } catch {
-        setToast("Could not start the visit.");
+        setToast(appT("capture.toastCouldNotStartVisit"));
       }
     },
     [apiFetch],
@@ -1061,8 +1067,8 @@ export function App() {
       processingStatus: {
         schemaVersion: session.processingStatus?.schemaVersion,
         state: "processing",
-        label: "Generating structured report",
-        detail: "Background AI is organizing the latest captures.",
+        label: appT("capture.generatingReport"),
+        detail: appT("capture.generatingReportDetail"),
         stage: "report",
         progress: session.processingStatus?.progress ?? null,
         canEdit: false,
@@ -1093,7 +1099,7 @@ export function App() {
         current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, processingSession) : session)),
       );
       setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, processingSession) : current));
-      setToast("Structured report is generating.");
+      setToast(appT("capture.toastReportGenerating"));
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
       if (authRef.current?.tenant.id) {
@@ -1138,7 +1144,7 @@ export function App() {
             payload: { title },
           });
         }
-        setToast("Session title updated.");
+        setToast(appT("capture.toastTitleUpdated"));
         return;
       }
       try {
@@ -1147,7 +1153,7 @@ export function App() {
           current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
         );
         setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
-        setToast("Session title updated.");
+        setToast(appT("capture.toastTitleUpdated"));
       } catch {
         if (authRef.current?.tenant.id) {
           await queueOperation({
@@ -1161,7 +1167,7 @@ export function App() {
           void processOutbox();
           return;
         }
-        setToast("Could not update title.");
+        setToast(appT("capture.toastCouldNotUpdateTitle"));
       }
     },
     [apiFetch],
@@ -1181,7 +1187,7 @@ export function App() {
           item: { ...current.item, title },
           session: updateLocalItem(current.session),
         }));
-        setToast("Capture renamed.");
+        setToast(appT("capture.toastCaptureRenamed"));
         return;
       }
       const updated = await updateCaptureTitle(apiFetch, captureId, title);
@@ -1203,7 +1209,7 @@ export function App() {
           ? { ...current, items: current.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
           : current,
       );
-      setToast("Capture renamed.");
+      setToast(appT("capture.toastCaptureRenamed"));
     },
     [apiFetch],
   );
@@ -1249,7 +1255,7 @@ export function App() {
           item: updateItem(current.item),
           session: updateSession(current.session),
         }));
-        setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+        setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
         const currentItem = activeSession?.id === sessionId ? activeSession.items.find((item) => item.id === captureId) : null;
         return currentItem ? updateItem(currentItem) : null;
       }
@@ -1270,7 +1276,7 @@ export function App() {
         session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(mergeCaptionUpdate) }) : session;
       setSessions((current) => current.map(updateBackendSession));
       setActiveSession((current) => (current?.id === sessionId ? updateBackendSession(current) : current));
-      setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+      setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
       return updated;
     },
     [activeSession?.id, activeSession?.items, apiFetch, auth?.user.displayName, auth?.user.email],
@@ -1286,7 +1292,7 @@ export function App() {
         setSessions((current) => current.map(removeLocalItem));
         setActiveSession((current) => (current?.id === sessionId ? removeLocalItem(current) : current));
         await removePendingCapture(captureId);
-        setToast("Capture deleted.");
+        setToast(appT("capture.toastCaptureDeleted"));
         return;
       }
       const updated = await deleteCapture(apiFetch, captureId);
@@ -1304,7 +1310,7 @@ export function App() {
       );
       // Deleting a capture regenerates the Pro live report; poll for the refreshed result.
       scheduleCaptureProcessingRefresh(sessionId);
-      setToast("Capture deleted. The live report is updating.");
+      setToast(appT("capture.toastCaptureDeletedUpdating"));
     },
     [apiFetch, scheduleCaptureProcessingRefresh],
   );
@@ -1321,7 +1327,7 @@ export function App() {
       setActiveSession((current) => (current?.id === sessionId ? applyItem(current) : current));
       // Marking relevant re-folds the capture into the Pro live report; poll for the refresh.
       scheduleCaptureProcessingRefresh(sessionId);
-      setToast("Marked relevant. The live report is updating.");
+      setToast(appT("capture.toastMarkedRelevant"));
     },
     [apiFetch, scheduleCaptureProcessingRefresh],
   );
@@ -1339,9 +1345,9 @@ export function App() {
       try {
         const updated = await confirmCarriedForward(apiFetch, sessionId, key);
         applySessionUpdate(sessionId, updated);
-        setToast("Dose confirmed.");
+        setToast(appT("capture.toastDoseConfirmed"));
       } catch {
-        setToast("Could not confirm the dose. Try again.");
+        setToast(appT("capture.toastCouldNotConfirmDose"));
       }
     },
     [apiFetch, applySessionUpdate],
@@ -1367,7 +1373,7 @@ export function App() {
         const updated = await setAftercareDismissed(apiFetch, sessionId, templateId, dismissed);
         applySessionUpdate(sessionId, updated);
       } catch {
-        setToast("Could not update aftercare. Try again.");
+        setToast(appT("capture.toastCouldNotUpdateAftercare"));
       }
     },
     [apiFetch, applySessionUpdate],
@@ -1950,7 +1956,7 @@ export function App() {
           .then((captures) => {
             setActiveSession((current) => (current?.id === session.id ? { ...session, items: captures } : current));
           })
-          .catch(() => setToast("Could not load captures for this session."));
+          .catch(() => setToast(appT("capture.toastCouldNotLoadCaptures")));
       }
       return;
     }
@@ -2032,7 +2038,7 @@ export function App() {
     if (!session) return;
     const nextSession: CaptureSession = {
       ...session,
-      reviewReason: session.reviewReason || "Current capture destination",
+      reviewReason: session.reviewReason || appT("capture.currentCaptureDestination"),
     };
     setSelectedSessionId("");
     setActiveSession(nextSession);
@@ -2042,9 +2048,9 @@ export function App() {
         .then((captures) => {
           setActiveSession((current) => (current?.id === session.id ? { ...nextSession, items: captures } : current));
         })
-        .catch(() => setToast("Could not load captures for this session."));
+        .catch(() => setToast(appT("capture.toastCouldNotLoadCaptures")));
     }
-    setToast("Add the next capture to this session.");
+    setToast(appT("capture.toastAddNext"));
   };
 
   const renderCurrentScreen = () => {
@@ -2100,11 +2106,11 @@ export function App() {
           onResumeCapture={() => {
             setActiveSession({
               ...selectedSession,
-              reviewReason: "Current capture destination",
+              reviewReason: appT("capture.currentCaptureDestination"),
             });
             setSelectedSessionId("");
             navigateScreen("active-session");
-            setToast("Add the next capture to this session.");
+            setToast(appT("capture.toastAddNext"));
           }}
           assignmentOpen={assignmentSessionId === selectedSession.id}
           onAssignPatient={assignPatientToSession}
@@ -2314,7 +2320,7 @@ export function App() {
       ) : null}
       <Shell
         auth={auth}
-        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient)}
+        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient, appT)}
         onCapture={beginCapture}
         onLogout={handleLogout}
         onReplayGuide={handleReplayGuide}
@@ -2406,13 +2412,14 @@ function isLocalAssignmentPatient(patientId: string) {
   return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
 }
 
-function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null) {
-  // On a patient's file the footer captures for *them* (a new visit) — make that explicit.
+function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null, t: Translator) {
+  // On a patient's file the footer captures for *them* (a new visit) — make that explicit. The patient
+  // NAME stays as data; only the surrounding chrome is translated.
   if (screen === "patients" && viewedPatient) {
-    return `Capturing for: ${viewedPatient.name} · new visit`;
+    return t("capture.capturingForNewVisit", { name: viewedPatient.name });
   }
-  const patient = session?.patientName || "Unassigned visit";
-  return `Capturing for: ${patient} · Today's visit`;
+  const patient = session?.patientName || t("capture.unassignedVisit");
+  return t("capture.capturingForToday", { name: patient });
 }
 
 function createClientSideId() {
