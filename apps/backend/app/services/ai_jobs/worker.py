@@ -54,6 +54,7 @@ from app.services.session_processing import (
     report_model_from_session_processing_output,
     session_processing_output_from_legacy_report,
 )
+from app.services.patient_safety import sync_patient_safety_flags
 from app.services.sessions import parse_uuid
 
 from app.services.ai_jobs.base import ai_job_payload, utc_now
@@ -971,11 +972,13 @@ def complete_session_worker_job(
         for key in ("patient_match", "patient_match_candidate")
         if session.patient_id is None and key in previous_metadata and key not in extracted_metadata
     }
-    # The clinician's carried-forward dose confirmations (Q3) and aftercare opt-outs are USER state,
-    # not AI output — a re-synthesis regenerates treatments/review but must not silently revert them
-    # (or the confirmed dose / removed aftercare reappears). Preserve both across regeneration.
+    # The clinician's carried-forward dose confirmations (Q3), aftercare opt-outs, and safety-flag
+    # rejections are USER state, not AI output — a re-synthesis regenerates treatments/review/flags but
+    # must not silently revert them (or the confirmed dose / removed aftercare / rejected safety flag
+    # reappears). Preserve all three across regeneration.
     prior_confirmed = previous_metadata.get("confirmed_carried_forward")
     prior_dismissed_aftercare = previous_metadata.get("dismissed_aftercare")
+    prior_rejected_safety_flags = previous_metadata.get("rejected_safety_flags")
     preserved_confirmations = {
         **(
             {"confirmed_carried_forward": [value for value in prior_confirmed if isinstance(value, str)]}
@@ -985,6 +988,11 @@ def complete_session_worker_job(
         **(
             {"dismissed_aftercare": [value for value in prior_dismissed_aftercare if isinstance(value, str)]}
             if isinstance(prior_dismissed_aftercare, list) and prior_dismissed_aftercare
+            else {}
+        ),
+        **(
+            {"rejected_safety_flags": [value for value in prior_rejected_safety_flags if isinstance(value, str)]}
+            if isinstance(prior_rejected_safety_flags, list) and prior_rejected_safety_flags
             else {}
         ),
     }
@@ -1021,6 +1029,13 @@ def complete_session_worker_job(
             else {}
         ),
     }
+    # Persist this visit's kept safety flags (allergy/contraindication/consent) onto the patient so
+    # they surface cross-visit at the point of care. Only when the synthesis produced the field — a
+    # skip sentinel (gateway-less / malformed) leaves the field absent so prior flags are untouched.
+    if session.patient_id is not None and isinstance(session.extracted_metadata.get("safety_flags"), list):
+        safety_patient = db.get(Patient, session.patient_id)
+        if safety_patient is not None:
+            sync_patient_safety_flags(safety_patient, session)
     session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     session.organization_source = OrganizationSource.ai_engine
     session.updated_at = completed_at

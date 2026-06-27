@@ -2,6 +2,7 @@ import React from "react";
 import type { LastVisitMedia, LineupCard as LineupCardModel, SessionContext } from "../../domain/appTypes";
 import { LineupCard } from "../memory/components/MemoryCards";
 import { formatDate } from "../../shared/lib/datetime";
+import { appT } from "../../shared/i18n";
 import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
@@ -30,10 +31,10 @@ export function SessionContextCard({
 }) {
   const [overlay, setOverlay] = React.useState<MediaOverlayState | null>(null);
   if (!context) return null;
-  const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts } = context;
+  const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts, safetyFlags } = context;
   const visit = lastVisit.hasPriorVisit ? lastVisit.visit : null;
-  // Nothing worth a card for a brand-new patient with no prior content or pinned facts.
-  if (!visit && !keyFacts && !(isPro && lineupCard)) return null;
+  // Nothing worth a card for a brand-new patient with no prior content, pinned facts, or safety flags.
+  if (!visit && !keyFacts && !safetyFlags.length && !(isPro && lineupCard)) return null;
 
   // Tapping a progress thumb compares that visit against the most recent OTHER one (before/after),
   // oldest on the left so progress reads left → right.
@@ -77,6 +78,23 @@ export function SessionContextCard({
           {totalPriorVisits > 0 ? ` · ${totalPriorVisits} prior` : " · new patient"}
         </span>
       </header>
+
+      {/* Cross-visit clinical safety flags (allergy/contraindication/consent) — highest priority, so
+          they sit at the top of the card. Reference only here (the per-visit opt-out lives at capture);
+          the flag body is report-language clinical content (never translated). */}
+      {safetyFlags.length ? (
+        <div className="session-context-safety" role="note" aria-label={appT("context.safety.aria")}>
+          <span className="session-context-safety-label">{appT("context.safety.label")}</span>
+          <ul className="session-context-safety-list">
+            {safetyFlags.map((flag) => (
+              <li key={flag.key} className={`session-context-safety-flag safety-${flag.kind}`} dir={textDir(flag.text)}>
+                <span className="session-context-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
+                <span className="session-context-safety-text">{flag.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {keyFacts ? (
         <p className="session-context-facts" dir={textDir(keyFacts)}>

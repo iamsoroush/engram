@@ -122,6 +122,19 @@ const en: Dict = {
   "onboarding.seePlan": "See the Pro plan",
   "onboarding.inviteTeam": "Invite your team",
   "onboarding.skip": "Skip the tour",
+
+  // Clinical safety flags (authed app; English-only for now — see appT). The flag BODY is clinical
+  // content in the report language and is never translated; only these labels are.
+  "safety.kind.allergy": "Allergy",
+  "safety.kind.contraindication": "Contraindication",
+  "safety.kind.consent": "Consent",
+  // Session-level safety panel (capture verify region; opt-out — auto-kept, reject if wrong)
+  "capture.safety.label": "Safety flags · this visit",
+  "capture.safety.hint": "Kept by default — reject any that's wrong.",
+  "capture.safety.reject": "Reject this flag",
+  // Cross-visit patient safety flags (session-context card + patient timeline)
+  "context.safety.label": "Safety",
+  "context.safety.aria": "Patient safety flags",
 };
 
 const fa: Dict = {
@@ -234,6 +247,18 @@ const fa: Dict = {
   "onboarding.seePlan": "مشاهدهٔ نسخهٔ Pro",
   "onboarding.inviteTeam": "دعوت هم‌تیمی‌ها",
   "onboarding.skip": "رد کردن راهنما",
+
+  // Clinical safety flags — only these labels are translated; the flag body is report-language content.
+  "safety.kind.allergy": "حساسیت",
+  "safety.kind.contraindication": "منع مصرف",
+  "safety.kind.consent": "رضایت",
+  // Session-level safety panel (opt-out — auto-kept, reject if wrong)
+  "capture.safety.label": "هشدارهای ایمنی · این ویزیت",
+  "capture.safety.hint": "به‌صورت پیش‌فرض نگه داشته می‌شود — موارد نادرست را رد کنید.",
+  "capture.safety.reject": "رد این مورد",
+  // Cross-visit patient safety flags
+  "context.safety.label": "ایمنی",
+  "context.safety.aria": "هشدارهای ایمنی بیمار",
 };
 
 export const MESSAGES: Record<Lang, Dict> = { en, fa };

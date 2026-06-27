@@ -25,6 +25,8 @@ import type {
   Persona,
   ClinicMember,
   RolePermissions,
+  SafetyFlag,
+  SafetyFlagKind,
   SessionContext,
   SmartPatientSearchResponse,
   WorklistEntry,
@@ -359,6 +361,23 @@ export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excl
   return normalizeLastVisit((await response.json()) as Record<string, unknown>, patientId);
 }
 
+const SAFETY_FLAG_KINDS: SafetyFlagKind[] = ["allergy", "contraindication", "consent"];
+
+/** Cross-visit patient safety flags ({key, kind, text}) from the session-context / memory payloads. */
+function normalizeSafetyFlags(raw: unknown): SafetyFlag[] {
+  if (!Array.isArray(raw)) return [];
+  const flags: SafetyFlag[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const kind = String(record.kind || "");
+    const text = String(record.text || "");
+    if (!text || !SAFETY_FLAG_KINDS.includes(kind as SafetyFlagKind)) continue;
+    flags.push({ key: String(record.key || `${kind}|${text.trim().toLowerCase().replace(/\s+/g, " ")}`), kind: kind as SafetyFlagKind, text });
+  }
+  return flags;
+}
+
 export async function fetchSessionContext(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<SessionContext> {
   const params = new URLSearchParams();
   if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
@@ -383,7 +402,19 @@ export async function fetchSessionContext(apiFetch: ApiFetch, patientId: string,
     totalPriorVisits: numberValue(payload.totalPriorVisits, 0),
     visitOrdinal: numberValue(payload.visitOrdinal, 1),
     keyFacts: stringOrNull(payload.keyFacts),
+    safetyFlags: normalizeSafetyFlags(payload.safetyFlags),
   };
+}
+
+/** Reject (×) — or re-accept — an auto-kept session safety flag (opt-out). Returns the updated session. */
+export async function rejectSafetyFlag(apiFetch: ApiFetch, sessionId: string, flagKey: string, rejected = true) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/safety-flag-rejection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flagKey, rejected }),
+  });
+  if (!response.ok) throw new Error("Could not update safety flag");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
 function normalizeAftercareTemplate(raw: Record<string, unknown>): AftercareTemplate {
@@ -569,6 +600,7 @@ export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: st
       payload.lineupCard && typeof payload.lineupCard === "object"
         ? normalizeLineupCard(payload.lineupCard as Record<string, unknown>)
         : null,
+    safetyFlags: normalizeSafetyFlags(payload.safetyFlags),
   };
 }
 

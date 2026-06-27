@@ -27,6 +27,7 @@ import {
   dismissAiPatientAction,
   isNotFoundError,
   postFeedback,
+  rejectSafetyFlag,
   setAftercareDismissed,
   unassignSessionPatient,
   checkDuplicatePatient,
@@ -1373,6 +1374,20 @@ export function App() {
     [apiFetch, applySessionUpdate],
   );
 
+  // Safety-flag opt-out: reject (×) an auto-kept safety flag this visit. Persisted, survives
+  // re-synthesis, and removes the flag from the patient's cross-visit store (backend re-syncs).
+  const rejectSafetyFlagFromSession = React.useCallback(
+    async (sessionId: string, flagKey: string) => {
+      try {
+        const updated = await rejectSafetyFlag(apiFetch, sessionId, flagKey);
+        applySessionUpdate(sessionId, updated);
+      } catch {
+        setToast("Could not update the safety flag. Try again.");
+      }
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
       if (draft.patientId) {
@@ -2178,6 +2193,7 @@ export function App() {
           onUseAsNote={composeNoteFromText}
           aftercareTemplates={aftercareTemplates}
           onDismissAftercare={dismissAftercareTemplate}
+          onRejectSafetyFlag={rejectSafetyFlagFromSession}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}

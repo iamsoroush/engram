@@ -28,8 +28,10 @@ from app.models import AiFeedbackEvent
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_KINDS = frozenset({"correction", "confirmation", "rating"})
-ALLOWED_OUTPUT_TYPES = frozenset({"transcript", "caption", "treatment", "patient_match", "report", "brief"})
+ALLOWED_KINDS = frozenset({"correction", "confirmation", "rating", "rejection"})
+ALLOWED_OUTPUT_TYPES = frozenset(
+    {"transcript", "caption", "treatment", "patient_match", "report", "brief", "safety_flag"}
+)
 
 # Keys whose values may carry patient PII; redacted before anything is persisted to `context`.
 _SENSITIVE_KEYS = frozenset(

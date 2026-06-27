@@ -1,4 +1,4 @@
-import type { CaptureDraft, PatientSummary, PendingCapture } from "../../domain/appTypes";
+import type { CaptureDraft, PatientSummary, PendingCapture, SafetyFlag, SafetyFlagKind } from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation } from "../../domain/types";
 import type { AftercareTemplate } from "../../domain/appTypes";
 import { appDateTimeFormat } from "../../shared/lib/datetime";
@@ -864,6 +864,44 @@ export function sessionAftercareSelections(session: CaptureSession | null): { ai
     selections.push({ templateId, status, note: metadataText(record.note) || null });
   }
   return { aiRan: true, selections };
+}
+
+const SAFETY_FLAG_KINDS: SafetyFlagKind[] = ["allergy", "contraindication", "consent"];
+
+/** Stable key for a detected safety flag — MUST match the backend `patient_safety.safety_flag_key`. */
+export function safetyFlagKey(kind: string, text: string): string {
+  return `${kind}|${text.trim().toLowerCase().replace(/\s+/g, " ")}`;
+}
+
+/** Safety flags (allergy/contraindication/consent) the synthesis detected for this visit, keyed. */
+export function sessionSafetyFlags(session: CaptureSession | null): SafetyFlag[] {
+  const raw = metadataRecord(session?.extractedMetadata).safety_flags;
+  if (!Array.isArray(raw)) return [];
+  const flags: SafetyFlag[] = [];
+  for (const entry of raw) {
+    const record = metadataRecord(entry);
+    const kind = metadataText(record.kind);
+    const text = metadataText(record.text);
+    if (!text || !SAFETY_FLAG_KINDS.includes(kind as SafetyFlagKind)) continue;
+    const sourceCaptureIds = Array.isArray(record.sourceCaptureIds)
+      ? record.sourceCaptureIds.map((value) => metadataText(value)).filter(Boolean)
+      : [];
+    flags.push({ key: safetyFlagKey(kind, text), kind: kind as SafetyFlagKind, text, sourceCaptureIds });
+  }
+  return flags;
+}
+
+/** Keys of safety flags the clinician rejected this visit (opt-out user state). */
+export function sessionRejectedSafetyFlags(session: CaptureSession | null): string[] {
+  const raw = metadataRecord(session?.extractedMetadata).rejected_safety_flags;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => metadataText(entry)).filter(Boolean);
+}
+
+/** Detected minus rejected — the safety flags shown by default (auto-kept). */
+export function sessionKeptSafetyFlags(session: CaptureSession | null): SafetyFlag[] {
+  const rejected = new Set(sessionRejectedSafetyFlags(session));
+  return sessionSafetyFlags(session).filter((flag) => !rejected.has(flag.key));
 }
 
 // Cross-language synonyms per aesthetics procedure, for matching the visit's extracted treatments

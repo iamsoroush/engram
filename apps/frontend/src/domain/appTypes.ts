@@ -243,6 +243,8 @@ export type PatientMemoryDetailResponse = {
   history?: PatientMemoryHistory | null;
   // Compact line-up card for the worklist recap (Pro; null for Basic / no captures).
   lineupCard?: LineupCard | null;
+  // Cross-visit clinical safety flags (allergy/contraindication/consent), surfaced on the timeline.
+  safetyFlags?: SafetyFlag[];
 };
 
 // --- Aesthetics-Basic deterministic services (docs/backend/aes-basic-api.md) ---
@@ -360,6 +362,24 @@ export type SessionContext = {
   visitOrdinal: number;
   /** Patient-pinned key facts (allergies/preferences) surfaced at top; null if none. */
   keyFacts: string | null;
+  /** Cross-visit clinical safety flags confirmed from prior visits' synthesis (deduped). */
+  safetyFlags: SafetyFlag[];
+};
+
+export type SafetyFlagKind = "allergy" | "contraindication" | "consent";
+
+/**
+ * A clinical safety flag (allergy / contraindication / consent) detected by the session synthesis.
+ * Auto-kept (opt-out): shown by default, the clinician only acts to reject a wrong one. `text` is
+ * clinical content in the report language and is NEVER translated (only the chrome around it is).
+ */
+export type SafetyFlag = {
+  /** Stable key (`<kind>|<normalized text>`); matches backend patient_safety.safety_flag_key. */
+  key: string;
+  kind: SafetyFlagKind;
+  text: string;
+  /** Captures that stated it (session-level detection); omitted on the cross-visit patient view. */
+  sourceCaptureIds?: string[];
 };
 
 /** AES-702 — a per-procedure deterministic aftercare instruction template. */

@@ -88,6 +88,19 @@ the photos** — never in clinical advice (see guardrail). The blocks below are 
   the AI**. Implement as an **extension of Job 4** (shares its context + triggers). This is the heart of the
   Pro experience — careful prompt design + the same eval scrutiny as extraction.
 
+### Safety flags (deterministic, cross-visit) — BUILT 2026-06-27
+
+The **Flags & safety** block's `(+ deterministic flags)` is now real and **does not depend on Job 4**.
+The Pro session synthesis emits a structured `safetyFlags: [{kind: allergy|contraindication|consent,
+text, sourceCaptureIds}]` (grounded — only what a capture states, in the report language, never
+invented). They are **opt-out** at capture (auto-kept; the clinician rejects a wrong one — see
+[capture.md](screens/capture.md)); the **non-rejected** flags are projected onto a dedicated
+`Patient.safety_flags` store (kept **out of** `patients.memory` so a Job-4 rebuild never wipes them).
+This store is surfaced here — in the session-context card's flags slot at **every future visit** (via
+`GET /patients/{id}/session-context` → `safetyFlags`) and on the patient timeline (`…/memory` →
+`safetyFlags`). Fully deterministic: no AI job runs to surface them; Job 4's memory-card flags layer on
+top when present. The clinical `text` is rendered verbatim (report language); only chrome is translated.
+
 ### Pro guardrails
 - **Curate freely, never prescribe.** The assistant may decide what's relevant, predict what the doctor
   will want, narrate **visible progress from photos**, and surface the patient's own cadence + the doctor's

@@ -13,10 +13,11 @@ import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
+import { appT } from "../../../shared/i18n";
 
 export function CaptureScreen({
   activeSession,
@@ -53,6 +54,7 @@ export function CaptureScreen({
   onUseAsNote,
   aftercareTemplates,
   onDismissAftercare,
+  onRejectSafetyFlag,
   offline = false,
   sessionOrdinal = null,
   currentUserId = null,
@@ -115,6 +117,8 @@ export function CaptureScreen({
   aftercareTemplates?: AftercareTemplate[];
   /** Opt an auto-included clinic aftercare template in/out of this visit (persisted). */
   onDismissAftercare?: (sessionId: string, templateId: string, dismissed: boolean) => Promise<void>;
+  /** Reject (×) an auto-kept session safety flag (opt-out, persisted). Not a verify-bar blocker. */
+  onRejectSafetyFlag?: (sessionId: string, flagKey: string) => Promise<void>;
   /** No connection / backend unreachable — gates the only sync indicators we show. */
   offline?: boolean;
   /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
@@ -238,6 +242,11 @@ export function CaptureScreen({
           .filter((conflict) => conflict.suggestion && !dismissedConflicts.has(conflict.captureId))
       : [];
   const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0) + patientConflicts.length;
+  // Session-level SAFETY flags (allergy/contraindication/consent) detected this visit. Auto-kept
+  // (opt-out): shown by default, the clinician acts only to reject a wrong one. Deliberately NOT part
+  // of `verifyCount` — safety is surfaced/prominent but requires no action, so it never gates the
+  // report ("warnings over blocking"). Errs toward inclusion: kept unless the clinician rejects it.
+  const keptSafetyFlags = !isHistorical ? sessionKeptSafetyFlags(activeSession) : [];
   const verifyRegionRef = React.useRef<HTMLDivElement>(null);
   // "Review" jumps to the TOPMOST unresolved item. Every counted blocker is reachable without opening
   // the Sources drawer: patient conflicts + AI-created-patient identity live in the verify region
@@ -454,6 +463,37 @@ export function CaptureScreen({
             ) : null}
           </span>
         </div>
+      ) : null}
+      {/* Session-level safety panel — highest priority, so it sits ABOVE the context card and the
+          verify region. Opt-out: every detected flag is shown by default; the × rejects a wrong one.
+          NOT a verify-bar blocker (not in verifyRegionRef, not counted). Flag body is report-language
+          clinical content (dir auto, never translated); only the chrome routes through appT. */}
+      {keptSafetyFlags.length ? (
+        <section className="session-safety-panel" aria-label={appT("capture.safety.label")}>
+          <div className="session-safety-head">
+            <span className="session-safety-label">{appT("capture.safety.label")}</span>
+            <span className="session-safety-hint">{appT("capture.safety.hint")}</span>
+          </div>
+          {keptSafetyFlags.map((flag) => (
+            <div className={`session-safety-flag safety-${flag.kind}`} key={flag.key}>
+              <span className="session-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
+              <p className="session-safety-text" dir={textDirection(flag.text)}>
+                {flag.text}
+              </p>
+              {onRejectSafetyFlag && !readOnly && activeSession ? (
+                <button
+                  className="session-safety-remove"
+                  type="button"
+                  aria-label={appT("capture.safety.reject")}
+                  title={appT("capture.safety.reject")}
+                  onClick={() => onRejectSafetyFlag(activeSession.id, flag.key)}
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </section>
       ) : null}
       {!isHistorical && activeSession?.patientId && sessionContext ? (
         <SessionContextCard

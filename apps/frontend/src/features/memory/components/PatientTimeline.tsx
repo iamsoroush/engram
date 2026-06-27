@@ -14,6 +14,7 @@ import { ClinicalMemoryReturnContext, PatientRowModel, TimelineSessionModel, ses
 import { BackIcon, CalendarIcon, EditPatientIcon, ShareSmallIcon, ChevronIcon, InfoIcon } from "./MemoryIcons";
 import { Avatar, PatientHistoryBlock, EmptyClinicalState, TimelineCaptureChips } from "./MemoryCards";
 import { PatientIdentityEditor } from "./MemorySheets";
+import { appT } from "../../../shared/i18n";
 
 export function PatientTimelineDetail({
   activeSession,
@@ -100,6 +101,22 @@ export function PatientTimelineDetail({
           </div>
         </div>
       </section>
+
+      {/* Cross-visit clinical safety flags — confirmed (non-rejected) across this patient's visits,
+          surfaced prominently at the top of their file. Flag body is report-language content. */}
+      {detail?.safetyFlags?.length ? (
+        <div className="patient-detail-safety" role="note" aria-label={appT("context.safety.aria")}>
+          <span className="patient-detail-safety-label">{appT("context.safety.label")}</span>
+          <ul className="patient-detail-safety-list">
+            {detail.safetyFlags.map((flag) => (
+              <li key={flag.key} className={`patient-detail-safety-flag safety-${flag.kind}`} dir="auto">
+                <span className="patient-detail-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
+                <span className="patient-detail-safety-text">{flag.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {(onUpdatePatient || onShare) && !editingPatient ? (
         <div className="patient-detail-actions">

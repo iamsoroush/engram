@@ -250,6 +250,12 @@ class Patient(Base):
     # updating_since, ready_at}. NULL = never generated yet (read paths fall back to the
     # deterministic rule-based summary). The richer `history` is generated on read, not stored.
     memory: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Session-derived clinical SAFETY FLAGS (allergy/contraindication/consent) confirmed for this
+    # patient: the non-rejected flags from each visit's synthesis, persisted here so they surface
+    # cross-visit at the point of care. Deterministic (no AI job) and kept OUT of `memory` so a
+    # Job-4 memory rebuild never wipes them. List of
+    # {key, kind, text, sourceSessionId, sourceCaptureIds, addedAt}; see services/patient_safety.py.
+    safety_flags: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     status: Mapped[PatientStatus] = mapped_column(
         pg_enum(PatientStatus, "patient_status"), nullable=False, default=PatientStatus.active
     )

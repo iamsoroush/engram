@@ -12,6 +12,7 @@ from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSour
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 from app.services.feedback import record_feedback_event
+from app.services.patient_safety import session_detected_safety_flags, sync_patient_safety_flags
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -322,6 +323,59 @@ def set_aftercare_dismissed(
     metadata["dismissed_aftercare"] = dismissed_ids
     session.extracted_metadata = metadata
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.dismiss_aftercare", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
+def set_safety_flag_rejected(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, flag_key: str, rejected: bool
+) -> dict[str, Any]:
+    """Record whether a detected session safety flag was rejected by the clinician (opt-out).
+
+    Safety flags (allergy/contraindication/consent) detected by the synthesis are auto-kept and shown
+    by default; the clinician acts only to REJECT a wrong one. The rejected flag's stable ``flag_key``
+    is stored in ``extracted_metadata.rejected_safety_flags`` so it stays rejected across re-synthesis
+    and reloads (user state, not AI output). Re-accepting (``rejected=False``) clears it. The patient's
+    cross-visit safety store is re-synced from the visit's kept flags, and a rejection is harvested as
+    an AI-feedback signal (the rejected flag IS the eval target). User state, not AI output.
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't change its safety flags.",
+        )
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    rejected_keys = [str(value) for value in (metadata.get("rejected_safety_flags") or []) if isinstance(value, str)]
+    if rejected and flag_key not in rejected_keys:
+        rejected_keys.append(flag_key)
+    elif not rejected:
+        rejected_keys = [value for value in rejected_keys if value != flag_key]
+    metadata["rejected_safety_flags"] = rejected_keys
+    session.extracted_metadata = metadata
+    if rejected:
+        # A rejection is a failure signal: the synthesis surfaced a wrong safety flag. Harvest it (the
+        # rejected flag text is the eval target) so the safety-flags eval gathers real negatives.
+        rejected_flag = next((flag for flag in session_detected_safety_flags(session) if flag["key"] == flag_key), None)
+        record_feedback_event(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            kind="rejection",
+            ai_output_type="safety_flag",
+            before_value=rejected_flag["text"] if rejected_flag else None,
+            session_id=session.id,
+            patient_id=session.patient_id,
+            context={"action": "reject_safety_flag", "key": flag_key, "flagKind": rejected_flag["kind"] if rejected_flag else None},
+        )
+    # Re-project this visit's kept flags onto the patient so the rejection (or re-accept) is reflected
+    # cross-visit immediately.
+    if session.patient_id is not None:
+        patient = db.get(Patient, session.patient_id)
+        if patient is not None:
+            sync_patient_safety_flags(patient, session)
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.reject_safety_flag", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
     return session_payload(session, db)

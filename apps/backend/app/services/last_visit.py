@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.models import Capture, CaptureStatus, CaptureType, Session
+from app.services.patient_safety import patient_safety_flags_payload
 from app.services.patients import AI_CREATED_PATIENT_NOTE, get_patient
 from app.services.sessions import parse_uuid
 
@@ -264,4 +265,7 @@ def get_session_context(
         "totalPriorVisits": total_prior_visits,
         "visitOrdinal": total_prior_visits + 1,
         "keyFacts": key_facts,
+        # Cross-visit clinical safety flags (allergy/contraindication/consent) confirmed from prior
+        # visits' synthesis — surfaced prominently at every future visit's point of care.
+        "safetyFlags": patient_safety_flags_payload(patient),
     }

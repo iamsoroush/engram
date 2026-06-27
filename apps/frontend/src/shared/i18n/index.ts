@@ -61,6 +61,23 @@ export function translate(lang: Lang, key: string, vars?: Record<string, string 
 
 export type Translator = (key: string, vars?: Record<string, string | number>) => string;
 
+/**
+ * Language for the AUTHENTICATED clinic app. English-only for now (see messages.ts) — but new authed
+ * chrome must still go through the catalog so it is translatable, not a hardcoded regression for the
+ * Persian-UI work. When the authed app is wired to a live language, this is the single swap point.
+ */
+export const APP_LANG: Lang = "en";
+
+/**
+ * Translator for the authenticated app. Resolves against {@link APP_LANG} today, but every key it
+ * reads lives in the shared catalog in both en + fa, so the Persian copy is already in place. Use this
+ * for NEW authed chrome instead of hardcoding literals; clinical content (report-language text such as
+ * a safety flag's body) is NOT chrome and is rendered verbatim, never through a translator.
+ */
+export function appT(key: string, vars?: Record<string, string | number>): string {
+  return translate(APP_LANG, key, vars);
+}
+
 export interface UiLang {
   lang: Lang;
   setLang: (lang: Lang) => void;

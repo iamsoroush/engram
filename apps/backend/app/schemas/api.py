@@ -154,6 +154,8 @@ class PatientMemoryDetailResponse(BaseModel):
     # Pro line-up projection (storySoFar/rightNow/flags/hero/sinceLastVisit/status). Built by the
     # service; passthrough dict so the session context card can surface the curated brief.
     lineupCard: dict[str, Any] | None = None
+    # Cross-visit clinical safety flags (allergy/contraindication/consent): [{key, kind, text}].
+    safetyFlags: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AiModelConfigUpdate(BaseModel):

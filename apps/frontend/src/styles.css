@@ -5993,6 +5993,132 @@ small {
   font-weight: 800;
 }
 
+/* Session-level SAFETY panel — highest-priority, calm red/amber strip above the verify region.
+   Opt-out: each detected allergy/contraindication/consent flag is shown by default; the × rejects a
+   wrong one. NOT a verify-bar blocker (requires no action). Flag body is report-language content. */
+.session-safety-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid #f1b7ad;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff4f1, #fdeae6);
+}
+.session-safety-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.session-safety-label {
+  color: #a4321f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.session-safety-hint {
+  color: #9a6a5e;
+  font-size: 0.72rem;
+}
+.session-safety-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid #f3cabf;
+  border-radius: 12px;
+  background: #fff;
+}
+.session-safety-kind {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+.session-safety-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: #2a1d1a;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.session-safety-remove {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #b08079;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.session-safety-remove:hover { background: #fdeaea; color: #c0392b; }
+
+/* Per-kind chip tint (shared by the capture panel, context card, and timeline). */
+.safety-allergy .session-safety-kind, .session-context-safety-flag.safety-allergy .session-context-safety-kind,
+.safety-allergy.session-safety-flag .session-safety-kind { background: #fde4e0; color: #b3271a; }
+.safety-contraindication .session-safety-kind { background: #fdeccc; color: #9a6212; }
+.safety-consent .session-safety-kind { background: #dcecfb; color: #1f5d9a; }
+
+/* Cross-visit safety flags on the session-context card + patient timeline (reference, read-only). */
+.session-context-safety, .patient-detail-safety {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #f1b7ad;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff4f1, #fdeae6);
+}
+.patient-detail-safety { margin-bottom: 14px; }
+.session-context-safety-label, .patient-detail-safety-label {
+  color: #a4321f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.session-context-safety-list, .patient-detail-safety-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.session-context-safety-flag, .patient-detail-safety-flag {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.session-context-safety-kind, .patient-detail-safety-kind {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: #fde4e0;
+  color: #b3271a;
+}
+.safety-contraindication .session-context-safety-kind, .safety-contraindication .patient-detail-safety-kind { background: #fdeccc; color: #9a6212; }
+.safety-consent .session-context-safety-kind, .safety-consent .patient-detail-safety-kind { background: #dcecfb; color: #1f5d9a; }
+.session-context-safety-text, .patient-detail-safety-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #2a1d1a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .sources-drawer {
   border-top: 1px solid #e6edf7;
   background: #f7faff;

@@ -13,6 +13,20 @@ Primary working screen for building and reviewing a session from audio, photo, a
 >
 > **Pro session unified into one living report (FB8, 2026-06-23).** For **Pro**, the `Captures`/`Live report` tabs are gone: the synthesized **report is the primary surface**, the raw captures are demoted to a collapsible **"Sources · N captures"** drawer beneath it (auto-expanded while the report is still empty; all capture edit/delete/reassign/open affordances unchanged), and a sticky **"N to confirm"** verify bar at the top drives verification. The bar counts **blockers only** — unconfirmed carried-forward doses + AI-created-patient identity — and "Review" jumps to the first inline confirm. Soft extraction gaps (low confidence, missing lot) render as quiet inline flags on the treatment row with a **"Fix at source"** deep-link that opens the Sources drawer (correct the originating capture; the AI re-extracts — no direct treatment-field edit). **Basic is unchanged** (keeps the `Captures`/`Live report` tabs — it has no synthesis to make primary). Components: `SessionVerifyBar`, the `sources-drawer`, and `TreatmentsList`'s inline confirm + `Fix at source`.
 >
+> **Session safety flags (opt-out, 2026-06-27).** The Pro synthesis detects clinical **safety flags**
+> from the captures — **allergy / contraindication / consent** statements the clinician actually made —
+> and surfaces them as a calm red/amber **Safety panel** rendered **above** the verify region (safety is
+> highest priority). They are **opt-out**: every detected flag is shown and **kept by default**; the
+> clinician acts only to **Reject (×)** a wrong one. The panel is **not a verify-bar blocker** — it
+> requires no action and never gates the report ("warnings over blocking"). A rejection persists in
+> `extracted_metadata.rejected_safety_flags` (stable key), **survives re-synthesis**, and is logged as an
+> AI-feedback signal (eval-epic §1b). Non-rejected flags persist to the **patient** and surface
+> **cross-visit** in the [session-context card](../redesign-session-context.md) flags slot and the patient
+> timeline at every future visit. The flag **body is clinical content in the report language and is never
+> translated** — only the chrome routes through the shared i18n seam. Endpoint:
+> `POST /sessions/{id}/safety-flag-rejection`. Components: the `session-safety-panel` (CaptureScreen),
+> `sessionKeptSafetyFlags` (captureModel), and the `SessionContextCard` safety slot.
+>
 > **Patient-conflict resolution lifted to the session level (2026-06-27).** A dictated different/
 > partial-match patient is a session blocker, not a feed detail — so the resolver (Keep match / Create
 > new / Choose another / Edit) now renders in the **verify region above the report** as a "Patient needs
@@ -118,6 +132,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - `POST /api/v1/captures`
 - `POST /api/v1/sessions/{session_id}/save`
 - `POST /api/v1/sessions/{session_id}/assign-patient`
+- `POST /api/v1/sessions/{session_id}/safety-flag-rejection`
 - `POST /api/v1/sessions/{session_id}/verify`
 - `GET /api/v1/patients`
 - `POST /api/v1/patients`

@@ -112,6 +112,7 @@ from app.services.sessions import (
     assign_session_patient,
     confirm_carried_forward_dose,
     set_aftercare_dismissed,
+    set_safety_flag_rejected,
     create_session,
     get_session,
     list_session_artifacts,
@@ -605,6 +606,18 @@ def set_aftercare_dismissal_route(
 ) -> dict[str, Any]:
     """Opt a clinic aftercare template (auto-included for a matched procedure) in/out of this visit."""
     return set_aftercare_dismissed(db, principal, session_id, templateId, dismissed)
+
+
+@api_v1.post("/sessions/{session_id}/safety-flag-rejection")
+def set_safety_flag_rejection_route(
+    session_id: str,
+    flagKey: str = Body(..., embed=True),
+    rejected: bool = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Reject (or re-accept) an auto-kept session safety flag (allergy/contraindication/consent)."""
+    return set_safety_flag_rejected(db, principal, session_id, flagKey, rejected)
 
 
 @api_v1.post("/sessions/{session_id}/save")
