@@ -203,6 +203,35 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expect": {"noLatinWords": True, "allowLatin": ["Juvederm"]},
         "expectGatesPass": True,
     },
+    {
+        "name": "decimal/half dose accepted (نیم and ۰.۵)",
+        "transcript": "نیم سی‌سی ژل توی لب، یعنی حدوداً ۰.۵ سی‌سی",
+        "language": "fa",
+        "expect": {"containsAny": [["نیم", "0.5"]], "numbers": [0.5], "noLatinWords": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "one-and-a-half as digits (۱.۵) passes the numbers gate",
+        "transcript": "یک و نیم سی‌سی ژل، ۱.۵ سی‌سی",
+        "language": "fa",
+        "expect": {"numbers": [1.5]},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "negation preserved — «انجام نشد» must not false-match «انجام شد»",
+        "transcript": "امروز فقط مشاوره بود و تزریق انجام نشد",
+        "language": "fa",
+        "expect": {"containsFa": ["نشد"], "forbidden": ["انجام شد"], "noLatinWords": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "cross-unit error caught — botox is dosed in واحد, never سی‌سی",
+        "transcript": "بیست سی‌سی بوتاکس روی پیشانی",
+        "language": "fa",
+        "expect": {"forbidden": ["سی‌سی"]},
+        "expectGatesPass": False,
+        "expectReasonContains": "forbidden",
+    },
 ]
 
 # Judge smoke cases: synthetic (reference, candidate) text pairs that exercise the LLM judge so the

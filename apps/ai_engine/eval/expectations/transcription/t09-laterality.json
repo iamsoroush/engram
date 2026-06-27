@@ -1,0 +1,12 @@
+{
+  "said": "فقط گونه راست رو تزریق کردم، سمت چپ هیچی نزدم.",
+  "expect": {
+    "containsFa": ["راست"],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "completeness"],
+    "minScore": 0.7
+  }
+}

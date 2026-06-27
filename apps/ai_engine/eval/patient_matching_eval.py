@@ -106,6 +106,14 @@ def run_gates(output: dict[str, Any], expect: dict[str, Any]) -> list[str]:
     if expect.get("nationalId") and not contains(patient.get("national_id") or "", expect["nationalId"]):
         problems.append(f"national_id {expect['nationalId']!r} not extracted (got {patient.get('national_id')!r})")
 
+    if expect.get("phone") and not contains(patient.get("phone") or "", expect["phone"]):
+        problems.append(f"phone {expect['phone']!r} not extracted (got {patient.get('phone')!r})")
+
+    # A name that must NOT be extracted (e.g. a name from prior CONTEXT the clip didn't actually speak).
+    for token in expect.get("nameAbsent", []):
+        if contains(raw or "", token) or contains(standardized or "", token):
+            problems.append(f"name {token!r} extracted but was not spoken in THIS clip (context bleed)")
+
     return problems
 
 
@@ -131,11 +139,12 @@ def judge_transliteration(reference: str, candidate: str) -> dict[str, Any]:
 # --- Synthetic cases ------------------------------------------------------------------------------
 
 def _output(raw: str | None, standardized: str | None, *, present: bool = False, basis: str | None = None,
-            national_id: str | None = None) -> dict[str, Any]:
+            national_id: str | None = None, phone: str | None = None) -> dict[str, Any]:
     assignment = {"present": present, "basis": basis, "confidence": 0.5, "evidence": None} if present or basis else {"present": False}
     return {
         "transcript": raw or "",
-        "patient_information": {"raw_mentioned_name": raw, "standardized_display_name": standardized, "national_id": national_id},
+        "patient_information": {"raw_mentioned_name": raw, "standardized_display_name": standardized,
+                               "national_id": national_id, "phone": phone},
         "intents": {"assignment": assignment},
     }
 
@@ -185,6 +194,43 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "output": {"patient_information": {"raw_mentioned_name": None, "standardized_display_name": None, "national_id": "0012345678"}, "intents": None},
         "expect": {"nationalId": "0012345678"},
         "expectGatesPass": True,
+    },
+    {
+        "name": "first-name only mention → extracted, basis implicit (must surface, not auto-assign)",
+        "output": _output("سارا", "Sara", present=True, basis="implicit"),
+        "expect": {"nameContains": ["سارا"], "basisNot": "explicit", "noLatinInName": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "title + last name → extracted, implicit",
+        "output": _output("خانم محمدی", "Khanom Mohammadi", present=True, basis="implicit"),
+        "expect": {"nameContains": ["محمدی"], "basisNot": "explicit"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "explicit reassignment/correction ('change to X') → basis explicit OK",
+        "output": _output("سارا محمدی", "Sara Mohammadi", present=True, basis="explicit"),
+        "expect": {"nameContains": ["محمدی"], "assignmentPresent": True, "basis": "explicit"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "phone dictated → extracted (normalized)",
+        "output": _output(None, None, phone="+989121234567"),
+        "expect": {"phone": "9121234567"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "no name spoken, but a prior-context name must NOT be extracted (nameAbsent)",
+        "output": _output(None, None),
+        "expect": {"nameAbsent": ["نگار", "محمدی"]},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "nameAbsent FAILS when a context name bled into extraction",
+        "output": _output("نگار محمدی", "Negar Mohammadi"),
+        "expect": {"nameAbsent": ["نگار"]},
+        "expectGatesPass": False,
+        "expectReasonContains": "context bleed",
     },
 ]
 

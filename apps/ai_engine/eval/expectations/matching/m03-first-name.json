@@ -1,0 +1,13 @@
+{
+  "_note": "First name only → extracted, basis IMPLICIT (must surface a candidate for confirmation, never auto-assign on a partial name).",
+  "said": "بیمار سارا.",
+  "expect": {
+    "nameContains": ["سارا"],
+    "basisNot": "explicit",
+    "noLatinInName": true
+  },
+  "judge": {
+    "dimensions": ["transliterationQuality"],
+    "minScore": 0.7
+  }
+}

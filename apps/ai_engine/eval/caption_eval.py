@@ -108,6 +108,16 @@ def run_gates(caption_result: dict[str, Any], expect: dict[str, Any]) -> list[st
         if isinstance(ooc, dict) and ooc.get("present") is True:
             problems.append(f"flagged out-of-context but should be clinical (reason={ooc.get('reason')!r})")
 
+    if expect.get("expectOutOfContext"):
+        ooc = caption_result.get("outOfContext")
+        if not (isinstance(ooc, dict) and ooc.get("present") is True):
+            problems.append("expected an out-of-context flag (non-clinical image) but none present")
+
+    if expect.get("phase"):
+        actual = (caption_result.get("pairing") or {}).get("phase")
+        if actual != expect["phase"]:
+            problems.append(f"pairing.phase {actual!r}≠{expect['phase']!r} (before/after mislabeled)")
+
     return problems
 
 
@@ -201,6 +211,33 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expect": {"notOutOfContext": True},
         "expectGatesPass": False,
         "expectReasonContains": "out-of-context",
+    },
+    {
+        # Boundary: objective FINDINGS (bruise/swelling) are allowed; only an assessment of them isn't.
+        "name": "objective bruise/swelling PASSES noDiagnosis (findings, not a diagnosis)",
+        "result": {"caption": "کبودی و تورم در محل تزریق گونه چپ قابل مشاهده است", "pairing": {"isProductLabel": False}, "outOfContext": None},
+        "expect": {"noDiagnosis": True, "containsFa": ["کبودی"]},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "severity word FAILS noDiagnosis («شدید»)",
+        "result": {"caption": "کبودی شدید در محل تزریق", "pairing": {}, "outOfContext": None},
+        "expect": {"noDiagnosis": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "diagnostic language",
+    },
+    {
+        "name": "non-clinical screenshot → expectOutOfContext flag set",
+        "result": {"caption": "اسکرین‌شات یک پیام", "pairing": {},
+                   "outOfContext": {"present": True, "reason": "screenshot", "confidence": 0.95}},
+        "expect": {"expectOutOfContext": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "before-phase label checked on a patient photo",
+        "result": {"caption": "نمای گونه چپ قبل از درمان", "pairing": {"isProductLabel": False, "phase": "before"}, "outOfContext": None},
+        "expect": {"phase": "before", "isProductLabel": False},
+        "expectGatesPass": True,
     },
 ]
 

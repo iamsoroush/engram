@@ -1,0 +1,14 @@
+{
+  "said": "بیمار به لیدوکائین حساسیت داره، حتماً ثبت بشه.",
+  "expect": {
+    "containsAny": [["لیدوکائین", "lidocaine"]],
+    "containsFa": ["حساسیت"],
+    "noLatinWords": true,
+    "allowLatin": ["lidocaine"],
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "completeness", "noHallucination"],
+    "minScore": 0.7
+  }
+}

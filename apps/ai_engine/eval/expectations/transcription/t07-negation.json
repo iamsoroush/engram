@@ -1,0 +1,13 @@
+{
+  "said": "امروز تزریق انجام نشد، فقط معاینه بود.",
+  "expect": {
+    "containsFa": ["نشد", "معاینه"],
+    "forbidden": ["انجام شد"],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "completeness", "noHallucination"],
+    "minScore": 0.7
+  }
+}

@@ -192,6 +192,26 @@ CONSULT = {
     "visits": [{"date": "2026-06-10", "brief": "فقط مشاوره درباره فیلر لب. هیچ درمانی انجام نشد.", "treatments": []}],
 }
 
+# Allergy recorded in an EARLY visit; the latest visit doesn't repeat it → the flag must PERSIST.
+ALLERGIC_HISTORY = {
+    "display_name": "لیلا کریمی",
+    "priorMemory": {"summary": "بیمار سابقه حساسیت به لیدوکائین دارد."},
+    "visits": [
+        {"date": "2026-03-01", "brief": "ویزیت اول؛ بوتاکس پیشانی. حساسیت به لیدوکائین ثبت شد.",
+         "treatments": [{"product": "بوتاکس", "quantity": 20, "unit": "واحد", "area": "پیشانی"}]},
+        {"date": "2026-06-05", "brief": "ویزیت پیگیری؛ یک سی‌سی فیلر گونه چپ. بیمار راضی بود.",
+         "treatments": [{"product": "ژل", "quantity": 1, "unit": "سی‌سی", "area": "گونه چپ"}]},
+    ],
+}
+
+CONSENT = {
+    "display_name": "زهرا نوری",
+    "priorMemory": None,
+    "visits": [{"date": "2026-06-12",
+                "brief": "مشاوره فیلر لب. بیمار رضایت‌نامه عکس را امضا نکرد و نخواست از او عکس گرفته شود.",
+                "treatments": []}],
+}
+
 CASES: list[dict[str, Any]] = [
     {
         "name": "two visits → recalls Voluma 0.3, no name leak, no invented flags",
@@ -213,6 +233,19 @@ CASES: list[dict[str, Any]] = [
         "patient": CONSULT,
         "expect": {"requireCard": True, "noName": ["مریم", "رضایی"], "noLatinWords": True, "flagsEmpty": True,
                    "forbidden": ["بوتاکس", "تزریق شد"]},
+        "judge": True,
+    },
+    {
+        "name": "allergy from an earlier visit PERSISTS as a flag (longitudinal carry)",
+        "patient": ALLERGIC_HISTORY,
+        "expect": {"requireCard": True, "noName": ["لیلا", "کریمی"], "noLatinWords": True,
+                   "flagsKind": ["allergy"], "containsAny": [["لیدوکائین", "lidocaine"]]},
+        "judge": True,
+    },
+    {
+        "name": "consent decision surfaces as a flag",
+        "patient": CONSENT,
+        "expect": {"requireCard": True, "noName": ["زهرا", "نوری"], "noLatinWords": True, "flagsKind": ["consent"]},
         "judge": True,
     },
 ]

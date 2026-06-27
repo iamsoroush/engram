@@ -1,0 +1,7 @@
+{
+  "_todo": "Two patients are named in one breath. Set nameContains to whichever (if any) is THIS session's patient, or leave it out. The keystone is basisNot=explicit: an ambiguous two-name clip must never be silently auto-assigned.",
+  "said": "بعد از خانم احمدی، نوبت خانم محمدیه.",
+  "expect": {
+    "basisNot": "explicit"
+  }
+}
