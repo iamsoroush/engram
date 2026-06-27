@@ -10,13 +10,13 @@ from prometheus_client import Counter
 
 # Incremented on the server-side error path of a capture upload (capture-first promise).
 capture_uploads_failed_total = Counter(
-    "notari_capture_uploads_failed_total",
+    "engram_capture_uploads_failed_total",
     "Capture uploads that failed server-side.",
 )
 
 # Incremented on AI-job completion/failure, labelled by terminal status.
 ai_jobs_total = Counter(
-    "notari_ai_jobs_total",
+    "engram_ai_jobs_total",
     "AI processing jobs by terminal status.",
     ["status"],
 )

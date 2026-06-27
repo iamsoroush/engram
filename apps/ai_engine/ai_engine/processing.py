@@ -304,7 +304,7 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
         for part in (
             configured_prompt if configured_prompt and configured_prompt != "Transcribe this audio." else None,
             (
-                f"You are transcribing and extracting clinical identity details for Memara, a clinical memory system. The clinical setting is a {label}. "
+                f"You are transcribing and extracting clinical identity details for Engram, a clinical memory system. The clinical setting is a {label}. "
                 "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
                 f"{language_directive} "
                 "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
@@ -529,7 +529,7 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
     findings_hint = f" (e.g. {', '.join(caption_findings)})" if caption_findings else ""
     return "\n\n".join(
         (
-            f"You describe photos for Memara, a clinical memory system, turning each photo into a faithful "
+            f"You describe photos for Engram, a clinical memory system, turning each photo into a faithful "
             f"text description that can stand in for the image in later processing. The setting is a {label}. "
             "You are an OBJECTIVE describer, not a diagnostician.",
             (
@@ -1655,7 +1655,7 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
     section_lines = "; ".join(f"{section_id} ({title})" for section_id, title in SYNTHESIS_SECTIONS)
     return "\n\n".join(
         (
-            f"You are Memara, synthesizing ONE per-visit clinical report and extracting the performed "
+            f"You are Engram, synthesizing ONE per-visit clinical report and extracting the performed "
             f"treatments for a {label}. Work only from the provided captures (audio transcripts, photo "
             f"captions, and raw text notes) and the prior visit context. Invent nothing.",
             (
@@ -2014,7 +2014,7 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     )
     return "\n\n".join(
         (
-            "You are Memara, a calm clinical assistant that maintains a patient's longitudinal memory. "
+            "You are Engram, a calm clinical assistant that maintains a patient's longitudinal memory. "
             f"The clinical setting is a {label}.",
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
@@ -2152,7 +2152,7 @@ def qa_draft_prompt(payload: dict[str, Any]) -> str:
     qa = payload.get("qaDraft") if isinstance(payload.get("qaDraft"), dict) else {}
     return "\n\n".join(
         (
-            "You are Memara, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
+            "You are Engram, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
             "between-visits question. The doctor will review and edit before sending.",
             (
                 "Write a warm, concise reply (2-4 sentences) in the patient's voice-appropriate register. "
@@ -2241,7 +2241,7 @@ def qa_revise_prompt(payload: dict[str, Any]) -> str:
     qa = payload.get("qaRevise") if isinstance(payload.get("qaRevise"), dict) else {}
     return "\n\n".join(
         (
-            "You are Memara, helping an aesthetics-clinic doctor edit a reply to a patient's question "
+            "You are Engram, helping an aesthetics-clinic doctor edit a reply to a patient's question "
             "using a voice note they just recorded. The doctor reviews and approves before sending.",
             (
                 "Decide from the VOICE NOTE whether the doctor is REVISING the current draft (e.g. "

@@ -175,8 +175,8 @@ groups:
           description: "Backend request latency degraded."
 
       - alert: FailedUploadsSpike
-        # Requires a custom counter, e.g. notari_capture_uploads_failed_total, in the backend.
-        expr: rate(notari_capture_uploads_failed_total[10m]) > 0
+        # Requires a custom counter, e.g. engram_capture_uploads_failed_total, in the backend.
+        expr: rate(engram_capture_uploads_failed_total[10m]) > 0
         for: 10m
         labels:
           severity: warning
@@ -185,10 +185,10 @@ groups:
           description: "Failed-upload counter is increasing — product-critical (capture-first promise)."
 
       - alert: AIJobFailureRate
-        # Requires a custom counter, e.g. notari_ai_jobs_total{status="failed"}, in the backend/worker.
+        # Requires a custom counter, e.g. engram_ai_jobs_total{status="failed"}, in the backend/worker.
         expr: |
-          sum(rate(notari_ai_jobs_total{status="failed"}[15m]))
-            / clamp_min(sum(rate(notari_ai_jobs_total[15m])), 0.001) > 0.2
+          sum(rate(engram_ai_jobs_total{status="failed"}[15m]))
+            / clamp_min(sum(rate(engram_ai_jobs_total[15m])), 0.001) > 0.2
         for: 15m
         labels:
           severity: warning

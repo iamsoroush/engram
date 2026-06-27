@@ -429,7 +429,7 @@ async def upload_source_capture(
         }
     except Exception:
         # Product-critical: a failed capture upload breaks the capture-first promise. Count it for
-        # the FailedUploadsSpike alert (notari_capture_uploads_failed_total).
+        # the FailedUploadsSpike alert (engram_capture_uploads_failed_total).
         record_capture_upload_failed()
         db.rollback()
         if object_key is not None:

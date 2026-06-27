@@ -2,7 +2,7 @@
 
 ## Assistant-State Language
 
-Memara should translate technical system work into calm assistant language.
+Engram should translate technical system work into calm assistant language.
 
 Preferred user-facing states:
 

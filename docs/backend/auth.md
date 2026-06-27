@@ -118,7 +118,7 @@ Response:
   },
   "tenant": {
     "id": "tenant_demo",
-    "name": "Memara Demo Clinic"
+    "name": "Engram Demo Clinic"
   },
   "memberships": [
     {
@@ -161,7 +161,7 @@ hand over — there is no email/SMS invite delivery yet.
 - `GET /api/v1/clinic/team` — list all non-patient members (any status): name, email, role, status.
 - `POST /api/v1/clinic/team` — add a member: `fullName`, `email`, `role` (doctor | assistant | admin),
   and `password`. If the email is **new**, `password` (≥ 8) is required and a user is created. If the
-  email **already belongs to a Memara user**, `password` is ignored and that account is added to this
+  email **already belongs to a Engram user**, `password` is ignored and that account is added to this
   clinic (cross-clinic membership); a `409` is returned only if they are already a member here. The
   response includes `created` (false when an existing account was attached).
 - `PATCH /api/v1/clinic/team/{userId}` — change `role` and/or `status` (active | disabled). The

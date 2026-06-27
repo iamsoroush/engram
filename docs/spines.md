@@ -12,11 +12,10 @@ The codebase is **one platform** serving multiple clinical verticals through a s
 the rest"). Verticals are not separate products built one-by-one; they group into **three product
 spines**.
 
-- **Platform = organization** (GitHub org, repo, services, infra, API): **Notari**. The umbrella name —
-  customers see the *product*, not this.
-- **Spine-A product: Memara** — the customer-facing brand for the capture-first clinical-memory
-  product (aesthetics, therapy, dermatology). Verticals are *editions* of Memara ("Memara for
-  Aesthetics / for Therapy"), not separate brands.
+- **Engram** is the single brand — the platform/organization (GitHub org, repo, services, infra, API)
+  **and** the customer-facing Spine-A product: capture-first clinical memory (aesthetics, therapy,
+  dermatology). Verticals are *editions* of Engram ("Engram for Aesthetics / for Therapy"), not
+  separate brands.
 - Spines B and C get their **own product names** when built.
 
 Entity model is shared and vertical-typed: `Patient` is universal; the work-unit (Session / Study /
@@ -25,7 +24,7 @@ Case) generalizes as an **Encounter** typed by `tenant.vertical`
 
 ## 2. The three spines
 
-**Spine A — capture-first memory** (aesthetics, therapy, dermatology) · product **Memara**
+**Spine A — capture-first memory** (aesthetics, therapy, dermatology) · product **Engram**
 Center of gravity = patient memory; the report is narrative/secondary; value = fast capture +
 retrieval + longitudinal understanding. *This is the product we have today* (aesthetics-first).
 Therapy and dermatology are configuration + presentation on the same core.
@@ -108,7 +107,7 @@ three polished products.**
 
 ## 5. Per-spine next steps
 
-**Spine A (Memara) — active**
+**Spine A (Engram) — active**
 1. P0 foundations (capability resolver + vertical taxonomy + config). ← next
 2. P1 aesthetics Basic/Pro to the agreed line.
 3. P2 therapy: **UX design step (P2a)** → build (P2b).
@@ -131,12 +130,11 @@ three polished products.**
 
 ## 6. Naming
 
-- **Umbrella (organization = platform = GitHub org = repo)** = **Notari** (finalized). A *notary* is a
-  trusted keeper/authenticator of records — apt for a clinical-documentation platform.
-- **Product (Spine A)** = **Memara** (settled).
+- **Engram** (finalized) is the single brand for the organization, platform, GitHub org, repo, **and**
+  the Spine-A product. An *engram* is the physical trace a memory leaves in the brain — apt for a
+  capture-first clinical-memory platform.
 - Spines B/C get their own product names at build time.
-- Rule in code/docs: **internal/infra → platform name; customer-facing → product name**
-  (see [CLAUDE.md](../CLAUDE.md)).
+- Rule in code/docs: **use Engram everywhere** (see [CLAUDE.md](../CLAUDE.md)).
 
 Related: [intelligence-layer.md](intelligence-layer.md) · [product.md](product.md) ·
 [ux/overview.md](ux/overview.md) · [architecture.md](architecture.md) ·

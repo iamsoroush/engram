@@ -38,7 +38,7 @@ export function authPayload(options: AuthOptions = {}) {
 
 /** Force the public surfaces to English (skip the Persian default) for stable selectors. */
 export async function useEnglish(page: Page) {
-  await page.addInitScript(() => window.localStorage.setItem("memara-ui-lang", "en"));
+  await page.addInitScript(() => window.localStorage.setItem("engram-ui-lang", "en"));
 }
 
 /** Mock the endpoints the authenticated app touches so it renders the active-session shell. */

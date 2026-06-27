@@ -53,39 +53,39 @@ DEV_TENANT_BASIC_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-basic")
 # capture, two-plane synthesis, and federated caseloads are testable end-to-end.
 DEV_TENANT_THERAPY_ID = uuid.uuid5(DEV_NAMESPACE, "tenant:demo-therapy")
 DEV_TENANTS = {
-    "pro": {"id": DEV_TENANT_ID, "name": "Memara Demo Clinic", "slug": "notari-demo", "tier": "pro", "vertical": "aesthetics"},
-    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Memara Demo Clinic (Basic)", "slug": "notari-demo-basic", "tier": "basic", "vertical": "aesthetics"},
-    "therapy": {"id": DEV_TENANT_THERAPY_ID, "name": "Memara Therapy Demo", "slug": "notari-demo-therapy", "tier": "pro", "vertical": "therapy"},
+    "pro": {"id": DEV_TENANT_ID, "name": "Engram Demo Clinic", "slug": "engram-demo", "tier": "pro", "vertical": "aesthetics"},
+    "basic": {"id": DEV_TENANT_BASIC_ID, "name": "Engram Demo Clinic (Basic)", "slug": "engram-demo-basic", "tier": "basic", "vertical": "aesthetics"},
+    "therapy": {"id": DEV_TENANT_THERAPY_ID, "name": "Engram Therapy Demo", "slug": "engram-demo-therapy", "tier": "pro", "vertical": "therapy"},
 }
 
 DEV_PERSONAS = {
     "doctor": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:doctor"),
-        "email": "doctor@notari.local",
+        "email": "doctor@engram.local",
         "full_name": "Dr. Demo",
         "role": MembershipRole.doctor,
     },
     "assistant": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:assistant"),
-        "email": "assistant@notari.local",
+        "email": "assistant@engram.local",
         "full_name": "Ari Assistant",
         "role": MembershipRole.assistant,
     },
     "admin": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:admin"),
-        "email": "admin@notari.local",
-        "full_name": "Memara Admin",
+        "email": "admin@engram.local",
+        "full_name": "Engram Admin",
         "role": MembershipRole.admin,
     },
     "therapist-b": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:therapist-b"),
-        "email": "therapist-b@notari.local",
+        "email": "therapist-b@engram.local",
         "full_name": "Dr. Rava (Therapist B)",
         "role": MembershipRole.doctor,
     },
     "patient-preview": {
         "id": uuid.uuid5(DEV_NAMESPACE, "user:patient-preview"),
-        "email": "patient@notari.local",
+        "email": "patient@engram.local",
         "full_name": "Patient Preview",
         "role": MembershipRole.patient,
     },

@@ -252,7 +252,7 @@ def internal_ai_job_complete(
 ) -> dict[str, Any]:
     """Persist successful AI processing output from the worker."""
     result = complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
-    # AI-job outcome metric (notari_ai_jobs_total): completion is always a terminal success.
+    # AI-job outcome metric (engram_ai_jobs_total): completion is always a terminal success.
     record_ai_job("succeeded")
     return result
 
@@ -299,7 +299,7 @@ def internal_ai_job_fail(
         retry_count=request.retry_count,
         retry_reason=request.retry_reason,
     )
-    # AI-job outcome metric (notari_ai_jobs_total): count a failure only when the job is now
+    # AI-job outcome metric (engram_ai_jobs_total): count a failure only when the job is now
     # terminal. fail_worker_job may instead schedule a durable retry (status stays failed but
     # retryable) — that is a transient attempt, not a terminal failure, so it must not inflate the
     # failure rate the AIJobFailureRate alert watches.

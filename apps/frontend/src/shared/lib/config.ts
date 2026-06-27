@@ -4,5 +4,5 @@ export const API_BASE =
     ? "/api/v1"
     : configuredApiBase;
 
-export const DEV_AUTH_STORAGE_KEY = "notari-dev-auth";
+export const DEV_AUTH_STORAGE_KEY = "engram-dev-auth";
 export const IS_DEV = import.meta.env.DEV;

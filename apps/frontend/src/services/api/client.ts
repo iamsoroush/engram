@@ -702,7 +702,7 @@ export interface TeamMember {
 export interface CreateMemberInput {
   fullName: string;
   email: string;
-  // Required for a brand-new person; omit for an existing Memara account (added across clinics).
+  // Required for a brand-new person; omit for an existing Engram account (added across clinics).
   password?: string;
   role: string;
 }

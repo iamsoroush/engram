@@ -128,7 +128,7 @@ export function TeamScreen({ auth, apiFetch, onBack }: { auth: AuthSession; apiF
               value={password}
             />
             <span className="field-hint">
-              For a new person (≥ 8 chars), to share with them. Leave blank if they already have a Memara account.
+              For a new person (≥ 8 chars), to share with them. Leave blank if they already have a Engram account.
             </span>
           </label>
           <Button disabled={adding} type="submit">

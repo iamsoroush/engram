@@ -12,7 +12,7 @@ export const LANG_LABEL: Record<Lang, string> = { fa: "فارسی", en: "English
 type Dict = Record<string, string>;
 
 const en: Dict = {
-  "brand.name": "Memara",
+  "brand.name": "Engram",
 
   "lang.switchTo": "فارسی", // label of the OTHER language, to switch to it
   "lang.aria": "Switch language",
@@ -21,9 +21,9 @@ const en: Dict = {
 
   // Landing
   "landing.eyebrow": "Capture-first clinical memory",
-  "landing.title": "Capture the visit. Memara organizes the memory.",
+  "landing.title": "Capture the visit. Engram organizes the memory.",
   "landing.subtitle":
-    "Memara is a capture-first clinical record for aesthetics clinics. Record audio, snap a photo, or jot a note during the visit — and keep every patient's visits organized in one place.",
+    "Engram is a capture-first clinical record for aesthetics clinics. Record audio, snap a photo, or jot a note during the visit — and keep every patient's visits organized in one place.",
   "landing.cta.signup": "Create your clinic",
   "landing.cta.login": "Log in",
   "landing.proTag": "Pro",
@@ -96,9 +96,9 @@ const en: Dict = {
   "pending.notice": "{n} capture(s) saved on this device — sign in and I'll organize them once you're online.",
 
   // Onboarding (guided first capture)
-  "onboarding.welcome.title": "Welcome to Memara, {name}",
+  "onboarding.welcome.title": "Welcome to Engram, {name}",
   "onboarding.welcome.body":
-    "Memara is capture-first: record the visit now, organize later. Let's capture your first one together — it takes seconds.",
+    "Engram is capture-first: record the visit now, organize later. Let's capture your first one together — it takes seconds.",
   "onboarding.capture.title": "Make your first capture",
   "onboarding.capture.body": "Tap any of these — audio, photo, or a note. No patient needed yet. Go ahead and try one now.",
   "onboarding.organizeBasic.title": "Saved & organized",
@@ -106,15 +106,15 @@ const en: Dict = {
     "Nice. Your captures are saved on this device, synced when you're online, and grouped into the visit — no setup, nothing to wait for. Assign a patient whenever it suits you.",
   "onboarding.organizePro.title": "It organizes itself",
   "onboarding.organizePro.body":
-    "Nice. Memara turns your captures into a draft report and summary, and you can assign a patient anytime — review whenever you have a moment.",
+    "Nice. Engram turns your captures into a draft report and summary, and you can assign a patient anytime — review whenever you have a moment.",
   "onboarding.proCallout.title": "Want AI on top?",
   "onboarding.proCallout.body":
     "You're on Basic — fast, reliable capture. Pro adds AI-drafted reports, longitudinal patient memory, and doctor-verified patient Q&A.",
   "onboarding.proTools.title": "Your Pro tools",
   "onboarding.proTools.body":
-    "Memara also builds longitudinal patient memory across visits and handles post-session patient Q&A you approve — they appear as you work.",
+    "Engram also builds longitudinal patient memory across visits and handles post-session patient Q&A you approve — they appear as you work.",
   "onboarding.done.title": "You're all set",
-  "onboarding.done.body": "Capture freely — Memara keeps everything organized in the background. You can replay this guide anytime from the account menu.",
+  "onboarding.done.body": "Capture freely — Engram keeps everything organized in the background. You can replay this guide anytime from the account menu.",
   "onboarding.progress": "Step {n} of {total}",
   "onboarding.next": "Next",
   "onboarding.later": "I'll try later",
@@ -125,7 +125,7 @@ const en: Dict = {
 };
 
 const fa: Dict = {
-  "brand.name": "Memara",
+  "brand.name": "Engram",
 
   "lang.switchTo": "English",
   "lang.aria": "تغییر زبان",

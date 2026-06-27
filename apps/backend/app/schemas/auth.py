@@ -51,7 +51,7 @@ class MemberCreateRequest(BaseModel):
     """Owner/admin adds a clinic member. ``role`` is one of doctor | assistant | admin.
 
     For a brand-new person, ``password`` is a temporary password to hand over (no email-invite infra).
-    For someone who already has a Memara account (an existing email), ``password`` is omitted — they
+    For someone who already has a Engram account (an existing email), ``password`` is omitted — they
     keep their credentials and are simply added to this clinic."""
 
     fullName: str = Field(min_length=1, max_length=240)

@@ -1,6 +1,6 @@
-# Notari
+# Engram
 
-Monorepo for Notari. Its first product, Memara, is clinical memory for aesthetics and therapy clinics (dermatology next).
+Monorepo for **Engram** — capture-first clinical memory for aesthetics and therapy clinics (dermatology next).
 
 ## Apps
 
@@ -25,7 +25,7 @@ Recommended:
 
 ```sh
 git clone <repo-url>
-cd notari
+cd engram
 cp .env.example .env
 ```
 
@@ -116,11 +116,11 @@ cp .env.example .env
 Important production variables:
 
 ```sh
-BACKEND_APP_NAME=Notari API
-BACKEND_CORS_ORIGINS=["https://notari.example.com"]
+BACKEND_APP_NAME=Engram API
+BACKEND_CORS_ORIGINS=["https://engram.example.com"]
 BACKEND_DATABASE_URL=postgresql+psycopg://...
 BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
+BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
 BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
 BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
 AI_ENGINE_INTERNAL_TOKEN=change-me

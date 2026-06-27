@@ -1,4 +1,4 @@
-# Memara (Aesthetics) — **Basic tier** QA/QC Smoke Suite
+# Engram (Aesthetics) — **Basic tier** QA/QC Smoke Suite
 
 > **Audience:** QA/QC testers. **No coding required** — everything is done in a web browser.
 > **Goal:** verify the most important **Basic-tier** workflows before each release. **Budget:** ~30 min.
@@ -6,7 +6,7 @@
 > [aes-frontend-scenarios.md](aes-frontend-scenarios.md), [aes-patient-pages-scenarios.md](aes-patient-pages-scenarios.md).
 
 ## 0 · What you are testing
-**Memara** is a clinical "memory" app for **aesthetics clinics** (Botox, fillers, skin treatments). Staff
+**Engram** is a clinical "memory" app for **aesthetics clinics** (Botox, fillers, skin treatments). Staff
 **capture** notes, photos, and audio during a visit; the app files them by **patient** and **visit**.
 
 **Basic** = **recall**: fast capture + reliable retrieval, with **NO AI**. Captures save instantly like
@@ -23,7 +23,7 @@ link a patient opens (no login). **Persona:** Doctor / Assistant / Admin (staff)
 ## 1 · Environment & access
 - **App:** `http://localhost:5183` (Chrome).
 - **Sign in (no password):** pick the **Basic** tier on the switch, then click a **persona** (Doctor /
-  Assistant / Admin). Log out (top-right) to switch persona. Confirm the header reads *"Memara Demo Clinic (Basic)"*.
+  Assistant / Admin). Log out (top-right) to switch persona. Confirm the header reads *"Engram Demo Clinic (Basic)"*.
 - **Test data:** create patients with a **unique, findable name** each run (e.g. `ZZ Test 2026-06-13 01`).
   **Don't delete** existing demo data.
 

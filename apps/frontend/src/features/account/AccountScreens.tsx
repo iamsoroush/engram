@@ -193,7 +193,7 @@ export function SettingsScreen({
       <Card className="settings-group">
         <div className="settings-group-head">
           <h2>Languages</h2>
-          <p>The app's interface + dates, how Memara transcribes audio, and how it writes the report.</p>
+          <p>The app's interface + dates, how Engram transcribes audio, and how it writes the report.</p>
         </div>
         <SettingRow label="App" hint="The interface language and date calendar (Persian shows Jalali dates). Separate from the report's language.">
           <SelectMenu

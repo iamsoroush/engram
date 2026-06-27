@@ -143,7 +143,7 @@ One primitive = build once, stay coherent.
 ## 5. Per-vertical design is research-grounded
 
 Every track opens with **comparable-product research** (how the category solves it → patterns + gaps +
-where Memara differentiates). Aesthetics: lighter (med-spa EMRs + how clinics misuse Apple Notes) —
+where Engram differentiates). Aesthetics: lighter (med-spa EMRs + how clinics misuse Apple Notes) —
 and the §3 feature set already frames it. Therapy: deep, and more *generative* (it's greenfield, no
 current product to iterate from).
 

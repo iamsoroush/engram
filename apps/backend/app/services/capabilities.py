@@ -1,6 +1,6 @@
 """Capability resolution (P0.1).
 
-Notari expresses product features as *capabilities*, not tiers. Each ``(vertical, tier)`` resolves to
+Engram expresses product features as *capabilities*, not tiers. Each ``(vertical, tier)`` resolves to
 a set of capabilities, and features gate on membership in that set — never on ``tier`` directly. This
 keeps a vertical's tier composition in one place: aesthetics withholds the AI layer from Basic (a
 deterministic Notes-killer) while therapy is a single plan that always includes it. See

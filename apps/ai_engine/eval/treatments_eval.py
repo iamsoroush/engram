@@ -7,7 +7,7 @@ lot-on-label — and asserts the extracted ``treatments[]`` CORE fields. It repo
 
 Run it where a gateway is reachable::
 
-    docker exec notari_build_<stack>-ai-engine-1 python /app/eval/treatments_eval.py
+    docker exec engram_build_<stack>-ai-engine-1 python /app/eval/treatments_eval.py
     # or locally, with AI_ENGINE_TRANSCRIPTION_BASE_URL / *_MODEL pointing at an OpenAI-compatible gateway
 
 No gateway configured/reachable → the script SKIPS (exit 0) and says so; it never blocks CI. With a

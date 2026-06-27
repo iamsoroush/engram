@@ -9,7 +9,7 @@ model change can be gated on the whole suite — not eyeballed one job at a time
 
 Run where a gateway is reachable::
 
-    docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
+    docker exec engram-main-ai-engine-1 python /app/eval/run_all.py
 
 No gateway → each eval SKIPS (exit 0); the suite is green but the scorecard says "skipped". With a
 gateway it exits non-zero if any eval fails. Add a new job's eval by dropping a ``*_eval.py`` here.

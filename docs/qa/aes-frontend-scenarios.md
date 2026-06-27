@@ -328,5 +328,5 @@ the share sheet's before/after photos) cannot be exercised — the surfaces rend
 states correctly but stay photoless. The **patient-level** scenarios (smart search 9, recap 10,
 teasers 6/13, duplicate guard 14/20, reception suggestion 22, settings 23–24, share-sheet structure
 17–19) do **not** depend on object storage and can be run as written. To exercise the photo paths, run
-against a stack whose MinIO bucket + access key are correctly provisioned (the canonical `notari`
+against a stack whose MinIO bucket + access key are correctly provisioned (the canonical `engram`
 stack, or a worktree stack with working object-storage credentials).

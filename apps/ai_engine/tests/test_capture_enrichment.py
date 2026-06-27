@@ -90,7 +90,7 @@ class EnrichmentPromptTests(unittest.TestCase):
         self.assertIn("Latin digits", prompt)
 
     def test_caption_prompt_neutral_fallback_when_no_domain(self):
-        prompt = caption_prompt({"clinic": {"name": "Memara Clinic"}, "preferredLanguage": "auto"})
+        prompt = caption_prompt({"clinic": {"name": "Engram Clinic"}, "preferredLanguage": "auto"})
         self.assertIn("setting is a clinic", prompt.lower())  # neutral default
         self.assertNotIn("aesthetic", prompt.lower())
         self.assertIn("Do NOT invent", prompt)

@@ -10,7 +10,7 @@ When no valid access token is available, `UnauthShell` renders before the captur
 three-view state machine — **landing → login** / **landing → sign-up** — bilingual fa/en + RTL (see
 [i18n](#bilingual--rtl-app-language) below). The authenticated app remains English-only for now.
 
-- **Landing** (`LandingPage`): what Memara is + CTAs to sign up or log in.
+- **Landing** (`LandingPage`): what Engram is + CTAs to sign up or log in.
 - **Sign-up** (`SignUpGate`): clinic name, your name, email, password. Calls `POST /api/v1/auth/register`,
   which creates the tenant + a founding `owner` user and returns the same response shape as login.
 - **Login** (`LoginGate`): email + password via `POST /api/v1/auth/login`.

@@ -106,7 +106,7 @@ export function Shell({
               </button>
             ) : null}
           </div>
-          <strong className="topbar-brand">Memara</strong>
+          <strong className="topbar-brand">Engram</strong>
           <details className="user-menu" ref={menuRef}>
             <summary>
               <span className="user-menu-avatar" aria-hidden="true">{initials}</span>

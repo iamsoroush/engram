@@ -11,7 +11,7 @@
 | `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
 | `/#settings` | Settings | Tenant preferences: transcription/report language, patient-match strictness, and plan/tier (read-only). Reached from the account menu; has a Back action. |
 | `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |
-| `/#team` | Team (member management) | **Owner/admin only** — add clinic members (doctor/assistant/admin) with a temporary password (or add an existing Memara account across clinics, no password), and change a member's role/status. Reached from the account menu (hidden for other roles) or the onboarding "Invite your team" link; has a Back action. See [Team](screens/team.md). |
+| `/#team` | Team (member management) | **Owner/admin only** — add clinic members (doctor/assistant/admin) with a temporary password (or add an existing Engram account across clinics, no password), and change a member's role/status. Reached from the account menu (hidden for other roles) or the onboarding "Invite your team" link; has a Back action. See [Team](screens/team.md). |
 | `/#plan` | Plan (Basic vs Pro) | **Owner/admin only** — compare the two plans and switch tier (no payment yet). Reached from the account menu or the onboarding "See the Pro plan" link; has a Back action. See [Plan](screens/plan.md). |
 | `/#switch-clinic` | Switch clinic | **Multi-clinic users only** — list the clinics the user belongs to and switch the active one (`POST /auth/switch-tenant`). Reached from the account menu (hidden for single-clinic users); has a Back action. |
 | `/share/<token>` | Patient surface (public) | **Separate public area, not the staff shell.** A real path (not a hash), no login — the token is the capability. Read-only curated report + aftercare (AES-401); revocable/expirable, and an unknown/revoked/expired token shows one graceful "no longer available" screen (AES-403). Served by its own page bundle, without the clinic stylesheet. |
@@ -19,7 +19,7 @@
 
 ## Entry Points
 
-- Unauthenticated users land on the **landing page** (what Memara is + CTAs). It is the first view
+- Unauthenticated users land on the **landing page** (what Engram is + CTAs). It is the first view
   of the bilingual (fa/en + RTL) unauthenticated shell, which switches between **landing → login**
   and **landing → sign-up**. See [the unauthenticated shell](screens/login.md).
 - **Sign-up** self-serve onboards a clinic (`POST /auth/register`: tenant + founding `owner` user)

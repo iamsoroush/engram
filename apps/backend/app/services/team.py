@@ -55,7 +55,7 @@ def create_team_member(
 ) -> dict[str, Any]:
     """Add a member to the caller's tenant.
 
-    If ``email`` already belongs to a Memara user, that existing account is added to this clinic
+    If ``email`` already belongs to a Engram user, that existing account is added to this clinic
     (cross-clinic membership) — their credentials are unchanged and ``password`` is ignored. Otherwise
     a brand-new user is created and ``password`` (a temporary one to hand over) is required.
     """

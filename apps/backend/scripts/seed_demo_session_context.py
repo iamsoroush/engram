@@ -2,7 +2,7 @@
 
 Run inside the backend container (it has DB + object storage + the app package):
 
-    docker exec notari-main-backend-1 python /app/scripts/seed_demo_session_context.py
+    docker exec engram-main-backend-1 python /app/scripts/seed_demo_session_context.py
 
 Idempotent by patient display name: a patient that already exists in the Pro demo tenant is
 skipped (re-run safe). Creates real photo (PNG) + voice-memo (WAV) artifacts in MinIO, backdated
@@ -471,7 +471,7 @@ def main() -> None:
     finally:
         db.close()
 
-    print("Seed complete (Pro tenant: Memara Demo Clinic).")
+    print("Seed complete (Pro tenant: Engram Demo Clinic).")
     for line in created:
         print("  + created:", line)
     for name in skipped:

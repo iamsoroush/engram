@@ -10,7 +10,7 @@ Existing pattern to copy: `eval/treatments_eval.py`, `eval/aftercare_conflict_ev
 All evals **SKIP (exit 0) without a gateway**, so they never block CI; with a gateway, non-zero on fail.
 
 ```sh
-docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
+docker exec engram-main-ai-engine-1 python /app/eval/run_all.py
 ```
 
 ---

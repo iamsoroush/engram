@@ -225,7 +225,7 @@ accrues as data ([foundation §3 Pro 8](redesign-foundation.md), [research §3](
 *Prototype: [`aesthetics-frontdesk.html`](../../apps/frontend/design-prototypes/aesthetics-frontdesk.html).
 Designs the receptionist persona **inside** aesthetics ([foundation §2](redesign-foundation.md)).*
 
-Memara is **not** a booking/billing system ([design-principles §2](../design-principles.md)); the front
+Engram is **not** a booking/billing system ([design-principles §2](../design-principles.md)); the front
 desk is a **light arrivals lens + registration**, not a scheduler. It is Clinical Memory's **Today** tab
 + the assignment resolver, framed for the desk.
 

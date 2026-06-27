@@ -16,11 +16,11 @@ Local Compose should include:
 Development environment variables:
 
 ```sh
-BACKEND_DATABASE_URL=postgresql+psycopg://notari:notari@postgres:5432/notari
+BACKEND_DATABASE_URL=postgresql+psycopg://engram:engram@postgres:5432/engram
 BACKEND_OBJECT_STORAGE_ENDPOINT=http://minio:9000
-BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
-BACKEND_OBJECT_STORAGE_ACCESS_KEY=notari-dev
-BACKEND_OBJECT_STORAGE_SECRET_KEY=notari-dev-secret
+BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
+BACKEND_OBJECT_STORAGE_ACCESS_KEY=engram-dev
+BACKEND_OBJECT_STORAGE_SECRET_KEY=engram-dev-secret
 BACKEND_OBJECT_STORAGE_SECURE=false
 ```
 
@@ -45,7 +45,7 @@ Recommended production variables:
 ```sh
 BACKEND_DATABASE_URL=postgresql+psycopg://...
 BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
+BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
 BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
 BACKEND_OBJECT_STORAGE_SECRET_KEY=...
 BACKEND_OBJECT_STORAGE_SECURE=true

@@ -4,7 +4,7 @@ import { LANGS, MESSAGES, type Lang } from "./messages";
 export { LANGS, LANG_LABEL, MESSAGES } from "./messages";
 export type { Lang } from "./messages";
 
-const STORAGE_KEY = "memara-ui-lang";
+const STORAGE_KEY = "engram-ui-lang";
 
 /** Text direction for a language (Persian is RTL). */
 export function dirFor(lang: Lang): "rtl" | "ltr" {

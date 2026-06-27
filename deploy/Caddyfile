@@ -1,4 +1,4 @@
-# Caddy — origin TLS for the Notari/Memara production stack.
+# Caddy — origin TLS for the Engram production stack.
 #
 # Caddy is the public ingress on the VPS: it terminates HTTPS (auto Let's Encrypt) and
 # reverse-proxies to the frontend nginx container (which serves the SPA + proxies /api/v1

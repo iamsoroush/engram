@@ -1,7 +1,7 @@
 import type { CachedCapture, IdMapping, PendingCapture, PendingOperation } from "../../domain/appTypes";
 import type { CaptureItem } from "../../domain/types";
 
-const OUTBOX_DB = "notari-capture-outbox";
+const OUTBOX_DB = "engram-capture-outbox";
 const OUTBOX_STORE = "pendingCaptures";
 const CACHE_STORE = "cachedCaptures";
 const ID_MAPPING_STORE = "idMappings";

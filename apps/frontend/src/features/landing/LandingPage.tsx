@@ -41,7 +41,7 @@ function AppPreview({ t }: { t: Translator }) {
     <figure className="landing-preview">
       <div className="landing-preview-screen" aria-hidden="true">
         <div className="landing-preview-topbar">
-          <span className="landing-preview-brand">Memara</span>
+          <span className="landing-preview-brand">Engram</span>
         </div>
         <div className="landing-preview-session">
           <span className="landing-preview-dot" />
@@ -120,7 +120,7 @@ function PlanTeaser({
 }
 
 /**
- * Public marketing entry: what Memara is + how it works + trust + plans, with two calls to action.
+ * Public marketing entry: what Engram is + how it works + trust + plans, with two calls to action.
  * Bilingual + RTL via the surrounding UnauthShell. Honest about tiers — Basic (the default for new
  * sign-ups) is presented on its own; the AI layer is shown as the Pro upgrade lane in Plans.
  */

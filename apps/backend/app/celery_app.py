@@ -4,7 +4,7 @@ from app.config import settings
 
 
 celery_app = Celery(
-    "notari_backend",
+    "engram_backend",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
 )

@@ -2,7 +2,7 @@
 
 ## Product Shape
 
-Notari is currently an MVP prototype for fast clinical capture. The primary workflow is:
+Engram is currently an MVP prototype for fast clinical capture. The primary workflow is:
 
 1. Capture first.
 2. Save locally immediately.

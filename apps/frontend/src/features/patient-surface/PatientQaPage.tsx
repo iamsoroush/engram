@@ -32,7 +32,7 @@ export function PatientQaPage({ token }: { token: string }) {
       const clinic = result.payload.clinic?.name;
       document.title = clinic ? `${clinic} — questions` : "Your questions";
     } else {
-      document.title = "Memara";
+      document.title = "Engram";
     }
   }, [result]);
 

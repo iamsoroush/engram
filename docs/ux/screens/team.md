@@ -17,7 +17,7 @@ with their email + that password.
 
 - **Add a member:** full name, email, role (doctor / assistant / admin), and a temporary password.
   - **New person** → a temporary password (≥ 8) is required; the notice reminds the owner to share it.
-  - **Existing Memara account** (email already in use, e.g. a clinician who works at another clinic) →
+  - **Existing Engram account** (email already in use, e.g. a clinician who works at another clinic) →
     leave the password **blank**; they're added across clinics with their existing credentials, and
     the notice says so. Re-adding someone already in this clinic is blocked (already a member).
 - **Per-member:** change role (doctor / assistant / admin) and **Disable / Enable** (membership

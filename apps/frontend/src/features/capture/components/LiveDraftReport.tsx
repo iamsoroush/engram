@@ -107,7 +107,7 @@ export function LiveDraftReport({
         />
       ))}
       {isPro && session.processingStatus?.state === "processing" ? (
-        <div className="live-draft-processing">Memara is refining the live report. Your captures stay reviewable while it updates.</div>
+        <div className="live-draft-processing">Engram is refining the live report. Your captures stay reviewable while it updates.</div>
       ) : null}
       {!isPro ? (
         // One consolidated Try Pro for the whole capture surface (the per-capture badges are gone).

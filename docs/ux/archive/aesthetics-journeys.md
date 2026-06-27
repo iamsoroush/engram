@@ -117,7 +117,7 @@ manual-but-fast; in Pro the assistant becomes a *verifier* of AI output rather t
 
 Designed *inside* aesthetics ([foundation §2](../redesign-foundation.md)): intake here means **registering
 walk-ins and returning patients, guarding against duplicates, and getting the right patient attached to
-the right chair** — without ever blocking the doctor. Memara is **not** a booking/billing system
+the right chair** — without ever blocking the doctor. Engram is **not** a booking/billing system
 ([design-principles §2](../../design-principles.md)); the front desk is a light **Today / arrivals** lens
 plus registration, not a scheduler. The receptionist's screens are Clinical Memory's **Today** tab and
 the **assignment resolver**, framed for the desk.

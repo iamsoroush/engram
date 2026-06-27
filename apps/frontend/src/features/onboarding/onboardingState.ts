@@ -2,7 +2,7 @@
 // so the guided "capture your first visit" tour shows once and survives a reload, keyed per user.
 // Client-side only — onboarding is training UX, not security.
 
-const KEY = "memara-onboarding-pending";
+const KEY = "engram-onboarding-pending";
 
 /** Mark that this freshly signed-up founder should see the guided first-capture tour. */
 export function markOnboardingPending(userId: string): void {

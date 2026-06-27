@@ -2,7 +2,7 @@
 
 ## Product summary
 
-Memara is an AI-native clinical memory system for aesthetics and therapy clinics (dermatology next). It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
+Engram is an AI-native clinical memory system for aesthetics and therapy clinics (dermatology next). It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
 
 The product is designed around real clinical behavior:
 

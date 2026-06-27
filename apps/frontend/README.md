@@ -1,6 +1,6 @@
 # Frontend
 
-Vite + React frontend for Memara, clinical memory for aesthetics and therapy clinics.
+Vite + React frontend for Engram, clinical memory for aesthetics and therapy clinics.
 
 ## Runtime
 
