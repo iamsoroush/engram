@@ -2,6 +2,7 @@ import React from "react";
 import type { CaptureDraft } from "../../../domain/appTypes";
 import { audioExtensionForMimeType, isSafariBrowser, preferredAudioRecorderOptions } from "../audio";
 import { Button, Sheet, Textarea } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 
 export function TextCaptureSheet({
   open,
@@ -15,6 +16,7 @@ export function TextCaptureSheet({
   /** AES-106 "same as last time": seed the note from the prior visit's typed note (editable). */
   initialValue?: string;
 }) {
+  const t = useT();
   const [value, setValue] = React.useState("");
 
   React.useEffect(() => {
@@ -22,13 +24,13 @@ export function TextCaptureSheet({
   }, [open, initialValue]);
 
   return (
-    <Sheet leading={<NoteLeadingIcon />} onClose={onClose} open={open} title="Write note">
+    <Sheet leading={<NoteLeadingIcon />} onClose={onClose} open={open} title={t("dialog.writeNote")}>
       <div className="sheet-stack">
-        {initialValue ? <p className="note-prefill-hint">Pre-filled from last visit — edit before saving.</p> : null}
+        {initialValue ? <p className="note-prefill-hint">{t("dialog.notePrefillHint")}</p> : null}
         <Textarea
           autoFocus
           onChange={(event) => setValue(event.target.value)}
-          placeholder="Type the note now. Patient matching can wait."
+          placeholder={t("dialog.notePlaceholder")}
           rows={6}
           value={value}
         />
@@ -44,7 +46,7 @@ export function TextCaptureSheet({
             })
           }
         >
-          Save to session
+          {t("dialog.saveToSession")}
         </Button>
         <div className="note-links">
           <button
@@ -64,12 +66,12 @@ export function TextCaptureSheet({
             type="button"
           >
             <PhotoNewSessionIcon />
-            Save to new session
+            {t("dialog.saveToNewSession")}
           </button>
         </div>
         <p className="note-trust">
           <PhotoSecurityIcon />
-          <span>Encrypted</span>
+          <span>{t("dialog.encrypted")}</span>
         </p>
       </div>
     </Sheet>
@@ -99,6 +101,7 @@ export function AddPhotoSheet({
   /** AES-105 — a prior photo to faintly overlay as an alignment aid (no Before/After taxonomy, no AI). */
   ghostPhotoUrl?: string;
 }) {
+  const t = useT();
   const [file, setFile] = React.useState<File | null>(null);
   const [error, setError] = React.useState("");
   const [previewUrl, setPreviewUrl] = React.useState("");
@@ -138,7 +141,7 @@ export function AddPhotoSheet({
     setSource(selectedFile ? nextSource : null);
     if (selectedFile && selectedFile.size === 0) {
       setFile(null);
-      setError("The selected photo was empty. Open the camera or gallery again.");
+      setError(t("dialog.photoEmptyError"));
       return;
     }
     setError("");
@@ -154,16 +157,16 @@ export function AddPhotoSheet({
     <div className="overlay add-photo-overlay" role="presentation">
       <aside aria-labelledby="add-photo-title" aria-modal="true" className="add-photo-sheet" role="dialog">
         <div className="add-photo-handle" aria-hidden="true" />
-        <button aria-label="Close add photo" className="add-photo-close" onClick={onClose} type="button">
+        <button aria-label={t("dialog.closeAddPhoto")} className="add-photo-close" onClick={onClose} type="button">
           <PhotoCloseIcon />
         </button>
         <div className="add-photo-header">
           <span className="add-photo-chip" aria-hidden="true">
             <PhotoCameraIcon />
           </span>
-          <h2 id="add-photo-title">Add photo</h2>
+          <h2 id="add-photo-title">{t("dialog.addPhoto")}</h2>
         </div>
-        <div className="add-photo-segments" aria-label="Photo source">
+        <div className="add-photo-segments" aria-label={t("dialog.photoSource")}>
           <button
             className={source === "camera" ? "active" : ""}
             onClick={() => {
@@ -173,7 +176,7 @@ export function AddPhotoSheet({
             type="button"
           >
             <PhotoCameraIcon />
-            <span>Take photo</span>
+            <span>{t("dialog.takePhoto")}</span>
           </button>
           <button
             className={source === "library" ? "active" : ""}
@@ -184,11 +187,11 @@ export function AddPhotoSheet({
             type="button"
           >
             <PhotoLibraryIcon />
-            <span>Choose</span>
+            <span>{t("dialog.choose")}</span>
           </button>
         </div>
         <input
-          aria-label="Take photo with camera"
+          aria-label={t("dialog.takePhotoWithCamera")}
           accept="image/*"
           capture="environment"
           className="visually-hidden-file"
@@ -201,7 +204,7 @@ export function AddPhotoSheet({
           type="file"
         />
         <input
-          aria-label="Choose photo from library"
+          aria-label={t("dialog.choosePhotoFromLibrary")}
           accept="image/*"
           className="visually-hidden-file"
           id={libraryInputId}
@@ -220,15 +223,15 @@ export function AddPhotoSheet({
             type="button"
           >
             <span aria-hidden="true">⊕</span>
-            {ghostOn ? "Aligning to last photo" : "Align to last photo"}
+            {ghostOn ? t("dialog.aligningToLastPhoto") : t("dialog.alignToLastPhoto")}
           </button>
         ) : null}
         {previewUrl ? (
           <div className="add-photo-preview">
-            <img alt="Selected capture" className="photo-image-preview" src={previewUrl} />
+            <img alt={t("dialog.selectedCapture")} className="photo-image-preview" src={previewUrl} />
             {ghostPhotoUrl && ghostOn ? <img alt="" aria-hidden="true" className="add-photo-ghost-overlay" src={ghostPhotoUrl} /> : null}
             <button
-              aria-label="Remove selected photo"
+              aria-label={t("dialog.removeSelectedPhoto")}
               className="add-photo-remove"
               onClick={() => {
                 setFile(null);
@@ -251,8 +254,8 @@ export function AddPhotoSheet({
               </svg>
             </span>
             <span className="add-photo-empty-copy">
-              <strong>No photo yet</strong>
-              <small>{ghostPhotoUrl ? "Line the new shot up with the faint previous photo." : "Take a new photo or pick one from your device."}</small>
+              <strong>{t("dialog.noPhotoYet")}</strong>
+              <small>{ghostPhotoUrl ? t("dialog.alignGhostHint") : t("dialog.takeOrPickHint")}</small>
             </span>
           </div>
         )}
@@ -267,7 +270,7 @@ export function AddPhotoSheet({
               }}
             >
               <PhotoCameraIcon />
-              Use photo
+              {t("dialog.usePhoto")}
             </Button>
             <div className="add-photo-links">
               <button
@@ -279,14 +282,14 @@ export function AddPhotoSheet({
                 type="button"
               >
                 <PhotoNewSessionIcon />
-                Save to new session
+                {t("dialog.saveToNewSession")}
               </button>
             </div>
           </>
         ) : null}
         <p className="add-photo-security">
           <PhotoSecurityIcon />
-          <span>Encrypted · stored securely</span>
+          <span>{t("dialog.encryptedStoredSecurely")}</span>
         </p>
       </aside>
     </div>
@@ -357,6 +360,7 @@ export function AudioDialog({
   /** Set when durable storage is low (~85%+): a long recording may not fit (Epic G). */
   storageWarning?: { usageRatio: number } | null;
 }) {
+  const t = useT();
   const [seconds, setSeconds] = React.useState(0);
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
   const [audioUrl, setAudioUrl] = React.useState("");
@@ -397,14 +401,14 @@ export function AudioDialog({
     setRecordingState("idle");
 
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      setError("Microphone recording is not available here. Attach an audio file instead.");
+      setError(t("dialog.micUnavailable"));
       setRecordingState("error");
       return;
     }
 
     const recorderOptions = preferredAudioRecorderOptions();
     if (isSafariBrowser() && !recorderOptions) {
-      setError("Safari cannot record a playable audio format here. Attach an audio file instead.");
+      setError(t("dialog.safariUnsupported"));
       setRecordingState("error");
       return;
     }
@@ -445,7 +449,7 @@ export function AudioDialog({
         setRecordingState("recording");
       })
       .catch(() => {
-        setError("Microphone permission is needed to record audio.");
+        setError(t("dialog.micPermissionNeeded"));
         setRecordingState("error");
       });
 
@@ -506,7 +510,7 @@ export function AudioDialog({
   };
 
   const discardRecording = () => {
-    if (!window.confirm("Discard this audio recording?")) return;
+    if (!window.confirm(t("dialog.discardAudioConfirm"))) return;
     discardNextStopRef.current = true;
     saveOnStopRef.current = false;
     if (recorder && recorder.state !== "inactive") recorder.stop();
@@ -521,7 +525,7 @@ export function AudioDialog({
   const isRecording = recordingState === "recording";
   const isPaused = recordingState === "paused";
   const isSaving = recordingState === "saving";
-  const primaryPauseLabel = isPaused ? "Resume recording" : "Pause recording";
+  const primaryPauseLabel = isPaused ? t("dialog.resumeRecording") : t("dialog.pauseRecording");
 
   if (!open) return null;
 
@@ -530,7 +534,7 @@ export function AudioDialog({
       <button className="recording-minibar" onClick={() => setMinimized(false)} type="button">
         <span className="recording-minibar-dot" aria-hidden="true" />
         <span>
-          <strong>{isPaused ? "Recording paused" : "Recording in background"}</strong>
+          <strong>{isPaused ? t("dialog.recordingPaused") : t("dialog.recordingInBackground")}</strong>
           <small>{displayTime}</small>
         </span>
       </button>
@@ -541,19 +545,19 @@ export function AudioDialog({
     <div className="overlay recording-sheet-overlay" role="presentation">
       <aside aria-modal="true" aria-labelledby="recording-audio-title" className="recording-sheet" role="dialog">
         <div className="recording-sheet-handle" aria-hidden="true" />
-        <button className="recording-discard-button" disabled={isSaving} onClick={discardRecording} type="button" aria-label="Discard recording">
+        <button className="recording-discard-button" disabled={isSaving} onClick={discardRecording} type="button" aria-label={t("dialog.discardRecording")}>
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
             <path d="M7 7l10 10M17 7 7 17" />
           </svg>
         </button>
         <div className="recording-sheet-header">
           <span className={`recording-live-dot ${isPaused ? "paused" : ""}`} aria-hidden="true" />
-          <h2 id="recording-audio-title">Recording audio</h2>
+          <h2 id="recording-audio-title">{t("dialog.recordingAudio")}</h2>
         </div>
 
         {storageWarning ? (
           <p className="recording-storage-warning" role="status">
-            Device storage is {Math.round((storageWarning.usageRatio || 0) * 100)}% full — a long recording may not fit. Consider exporting queued captures or freeing space first.
+            {t("dialog.storageWarning", { pct: Math.round((storageWarning.usageRatio || 0) * 100) })}
           </p>
         ) : null}
 
@@ -571,13 +575,13 @@ export function AudioDialog({
             <path d="M12 3.5 19 7v5.5c0 4-2.8 6.7-7 8-4.2-1.3-7-4-7-8V7l7-3.5Z" />
             <path d="M9.5 12h5v4h-5zM10.5 12v-1.2a1.5 1.5 0 0 1 3 0V12" />
           </svg>
-          Encrypted · listening in background
+          {t("dialog.encryptedListeningInBackground")}
         </p>
 
         {error ? <p className="error-copy">{error}</p> : null}
         <input
           ref={fileInputRef}
-          aria-label="Select audio file"
+          aria-label={t("dialog.selectAudioFile")}
           accept="audio/*"
           capture
           className="visually-hidden-file"
@@ -609,7 +613,7 @@ export function AudioDialog({
             type="button"
           >
             <span aria-hidden="true" />
-            {isSaving ? "Saving..." : "Stop & save"}
+            {isSaving ? t("dialog.saving") : t("dialog.stopAndSave")}
           </button>
         </div>
 
@@ -623,13 +627,13 @@ export function AudioDialog({
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M8 6H5.5A1.5 1.5 0 0 0 4 7.5v11A1.5 1.5 0 0 0 5.5 20h11A1.5 1.5 0 0 0 18 18.5V16M13 4h7v7M11 13 20 4" />
             </svg>
-            Continue in background
+            {t("dialog.continueInBackground")}
           </button>
           <button className="recording-link muted" onClick={() => fileInputRef.current?.click()} type="button">
             <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
               <path d="M12 16V4M7.5 8.5 12 4l4.5 4.5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" />
             </svg>
-            Use audio file
+            {t("dialog.useAudioFile")}
           </button>
         </div>
       </aside>

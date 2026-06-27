@@ -8,6 +8,7 @@ import { Button, Input } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
 import { patientDetailRows, detectedSessionPatients, currentSessionPatient, filterPatientMatches, mergePatientMatches, samePatientSummary, patientIdentifierLabel, formatLastVisit } from "../captureModel";
 import { PatientIcon, SearchIcon, AddPatientIcon } from "./CaptureIcons";
+import { useT } from "../../../shared/i18n";
 
 export function PatientAssignmentSheet({
   session,
@@ -22,6 +23,7 @@ export function PatientAssignmentSheet({
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
   onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
 }) {
+  const t = useT();
   const [query, setQuery] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [apiMatches, setApiMatches] = React.useState<PatientSummary[]>([]);
@@ -92,20 +94,20 @@ export function PatientAssignmentSheet({
       <section aria-labelledby="assignment-sheet-title" aria-modal="true" className="assignment-sheet" role="dialog">
         <div className="assignment-sheet-handle" aria-hidden="true" />
         <div className="assignment-sheet-header">
-          <h2 id="assignment-sheet-title">{currentAssignedPatient ? "Change patient" : "Assign patient"}</h2>
+          <h2 id="assignment-sheet-title">{currentAssignedPatient ? t("assign.changePatient") : t("assign.assignPatient")}</h2>
           {onCancel ? (
-            <Button aria-label="Close patient assignment" onClick={onCancel} size="sm" type="button" variant="ghost">
+            <Button aria-label={t("assign.closeAssignment")} onClick={onCancel} size="sm" type="button" variant="ghost">
               <span aria-hidden="true">x</span>
             </Button>
           ) : null}
         </div>
         {currentAssignedPatient ? (
-          <section className="assignment-current-patient" aria-label="Currently assigned patient">
+          <section className="assignment-current-patient" aria-label={t("assign.currentlyAssignedPatientRegion")}>
             <span className="assignment-patient-avatar" aria-hidden="true">
               <PatientIcon />
             </span>
             <div className="assignment-patient-copy">
-              <small>Currently assigned{session.assignmentSource ? ` · ${assignmentSourceLabel(session.assignmentSource)}` : ""}</small>
+              <small>{session.assignmentSource ? t("assign.currentlyAssignedSource", { source: assignmentSourceLabel(session.assignmentSource) }) : t("assign.currentlyAssigned")}</small>
               <strong>{currentAssignedPatient.displayName}</strong>
               {assignedDetails.length ? (
                 <dl className="assignment-patient-details">
@@ -126,11 +128,11 @@ export function PatientAssignmentSheet({
               onClick={() => assignDraft({ unassign: true, displayName: "" })}
               type="button"
             >
-              Unassign
+              {t("assign.unassign")}
             </button>
           </section>
         ) : (
-          <p className="assignment-no-patient">No patient assigned yet — search below or create a new patient.</p>
+          <p className="assignment-no-patient">{t("assign.noPatientAssigned")}</p>
         )}
         <label className="assignment-search-field">
           <span aria-hidden="true">
@@ -138,16 +140,16 @@ export function PatientAssignmentSheet({
           </span>
           <Input
             className="assignment-search-input"
-            aria-label="Search patients"
+            aria-label={t("assign.searchPatients")}
             autoFocus
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by patient name, phone, or national ID"
+            placeholder={t("assign.searchPlaceholder")}
             value={query}
           />
         </label>
         <div className="assignment-section-heading">
-          <h3>Suggested matches</h3>
-          {searching ? <span>Searching...</span> : null}
+          <h3>{t("assign.suggestedMatches")}</h3>
+          {searching ? <span>{t("assign.searching")}</span> : null}
         </div>
         <div className="assignment-results" aria-live="polite">
           {matches.length ? (
@@ -163,10 +165,10 @@ export function PatientAssignmentSheet({
                   <span>{patientIdentifierLabel(patient)}</span>
                   <small>
                     {alreadyAssigned
-                      ? "Currently assigned to this visit"
+                      ? t("assign.matchAssignedToVisit")
                       : detectedIds.has(patient.id)
-                        ? "Detected in this session"
-                        : `Last visit: ${formatLastVisit(patient.lastVisit)}`}
+                        ? t("assign.matchDetectedInSession")
+                        : t("assign.matchLastVisit", { date: formatLastVisit(patient.lastVisit) })}
                   </small>
                 </div>
                 <Button
@@ -182,18 +184,18 @@ export function PatientAssignmentSheet({
                   type="button"
                   variant="secondary"
                 >
-                  {alreadyAssigned ? "Assigned" : saving ? "Saving" : "Select"}
+                  {alreadyAssigned ? t("assign.assigned") : saving ? t("assign.saving") : t("assign.select")}
                 </Button>
               </article>
               );
             })
           ) : (
-            <p className="assignment-empty">No suggested matches yet.</p>
+            <p className="assignment-empty">{t("assign.noMatchesYet")}</p>
           )}
         </div>
-        <div className="assignment-divider"><span>or</span></div>
-        <section className="assignment-create-panel" aria-label="Create a new patient">
-          <h3>Create a new patient</h3>
+        <div className="assignment-divider"><span>{t("assign.or")}</span></div>
+        <section className="assignment-create-panel" aria-label={t("assign.createNewPatientPanel")}>
+          <h3>{t("assign.createNewPatientHeading")}</h3>
           {creating ? (
             <PatientForm
               busy={saving}
@@ -209,12 +211,12 @@ export function PatientAssignmentSheet({
                   notes: values.notes || undefined,
                 })
               }
-              submitLabel="Create new patient"
+              submitLabel={t("assign.createNewPatientSubmit")}
             />
           ) : (
             <Button className="assignment-create-button" onClick={() => setCreating(true)} type="button">
               <AddPatientIcon />
-              Create new patient{trimmedQuery ? ` “${trimmedQuery}”` : ""}
+              {trimmedQuery ? t("assign.createNewPatientQuery", { q: trimmedQuery }) : t("assign.createNewPatient")}
             </Button>
           )}
         </section>

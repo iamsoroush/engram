@@ -4,6 +4,7 @@ import { CaptureMetadataSummary, generatedMetadataFor, metadataDisplay, metadata
 import { getCachedCapture } from "../../../services/storage/captureStorage";
 import { Card, Dialog } from "../../../shared/ui/primitives";
 import { appDateTimeFormat } from "../../../shared/lib/datetime";
+import { useT } from "../../../shared/i18n";
 import { StatusBadge } from "./StatusBadges";
 
 /**
@@ -17,6 +18,7 @@ export function CaptureRawPreview({
   item: CaptureItem;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   const [cachedUrl, setCachedUrl] = React.useState("");
   const [resolvedUrl, setResolvedUrl] = React.useState("");
   const [noteText, setNoteText] = React.useState("");
@@ -79,7 +81,7 @@ export function CaptureRawPreview({
     return sourceUrl || thumbnail ? (
       <img alt={item.sourceName} className="capture-raw-photo" src={sourceUrl || thumbnail} />
     ) : (
-      <div className="capture-raw-placeholder">Photo preview unavailable</div>
+      <div className="capture-raw-placeholder">{t("source.photoPreviewUnavailable")}</div>
     );
   }
 
@@ -87,7 +89,7 @@ export function CaptureRawPreview({
     return sourceUrl ? (
       <audio className="capture-raw-audio" controls src={sourceUrl} />
     ) : (
-      <div className="capture-raw-placeholder">Audio preview unavailable</div>
+      <div className="capture-raw-placeholder">{t("source.audioPreviewUnavailable")}</div>
     );
   }
 
@@ -114,6 +116,7 @@ export function SourcePreviewDialog({
   onUpdateCaption?: (captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateTranscript?: (captureId: string, transcript: string) => Promise<CaptureItem | null>;
 }) {
+  const t = useT();
   const [cachedUrl, setCachedUrl] = React.useState("");
   const [cacheSourceName, setCacheSourceName] = React.useState("");
   const [noteText, setNoteText] = React.useState("");
@@ -158,13 +161,13 @@ export function SourcePreviewDialog({
         if (!cancelled) setResolvedUrl(url);
       })
       .catch(() => {
-        if (!cancelled) setPreviewError("Source preview is not available right now.");
+        if (!cancelled) setPreviewError(t("source.previewUnavailableNow"));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [fileEndpoint, item?.id, onResolveFile]);
+  }, [fileEndpoint, item?.id, onResolveFile, t]);
 
   React.useEffect(() => {
     return () => {
@@ -236,7 +239,7 @@ export function SourcePreviewDialog({
         {isPro ? (
           <div className="source-info-panel">
             <div className="source-info-header">
-              <small>{item.time} · File: {sourceName}</small>
+              <small>{item.time} · {t("source.fileLabel")} {sourceName}</small>
               <StatusBadge status={item.status} />
             </div>
             <CaptureMetadataSummary item={item} />
@@ -280,6 +283,7 @@ function CaptureDetailSheet({
   onUpdateCaption?: (captureId: string, caption: string) => Promise<CaptureItem | null>;
   onUpdateTranscript?: (captureId: string, transcript: string) => Promise<CaptureItem | null>;
 }) {
+  const t = useT();
   const isAudio = item.type === "audio" || item.type === "voice";
   const generatedSource = generatedSourceFor(item);
   const isStaffEdited = generatedSource.source === "staff_edit";
@@ -319,7 +323,7 @@ function CaptureDetailSheet({
     setSavingText(true);
     setTextError("");
     void update(item.id, nextText)
-      .catch(() => setTextError(`${isAudio ? "Transcript" : "Caption"} could not be saved. Try again.`))
+      .catch(() => setTextError(isAudio ? t("source.transcriptSaveFailed") : t("source.captionSaveFailed")))
       .finally(() => setSavingText(false));
   };
 
@@ -333,7 +337,7 @@ function CaptureDetailSheet({
       >
         <div className="capture-detail-handle" aria-hidden="true" />
         <button
-          aria-label={`Close ${isAudio ? "audio note" : "photo"} details`}
+          aria-label={isAudio ? t("source.closeAudioDetails") : t("source.closePhotoDetails")}
           className="capture-detail-close"
           onClick={onClose}
           ref={closeButtonRef}
@@ -347,28 +351,28 @@ function CaptureDetailSheet({
               <CameraIcon />
             </span>
           ) : null}
-          <h2 id="capture-detail-title">{isAudio ? "Audio note" : "Photo"}</h2>
+          <h2 id="capture-detail-title">{isAudio ? t("source.audioNote") : t("source.photo")}</h2>
         </header>
 
         {isAudio ? (
           <div className="capture-detail-player">
-            {sourceUrl ? <audio controls src={sourceUrl} /> : <div className="capture-detail-placeholder">Audio preview unavailable</div>}
+            {sourceUrl ? <audio controls src={sourceUrl} /> : <div className="capture-detail-placeholder">{t("source.audioPreviewUnavailable")}</div>}
           </div>
         ) : (
           <div className="capture-detail-photo-frame">
             {sourceUrl || thumbnail ? (
-              <img alt={item.sourceName || "Photo capture"} src={sourceUrl || thumbnail} />
+              <img alt={item.sourceName || t("source.photoCaptureAlt")} src={sourceUrl || thumbnail} />
             ) : (
-              <div className="capture-detail-placeholder">Photo preview unavailable</div>
+              <div className="capture-detail-placeholder">{t("source.photoPreviewUnavailable")}</div>
             )}
           </div>
         )}
 
         <dl className="capture-detail-metadata">
-          <DetailRow icon={<CalendarIcon />} label="Captured" value={captured} />
-          {isPro ? <DetailRow icon={<FileIcon />} label="File name" value={fileName} /> : null}
-          {isPro ? <DetailRow icon={isAudio ? <BadgeCheckIcon /> : <CheckCircleIcon />} label="Status" value={<span className="detail-status-pill">{status}</span>} /> : null}
-          {isAudio ? <DetailRow icon={<ClockIcon />} label="Duration" value={duration} /> : null}
+          <DetailRow icon={<CalendarIcon />} label={t("source.captured")} value={captured} />
+          {isPro ? <DetailRow icon={<FileIcon />} label={t("source.fileName")} value={fileName} /> : null}
+          {isPro ? <DetailRow icon={isAudio ? <BadgeCheckIcon /> : <CheckCircleIcon />} label={t("source.status")} value={<span className="detail-status-pill">{status}</span>} /> : null}
+          {isAudio ? <DetailRow icon={<ClockIcon />} label={t("source.duration")} value={duration} /> : null}
         </dl>
 
         {isAudio ? (
@@ -376,16 +380,16 @@ function CaptureDetailSheet({
           isPro ? (
             <div className="capture-text-editor-card audio-transcript">
               <div className="capture-editor-heading">
-                <label htmlFor="capture-transcript-editor">{isStaffEdited ? "Transcript" : "AI transcript"}</label>
+                <label htmlFor="capture-transcript-editor">{isStaffEdited ? t("source.transcript") : t("source.aiTranscript")}</label>
                 <button
-                  aria-label="Copy transcript"
+                  aria-label={t("source.copyTranscript")}
                   className={`capture-transcript-copy ${copyState}`}
                   disabled={!textDraft.trim()}
                   onClick={copyText}
                   type="button"
                 >
                   <ClipboardIcon />
-                  {copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : "Copy"}
+                  {copyState === "copied" ? t("source.copied") : copyState === "failed" ? t("source.copyFailed") : t("source.copy")}
                 </button>
               </div>
               <textarea
@@ -397,29 +401,29 @@ function CaptureDetailSheet({
                 value={textDraft}
               />
               <div className="capture-editor-save-row">
-                <span>{savingText ? "Saving transcript..." : textError || editAttributionText(editorName, "Transcript") || "Edits save when you leave the field."}</span>
+                <span>{savingText ? t("source.savingTranscript") : textError || editAttributionText(editorName, "Transcript") || t("source.editsSaveOnBlur")}</span>
                 <button disabled={!canUpdateText || savingText || !textDraft.trim() || textDraft.trim() === text} onClick={saveText} type="button">
-                  Save
+                  {t("source.save")}
                 </button>
               </div>
             </div>
           ) : null
         ) : (
           <div className="capture-text-editor-card">
-            <label htmlFor="capture-caption-editor">{isPro ? (isStaffEdited ? "Caption" : "AI-generated caption") : "Caption"}</label>
+            <label htmlFor="capture-caption-editor">{isPro ? (isStaffEdited ? t("source.caption") : t("source.aiGeneratedCaption")) : t("source.caption")}</label>
             <textarea
               disabled={!canUpdateText || savingText}
               id="capture-caption-editor"
               onBlur={saveText}
               onChange={(event) => setTextDraft(event.target.value)}
-              placeholder={isPro ? undefined : "Add a caption (optional)"}
+              placeholder={isPro ? undefined : t("source.addCaptionOptional")}
               rows={4}
               value={textDraft}
             />
             <div className="capture-editor-save-row">
-              <span>{savingText ? "Saving caption..." : textError || (isPro ? editAttributionText(editorName, "Caption") : "") || "Edits save when you leave the field."}</span>
+              <span>{savingText ? t("source.savingCaption") : textError || (isPro ? editAttributionText(editorName, "Caption") : "") || t("source.editsSaveOnBlur")}</span>
               <button disabled={!canUpdateText || savingText || textDraft.trim() === text.trim()} onClick={saveText} type="button">
-                Save
+                {t("source.save")}
               </button>
             </div>
           </div>

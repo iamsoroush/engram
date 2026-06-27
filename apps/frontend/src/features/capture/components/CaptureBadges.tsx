@@ -8,6 +8,7 @@ import { Card } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
 import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, AssignmentCandidate } from "../captureModel";
 import { SyncIcon } from "./CaptureIcons";
+import { useT } from "../../../shared/i18n";
 
 export type PatientConflictSuggestion = { name: string; patientId?: string; nationalId?: string; spokenName?: string };
 
@@ -30,6 +31,7 @@ export function PatientConflictResolver({
   onChooseAnother?: () => void;
   onDismiss?: () => void;
 }) {
+  const t = useT();
   const [applying, setApplying] = React.useState(false);
   const [editing, setEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
@@ -59,46 +61,46 @@ export function PatientConflictResolver({
       <div className="partial-match-head">
         <span className="effect-chip-label">
           {suggestion.patientId ? (
-            <>Suggested: reassign to <strong>{suggestion.name}</strong></>
+            <>{t("badge.suggestedReassignTo")} <strong>{suggestion.name}</strong></>
           ) : (
-            <>New patient: <strong>{suggestion.name}</strong></>
+            <>{t("badge.newPatientName")} <strong>{suggestion.name}</strong></>
           )}
         </span>
         {onDismiss ? (
-          <button aria-label="Dismiss suggestion" className="partial-match-close" onClick={onDismiss} type="button">×</button>
+          <button aria-label={t("badge.dismissSuggestion")} className="partial-match-close" onClick={onDismiss} type="button">×</button>
         ) : null}
       </div>
       {showMatchedVsSpoken ? (
         <span className="partial-match-identity">
-          Matched <strong>{suggestion.name}</strong> · you said <strong>{suggestion.spokenName}</strong>
+          {t("badge.partialMatchMatched")} <strong>{suggestion.name}</strong> {t("badge.partialMatchYouSaid")} <strong>{suggestion.spokenName}</strong>
         </span>
       ) : null}
       {editing ? (
         <div className="partial-match-edit">
-          <span className="partial-match-edit-title">New patient details</span>
-          <input aria-label="Patient name" onChange={(event) => setEditName(event.target.value)} placeholder="Patient name" value={editName} />
-          <input aria-label="National ID (optional)" onChange={(event) => setEditNationalId(event.target.value)} placeholder="National ID (optional)" value={editNationalId} />
+          <span className="partial-match-edit-title">{t("badge.newPatientDetails")}</span>
+          <input aria-label={t("badge.patientName")} onChange={(event) => setEditName(event.target.value)} placeholder={t("badge.patientName")} value={editName} />
+          <input aria-label={t("badge.nationalIdOptional")} onChange={(event) => setEditNationalId(event.target.value)} placeholder={t("badge.nationalIdOptional")} value={editNationalId} />
           <div className="partial-match-edit-actions">
             <button className="effect-chip-action" disabled={applying || !editName.trim()} onClick={() => createNew(editName, editNationalId)} type="button">
-              {applying ? "Creating…" : "Create patient"}
+              {applying ? t("badge.creating") : t("badge.createPatient")}
             </button>
-            <button className="effect-chip-ghost" onClick={() => setEditing(false)} type="button">Cancel</button>
+            <button className="effect-chip-ghost" onClick={() => setEditing(false)} type="button">{t("badge.cancel")}</button>
           </div>
         </div>
       ) : (
         <div className="partial-match-actions">
           {suggestion.patientId && onApply ? (
             <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
-              {applying ? "Applying…" : "Keep match"}
+              {applying ? t("badge.applying") : t("badge.keepMatch")}
             </button>
           ) : null}
           {onApply ? (
             <button className="effect-chip-secondary" disabled={applying} onClick={openEditor} type="button">
-              {suggestion.patientId ? "Create new instead" : "Create patient"}
+              {suggestion.patientId ? t("badge.createNewInstead") : t("badge.createPatient")}
             </button>
           ) : null}
           {onChooseAnother ? (
-            <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">Choose another</button>
+            <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">{t("badge.chooseAnother")}</button>
           ) : null}
         </div>
       )}
@@ -151,6 +153,7 @@ export function CapturePatientBadges({
   /** §7: a low-confidence / flagged photo caption — renders a "Needs review" chip with this reason. */
   needsReviewReason?: string;
 }) {
+  const t = useT();
   const [dismissed, setDismissed] = React.useState(false);
 
   // A pending patient conflict (partial/fuzzy match or a dictated different/new patient) on a
@@ -162,7 +165,7 @@ export function CapturePatientBadges({
   if (!showSuggestion && !outOfContext && !showNeedsReview) return null;
 
   return (
-    <div className="capture-effect-chips" aria-label="Capture effects">
+    <div className="capture-effect-chips" aria-label={t("badge.captureEffects")}>
       {showSuggestion && suggestion ? (
         <div className="partial-match-row">
           <PatientConflictResolver
@@ -176,17 +179,17 @@ export function CapturePatientBadges({
       ) : null}
       {outOfContext ? (
         <span className="effect-chip is-context">
-          <span className="effect-chip-label">⌀ Out of context · not in report</span>
+          <span className="effect-chip-label">⌀ {t("badge.outOfContext")}</span>
           {onMarkRelevant ? (
             <button className="effect-chip-dismiss" onClick={onMarkRelevant} type="button">
-              Mark relevant
+              {t("badge.markRelevant")}
             </button>
           ) : null}
         </span>
       ) : null}
       {showNeedsReview ? (
         <span className="effect-chip is-review">
-          <span className="effect-chip-label">⚠ Needs review · {needsReviewReason}</span>
+          <span className="effect-chip-label">⚠ {t("badge.needsReviewReason", { reason: needsReviewReason })}</span>
         </span>
       ) : null}
     </div>
@@ -197,12 +200,13 @@ export function CapturePatientBadges({
  * into the live report. Once it's in (`added`), the capture carries no badge — a capture with no
  * status chip is one that's uploaded, processed, and already in the report. */
 export function CaptureReportBadge({ isPro, item, outOfContext }: { isPro?: boolean; item: CaptureItem; outOfContext?: boolean }) {
+  const t = useT();
   const status = metadataDisplay(metadataRecord(metadataRecord(item.metadata).report_contribution).status);
   if (!isPro || outOfContext || !["updating", "pending"].includes(status)) return null;
   return (
     <span className="capture-title-badge effect-chip is-report adding">
       <span className="effect-chip-dot" aria-hidden="true" />
-      Adding to report…
+      {t("badge.addingToReport")}
     </span>
   );
 }
@@ -290,6 +294,7 @@ export function AiCreatedPatientPanel({
 }
 
 export function CaptureInlineStatus({ status, isPro = true, offline = false }: { status?: CaptureItem["status"]; isPro?: boolean; offline?: boolean }) {
+  const t = useT();
   // When connected and healthy, a capture shows no status — it just syncs. The only sync indicator
   // appears when we're offline / the backend is unreachable and this capture isn't synced yet.
   const notSynced = captureNotSynced(status);
@@ -297,7 +302,7 @@ export function CaptureInlineStatus({ status, isPro = true, offline = false }: {
     return (
       <span className="capture-inline-status syncing-offline">
         <SyncIcon />
-        Trying to sync
+        {t("badge.tryingToSync")}
       </span>
     );
   }
@@ -306,11 +311,11 @@ export function CaptureInlineStatus({ status, isPro = true, offline = false }: {
     return (
       <span className="capture-inline-status active processing">
         <span aria-hidden="true" />
-        Processing
+        {t("badge.processing")}
       </span>
     );
   }
-  if (isPro && (status === "failed" || status === "needsReview")) return <span className="capture-inline-status issue">Needs attention</span>;
+  if (isPro && (status === "failed" || status === "needsReview")) return <span className="capture-inline-status issue">{t("badge.needsAttention")}</span>;
   return null;
 }
 
@@ -359,10 +364,11 @@ export function AiSpark({ working }: { working?: boolean }) {
 // AI-generated text shows the ✨ icon instead of a "Generated by AI" badge; staff edits / upload
 // states keep their text label. `working` animates the icon (processing).
 export function CaptureAttribution({ value, working }: { value: string; working?: boolean }) {
+  const t = useT();
   if (!value) return null;
   if (value === "Generated by AI") {
     return (
-      <span className="capture-ai-tag" role="img" aria-label="Generated by AI" title="Generated by AI">
+      <span className="capture-ai-tag" role="img" aria-label={t("badge.generatedByAi")} title={t("badge.generatedByAi")}>
         <AiSpark working={working} />
       </span>
     );
@@ -396,7 +402,7 @@ export function CaptureGeneratedText({
   attribution,
   dir,
   onSave,
-  addLabel = "Add",
+  addLabel,
   display,
 }: {
   label: string;
@@ -408,6 +414,7 @@ export function CaptureGeneratedText({
   /** Model-authored Markdown variant (clean `text` plus **bold**) shown read-only; editing uses `text`. */
   display?: string;
 }) {
+  const t = useT();
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(text);
   const [saving, setSaving] = React.useState(false);
@@ -434,13 +441,13 @@ export function CaptureGeneratedText({
       </div>
       {editing ? (
         <div className="capture-generated-editor">
-          <textarea aria-label={`Edit ${label.toLowerCase()}`} dir={dir} onChange={(event) => setDraft(event.target.value)} rows={Math.min(8, Math.max(3, Math.ceil(draft.length / 56)))} value={draft} />
+          <textarea aria-label={t("badge.editField", { label: label.toLowerCase() })} dir={dir} onChange={(event) => setDraft(event.target.value)} rows={Math.min(8, Math.max(3, Math.ceil(draft.length / 56)))} value={draft} />
           <div className="capture-generated-editor-actions">
             <button className="capture-generated-cancel" onClick={() => setEditing(false)} type="button">
-              Cancel
+              {t("badge.cancel")}
             </button>
             <button className="capture-generated-save" disabled={saving || !draft.trim()} onClick={save} type="button">
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("badge.saving") : t("badge.save")}
             </button>
           </div>
         </div>
@@ -454,7 +461,7 @@ export function CaptureGeneratedText({
           <p className="live-draft-preview" dir={dir}>{display && display !== text ? renderMarkdownBold(display) : text}</p>
         )
       ) : onSave ? (
-        <button className="capture-generated-add" onClick={start} type="button">{addLabel}</button>
+        <button className="capture-generated-add" onClick={start} type="button">{addLabel ?? t("badge.addCaption")}</button>
       ) : null}
     </>
   );
