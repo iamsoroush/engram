@@ -1,9 +1,11 @@
 // Basic (free-tier) note editor for the capture flow.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
+import { useT } from "../../../shared/i18n";
 import { textDirection } from "../captureModel";
 
 export function BasicNoteEditor({ text, onSave }: { text: string; onSave?: (text: string) => Promise<void> }) {
+  const t = useT();
   const [editing, setEditing] = React.useState(false);
   const [draft, setDraft] = React.useState(text);
   const [saving, setSaving] = React.useState(false);
@@ -63,7 +65,7 @@ export function BasicNoteEditor({ text, onSave }: { text: string; onSave?: (text
       role={onSave ? "button" : undefined}
       tabIndex={onSave ? 0 : undefined}
     >
-      {text.trim() || (onSave ? "Tap to add a note" : "—")}
+      {text.trim() || (onSave ? t("note.tapToAdd") : "—")}
     </p>
   );
 }

@@ -10,6 +10,7 @@ import { CaptureRawPreview } from "./SourcePreview";
 import { BasicNoteEditor } from "./BasicNoteEditor";
 import { CapturePatientBadges, CaptureReportBadge, captureAssignmentInfo, CaptureAssignmentBadge, CaptureInlineStatus, CaptureWorkingPlaceholder, pendingGeneratedAttribution, audioPendingTranscriptLabel, CaptureGeneratedHeading, CaptureGeneratedText, captureTextAttribution, CaptureTimelineIcon } from "./CaptureBadges";
 import { captureOutOfContext, captureDraftLabel, draftCaptureText, generatedTextForReport, textDirection, captureNeedsReview, captionDisplay, activePatientAssignmentActionForSession, AssignmentCandidate, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { useT } from "../../../shared/i18n";
 
 export function LiveDraftReport({
   isPro,
@@ -42,6 +43,7 @@ export function LiveDraftReport({
   onUpdateCaptureTranscript?: (sessionId: string, captureId: string, transcript: string) => Promise<CaptureItem | null>;
   onUpdateNote?: (sessionId: string, captureId: string, text: string) => Promise<void>;
 }) {
+  const t = useT();
   const [openMenuId, setOpenMenuId] = React.useState("");
   const activePatientAction = activePatientAssignmentActionForSession(session);
   const candidates = sessionAssignmentCandidates(session);
@@ -68,8 +70,8 @@ export function LiveDraftReport({
   if (!session?.items.length) {
     return (
       <div className="live-draft-empty">
-        <h3>Start the draft with a capture</h3>
-        <p>Audio, photos, and notes will appear here immediately as the session develops.</p>
+        <h3>{t("draft.emptyHeading")}</h3>
+        <p>{t("draft.emptyBody")}</p>
       </div>
     );
   }
@@ -107,18 +109,18 @@ export function LiveDraftReport({
         />
       ))}
       {isPro && session.processingStatus?.state === "processing" ? (
-        <div className="live-draft-processing">Engram is refining the live report. Your captures stay reviewable while it updates.</div>
+        <div className="live-draft-processing">{t("draft.processing")}</div>
       ) : null}
       {!isPro ? (
         // One consolidated Try Pro for the whole capture surface (the per-capture badges are gone).
         <TryProTeaser
           className="capture-feed-teaser"
-          title="Do more with Pro"
-          subtitle="Basic captures fast and stays AI-free. Pro adds the understanding layer to the same captures."
+          title={t("draft.tryProTitle")}
+          subtitle={t("draft.tryProSubtitle")}
           features={[
-            "Dictate the visit — your audio is transcribed",
-            "Photos auto-captioned & paired before/after with a slider",
-            "A structured treatment report (area · product · units · lot), extracted from your dictation",
+            t("draft.tryProFeatureAudio"),
+            t("draft.tryProFeaturePhotos"),
+            t("draft.tryProFeatureReport"),
           ]}
         />
       ) : null}
@@ -171,9 +173,10 @@ export function LiveDraftCaptureItem({
   sequence: number;
   currentUserId?: string | null;
 }) {
+  const t = useT();
   const isAudio = item.type === "audio" || item.type === "voice";
   const isPhoto = item.type === "photo";
-  const title = captureDraftLabel(item, sequence);
+  const title = captureDraftLabel(item, sequence, t);
   const generatedText = generatedTextForReport(item);
   // Only Pro photos are AI-captioned, so only they show the "Reading image" cue while processing.
   // Basic photos are never captioned → go straight to a manual "Add caption" (no AI badge/spinner).
@@ -183,10 +186,10 @@ export function LiveDraftCaptureItem({
   // passthrough now — no AI "decoration" — so the card shows the raw note, inline-editable.
   const noteRawText = metadataText(metadataRecord(metadataRecord(item.metadata).note).text) || item.detail || "";
   // §7: a low-confidence / flagged photo caption surfaces a "Needs review" chip with the reason.
-  const captionReviewReason = captureNeedsReview(item);
+  const captionReviewReason = captureNeedsReview(item, t);
   // Model-authored Markdown variant of the caption (clean text for AI jobs; **bold** for the UI).
   const captionDisplayText = captionDisplay(item);
-  const textAttribution = captureTextAttribution(item);
+  const textAttribution = captureTextAttribution(item, t);
   const [busy, setBusy] = React.useState(false);
   const [markedRelevant, setMarkedRelevant] = React.useState(false);
   const outOfContext = captureOutOfContext(item) && !markedRelevant;
@@ -200,7 +203,7 @@ export function LiveDraftCaptureItem({
 
   const rename = () => {
     if (!onRenameCapture || busy) return;
-    const nextTitle = window.prompt("Rename capture", title);
+    const nextTitle = window.prompt(t("draft.renamePrompt"), title);
     if (!nextTitle?.trim() || nextTitle.trim() === title) return;
     setBusy(true);
     void onRenameCapture(nextTitle.trim()).finally(() => {
@@ -211,7 +214,7 @@ export function LiveDraftCaptureItem({
 
   const remove = () => {
     if (!onDeleteCapture || busy) return;
-    if (!window.confirm(`Delete ${title}? The live report will update.`)) return;
+    if (!window.confirm(t("draft.deleteConfirm", { title }))) return;
     setBusy(true);
     void onDeleteCapture().finally(() => {
       setBusy(false);
@@ -260,7 +263,7 @@ export function LiveDraftCaptureItem({
           </div>
           <button
             aria-expanded={menuOpen}
-            aria-label={`Capture settings for ${title}`}
+            aria-label={t("draft.captureSettings", { title })}
             className="live-draft-overflow"
             onClick={(event) => {
               event.stopPropagation();
@@ -273,10 +276,10 @@ export function LiveDraftCaptureItem({
           {menuOpen ? (
             <div className="capture-item-menu">
               <button disabled={!onRenameCapture || busy} onClick={rename} type="button">
-                Rename
+                {t("draft.rename")}
               </button>
               <button className="danger" disabled={!onDeleteCapture || busy} onClick={remove} type="button">
-                Delete
+                {t("draft.delete")}
               </button>
             </div>
           ) : null}
@@ -289,11 +292,11 @@ export function LiveDraftCaptureItem({
             {isPro ? (
               <section className={`capture-generated-section ${generatedText ? "ready" : "pending"}`}>
                 {generatedText ? (
-                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Transcript" onSave={onEditTranscript} text={generatedText} />
+                  <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label={t("draft.transcript")} onSave={onEditTranscript} text={generatedText} />
                 ) : (
                   <>
-                    <CaptureGeneratedHeading label="Transcript" attribution={pendingGeneratedAttribution(item)} />
-                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item)} />
+                    <CaptureGeneratedHeading label={t("draft.transcript")} attribution={pendingGeneratedAttribution(item)} />
+                    <CaptureWorkingPlaceholder label={audioPendingTranscriptLabel(item, t)} />
                   </>
                 )}
               </section>
@@ -309,14 +312,14 @@ export function LiveDraftCaptureItem({
               <div className="live-draft-photo-copy">
                 <section className={`capture-generated-section ${generatedText ? "ready" : captionStillProcessing ? "pending" : "ready"}`}>
                   {generatedText ? (
-                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label="Caption" onSave={onEditCaption} text={generatedText} display={captionDisplayText} />
+                    <CaptureGeneratedText attribution={textAttribution} dir={textDirection(generatedText)} label={t("draft.caption")} onSave={onEditCaption} text={generatedText} display={captionDisplayText} />
                   ) : captionStillProcessing ? (
                     <>
-                      <CaptureGeneratedHeading label="Caption" attribution={textAttribution} />
-                      <CaptureWorkingPlaceholder label="Reading image" />
+                      <CaptureGeneratedHeading label={t("draft.caption")} attribution={textAttribution} />
+                      <CaptureWorkingPlaceholder label={t("draft.readingImage")} />
                     </>
                   ) : (
-                    <CaptureGeneratedText addLabel="Add caption" attribution="" dir="ltr" label="Caption" onSave={onEditCaption} text="" />
+                    <CaptureGeneratedText addLabel={t("draft.addCaption")} attribution="" dir="ltr" label={t("draft.caption")} onSave={onEditCaption} text="" />
                   )}
                 </section>
               </div>

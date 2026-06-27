@@ -13,11 +13,11 @@ import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
-import { appT } from "../../../shared/i18n";
+import { useT } from "../../../shared/i18n";
 
 export function CaptureScreen({
   activeSession,
@@ -30,7 +30,7 @@ export function CaptureScreen({
   onDeleteCapture,
   mode = "active",
   onBack,
-  backLabel = "Clinical Memory",
+  backLabel,
   onResumeCapture,
   assignmentOpen,
   onAssignPatient,
@@ -132,6 +132,7 @@ export function CaptureScreen({
   onAssignActiveToNext?: () => void;
   onStartNextVisit?: () => void;
 }) {
+  const t = useT();
   const isPro = tier !== "basic";
   // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
   // visit (deterministic match against the extracted treatments). Basic shows the flat list.
@@ -168,7 +169,7 @@ export function CaptureScreen({
   // name. Title = the patient's Nth session when assigned, else the session date+time. Sync state
   // only shows when offline/unreachable (calm when everything is fine).
   const lightHeader = !isPro && !isHistorical;
-  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
+  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal, t);
   const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
   // A just-added capture is "in flight" the instant it lands (local → syncing → uploaded → processing)
@@ -194,23 +195,25 @@ export function CaptureScreen({
   // Surface-by-exception: instead of a persistent "everything's fine" line, show a calm "Organizing…"
   // pulse on the Sources header only while captures are still being processed into the report.
   const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
-  const reportState = workspaceReportState(activeSession);
+  const reportState = workspaceReportState(activeSession, t);
   const selectedReportView = reportView;
-  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
+  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical, t);
   // Pro keeps its status chip + meta, but the title gets the same meaningful naming as Basic — a
   // real AI report title when there is one, otherwise "{patient}'s Nth session" / the date+time
-  // (instead of a raw "Session <timestamp>" label).
+  // (instead of a raw "Session <timestamp>" label). The generic-title test is language-independent
+  // (isPlaceholderSessionTitle) so it survives translation; the raw "Session <ts>" label case is a
+  // local/backend label, still matched textually.
   const proTitle =
-    !isHistorical && (sessionTitle === "Current session" || /^session\s/i.test(sessionTitle))
-      ? lightSessionTitle(activeSession, sessionOrdinal)
+    !isHistorical && (isPlaceholderSessionTitle(activeSession, isHistorical) || /^session\s/i.test(sessionTitle))
+      ? lightSessionTitle(activeSession, sessionOrdinal, t)
       : sessionTitle;
-  const patientName = sessionPatientName(activeSession);
+  const patientName = sessionPatientName(activeSession, t);
   const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
-  const captureCountLabel = `${captureCount} capture${captureCount === 1 ? "" : "s"}`;
-  const sessionStatusChip = sessionSummaryStatusChip(activeSession);
-  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
-  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
+  const captureCountLabel = t(captureCount === 1 ? "capture.captureCountOne" : "capture.captureCountOther", { count: captureCount });
+  const sessionStatusChip = sessionSummaryStatusChip(activeSession, t);
+  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession, t);
+  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession, t);
 
   // FB8 unified Pro layout: the synthesized report is the primary surface, the raw captures become a
   // collapsible "Sources" drawer, and a sticky bar drives verification. Basic keeps its Captures /
@@ -337,11 +340,11 @@ export function CaptureScreen({
   );
 
   return (
-    <section className="capture-current session-workspace" aria-label={isHistorical ? "Historical session review" : "Active session workspace"}>
+    <section className="capture-current session-workspace" aria-label={isHistorical ? t("capture.historicalSessionReview") : t("capture.activeSessionWorkspace")}>
       {onBack ? (
         <button className="context-back-button" onClick={onBack} type="button">
           <BackIcon />
-          {backLabel}
+          {backLabel ?? t("capture.backToMemory")}
         </button>
       ) : null}
       <div className={`active-session-summary${lightHeader ? " light" : ""}`}>
@@ -355,7 +358,7 @@ export function CaptureScreen({
               <p>
                 {captureCountLabel}
                 {offline && sessionPending ? (
-                  <span className="session-sync-pending"><SyncIcon /> Trying to sync the session</span>
+                  <span className="session-sync-pending"><SyncIcon /> {t("capture.tryingToSyncSession")}</span>
                 ) : null}
               </p>
             </>
@@ -368,20 +371,20 @@ export function CaptureScreen({
                   {sessionStatusChip.label}
                 </span>
               </div>
-              <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+              <p data-testid="session-meta">{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
             </>
           )}
         </div>
         <div className="workspace-header-actions">
           {isHistorical && onResumeCapture ? (
             <Button disabled={!activeSession} onClick={onResumeCapture} size="sm" type="button" variant="secondary">
-              Add capture
+              {t("capture.addCapture")}
             </Button>
           ) : null}
           {!isHistorical && onStartNewSession ? (
             <Button className="current-new-session" onClick={onStartNewSession} size="sm" type="button" variant="secondary">
               <span aria-hidden="true">+</span>
-              New session
+              {t("capture.newSession")}
             </Button>
           ) : null}
         </div>
@@ -391,8 +394,8 @@ export function CaptureScreen({
           <span aria-hidden="true">🔒</span>
           <span>
             {activeSession.createdBy?.displayName
-              ? `Started by ${activeSession.createdBy.displayName} — read-only for you. You can still add captures.`
-              : "Owned by another clinician — read-only for you. You can still add captures."}
+              ? t("capture.readOnlyStartedBy", { name: activeSession.createdBy.displayName })
+              : t("capture.readOnlyOwnedByOther")}
           </span>
         </div>
       ) : null}
@@ -408,9 +411,9 @@ export function CaptureScreen({
           <p>
             {activeSession?.patientId || activeSession?.patientName
               ? activeSession.assignmentSource
-                ? assignmentSourceLabel(activeSession.assignmentSource)
-                : "Assigned manually"
-              : "Capture-first — assign when ready"}
+                ? assignmentSourceLabel(activeSession.assignmentSource, t)
+                : t("capture.assignedManually")
+              : t("capture.captureFirstAssignWhenReady")}
           </p>
         </div>
         <div className="patient-context-actions">
@@ -421,7 +424,7 @@ export function CaptureScreen({
               type="button"
             >
               <ClockHistoryIcon />
-              History
+              {t("capture.history")}
             </button>
           ) : null}
           {onAssignPatient ? (
@@ -433,12 +436,12 @@ export function CaptureScreen({
               {activeSession?.patientId || activeSession?.patientName ? (
                 <>
                   <EditIcon />
-                  Change
+                  {t("capture.change")}
                 </>
               ) : (
                 <>
                   <AddPatientIcon />
-                  Assign
+                  {t("capture.assign")}
                 </>
               )}
             </button>
@@ -448,17 +451,17 @@ export function CaptureScreen({
       {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
         <div className="next-lined-up" role="note">
           <span className="next-lined-up-copy">
-            Next in your list: <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
+            {t("capture.nextInYourList")} <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
           </span>
           <span className="next-lined-up-actions">
             {activeSession.items.length && onAssignActiveToNext ? (
               <Button size="sm" type="button" onClick={onAssignActiveToNext}>
-                Assign this visit
+                {t("capture.assignThisVisit")}
               </Button>
             ) : null}
             {onStartNextVisit ? (
               <Button size="sm" variant="secondary" type="button" onClick={onStartNextVisit}>
-                Start their visit
+                {t("capture.startTheirVisit")}
               </Button>
             ) : null}
           </span>
@@ -469,14 +472,14 @@ export function CaptureScreen({
           NOT a verify-bar blocker (not in verifyRegionRef, not counted). Flag body is report-language
           clinical content (dir auto, never translated); only the chrome routes through appT. */}
       {keptSafetyFlags.length ? (
-        <section className="session-safety-panel" aria-label={appT("capture.safety.label")}>
+        <section className="session-safety-panel" aria-label={t("capture.safety.label")}>
           <div className="session-safety-head">
-            <span className="session-safety-label">{appT("capture.safety.label")}</span>
-            <span className="session-safety-hint">{appT("capture.safety.hint")}</span>
+            <span className="session-safety-label">{t("capture.safety.label")}</span>
+            <span className="session-safety-hint">{t("capture.safety.hint")}</span>
           </div>
           {keptSafetyFlags.map((flag) => (
             <div className={`session-safety-flag safety-${flag.kind}`} key={flag.key}>
-              <span className="session-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
+              <span className="session-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
               <p className="session-safety-text" dir={textDirection(flag.text)}>
                 {flag.text}
               </p>
@@ -484,8 +487,8 @@ export function CaptureScreen({
                 <button
                   className="session-safety-remove"
                   type="button"
-                  aria-label={appT("capture.safety.reject")}
-                  title={appT("capture.safety.reject")}
+                  aria-label={t("capture.safety.reject")}
+                  title={t("capture.safety.reject")}
                   onClick={() => onRejectSafetyFlag(activeSession.id, flag.key)}
                 >
                   ✕
@@ -508,8 +511,8 @@ export function CaptureScreen({
       {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (
         <div className="session-verify-region" ref={verifyRegionRef}>
           {patientConflicts.length ? (
-            <section className="session-patient-conflicts" aria-label="Patient needs your confirmation">
-              <span className="session-patient-conflicts-label">Patient needs your confirmation</span>
+            <section className="session-patient-conflicts" aria-label={t("capture.patientNeedsConfirmation")}>
+              <span className="session-patient-conflicts-label">{t("capture.patientNeedsConfirmation")}</span>
               {patientConflicts.map((conflict) => (
                 <PatientConflictResolver
                   key={conflict.captureId}
@@ -533,11 +536,11 @@ export function CaptureScreen({
             <span className="report-title-icon" aria-hidden="true">
               <ClipboardIcon />
             </span>
-            <h2>Clinical report</h2>
+            <h2>{t("capture.clinicalReport")}</h2>
             {/* AI-provenance mark: the Pro report is AI-synthesized; the spark twinkles while the
                 synthesis is organizing (the "editing" phase), so the icon itself signals AI is at work. */}
             {isPro ? (
-              <span className="report-ai-mark" role="img" aria-label="AI-synthesized report" title="AI-synthesized report">
+              <span className="report-ai-mark" role="img" aria-label={t("capture.aiSynthesizedReport")} title={t("capture.aiSynthesizedReport")}>
                 <AiSpark working={isUpdatingReport} />
               </span>
             ) : null}
@@ -546,15 +549,15 @@ export function CaptureScreen({
             {isUpdatingReport ? (
               <span className="report-updating" aria-live="polite">
                 <span className="report-updating-spinner" aria-hidden="true" />
-                {reportUpdatingLabel(activeSession)}
+                {reportUpdatingLabel(activeSession, t)}
               </span>
             ) : null}
             {/* Compact share affordance in the header (a share icon, not a full sentence on its own
                 row) — a curated clinic→patient action; opens the curate+preview sheet. */}
             {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
-              <button className="report-share-button" type="button" onClick={onShareVisit} aria-label="Share with patient" title="Share with patient">
+              <button className="report-share-button" type="button" onClick={onShareVisit} aria-label={t("capture.shareWithPatient")} title={t("capture.shareWithPatient")}>
                 <ShareIcon />
-                <span className="report-share-button-label">Share</span>
+                <span className="report-share-button-label">{t("capture.share")}</span>
               </button>
             ) : null}
           </div>
@@ -563,16 +566,16 @@ export function CaptureScreen({
         {!useUnifiedLayout ? (
           <div className="report-toolbar">
             <div className="report-toolbar-actions">
-              <div className="report-view-switch" aria-label="Report view">
+              <div className="report-view-switch" aria-label={t("capture.reportView")}>
                 <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                  Captures
+                  {t("capture.capturesTab")}
                 </button>
                 <button
                   className={selectedReportView === "structured" ? "active" : ""}
                   onClick={() => setReportView("structured")}
                   type="button"
                 >
-                  Live report
+                  {t("capture.liveReportTab")}
                 </button>
               </div>
             </div>
@@ -610,8 +613,8 @@ export function CaptureScreen({
             When the doctor DICTATED aftercare that differs from a protocol, the dictation wins and a
             conflict note is shown instead of silently including the contradicting protocol. */}
         {useUnifiedLayout && !isHistorical && !readOnly && (includedAftercare.length || aftercareConflicts.length) ? (
-          <section className="report-aftercare-included" aria-label="Aftercare for this visit">
-            <span className="report-aftercare-included-label">Aftercare for this visit · from your clinic protocol</span>
+          <section className="report-aftercare-included" aria-label={t("capture.aftercareForThisVisit")}>
+            <span className="report-aftercare-included-label">{t("capture.aftercareForThisVisitFromProtocol")}</span>
             {includedAftercare.map((template) => (
               <div className="aftercare-included-card" key={template.id}>
                 <div className="aftercare-included-body">
@@ -622,8 +625,8 @@ export function CaptureScreen({
                   <button
                     className="aftercare-included-remove"
                     type="button"
-                    aria-label={`Remove ${template.name}`}
-                    title="Remove from this visit"
+                    aria-label={t("capture.removeTemplate", { name: template.name })}
+                    title={t("capture.removeFromThisVisit")}
                     onClick={() => onDismissAftercare(activeSession.id, template.id, true)}
                   >
                     ✕
@@ -637,10 +640,10 @@ export function CaptureScreen({
                 <span>
                   {conflict.note ? (
                     <>
-                      {conflict.note} <span className="aftercare-conflict-source">(differs from your clinic’s “{conflict.template.name}” protocol)</span>
+                      {conflict.note} <span className="aftercare-conflict-source">{t("capture.aftercareConflictSource", { name: conflict.template.name })}</span>
                     </>
                   ) : (
-                    <>Your dictated aftercare differs from your clinic’s “{conflict.template.name}” protocol — your words are used.</>
+                    <>{t("capture.aftercareConflictDefault", { name: conflict.template.name })}</>
                   )}
                 </span>
               </div>
@@ -668,12 +671,12 @@ export function CaptureScreen({
             >
               <span className="sources-drawer-lead">
                 <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
-                <span className="sources-drawer-title">Sources</span>
+                <span className="sources-drawer-title">{t("capture.sources")}</span>
                 <span className="sources-drawer-count">{captureCount}</span>
                 {sourcesProcessing ? (
                   <span className="sources-drawer-organizing" aria-live="polite">
                     <span className="sources-organizing-dot" aria-hidden="true" />
-                    Organizing…
+                    {t("capture.organizing")}
                   </span>
                 ) : null}
               </span>

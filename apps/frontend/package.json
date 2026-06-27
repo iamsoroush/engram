@@ -7,8 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test",
-    "test:visual": "playwright test tests/visual"
+    "test:visual": "playwright test tests/visual",
+    "i18n:guard": "node scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@sentry/react": "^9.47.1",
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@playwright/test": "^1.60.0",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "vitest": "^3.2.4"
   }
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { useT } from "../../../shared/i18n";
 
 /**
  * Sticky, session-level "needs your confirmation" driver (Pro, unified layout). It counts ONLY
@@ -8,17 +9,19 @@ import React from "react";
  * Renders nothing when there is nothing to confirm, so a clean visit shows no nag.
  */
 export function SessionVerifyBar({ count, onReview }: { count: number; onReview: () => void }) {
+  const t = useT();
   if (count <= 0) return null;
   return (
     <div className="session-verify-bar" role="status">
       <span className="session-verify-bar-icon" aria-hidden="true">
         ⚠
       </span>
-      <span className="session-verify-bar-copy">
-        {count} thing{count === 1 ? "" : "s"} to confirm before this visit is trusted
-      </span>
+      <span className="session-verify-bar-copy">{t("verify.toConfirm", { count })}</span>
       <button className="session-verify-bar-action" type="button" onClick={onReview}>
-        Review →
+        {t("verify.review")}
+        <span className="verify-arrow" aria-hidden="true">
+          →
+        </span>
       </button>
     </div>
   );
