@@ -1,4 +1,5 @@
 import React from "react";
+import { useAppLang } from "../../../shared/i18n";
 
 /**
  * A lightweight thumbs rating on the synthesized report (eval golden-set harvester; eval-epic §1b).
@@ -10,12 +11,11 @@ export function ReportFeedbackBar({
   isPersian,
 }: {
   onRate: (rating: number) => void | Promise<void>;
+  // Kept for callers that still pass it; chrome now follows the app language via the i18n seam.
   isPersian?: boolean;
 }) {
+  const { t, dir } = useAppLang();
   const [rated, setRated] = React.useState<number | null>(null);
-  const t = isPersian
-    ? { prompt: "این گزارش مفید بود؟", up: "مفید بود", down: "نیاز به اصلاح", thanks: "ممنون از بازخورد شما" }
-    : { prompt: "Was this report helpful?", up: "Helpful", down: "Needs work", thanks: "Thanks — noted" };
 
   const rate = (value: number) => {
     if (rated !== null) return;
@@ -24,16 +24,28 @@ export function ReportFeedbackBar({
   };
 
   return (
-    <div className="report-feedback-bar" dir={isPersian ? "rtl" : "ltr"}>
+    <div className="report-feedback-bar" dir={dir}>
       {rated === null ? (
         <>
-          <span className="report-feedback-prompt">{t.prompt}</span>
+          <span className="report-feedback-prompt">{t("feedback.prompt")}</span>
           <span className="report-feedback-actions">
             {/* Icon-only thumbs — the label lives in aria-label/title (tooltip), not on the button. */}
-            <button type="button" className="report-feedback-btn" onClick={() => rate(1)} aria-label={t.up} title={t.up}>
+            <button
+              type="button"
+              className="report-feedback-btn"
+              onClick={() => rate(1)}
+              aria-label={t("feedback.helpful")}
+              title={t("feedback.helpful")}
+            >
               👍
             </button>
-            <button type="button" className="report-feedback-btn" onClick={() => rate(-1)} aria-label={t.down} title={t.down}>
+            <button
+              type="button"
+              className="report-feedback-btn"
+              onClick={() => rate(-1)}
+              aria-label={t("feedback.needsWork")}
+              title={t("feedback.needsWork")}
+            >
               👎
             </button>
           </span>
@@ -41,7 +53,7 @@ export function ReportFeedbackBar({
       ) : (
         <span className="report-feedback-thanks" aria-live="polite">
           {rated === 1 ? "✓ " : ""}
-          {t.thanks}
+          {t("feedback.thanks")}
         </span>
       )}
     </div>

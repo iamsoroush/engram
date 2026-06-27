@@ -230,12 +230,13 @@ export function captureAssignmentInfo(item: CaptureItem, activePatientAction: Re
 
 /** Assignment-source badge, shown beside the capture title (the patient this capture (re)assigned). */
 export function CaptureAssignmentBadge({ info }: { info: CaptureAssignmentInfo | null }) {
+  const t = useT();
   if (!info) return null;
   return (
     <span className={`capture-title-badge effect-chip ${info.kind === "created" ? "is-created" : "is-assign"}`}>
-      {info.kind === "created" ? "New patient + assigned" : "Patient assigned"}
+      {info.kind === "created" ? t("badge.newPatientAssigned") : t("badge.patientAssigned")}
       {info.name ? ` → ${info.name}` : ""}
-      {info.closeMatch ? <span className="effect-chip-note"> · close match · you said {info.spokenName}</span> : null}
+      {info.closeMatch ? <span className="effect-chip-note"> {t("badge.closeMatchYouSaid", { name: info.spokenName })}</span> : null}
     </span>
   );
 }
@@ -254,6 +255,7 @@ export function AiCreatedPatientPanel({
     action: Record<string, unknown>,
   ) => Promise<void>;
 }) {
+  const t = useT();
   const patientInfo = metadataRecord(action.patientInformation);
   const patientId = metadataDisplay(action.patientId || session.patientId);
   const [saving, setSaving] = React.useState(false);
@@ -272,8 +274,8 @@ export function AiCreatedPatientPanel({
   return (
     <Card className="ai-patient-review-card">
       <div className="ai-patient-review-copy">
-        <strong>AI created this patient from audio</strong>
-        <p>Complete the details now and verify the patient record while staying in this visit.</p>
+        <strong>{t("badge.aiCreatedPatient")}</strong>
+        <p>{t("badge.aiCreatedPatientBody")}</p>
       </div>
       <PatientForm
         busy={saving}
@@ -287,7 +289,7 @@ export function AiCreatedPatientPanel({
             action,
           ).finally(() => setSaving(false));
         }}
-        submitLabel="Save & verify patient"
+        submitLabel={t("badge.saveAndVerifyPatient")}
       />
     </Card>
   );
