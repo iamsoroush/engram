@@ -11,6 +11,7 @@ from app.auth.service import audit
 from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSource, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
+from app.services.feedback import record_feedback_event
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -188,6 +189,7 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
             detail="This session is owned by another clinician; your role can't edit it.",
         )
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    original_treatments = metadata.get("treatments")
     if request.title is not None:
         session.title = request.title
     if request.summary is not None:
@@ -233,6 +235,25 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
             session.status = SessionStatus(request.status)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status") from exc
+    # Harvest a staff edit of the AI-extracted treatments as a candidate eval case (eval-epic §1b):
+    # the structured before→after of the treatments[] store feeds the report-synthesis/treatments eval.
+    if isinstance(request.extracted_metadata, dict) and "treatments" in request.extracted_metadata:
+        new_treatments = request.extracted_metadata.get("treatments")
+        if new_treatments != original_treatments:
+            import json
+
+            record_feedback_event(
+                db,
+                tenant_id=principal.tenant_id,
+                actor_user_id=principal.user_id,
+                kind="correction",
+                ai_output_type="treatment",
+                before_value=json.dumps(original_treatments, ensure_ascii=False) if original_treatments is not None else None,
+                after_value=json.dumps(new_treatments, ensure_ascii=False) if new_treatments is not None else None,
+                session_id=session.id,
+                patient_id=session.patient_id,
+                context={"source": "session-update"},
+            )
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.update", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
@@ -259,6 +280,18 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
         confirmed.append(key)
     metadata["confirmed_carried_forward"] = confirmed
     session.extracted_metadata = metadata
+    # A confirmed carried-forward dose is a positive signal: the AI's carry-forward was accepted. Harvest
+    # it (keyed by area|product) so the patient-memory/carry-forward eval has true positives too.
+    record_feedback_event(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        kind="confirmation",
+        ai_output_type="treatment",
+        session_id=session.id,
+        patient_id=session.patient_id,
+        context={"action": "confirm_carried_forward", "key": key},
+    )
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.confirm_carried_forward", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
@@ -343,6 +376,9 @@ def assign_session_patient(
     )
     session.extracted_metadata = append_patient_assignment_event(existing_metadata, event)
     apply_active_patient_assignment(db, session)
+    match_candidate = (
+        (basis_capture.capture_metadata or {}).get("patient_match_candidate") if basis_capture is not None else None
+    )
     if basis_capture is not None:
         # The suggestion on the now-applied capture is consumed — drop it so the chip clears.
         basis_capture.capture_metadata = {
@@ -350,6 +386,27 @@ def assign_session_patient(
             for key, value in (basis_capture.capture_metadata or {}).items()
             if key != "patient_match_candidate"
         }
+    # Harvest the patient-match decision as a candidate eval case (eval-epic §1b): a reassignment is a
+    # correction of the prior (often AI) match; acting on a suggestion to file an unassigned visit is a
+    # confirmation. Only IDs + match metadata are stored — names/evidence are scrubbed out (PII).
+    if is_reassignment or match_candidate is not None:
+        record_feedback_event(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            kind="correction" if is_reassignment else "confirmation",
+            ai_output_type="patient_match",
+            session_id=session.id,
+            patient_id=next_patient_id,
+            context={
+                "previous_patient_id": str(previous) if previous else None,
+                "next_patient_id": str(next_patient_id) if next_patient_id else None,
+                "source": request.source,
+                "reassignment": is_reassignment,
+                "basis_capture_id": str(basis_capture.id) if basis_capture is not None else None,
+                "match_candidate": match_candidate if isinstance(match_candidate, dict) else None,
+            },
+        )
     audit(
         db,
         tenant_id=principal.tenant_id,

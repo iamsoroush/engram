@@ -84,12 +84,24 @@ export type SessionReportTemplate = {
   };
 };
 
+/** Deterministic before/after pairing for a photo capture (backend `photo_pairing`), attached to a
+ * report `media` image block so the client can render the before/after slider without extra fetches. */
+export type PhotoPairing = {
+  role?: "before" | "after" | "single" | "during" | "product-label" | string;
+  pairKey?: string | null;
+  pairedCaptureId?: string | null;
+};
+
 export type StructuredReportBlock = {
   type: "paragraph" | "image" | "artifact" | string;
   text?: string;
   artifactId?: string;
   captureId?: string;
   caption?: string;
+  /** Present on `media` image blocks: the photo's deterministic before/after pairing (slider). */
+  pairing?: PhotoPairing;
+  /** Captures this block was grounded in — a tap opens the source capture ("assistive + cited"). */
+  sourceCaptureIds?: string[];
 };
 
 export type StructuredReportSection = {
@@ -147,6 +159,8 @@ export type SessionTreatment = {
   carriedForward?: boolean;
   /** Open technique map the synthesis extracted (needleGauge, depth, device, sessions…). */
   attributes?: Record<string, unknown> | null;
+  /** Captures this treatment was extracted from — a tap opens the source capture (§2.3 traceability). */
+  sourceCaptureIds?: string[];
 };
 
 /**

@@ -835,6 +835,177 @@ small {
   background: currentColor;
   animation: capture-status-pulse 1.45s ease-out infinite;
 }
+
+/* Lightweight report thumbs rating → the AI-quality feedback harvester (eval-epic §1b). */
+.report-feedback-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Sits between the aftercare section and the collapsible Sources drawer; the bottom margin keeps
+     it from crowding Sources, the top divider separates it from the report content above, and the
+     horizontal padding aligns the prompt with the report body / aftercare text (which are inset). */
+  margin: 4px 0 18px;
+  padding: 16px 16px 0;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.report-feedback-prompt {
+  font-weight: 600;
+}
+.report-feedback-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.report-feedback-bar[dir="rtl"] .report-feedback-actions {
+  margin-right: auto;
+}
+.report-feedback-bar[dir="ltr"] .report-feedback-actions {
+  margin-left: auto;
+}
+.report-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  font-size: 1.02rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.report-feedback-btn:hover {
+  border-color: var(--color-text-soft);
+}
+.report-feedback-thanks {
+  font-weight: 600;
+  color: var(--color-success, #0f766e);
+}
+
+/* Before/after media (redesign-pro-report §2.4): side-by-side + draggable compare slider. */
+.before-after {
+  margin: 14px 0;
+}
+.ba-toolbar {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ba-toolbar button {
+  padding: 4px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-soft);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ba-toolbar button.on {
+  background: var(--color-accent-soft, #eef2ff);
+  color: var(--color-accent, #2456d6);
+  border-color: var(--color-accent, #2456d6);
+}
+.ba-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ba-fig {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-border);
+  aspect-ratio: 4 / 5;
+}
+.ba-fig img,
+.ba-layer {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ba-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.ba-tag-r {
+  left: auto;
+  right: 8px;
+}
+.ba-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 8px, #eef0f3 8px, #eef0f3 16px);
+}
+.ba-captions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+.ba-compare {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: var(--color-border);
+  touch-action: none;
+  user-select: none;
+  cursor: ew-resize;
+}
+.ba-compare .ba-before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.ba-compare .ba-after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.ba-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.92);
+  z-index: 4;
+  transform: translateX(-1px);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+  pointer-events: none;
+}
+.ba-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
 .report-doc-status {
   color: var(--color-muted);
   font-size: 0.82rem;
@@ -1377,11 +1548,11 @@ small {
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -2516,9 +2687,9 @@ small {
    indicator is the only cue; no pointer-events block or dimming here. */
 
 .report-heading {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -2542,6 +2713,7 @@ small {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .report-heading-actions .btn {
@@ -5176,11 +5348,11 @@ small {
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -5302,7 +5474,8 @@ small {
 .patient-context-avatar path,
 .report-title-icon path,
 .edit-patient-button path,
-.capture-action-icon path {
+.capture-action-icon path,
+.report-share-button path {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -5543,8 +5716,12 @@ small {
   padding: 12px 14px;
 }
 
+/* Unassigned visit: a calm AMBER attention (matches the verify-bar palette), never a red error —
+   capture-first means "assign when ready" stays non-blocking; the amber + the primary Assign CTA
+   draw the eye without alarming. */
 .patient-context-card.unassigned {
-  background: var(--color-surface-soft);
+  background: #fff8ea;
+  border-color: #f0d49a;
 }
 
 .patient-context-avatar {
@@ -5559,8 +5736,8 @@ small {
 }
 
 .patient-context-card.unassigned .patient-context-avatar {
-  background: #eef2f9;
-  color: var(--color-muted);
+  background: #fdeccb;
+  color: #b07d1e;
 }
 
 .patient-context-avatar svg {
@@ -5737,15 +5914,23 @@ small {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 13px;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-pill, 999px);
   background: transparent;
   color: var(--color-primary);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
+}
+.report-share-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.9;
+}
+.report-share-button-label {
+  line-height: 1;
 }
 .report-share-button:hover { background: color-mix(in srgb, var(--color-primary) 10%, #fff); }
 
@@ -5820,10 +6005,29 @@ small {
 .sources-drawer-chev {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.66rem;
-  color: #5a6b85;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #e7eefb;
+  font-size: 0.82rem;
+  line-height: 1;
+  color: #3b537e;
+}
+.sources-drawer-organizing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2456d6;
+}
+.sources-organizing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: capture-status-pulse 1.45s ease-out infinite;
 }
 .sources-drawer-title {
   font-size: 0.86rem;
@@ -5991,6 +6195,25 @@ small {
   white-space: nowrap;
 }
 .treatment-fix-at-source:hover { background: #f2f7fd; }
+
+/* Per-claim source citation: tap a treatment row / cited block → open the source capture. */
+.source-citation {
+  margin-inline-start: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.source-citation:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
 
 /* Inline carried-forward dose confirmation, embedded on its own treatment row (Q3) — replaces the
    separate "Needs your confirmation" section. A calm amber highlight marks the row that needs a tap. */
@@ -6298,7 +6521,9 @@ small {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .report-heading-actions {
+  /* Keep the header actions on mobile so the compact share icon shows (it used to hold only the
+     inline "updating" spinner, which was hidden here — that spinner stays hidden, the share shows). */
+  .report-heading-actions .report-updating {
     display: none;
   }
 

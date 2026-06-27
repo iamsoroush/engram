@@ -24,6 +24,9 @@ import { setAppLanguage } from "../shared/lib/datetime";
 import {
   assignSessionPatient,
   confirmCarriedForward,
+  dismissAiPatientAction,
+  isNotFoundError,
+  postFeedback,
   setAftercareDismissed,
   unassignSessionPatient,
   checkDuplicatePatient,
@@ -37,6 +40,7 @@ import {
   cancelWorklistEntry,
   createSession,
   createWorklistEntry,
+  fetchCapture,
   fetchClinicMembers,
   fetchLastVisit,
   fetchSessionContext,
@@ -727,6 +731,17 @@ export function App() {
         const completed = await syncPendingOperation(operation, tenantId);
         if (!completed) continue;
       } catch (error) {
+        if (isNotFoundError(error)) {
+          // The op targets a patient/session that no longer exists (deleted/merged). Retrying would
+          // 404 forever — drop it and self-heal the stale reference instead of stranding the outbox.
+          await removePendingOperation(operation.id);
+          const opSessionId = operation.backendSessionId || operation.localSessionId;
+          const opPatientId =
+            operation.backendPatientId ||
+            (typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined);
+          await selfHealStalePatient(opSessionId, opPatientId);
+          continue;
+        }
         await updatePendingOperation(operation.id, (current) => ({
           ...current,
           status: "failed",
@@ -1332,6 +1347,19 @@ export function App() {
     [apiFetch, applySessionUpdate],
   );
 
+  // Report thumbs rating → the AI-quality feedback harvester (eval golden-set; eval-epic §1b).
+  // Fire-and-forget: a quiet "noted" toast, never blocks; failures are swallowed in postFeedback.
+  const rateReport = React.useCallback(
+    (sessionId: string, rating: number) => {
+      void postFeedback(apiFetch, { kind: "rating", aiOutputType: "report", rating, sessionId });
+    },
+    [apiFetch],
+  );
+
+  // Resolve a citation's source capture by id when it isn't in the open session (a carried-forward
+  // claim cites a prior visit) — for "tap a claim → its source capture".
+  const fetchCaptureById = React.useCallback((captureId: string) => fetchCapture(apiFetch, captureId), [apiFetch]);
+
   // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
   const dismissAftercareTemplate = React.useCallback(
     async (sessionId: string, templateId: string, dismissed: boolean) => {
@@ -1365,6 +1393,53 @@ export function App() {
       return exact || createPatient(apiFetch, draft);
     },
     [apiFetch],
+  );
+
+  // Stale-client self-heal: a patient a session/panel still references was deleted or merged away, so
+  // a patient-scoped call 404s. Rather than freeze (the known incident: deleting a merged patient left
+  // the AI-created "verify" panel PATCHing a dead id → 404 forever), clear the stale reference across
+  // the caches, dismiss the verify panel for good, drop any queued assignment to that dead id so the
+  // outbox stops looping, and tell the user calmly. Safe to call from any 404 catch.
+  const selfHealStalePatient = React.useCallback(
+    async (sessionId: string | undefined, deadPatientId?: string) => {
+      const stripPatient = (session: CaptureSession): CaptureSession =>
+        markReportStaleForPatientChange(session, {
+          ...session,
+          patientId: undefined,
+          patientName: undefined,
+          assignmentSource: undefined,
+        });
+      // Drop a queued assignment to the vanished patient so the outbox stops retrying the 404.
+      if (sessionId && authRef.current?.tenant.id) {
+        await removePendingOperation(`${authRef.current.tenant.id}:patientAssignment:${sessionId}`).catch(() => {});
+      }
+      // Neutralize the AI-created-patient action server-side so the verify panel dismisses permanently.
+      if (sessionId && !isLocalSessionId(sessionId)) {
+        try {
+          const cleared = await dismissAiPatientAction(apiFetch, sessionId);
+          applySessionUpdate(sessionId, cleared);
+        } catch (error) {
+          // The session itself is gone too — evict it from the caches entirely.
+          if (isNotFoundError(error)) {
+            setSessions((current) => current.filter((session) => session.id !== sessionId));
+            setActiveSession((current) => (current?.id === sessionId ? null : current));
+            setSelectedSessionId((current) => (current === sessionId ? "" : current));
+          }
+        }
+      }
+      // Clear the stale patient reference from cached session(s) — the server already SET NULL the FK.
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId || (deadPatientId && session.patientId === deadPatientId) ? stripPatient(session) : session,
+        ),
+      );
+      setActiveSession((current) =>
+        current && (current.id === sessionId || (deadPatientId && current.patientId === deadPatientId)) ? stripPatient(current) : current,
+      );
+      setAssignmentSessionId((current) => (current === sessionId ? "" : current));
+      setToast("That patient record is no longer available — the visit was set back to unassigned. Please assign it again.");
+    },
+    [apiFetch, applySessionUpdate],
   );
 
   const assignPatientToSession = React.useCallback(
@@ -1465,14 +1540,21 @@ export function App() {
         );
         setAssignmentSessionId("");
         setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
-      } catch {
+      } catch (error) {
+        // The chosen patient was deleted/merged: queuing the assignment would 404 forever in the
+        // outbox — self-heal the stale reference and let the user pick again instead.
+        if (isNotFoundError(error)) {
+          await selfHealStalePatient(sessionId, localPatient.id);
+          return;
+        }
+        // Otherwise treat as a transient/offline failure: keep the local assignment and queue it.
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
         setToast(successMessage);
         void processOutbox();
       }
     },
-    [apiFetch, ensurePatient],
+    [apiFetch, ensurePatient, selfHealStalePatient],
   );
 
   // AES-301/903 — file the current unassigned visit onto the doctor's next lined-up patient.
@@ -1503,25 +1585,35 @@ export function App() {
       draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
       action: Record<string, unknown>,
     ) => {
-      const patient = await updatePatient(apiFetch, patientId, {
-        displayName: draft.displayName,
-        nationalId: draft.nationalId || null,
-        phone: draft.phone || null,
-        dateOfBirth: draft.dateOfBirth || null,
-        sex: draft.sex || null,
-        notes: draft.notes || null,
-      });
-      const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
-        ...action,
-        displayName: patient.displayName,
-        patientId: patient.id,
-      });
-      const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
-      setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
-      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
-      setToast("AI-created patient verified.");
+      try {
+        const patient = await updatePatient(apiFetch, patientId, {
+          displayName: draft.displayName,
+          nationalId: draft.nationalId || null,
+          phone: draft.phone || null,
+          dateOfBirth: draft.dateOfBirth || null,
+          sex: draft.sex || null,
+          notes: draft.notes || null,
+        });
+        const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
+          ...action,
+          displayName: patient.displayName,
+          patientId: patient.id,
+        });
+        const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
+        setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
+        setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
+        setToast("AI-created patient verified.");
+      } catch (error) {
+        // The AI-created patient was deleted/merged out from under the panel: self-heal instead of
+        // leaving the verify panel frozen on a dead id (the known incident).
+        if (isNotFoundError(error)) {
+          await selfHealStalePatient(sessionId, patientId);
+          return;
+        }
+        throw error;
+      }
     },
-    [apiFetch],
+    [apiFetch, selfHealStalePatient],
   );
   const editPatientDetails = React.useCallback(
     async (patientId: string, draft: PatientEditDraft) => {
@@ -2031,6 +2123,8 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           offline={offline}
@@ -2072,6 +2166,8 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}

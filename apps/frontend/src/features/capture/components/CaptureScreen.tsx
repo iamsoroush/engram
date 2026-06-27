@@ -10,11 +10,13 @@ import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
+import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
-import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
+import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
+import { isPersianLocale } from "../../../shared/lib/datetime";
 
 export function CaptureScreen({
   activeSession,
@@ -38,7 +40,9 @@ export function CaptureScreen({
   onStartNewSession,
   onMarkRelevant,
   onConfirmCarriedForward,
+  onRateReport,
   onFetchPatient,
+  onFetchCapture,
   tier,
   reportLanguage,
   sessionContext,
@@ -87,7 +91,11 @@ export function CaptureScreen({
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   /** Q3 — confirm a carried-forward dose (by area|product key) so the Pro report can complete. */
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
+  /** Record a lightweight thumbs rating on the Pro report (eval golden-set harvester; eval-epic §1b). */
+  onRateReport?: (sessionId: string, rating: number) => void;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  /** Resolve a citation's source capture not in the loaded set (cross-visit) — for "tap a claim → source". */
+  onFetchCapture?: (captureId: string) => Promise<CaptureItem | null>;
   tier?: string | null;
   /** Tenant report-content language (distinct from app UI language) — localizes the report's section
    * titles so a Persian report doesn't show English headings. */
@@ -179,6 +187,9 @@ export function CaptureScreen({
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
   const isUpdatingReport =
     isPro && (processingState === "processing" || activeSession?.report?.status === "generating" || captureBeingIncluded);
+  // Surface-by-exception: instead of a persistent "everything's fine" line, show a calm "Organizing…"
+  // pulse on the Sources header only while captures are still being processed into the report.
+  const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
   const reportState = workspaceReportState(activeSession);
   const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
@@ -233,6 +244,20 @@ export function CaptureScreen({
   const onFixAtSource = () => {
     setSourcesOpen(true);
     window.requestAnimationFrame(() => sourcesDrawerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  // "Tap a claim → its source capture" (the redesign's assistive+cited principle): open the cited
+  // capture in the source preview. It is usually one of this session's captures; a carried-forward
+  // claim cites a prior visit, so fall back to fetching the capture by id when it isn't loaded here.
+  const openSourceCapture = async (captureId: string) => {
+    const local = (activeSession?.items || []).find((item) => item.id === captureId);
+    if (local) {
+      setSelectedCapture(local);
+      return;
+    }
+    if (onFetchCapture) {
+      const fetched = await onFetchCapture(captureId);
+      if (fetched) setSelectedCapture(fetched);
+    }
   };
   // Capture-type breakdown for the Sources drawer chips (voice folds into audio).
   const captureTypeCounts = (activeSession?.items || []).reduce<Record<string, number>>((counts, item) => {
@@ -448,11 +473,20 @@ export function CaptureScreen({
                 {reportUpdatingLabel(activeSession)}
               </span>
             ) : null}
+            {/* Compact share affordance in the header (a share icon, not a full sentence on its own
+                row) — a curated clinic→patient action; opens the curate+preview sheet. */}
+            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
+              <button className="report-share-button" type="button" onClick={onShareVisit} aria-label="Share with patient" title="Share with patient">
+                <ShareIcon />
+                <span className="report-share-button-label">Share</span>
+              </button>
+            ) : null}
           </div>
         </div>
-        <div className="report-toolbar">
-          <div className="report-toolbar-actions">
-            {!useUnifiedLayout ? (
+        {/* Basic keeps the Captures / Live-report tab switch; Pro's unified layout has no toolbar row. */}
+        {!useUnifiedLayout ? (
+          <div className="report-toolbar">
+            <div className="report-toolbar-actions">
               <div className="report-view-switch" aria-label="Report view">
                 <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
                   Captures
@@ -465,14 +499,9 @@ export function CaptureScreen({
                   Live report
                 </button>
               </div>
-            ) : null}
-            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
-              <button className="report-share-button" type="button" onClick={onShareVisit}>
-                Share with patient
-              </button>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {assignmentOpen && activeSession && onAssignPatient ? (
           <PatientAssignmentSheet
             session={activeSession}
@@ -492,6 +521,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              onOpenSource={openSourceCapture}
               reportLanguage={reportLanguage}
             />
           ) : (
@@ -541,6 +571,14 @@ export function CaptureScreen({
             ))}
           </section>
         ) : null}
+        {/* Report thumbs rating (eval golden-set harvester; eval-epic §1b) — a quiet end-cap AFTER the
+            aftercare section so it reads "rate-after-reading" and never splits the clinical content;
+            on mobile it's the last thing before the collapsible raw Sources. Pro report only. */}
+        {useUnifiedLayout && onRateReport && activeSession && reportHasContent ? (
+          // The rating prompt is app chrome, so it follows the APP UI language (isPersianLocale),
+          // not the report's CONTENT language — a Persian report under an English app shows English.
+          <ReportFeedbackBar isPersian={isPersianLocale()} onRate={(rating) => onRateReport(activeSession.id, rating)} />
+        ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,
           // deleting, re-assigning and tapping into a capture all still live here (and via the report's
@@ -556,6 +594,12 @@ export function CaptureScreen({
                 <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
                 <span className="sources-drawer-title">Sources</span>
                 <span className="sources-drawer-count">{captureCount}</span>
+                {sourcesProcessing ? (
+                  <span className="sources-drawer-organizing" aria-live="polite">
+                    <span className="sources-organizing-dot" aria-hidden="true" />
+                    Organizing…
+                  </span>
+                ) : null}
               </span>
               <span className="sources-drawer-types" aria-hidden="true">
                 {(["audio", "photo", "note"] as const).map((type) =>
@@ -571,15 +615,6 @@ export function CaptureScreen({
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>
         ) : null}
-        <div className="workspace-report-footer">
-          <div className="workspace-report-footer-copy">
-            {isUpdatingReport ? (
-              <span>{reportUpdatingLabel(activeSession)}</span>
-            ) : isPro && activeSession?.complete ? (
-              <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
-            ) : null}
-          </div>
-        </div>
       </Card>
       <SourcePreviewDialog
         item={selectedCapture}

@@ -5,6 +5,7 @@ import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientIn
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
+import { BeforeAfterSlider } from "./BeforeAfterSlider";
 import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, AI_ORGANIZING_NOTICE, generatedTextForReport, textDirection } from "../captureModel";
 
 // Persian section titles, keyed by the fixed section id (mirrors the ai_engine's SYNTHESIS_SECTIONS).
@@ -37,6 +38,7 @@ export function LiveReportView({
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  onOpenSource,
   reportLanguage,
 }: {
   isPro: boolean;
@@ -45,13 +47,15 @@ export function LiveReportView({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   /** Open the Sources drawer to correct a flagged treatment at its capture (Pro, unified layout). */
   onFixAtSource?: () => void;
+  /** Tap a claim (treatment row / cited block) → open its source capture ("assistive + cited"). */
+  onOpenSource?: (captureId: string) => void;
   /** Report-content language — localizes the section titles (distinct from app UI language). */
   reportLanguage?: string | null;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} reportLanguage={reportLanguage} />
+    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onOpenSource={onOpenSource} reportLanguage={reportLanguage} />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -87,12 +91,14 @@ export function ProLiveReport({
   onResolveFile,
   onConfirmCarriedForward,
   onFixAtSource,
+  onOpenSource,
   reportLanguage,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFixAtSource?: () => void;
+  onOpenSource?: (captureId: string) => void;
   reportLanguage?: string | null;
 }) {
   const bodyParagraphs = workspaceStructuredReportCopy(session);
@@ -182,13 +188,20 @@ export function ProLiveReport({
                     confirmedCarriedForward={confirmedCarriedForward}
                     missingLotProducts={missingLotProducts}
                     onFixAtSource={onFixAtSource}
+                    onOpenSource={onOpenSource}
+                    isPersian={isPersianReport(reportLanguage)}
                     carriedForwardReasons={carriedForwardReasons}
                     onConfirmCarried={onConfirmCarried}
                     reviewNotes={reviewNotes}
                   />
+                ) : section.id === "media" ? (
+                  <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
                 ) : (
                   section.blocks.map((block, index) => (
-                    <React.Fragment key={index}>{formatReportBlock(block, onResolveFile)}</React.Fragment>
+                    <React.Fragment key={index}>
+                      {formatReportBlock(block, onResolveFile)}
+                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersianReport(reportLanguage)} />
+                    </React.Fragment>
                   ))
                 )}
               </section>
@@ -216,6 +229,8 @@ export function ProLiveReport({
             confirmedCarriedForward={confirmedCarriedForward}
             missingLotProducts={missingLotProducts}
             onFixAtSource={onFixAtSource}
+            onOpenSource={onOpenSource}
+            isPersian={isPersianReport(reportLanguage)}
             carriedForwardReasons={carriedForwardReasons}
             onConfirmCarried={onConfirmCarried}
             reviewNotes={reviewNotes}
@@ -223,8 +238,37 @@ export function ProLiveReport({
         </section>
       ) : null}
       {/* The clinician's confirmations are embedded in the report itself — the carried-forward dose
-          confirm sits on its treatment row (above), not in a separate section. */}
+          confirm sits on its treatment row (above), not in a separate section. The report thumbs
+          rating is an end-cap rendered by CaptureScreen AFTER the aftercare section (rate-after-
+          reading), not here mid-report. */}
     </div>
+  );
+}
+
+/**
+ * A per-claim source citation: a small "↗ source" tap that opens the cited capture (the redesign's
+ * "assistive + cited" principle — every clinical claim is traceable to a capture). Renders nothing
+ * when there's no citation or no handler, so it's safe to drop next to any treatment row or block.
+ */
+function SourceCitation({
+  captureIds,
+  onOpenSource,
+  isPersian,
+}: {
+  captureIds?: string[];
+  onOpenSource?: (captureId: string) => void;
+  isPersian?: boolean;
+}) {
+  const first = captureIds?.find((id) => typeof id === "string" && id.trim());
+  if (!onOpenSource || !first) return null;
+  const label = isPersian ? "منبع" : "source";
+  const title = isPersian ? "نمایش ضبط منبع" : "Open the source capture";
+  const more = (captureIds?.length || 0) > 1 ? ` ·${captureIds?.length}` : "";
+  return (
+    <button type="button" className="source-citation" onClick={() => onOpenSource(first)} title={title}>
+      ↗ {label}
+      {more}
+    </button>
   );
 }
 
@@ -240,6 +284,8 @@ function TreatmentsList({
   confirmedCarriedForward,
   missingLotProducts,
   onFixAtSource,
+  onOpenSource,
+  isPersian,
   carriedForwardReasons,
   onConfirmCarried,
   reviewNotes,
@@ -250,6 +296,10 @@ function TreatmentsList({
   missingLotProducts?: Set<string>;
   /** Jump to the Sources drawer to correct a flagged treatment at its capture. */
   onFixAtSource?: () => void;
+  /** Tap a treatment row's citation → open its source capture (§2.3 traceability). */
+  onOpenSource?: (captureId: string) => void;
+  /** Localize the citation label to the report language. */
+  isPersian?: boolean;
   /** `area|product` → reason for carried-forward doses awaiting confirmation (Q3). */
   carriedForwardReasons?: Record<string, string>;
   /** Confirm a carried-forward dose by its `area|product` key. */
@@ -296,6 +346,7 @@ function TreatmentsList({
                     ✎ Fix at source
                   </button>
                 ) : null}
+                <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
               </span>
               {attributeLines.length ? (
                 <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
@@ -352,6 +403,64 @@ export function formatReportBlock(block: StructuredReportBlock, onResolveFile?: 
   }
   if (block.text) return formatReportParagraph(block.text, onResolveFile);
   return null;
+}
+
+type MediaUnit =
+  | { kind: "pair"; before: StructuredReportBlock; after: StructuredReportBlock }
+  | { kind: "block"; block: StructuredReportBlock };
+
+/** Group a media section's image blocks into before/after pairs from their deterministic
+ * `photo_pairing` (the rendering consumes pairs, it never pairs). Unpaired blocks pass through. */
+export function pairMediaBlocks(blocks: StructuredReportBlock[]): MediaUnit[] {
+  const byCapture = new Map<string, StructuredReportBlock>();
+  for (const block of blocks) if (block.type === "image" && block.captureId) byCapture.set(block.captureId, block);
+  const consumed = new Set<string>();
+  const units: MediaUnit[] = [];
+  for (const block of blocks) {
+    if (block.type === "image" && block.captureId && consumed.has(block.captureId)) continue;
+    const partnerId = block.pairing?.pairedCaptureId || undefined;
+    const role = block.pairing?.role;
+    if (block.type === "image" && block.captureId && partnerId && byCapture.has(partnerId) && !consumed.has(partnerId) && (role === "before" || role === "after")) {
+      const partner = byCapture.get(partnerId) as StructuredReportBlock;
+      const before = role === "after" ? partner : block;
+      const after = role === "after" ? block : partner;
+      consumed.add(block.captureId);
+      consumed.add(partnerId);
+      units.push({ kind: "pair", before, after });
+    } else {
+      units.push({ kind: "block", block });
+    }
+  }
+  return units;
+}
+
+/** The report `media` section: before/after pairs render as the slider, the rest as plain images. */
+export function MediaSection({
+  blocks,
+  onResolveFile,
+  isPersian,
+}: {
+  blocks: StructuredReportBlock[];
+  onResolveFile: (endpoint: string) => Promise<string>;
+  isPersian?: boolean;
+}) {
+  return (
+    <>
+      {pairMediaBlocks(blocks).map((unit, index) =>
+        unit.kind === "pair" ? (
+          <BeforeAfterSlider
+            key={`pair-${unit.before.captureId}-${unit.after.captureId}`}
+            before={{ captureId: unit.before.captureId, caption: unit.before.caption }}
+            after={{ captureId: unit.after.captureId, caption: unit.after.caption }}
+            onResolveFile={onResolveFile}
+            isPersian={isPersian}
+          />
+        ) : (
+          <React.Fragment key={`block-${index}`}>{formatReportBlock(unit.block, onResolveFile)}</React.Fragment>
+        ),
+      )}
+    </>
+  );
 }
 
 export function BasicLiveReport({

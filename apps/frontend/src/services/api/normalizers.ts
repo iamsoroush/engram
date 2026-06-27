@@ -147,12 +147,25 @@ function normalizeStructuredReportModel(value: unknown): StructuredReportModel |
 }
 
 function normalizeStructuredReportBlock(block: Record<string, unknown>): StructuredReportBlock {
+  const pairing = block.pairing && typeof block.pairing === "object" ? (block.pairing as Record<string, unknown>) : null;
   return {
     type: stringValue(block.type, "paragraph"),
     text: typeof block.text === "string" ? block.text : undefined,
     artifactId: typeof block.artifactId === "string" ? block.artifactId : undefined,
     captureId: typeof block.captureId === "string" ? block.captureId : undefined,
     caption: typeof block.caption === "string" ? block.caption : undefined,
+    // Before/after pairing for media image blocks (drives the before/after slider).
+    pairing: pairing
+      ? {
+          role: typeof pairing.role === "string" ? pairing.role : undefined,
+          pairKey: typeof pairing.pairKey === "string" ? pairing.pairKey : null,
+          pairedCaptureId: typeof pairing.pairedCaptureId === "string" ? pairing.pairedCaptureId : null,
+        }
+      : undefined,
+    // Per-claim source citations: the captures this block was grounded in (tap → source capture).
+    sourceCaptureIds: Array.isArray(block.sourceCaptureIds)
+      ? block.sourceCaptureIds.filter((id): id is string => typeof id === "string")
+      : undefined,
   };
 }
 

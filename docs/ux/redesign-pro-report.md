@@ -129,11 +129,24 @@ blank — it's a known uncertainty the contract raises (`missing-but-expected lo
 Each row links to its `sourceCaptureIds` ("from your 14:08 dictation") so every clinical claim is
 traceable to a capture. *Why:* the report's authority is that **nothing is invented** — one tap proves it.
 
+> **BUILT (2026-06-25).** A per-claim **`↗ source` citation** ([LiveReport `SourceCitation`](../../apps/frontend/src/features/capture/components/LiveReport.tsx))
+> renders on each treatment row carrying `sourceCaptureIds` **and** on any cited prose block — one tap
+> opens that capture in the source preview (same-session captures resolve locally; a carried-forward
+> claim cites a prior visit, so it falls back to fetching the capture by id). `sourceCaptureIds` now
+> survive client normalization (treatments + blocks). Bilingual (`source` / `منبع`).
+
 **`attributes`** (open map: needleGauge, depth, device, sessions…) render as a **secondary line under
 the row** (`23G · 2mm depth`) — present when the LLM extracted them, absent otherwise. Open map → render
 generically (key·value), never a fixed schema, so new attributes appear without a code change.
 
 ### 2.4 Before/after media — side-by-side + slider compare
+
+> **BUILT (2026-06-25).** The `BeforeAfterSlider` component (side-by-side ⇄ draggable compare) renders
+> in the report `media` section ([LiveReport `MediaSection`](../../apps/frontend/src/features/capture/components/LiveReport.tsx)).
+> The rendering **consumes** the deterministic pairing: the backend attaches each media image block's
+> `photo_pairing` ({role, pairKey, pairedCaptureId}) at serialization (`capture_storage._report_model_with_media_pairing`),
+> so the client pairs before↔after without extra fetches; unpaired photos render as singles. Bilingual +
+> RTL-aware. A demo before/after pair is seeded (`scripts/seed_demo_session_context.py` — patient دنیا موسوی).
 
 From the `media` section's `image` blocks (each `{captureId, caption}`), resolved to files
 (`render_report_body_markdown` → file endpoint; **every `captureId` validated against the session,

@@ -35,6 +35,24 @@ import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
 
+/**
+ * An HTTP error that carries the response status, so callers can distinguish a "the resource is
+ * gone" 404 (self-heal: clear the stale reference) from a transient/network error (retry/queue).
+ */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** True when an error is a 404 — the referenced patient/session no longer exists (deleted/merged). */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
 export async function loginWithPersona(persona: Persona, tier: DevTier = "pro") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
@@ -878,7 +896,7 @@ export async function updatePatient(apiFetch: ApiFetch, patientId: string, draft
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Could not update patient");
+  if (!response.ok) throw new ApiError("Could not update patient", response.status);
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
 }
 
@@ -897,7 +915,31 @@ export async function verifyAiPatientCreation(apiFetch: ApiFetch, sessionId: str
       },
     }),
   });
-  if (!response.ok) throw new Error("Could not verify patient creation");
+  if (!response.ok) throw new ApiError("Could not verify patient creation", response.status);
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/**
+ * Dismiss a stuck AI-created-patient "verify" panel by neutralizing the session's `ai_patient_action`
+ * (needsVerification → false). Used by the stale-client self-heal when the referenced patient was
+ * deleted/merged out from under the panel — so it stops asking the staff to verify a dead record.
+ */
+export async function dismissAiPatientAction(apiFetch: ApiFetch, sessionId: string, reason = "patient-unavailable") {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      extractedMetadata: {
+        ai_patient_action: {
+          status: "stale",
+          needsVerification: false,
+          dismissedReason: reason,
+          dismissedAt: new Date().toISOString(),
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new ApiError("Could not dismiss AI patient action", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -909,7 +951,7 @@ export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string
     headers,
     body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment", basisCaptureId }),
   });
-  if (!response.ok) throw new Error("Could not assign patient");
+  if (!response.ok) throw new ApiError("Could not assign patient", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -921,7 +963,7 @@ export async function unassignSessionPatient(apiFetch: ApiFetch, sessionId: stri
     headers,
     body: JSON.stringify({ patientId: null, source: "staff", reason: "Unassigned by staff" }),
   });
-  if (!response.ok) throw new Error("Could not unassign patient");
+  if (!response.ok) throw new ApiError("Could not unassign patient", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -1000,6 +1042,44 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
   });
   if (!response.ok) throw new Error("Could not update capture transcript");
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+/** Fetch one capture by id (for opening a citation's source capture that isn't in the loaded set). */
+export async function fetchCapture(apiFetch: ApiFetch, captureId: string): Promise<CaptureItem | null> {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`);
+  if (!response.ok) return null;
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+export type FeedbackInput = {
+  kind?: "rating" | "correction" | "confirmation";
+  aiOutputType?: "report" | "brief" | "transcript" | "caption" | "treatment" | "patient_match";
+  rating?: number;
+  comment?: string;
+  before?: string;
+  after?: string;
+  sessionId?: string;
+  captureId?: string;
+  patientId?: string;
+  context?: Record<string, unknown>;
+};
+
+/**
+ * Send an AI-quality signal (eval golden-set harvester; eval-epic §1b). Fire-and-forget: a rating is
+ * a nice-to-have, never part of the clinical flow, so failures are swallowed and never surfaced.
+ * Staff *corrections* (transcript/caption/treatment/patient-match) are harvested server-side; this is
+ * the lightweight report/brief thumbs rating.
+ */
+export async function postFeedback(apiFetch: ApiFetch, input: FeedbackInput): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    // Feedback instrumentation must never disrupt the user.
+  }
 }
 
 export async function updateCaptureNote(apiFetch: ApiFetch, captureId: string, text: string) {

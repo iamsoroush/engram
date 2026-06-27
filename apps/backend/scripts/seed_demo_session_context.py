@@ -38,6 +38,7 @@ from app.models import (
 from app.services.ai_jobs.orchestration import maybe_refresh_stale_patient_memory
 from app.services.capture_storage import object_key_for_source
 from app.services.patients import replace_deterministic_patient_identifiers
+from app.services.photo_pairing import recompute_session_photo_pairing
 from app.storage.object_store import ObjectStore
 
 DOCTOR_USER_ID = uuid.uuid5(DEV_NAMESPACE, "user:doctor")
@@ -94,10 +95,16 @@ def add_media(
     filename: str,
     captured_at: datetime,
     caption: str | None = None,
+    pairing: dict | None = None,
 ) -> Capture:
     metadata: dict = {"detail": "", "original_filename": filename, "content_type": content_type}
     if caption:
-        metadata["caption"] = {"text": caption, "source": "seed"}
+        # `pairing` carries the Job-2 caption pairing attributes (region/laterality/view/phase) that
+        # `recompute_session_photo_pairing` turns into a deterministic before/after `photo_pairing`.
+        caption_block: dict = {"text": caption, "source": "seed"}
+        if pairing:
+            caption_block["pairing"] = pairing
+        metadata["caption"] = caption_block
     capture = Capture(
         tenant_id=DEV_TENANT_ID,
         session_id=session.id,
@@ -149,6 +156,51 @@ def make_session(db, *, patient: Patient, title: str, days_ago: int, extracted_m
     db.add(session)
     db.flush()
     return session
+
+
+def finalize_session(db, session: Session) -> None:
+    """Mark a seeded visit fully processed so it doesn't look stuck.
+
+    The demo has no live AI worker running over it, so seeded captures stay ``received`` (Pro shows a
+    "reading image"/processing cue) and aren't folded into the report (the freshness line reads
+    "Updating · N captures not yet in this report"). This sets each capture ``processed`` +
+    ``report_contribution: added`` and writes the session's completeness contracts, so a seeded visit
+    opens as a finished report. Idempotent — safe to re-run over already-seeded sessions.
+    """
+    captures = list(
+        db.query(Capture)
+        .filter(Capture.tenant_id == DEV_TENANT_ID, Capture.session_id == session.id, Capture.status != CaptureStatus.deleted)
+        .all()
+    )
+    capture_ids = [str(capture.id) for capture in captures]
+    for capture in captures:
+        capture.status = CaptureStatus.processed
+        metadata = dict(capture.capture_metadata or {})
+        metadata["report_contribution"] = {"status": "added", "source": "seed"}
+        capture.capture_metadata = metadata
+    meta = dict(session.extracted_metadata or {})
+    if not meta.get("source_capture_ids"):
+        meta["source_capture_ids"] = capture_ids
+    meta["capture_count"] = len(capture_ids)
+    meta["report_contribution_summary"] = {"added": len(capture_ids), "set_aside": 0}
+    meta["processing_status"] = {"state": "idle", "source": "seed"}
+    meta.pop("generated_output_stale", None)
+    meta.pop("stale_reason", None)
+    session.extracted_metadata = meta
+    # `session_is_complete` needs a non-empty generated_report (the markdown body) + an assigned
+    # patient + not-stale, to read "Complete" instead of "Draft". Render it from the report model when
+    # there is one, else a simple body from the summary.
+    if not session.generated_report:
+        report_model = session.report_model if isinstance(session.report_model, dict) else None
+        if report_model and report_model.get("sections"):
+            from app.services.reporting import render_report_body_markdown
+
+            session.generated_report = render_report_body_markdown(report_model, db=db, session=session)
+        else:
+            session.generated_report = session.summary or "Seeded visit."
+    if session.status in {SessionStatus.needs_review, SessionStatus.unassigned, SessionStatus.draft}:
+        session.status = SessionStatus.organized
+    db.flush()
 
 
 def ensure_patient(db, *, display_name: str, first: str, last: str, phone: str, notes: str | None) -> Patient | None:
@@ -296,11 +348,100 @@ def main() -> None:
         else:
             skipped.append("لیلا کریمی")
 
+        # E — a real before/after pair: two captioned photos of the same site across phases, paired
+        # deterministically (Job-2 attrs → `recompute_session_photo_pairing`), surfaced in a Pro report
+        # `media` section so the before/after **slider** renders. The photos are visually distinct so the
+        # drag-to-compare is obvious.
+        donya = ensure_patient(
+            db, display_name="دنیا موسوی", first="دنیا", last="موسوی", phone="+98 912 500 5005",
+            notes="فیلر گونه — مستندسازی قبل/بعد.",
+        )
+        if donya:
+            ba = make_session(db, patient=donya, title="فیلر گونه چپ — قبل/بعد", days_ago=7)
+            # The dictation a clinical claim is grounded in — the citation tap opens THIS capture.
+            dictation = add_note(
+                db, ba, detail="یک سی‌سی فیلر ژوویدرم به گونه چپ تزریق شد. لات D-4471.", captured_at=ba.captured_at,
+            )
+            cheek_pairing = {"region": "cheek", "laterality": "left", "view": "frontal"}
+            before = add_media(
+                db, store, ba, capture_type=CaptureType.photo, content=png_solid(240, 300, (208, 176, 168)),
+                content_type="image/png", filename="ba-cheek-before.png", captured_at=ba.captured_at - timedelta(minutes=20),
+                caption="گونه چپ، قبل از درمان", pairing={**cheek_pairing, "phase": "before"},
+            )
+            after = add_media(
+                db, store, ba, capture_type=CaptureType.photo, content=png_solid(240, 300, (228, 198, 188)),
+                content_type="image/png", filename="ba-cheek-after.png", captured_at=ba.captured_at,
+                caption="گونه چپ، بعد از درمان", pairing={**cheek_pairing, "phase": "after"},
+            )
+            db.flush()
+            # Deterministic pairing → each photo gets `photo_pairing {role, pairKey, pairedCaptureId}`.
+            recompute_session_photo_pairing(db, session=ba)
+            # Extracted treatment, cited to the dictation (sourceCaptureIds) — drives the treatment
+            # table + its "↗ source" citation tap.
+            ba.extracted_metadata = {
+                "treatments": [
+                    {
+                        "area": "گونه چپ", "product": "فیلر", "brand": "ژوویدرم",
+                        "quantity": 1, "unit": "cc", "quantityText": "۱ سی‌سی",
+                        "lot": "D-4471", "confidence": 0.9, "carriedForward": False,
+                        "sourceCaptureIds": [str(dictation.id)],
+                    }
+                ],
+                "source_capture_ids": [str(before.id), str(after.id), str(dictation.id)],
+            }
+            # A minimal Pro report: a cited summary block + the before/after `media` section.
+            ba.report_model = {
+                "schemaVersion": "2026-05-21.session-processing-output.v1",
+                "summary": "ویزیت فیلر گونه چپ با مستندسازی قبل و بعد.",
+                "sections": [
+                    {
+                        "id": "visit-summary",
+                        "title": "خلاصه ویزیت",
+                        "blocks": [
+                            {
+                                "type": "paragraph",
+                                "text": "یک سی‌سی فیلر به گونه چپ تزریق شد. تصاویر قبل و بعد ثبت شد.",
+                                "sourceCaptureIds": [str(dictation.id)],
+                            }
+                        ],
+                    },
+                    {
+                        "id": "media",
+                        "title": "تصاویر",
+                        "blocks": [
+                            {"type": "image", "captureId": str(before.id), "caption": "گونه چپ، قبل از درمان"},
+                            {"type": "image", "captureId": str(after.id), "caption": "گونه چپ، بعد از درمان"},
+                        ],
+                    },
+                ],
+                "sourceReferences": [
+                    {"type": "capture", "captureId": str(dictation.id)},
+                    {"type": "capture", "captureId": str(before.id)},
+                    {"type": "capture", "captureId": str(after.id)},
+                ],
+                "generatedBy": "seed",
+            }
+            ba.organization_source = OrganizationSource.ai_engine
+            db.flush()
+            created.append("دنیا موسوی — before/after pair + cited treatment (slider + source citations)")
+        else:
+            skipped.append("دنیا موسوی")
+
+        # Finalize every seeded visit so captures aren't stuck "processing" and the Pro report reads
+        # "reflects all captures" (no live AI worker runs over the demo). Idempotent — also repairs
+        # sessions seeded by an earlier run.
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی", "دنیا موسوی"):
+            patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
+            if patient is None:
+                continue
+            for session in db.query(Session).filter(Session.tenant_id == DEV_TENANT_ID, Session.patient_id == patient.id).all():
+                finalize_session(db, session)
+
         db.commit()
 
         # Index search identifiers (name aliases, phone) for every demo patient so they are matchable
         # (AI assignment) + searchable — the raw-ORM creation above skips this, unlike the API path.
-        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی"):
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی", "دنیا موسوی"):
             patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
             if patient is not None:
                 replace_deterministic_patient_identifiers(db, patient=patient, national_id=None, source="staff")

@@ -791,6 +791,9 @@ export function workspaceTreatments(session: CaptureSession | null): SessionTrea
       confidence: typeof entry.confidence === "number" ? entry.confidence : null,
       carriedForward: entry.carriedForward === true,
       attributes: entry.attributes && typeof entry.attributes === "object" ? (entry.attributes as Record<string, unknown>) : null,
+      sourceCaptureIds: Array.isArray(entry.sourceCaptureIds)
+        ? entry.sourceCaptureIds.filter((id): id is string => typeof id === "string")
+        : undefined,
     }))
     .filter((treatment) => treatment.area || treatment.product);
 }

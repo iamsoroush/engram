@@ -15,11 +15,25 @@ All session states remain reviewable. State badges are informational and do not 
 - Add capture to continue the same session with refreshed progressive output.
 - Save title.
 - Open capture source preview.
+- Rate the synthesized report with a lightweight 👍 / 👎 (Pro report only; shown once the report has
+  real sections or treatments). Rendered as a quiet **end-cap after the aftercare section** (rate-after-
+  reading — it never splits the clinical content, and on mobile sits just above the collapsible Sources).
+  One tap records a quiet AI-quality signal and collapses to a thank-you — never a blocker. Feeds the
+  eval golden-set harvester (`docs/ai_engine/eval-epic.md` §1b). Bilingual + RTL-aware.
 
 ## Visible Data
 
 - Session title, full summary, status, and actionable patient assignment.
 - Clinical report with local progressive state, passive assistant-state indicators, and live draft/structured view switching when generated report output is unavailable.
+- **Before/after media (Pro):** the report `media` section renders before/after photo pairs with two
+  modes — **side-by-side** (default) and a **draggable compare slider** (drag to reveal after-over-before).
+  Pairing is the deterministic backend `photo_pairing` (the rendering consumes pairs, it never pairs);
+  unpaired photos render as single images. Bilingual + RTL-aware. See
+  [redesign-pro-report §2.4](../redesign-pro-report.md).
+- **Per-claim source citations (Pro):** treatment rows and cited prose blocks show a `↗ source` tap that
+  opens the grounding capture in the source preview — "tap a claim → its source capture" (assistive +
+  cited). Resolves same-session captures locally; fetches by id for a carried-forward claim that cites a
+  prior visit. See [redesign-pro-report §2.3](../redesign-pro-report.md).
 - Collapsible summary.
 - Collapsible extracted findings.
 - Source previews, statuses, and generated capture details through clickable live draft cards.

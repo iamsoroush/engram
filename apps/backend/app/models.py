@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -638,6 +639,49 @@ class QaMessage(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
     )
+
+
+class AiFeedbackEvent(Base):
+    """A harvested AI-quality signal: a staff CORRECTION of an AI output, or a thumbs RATING.
+
+    The eval golden-set harvester (``docs/ai_engine/eval-epic.md`` §1b): every production correction
+    of an AI output (transcript / caption / treatment / patient-match) and every report/brief rating is
+    logged here as a candidate eval case, so MVP user testing seeds the golden set instead of relying on
+    remembered bugs. Append-only, cheap, non-blocking — a correction row is written in the *same*
+    transaction as the edit it records (like ``AuditEvent``), never breaking the primary action.
+
+    ``kind`` ∈ ``correction`` (staff edited/overrode an AI output) | ``confirmation`` (staff confirmed
+    an AI suggestion — a positive case) | ``rating`` (a report/brief thumbs). ``ai_output_type`` ∈
+    ``transcript`` | ``caption`` | ``treatment`` | ``patient_match`` | ``report`` | ``brief``.
+
+    PII posture: the before/after AI-output *text* is stored verbatim because it IS the eval target
+    (a transcript's confusable name is the case). Structured patient PII (names, national id, phone,
+    DOB, address) never enters ``context`` — it is scrubbed by ``services.feedback.scrub_context``.
+    """
+
+    __tablename__ = "ai_feedback_events"
+    __table_args__ = (
+        Index("ix_ai_feedback_events_tenant_id_created_at", "tenant_id", "created_at"),
+        Index("ix_ai_feedback_events_tenant_id_kind_output", "tenant_id", "kind", "ai_output_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    ai_output_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"))
+    capture_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("captures.id", ondelete="SET NULL"))
+    patient_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("patients.id", ondelete="SET NULL"))
+    # The AI's output before the correction (verbatim — the eval target) and the human-corrected value.
+    before_value: Mapped[str | None] = mapped_column(Text)
+    after_value: Mapped[str | None] = mapped_column(Text)
+    # Thumbs rating for kind="rating": +1 up / -1 down. NULL for corrections/confirmations.
+    rating: Mapped[int | None] = mapped_column(SmallInteger)
+    comment: Mapped[str | None] = mapped_column(Text)
+    # Minimal, PII-scrubbed context (job_type, confidence, source, key, model…). Never raw patient PII.
+    context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
 
 class AuthRefreshToken(Base):
