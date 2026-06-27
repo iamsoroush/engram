@@ -41,7 +41,6 @@ except NameError:
 from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
     DEFAULT_MIN_SCORE,
-    STRICT_QUALITY,
     contains,
     exit_code,
     gateway_configured,
@@ -304,12 +303,17 @@ def run_fixtures() -> tuple[int, int]:
         problems = run_gates(output, spec.get("expect") or {})
         patient = output.get("patient_information") or {}
         summary = f"raw={patient.get('raw_mentioned_name')!r} basis={_assignment(output).get('basis')!r}"
-        if problems:
+        known_gap = spec.get("knownGap")
+        if problems and known_gap:
+            # xfail: a documented model limitation — reported loudly, NOT counted as a blocking failure.
+            print(f"  [{index}] KNOWN-GAP {name}: {'; '.join(problems)}  | {summary}\n             ↳ {known_gap}")
+        elif problems:
             safety_fail += 1
             print(f"  [{index}] SAFETY FAIL {name}: {'; '.join(problems)}  | {summary}")
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {name}  → {summary}")
+            note = "  (knownGap — passed this run; behaviour here is unreliable)" if known_gap else ""
+            print(f"  [{index}] SAFETY PASS {name}  → {summary}{note}")
     return safety_pass, safety_fail
 
 

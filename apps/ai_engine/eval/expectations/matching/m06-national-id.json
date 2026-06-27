@@ -1,5 +1,5 @@
 {
-  "_todo": "Read a national ID digit-by-digit. The scripted line below normalizes to 0012345678; if you say different digits, set nationalId to them. Then delete this _todo.",
+  "_note": "National ID read digit-by-digit; must be normalized to a Latin-digit string.",
   "said": "کد ملی صفر صفر یک دو سه چهار پنج شش هفت هشت.",
   "expect": {
     "nationalId": "0012345678"

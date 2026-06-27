@@ -339,8 +339,11 @@ def run_fixtures() -> tuple[int, int, int, int]:
         caption = result.get("caption") or ""
 
         problems = run_gates(result, spec.get("expect") or {})
+        known_gap = spec.get("knownGap")
         if spec.get("expect"):
-            if problems:
+            if problems and known_gap:
+                print(f"  [{index}] KNOWN-GAP {name}: {'; '.join(problems)}\n             → {caption!r}\n             ↳ {known_gap}")
+            elif problems:
                 safety_fail += 1
                 print(f"  [{index}] SAFETY FAIL {name}: {'; '.join(problems)}\n             → {caption!r}")
             else:

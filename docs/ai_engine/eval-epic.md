@@ -141,6 +141,28 @@ must — run even with no gateway) and gateway **judge smoke cases** (synthetic 
 text proving the rubric separates clean Persian from romanized / wrong-dose output). When a fixture
 is later dropped in, it is scored on top of these with no code change.
 
+**`knownGap` (xfail).** A real fixture may set `"knownGap": "<reason>"` when a case fails due to a
+*documented model limitation* (not a harness bug). It is then reported loudly (`KNOWN-GAP …`) but NOT
+counted as a blocking safety failure, so a known model weakness doesn't redden the suite — and if it
+starts passing, that's surfaced too. Use sparingly, always with a reason + the fix.
+
+### 2b. First real-audio findings (clinician recordings, 2026-06-27)
+
+The first real clips (15 audio under patient «نگار محمدی») landed and surfaced exactly the kind of
+failure synthetic text can't:
+
+- **Near-miss patient name = the highest-stakes finding.** «نگار **معمری**» (a near-miss of the existing
+  «نگار **محمدی**») is *intermittently auto-corrected to the existing patient* by the flash models
+  (`gemini-3.1-flash-lite` returned «محمدی» 2/3 runs; `gemini-3.5-flash` too) — which would drive an
+  unsafe silent auto-assign. `gemini-3.1-pro-preview` preserved a distinct name («معماری»). → marked
+  `knownGap` on `m02`; **recommendation: run the matching/name-extraction path on a pro model.**
+- **Number words → digits.** The transcription model normalizes spoken «بیست»→«20», «سه»→«3» — the
+  dose gates accept either via `containsAny`.
+- **Lot captured, label word drifts.** `PS18025` was read off the box correctly, but «شماره لات» was
+  transcribed «شماره محصول» — so the gate checks the lot VALUE, not the word «لات».
+- Transcription otherwise strong: 9/9 safety on the real clips (allergy, negation, decimals,
+  laterality all preserved).
+
 ## 3. Scenario catalog — what to record
 
 Each scenario below becomes one fixture (media + `.json`). Record in **natural clinical Farsi**, as

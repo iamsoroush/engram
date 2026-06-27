@@ -1,8 +1,9 @@
 {
-  "_todo": "After recording, set the spoken lot exactly. If you read Latin letters (e.g. 'A B C 1 2 3') add  \"lot\": \"ABC123\"  and  \"allowLatin\": [\"ABC123\"]  to expect. If you say Persian letters, set \"lot\" to that string. Then delete this _todo.",
-  "said": "شماره لات ... .",
+  "_note": "Box lot read aloud = PS18025. The safety property is the LOT VALUE being captured verbatim — the word «لات» itself may be transcribed as «شماره محصول» etc., which is fine. The digits (18025) normalize to Latin regardless of how the letters are heard.",
+  "said": "شماره لات PS18025.",
   "expect": {
-    "containsFa": ["لات"]
+    "containsAny": [["PS18025", "18025"]],
+    "allowLatin": ["PS18025", "PS"]
   },
   "judge": {
     "dimensions": ["nativeScript", "brandLotFidelity"],
