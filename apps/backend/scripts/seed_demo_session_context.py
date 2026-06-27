@@ -158,6 +158,51 @@ def make_session(db, *, patient: Patient, title: str, days_ago: int, extracted_m
     return session
 
 
+def finalize_session(db, session: Session) -> None:
+    """Mark a seeded visit fully processed so it doesn't look stuck.
+
+    The demo has no live AI worker running over it, so seeded captures stay ``received`` (Pro shows a
+    "reading image"/processing cue) and aren't folded into the report (the freshness line reads
+    "Updating · N captures not yet in this report"). This sets each capture ``processed`` +
+    ``report_contribution: added`` and writes the session's completeness contracts, so a seeded visit
+    opens as a finished report. Idempotent — safe to re-run over already-seeded sessions.
+    """
+    captures = list(
+        db.query(Capture)
+        .filter(Capture.tenant_id == DEV_TENANT_ID, Capture.session_id == session.id, Capture.status != CaptureStatus.deleted)
+        .all()
+    )
+    capture_ids = [str(capture.id) for capture in captures]
+    for capture in captures:
+        capture.status = CaptureStatus.processed
+        metadata = dict(capture.capture_metadata or {})
+        metadata["report_contribution"] = {"status": "added", "source": "seed"}
+        capture.capture_metadata = metadata
+    meta = dict(session.extracted_metadata or {})
+    if not meta.get("source_capture_ids"):
+        meta["source_capture_ids"] = capture_ids
+    meta["capture_count"] = len(capture_ids)
+    meta["report_contribution_summary"] = {"added": len(capture_ids), "set_aside": 0}
+    meta["processing_status"] = {"state": "idle", "source": "seed"}
+    meta.pop("generated_output_stale", None)
+    meta.pop("stale_reason", None)
+    session.extracted_metadata = meta
+    # `session_is_complete` needs a non-empty generated_report (the markdown body) + an assigned
+    # patient + not-stale, to read "Complete" instead of "Draft". Render it from the report model when
+    # there is one, else a simple body from the summary.
+    if not session.generated_report:
+        report_model = session.report_model if isinstance(session.report_model, dict) else None
+        if report_model and report_model.get("sections"):
+            from app.services.reporting import render_report_body_markdown
+
+            session.generated_report = render_report_body_markdown(report_model, db=db, session=session)
+        else:
+            session.generated_report = session.summary or "Seeded visit."
+    if session.status in {SessionStatus.needs_review, SessionStatus.unassigned, SessionStatus.draft}:
+        session.status = SessionStatus.organized
+    db.flush()
+
+
 def ensure_patient(db, *, display_name: str, first: str, last: str, phone: str, notes: str | None) -> Patient | None:
     """Create the patient, or return None if one with this name already exists (skip → idempotent)."""
     existing = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == display_name).first()
@@ -381,6 +426,16 @@ def main() -> None:
             created.append("دنیا موسوی — before/after pair + cited treatment (slider + source citations)")
         else:
             skipped.append("دنیا موسوی")
+
+        # Finalize every seeded visit so captures aren't stuck "processing" and the Pro report reads
+        # "reflects all captures" (no live AI worker runs over the demo). Idempotent — also repairs
+        # sessions seeded by an earlier run.
+        for name in ("نگار محمدی", "سارا احمدی", "مریم رضایی", "لیلا کریمی", "دنیا موسوی"):
+            patient = db.query(Patient).filter(Patient.tenant_id == DEV_TENANT_ID, Patient.display_name == name).first()
+            if patient is None:
+                continue
+            for session in db.query(Session).filter(Session.tenant_id == DEV_TENANT_ID, Session.patient_id == patient.id).all():
+                finalize_session(db, session)
 
         db.commit()
 
