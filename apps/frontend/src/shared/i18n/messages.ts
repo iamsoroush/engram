@@ -1588,7 +1588,7 @@ const fa: Dict = {
   "needsinput.forClinician": "برای {name}",
   "needsinput.linedUp": "در نوبت گذاشته شد",
   "needsinput.linedUpBy": "در نوبت گذاشته شده توسط {name}",
-  "needsinput.recap": "خلاصه ›",
+  "needsinput.recap": "خلاصه ‹",
   "needsinput.startVisit": "شروع ویزیت",
   "needsinput.done": "انجام شد",
   "needsinput.remove": "حذف",
