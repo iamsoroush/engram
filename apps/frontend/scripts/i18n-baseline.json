@@ -551,21 +551,6 @@
     "Patient Q&A link",
     "Promise"
   ],
-  "src/features/shell/Shell.tsx": [
-    "Engram",
-    "Logout",
-    "MVP v2",
-    "Offline · Captures are saved on this device",
-    "Plan",
-    "Primary",
-    "Profile",
-    "Q&A inbox",
-    "Replay guide",
-    "Search",
-    "Settings",
-    "Switch clinic",
-    "Team"
-  ],
   "src/features/therapy/TherapyApp.tsx": [
     ") : clientDetail ? (",
     ") : clientDetail.history && (clientDetail.history.snapshot || clientDetail.history.sections.length) ? (",
