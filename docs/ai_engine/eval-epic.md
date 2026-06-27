@@ -19,13 +19,13 @@ docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
 
 | Job | Eval module | Quality the eval must gate | Fixtures | Status |
 |---|---|---|---|---|
-| **Transcription** (audio → text) | `transcription_eval.py` | Persian **native script** (no romanization), verbatim dose/brand/lot, digit handling, robustness to accent/noise | **real audio** (cannot be synthetic) | **harness done — needs audio** (8 gate self-tests + 3 judge smoke green) |
-| **Image caption** (Job 2) | `caption_eval.py` | Neutral **objective** description (never a diagnosis — the caption is a neutral image→text extractor, not a clinical read), lot read off a label, language | **real photos** | **harness done — needs photos** (8 gate self-tests + 3 judge smoke green) |
+| **Transcription** (audio → text) | `transcription_eval.py` | Persian **native script** (no romanization), verbatim dose/brand/lot, digit handling, robustness to accent/noise | **real audio** (cannot be synthetic) | **LIVE on 9 real clips (9/9 safety)** + 12 self-tests + 3 judge smoke |
+| **Image caption** (Job 2) | `caption_eval.py` | Neutral **objective** description (never a diagnosis — the caption is a neutral image→text extractor, not a clinical read), lot read off a label, language | **real photos** | harness green (12 self-tests + 3 judge smoke); **📷 real photos = TODO (deferred — clinician to provide p01–p05)** |
 | **Report synthesis — treatments** (Job 3) | `treatments_eval.py` | area/product/brand split, quantity/unit verbatim, corrections vs additions, carry-forward, lot | synthetic transcripts (+ real) | **done (12 cases)** |
 | **Report synthesis — aftercare** (Job 3) | `aftercare_conflict_eval.py` | which clinic protocols apply (completeness, per-procedure), dictation-vs-protocol **conflict** attribution | synthetic (+ real) | **done (6 cases)** |
 | **Report synthesis — sections** (Job 3) | `report_sections_eval.py` | grounded prose (no invention), native script titles + body, image blocks reference real captureIds, empty sections stay empty | synthetic transcripts (+ real) | **done (3 cases + 5 self-tests)** |
 | **Patient memory** (Job 4) | `patient_memory_eval.py` | story-so-far accuracy, since-last-visit delta, flags (no invented flags), no name-repeat (advisory) — over a multi-session fixture | synthetic multi-session (+ real) | **done (3 cases + 6 self-tests)** |
-| **Patient matching** (AI auto-assign) | `patient_matching_eval.py` | **safety (LLM seam)**: spoken name extracted faithfully + assignment **basis** not over-escalated (a mention/near-miss must NOT be `explicit`) so the backend never silently auto-assigns | name fixtures (+ real audio names) | **done (7 self-tests + 2 judge smoke)** |
+| **Patient matching** (AI auto-assign) | `patient_matching_eval.py` | **safety (LLM seam)**: spoken name extracted faithfully + assignment **basis** not over-escalated (a mention/near-miss must NOT be `explicit`) so the backend never silently auto-assigns | name fixtures (+ real audio names) | **LIVE on 6 real clips (5/6 + 1 knownGap)** + 13 self-tests + 2 judge smoke |
 
 > The deterministic post-processing (correction/supersede/carry-forward, search ranking, and the
 > exact-vs-fuzzy **auto-assign decision** itself) is already unit-tested in `tests/`
@@ -198,15 +198,16 @@ you actually dictate. Save under the path shown; the matching eval picks it up a
 
 ## 4. Sequencing
 
-1. **Now (done):** runner + the two synthesis evals (treatments, aftercare) green on synthetic cases;
-   **transcription + caption harnesses built** (each: deterministic gate self-tests + judge smoke
-   green) and wired into `run_all.py` — they score real clips/photos the moment they land.
-2. **Next (needs recordings):** transcription (awaiting audio) + caption (awaiting photos) — built but
-   blocked on real media; the scenario catalog above is the recording list. Each file dropped in
-   `fixtures/` + its `.json` makes its eval real, no code change.
-3. **Then:** report-sections, patient-memory (multi-session fixture), patient-matching evals. Extract
-   the shared two-tier harness (matchers + judge) into `eval/_common.py` once a 3rd eval reuses it.
-4. **CI:** run `run_all.py` on a gateway-enabled runner; gate prompt/model PRs on the scorecard.
+1. **Done:** runner + all 7 evals on the shared `eval/_common.py` harness; the two synthesis evals
+   (treatments, aftercare) + report-sections + patient-memory green on synthetic cases.
+2. **Done:** transcription (9 real clips, 9/9 safety) + patient-matching (6 real clips) are **LIVE on
+   real clinician audio**, persisted in the `notari-eval-fixtures` object-storage bucket.
+3. **TODO (deferred — needs media):** 📷 **caption real photos** (`p01`–`p05`) — clinician to provide
+   later; the caption harness is green on self-tests + judge-smoke and scores them the moment they land
+   (`scripts/eval-fixtures.sh push` then `run`). No code change needed.
+4. **CI:** run `run_all.py` on a gateway-enabled runner; gate prompt/model PRs on the scorecard. Also
+   open: a majority-vote wrapper for the flaky single-call synthesis evals (treatments/aftercare); the
+   `m02` near-miss `knownGap` resolves by running the matching path on a pro model.
 
 ## 5. How to add a recording (clinician workflow)
 

@@ -3,6 +3,11 @@
 These are the **real recordings** the golden-set evals need. The other jobs (report-sections,
 patient-memory, treatments, aftercare) run on synthetic text and need **no recordings**.
 
+> **Status (2026-06): 🎙️ audio DONE — 📷 images TODO (deferred).** All 15 audio clips (transcription
+> `t01`–`t09`, matching `m01`–`m06`) are recorded, persisted in object storage, and scored. The **5
+> caption photos (`p01`–`p05`) are postponed** — drop them in `caption/` later and `push` + `run`; no
+> code change. `p01`'s lot is **PS18025**.
+
 Record each on your phone in **natural clinical Farsi**, name it exactly, and drop it in the matching
 folder of your staging dir (created by `scripts/eval-fixtures.sh stage`, default
 `~/notari-eval-fixtures/`). A sibling `<case>.json` (the expected facts) is already there as a template;
