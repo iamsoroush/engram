@@ -5977,6 +5977,22 @@ small {
   scroll-margin-top: 64px;
 }
 
+/* Session-level patient-conflict panel (FB8) — the dictated-different-patient resolver lifted out of
+   the Sources drawer into the verify region so it's never missed. */
+.session-patient-conflicts {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #f0d49a;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff8ea, #fef3da);
+}
+.session-patient-conflicts-label {
+  color: #6b4e12;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .sources-drawer {
   border-top: 1px solid #e6edf7;
   background: #f7faff;

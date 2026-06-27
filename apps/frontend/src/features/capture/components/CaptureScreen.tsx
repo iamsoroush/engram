@@ -12,8 +12,8 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
-import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
+import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
@@ -221,7 +221,23 @@ export function CaptureScreen({
     (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key),
   );
   const patientVerifyNeeded = Boolean(aiPatientAction && onCompleteAiCreatedPatient);
-  const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0);
+  // Patient CONFLICTS (a capture dictated a different/partial-match patient than the assigned one) are
+  // a session-level blocker too — surfaced in the verify region + counted, not buried in the Sources
+  // drawer (FB8). Resolution is in place via the shared PatientConflictResolver. Local dismiss only.
+  const [dismissedConflicts, setDismissedConflicts] = React.useState<Set<string>>(new Set());
+  React.useEffect(() => setDismissedConflicts(new Set()), [activeSession?.id]);
+  const assignmentCandidates = sessionAssignmentCandidates(activeSession);
+  const activeAssignmentAction = activePatientAssignmentActionForSession(activeSession);
+  const patientConflicts =
+    !isHistorical && onAssignPatient
+      ? (activeSession?.items || [])
+          .map((item) => ({
+            captureId: item.id,
+            suggestion: captureConflictSuggestion(item, alternateCandidateForCapture(assignmentCandidates, item.id), activeAssignmentAction),
+          }))
+          .filter((conflict) => conflict.suggestion && !dismissedConflicts.has(conflict.captureId))
+      : [];
+  const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0) + patientConflicts.length;
   const verifyRegionRef = React.useRef<HTMLDivElement>(null);
   // "Review" jumps to the first thing needing confirmation: a carried-forward dose now lives inline on
   // its treatment row in the report; patient-identity verification is the panel above the report.
@@ -446,9 +462,26 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
-      {!isHistorical && activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
+      {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (
         <div className="session-verify-region" ref={verifyRegionRef}>
-          <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
+          {patientConflicts.length ? (
+            <section className="session-patient-conflicts" aria-label="Patient needs your confirmation">
+              <span className="session-patient-conflicts-label">Patient needs your confirmation</span>
+              {patientConflicts.map((conflict) => (
+                <PatientConflictResolver
+                  key={conflict.captureId}
+                  suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
+                  basisCaptureId={conflict.captureId}
+                  onApply={onAssignPatient ? (draft) => onAssignPatient(activeSession.id, draft) : undefined}
+                  onChooseAnother={onOpenResolver}
+                  onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
+                />
+              ))}
+            </section>
+          ) : null}
+          {aiPatientAction && onCompleteAiCreatedPatient ? (
+            <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
+          ) : null}
         </div>
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>

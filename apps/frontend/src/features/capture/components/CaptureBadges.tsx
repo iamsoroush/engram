@@ -9,6 +9,128 @@ import { PatientForm } from "../../patient/PatientForm";
 import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, AssignmentCandidate } from "../captureModel";
 import { SyncIcon } from "./CaptureIcons";
 
+export type PatientConflictSuggestion = { name: string; patientId?: string; nationalId?: string; spokenName?: string };
+
+/**
+ * The in-place patient-conflict resolver — a partial/fuzzy match or a dictated different/new patient,
+ * with Keep match / Create new / Choose another / Edit. Self-contained (owns its applying/editing
+ * state) so it renders identically on a capture card (in the Sources drawer) AND at the session level
+ * in the verify region (FB8 — a patient conflict is a session blocker, not buried in the feed).
+ */
+export function PatientConflictResolver({
+  suggestion,
+  basisCaptureId,
+  onApply,
+  onChooseAnother,
+  onDismiss,
+}: {
+  suggestion: PatientConflictSuggestion;
+  basisCaptureId: string;
+  onApply?: (draft: PatientAssignmentDraft) => Promise<void>;
+  onChooseAnother?: () => void;
+  onDismiss?: () => void;
+}) {
+  const [applying, setApplying] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [editName, setEditName] = React.useState("");
+  const [editNationalId, setEditNationalId] = React.useState("");
+  const showMatchedVsSpoken = Boolean(suggestion.patientId && suggestion.spokenName && suggestion.spokenName !== suggestion.name);
+  const applyDraft = (draft: PatientAssignmentDraft) => {
+    if (!onApply || applying) return;
+    setApplying(true);
+    void onApply(draft).finally(() => setApplying(false));
+  };
+  const keepMatch = () => {
+    if (!suggestion.patientId) return;
+    applyDraft({ patientId: suggestion.patientId, displayName: suggestion.name, basisCaptureId });
+  };
+  const createNew = (name: string, nationalId?: string) => {
+    const display = name.trim();
+    if (!display) return;
+    applyDraft({ displayName: display, nationalId: nationalId?.trim() || undefined, basisCaptureId });
+  };
+  const openEditor = () => {
+    setEditName(suggestion.spokenName || suggestion.name || "");
+    setEditNationalId(suggestion.nationalId || "");
+    setEditing(true);
+  };
+  return (
+    <div className="effect-chip is-suggested partial-match">
+      <div className="partial-match-head">
+        <span className="effect-chip-label">
+          {suggestion.patientId ? (
+            <>Suggested: reassign to <strong>{suggestion.name}</strong></>
+          ) : (
+            <>New patient: <strong>{suggestion.name}</strong></>
+          )}
+        </span>
+        {onDismiss ? (
+          <button aria-label="Dismiss suggestion" className="partial-match-close" onClick={onDismiss} type="button">×</button>
+        ) : null}
+      </div>
+      {showMatchedVsSpoken ? (
+        <span className="partial-match-identity">
+          Matched <strong>{suggestion.name}</strong> · you said <strong>{suggestion.spokenName}</strong>
+        </span>
+      ) : null}
+      {editing ? (
+        <div className="partial-match-edit">
+          <span className="partial-match-edit-title">New patient details</span>
+          <input aria-label="Patient name" onChange={(event) => setEditName(event.target.value)} placeholder="Patient name" value={editName} />
+          <input aria-label="National ID (optional)" onChange={(event) => setEditNationalId(event.target.value)} placeholder="National ID (optional)" value={editNationalId} />
+          <div className="partial-match-edit-actions">
+            <button className="effect-chip-action" disabled={applying || !editName.trim()} onClick={() => createNew(editName, editNationalId)} type="button">
+              {applying ? "Creating…" : "Create patient"}
+            </button>
+            <button className="effect-chip-ghost" onClick={() => setEditing(false)} type="button">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <div className="partial-match-actions">
+          {suggestion.patientId && onApply ? (
+            <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
+              {applying ? "Applying…" : "Keep match"}
+            </button>
+          ) : null}
+          {onApply ? (
+            <button className="effect-chip-secondary" disabled={applying} onClick={openEditor} type="button">
+              {suggestion.patientId ? "Create new instead" : "Create patient"}
+            </button>
+          ) : null}
+          {onChooseAnother ? (
+            <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">Choose another</button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The pending patient-conflict a capture carries (suggested reassignment / new patient), or null if
+ * it's the active source or has no conflict. Shared by the per-capture badge + the session panel. */
+export function captureConflictSuggestion(
+  item: CaptureItem,
+  alternateCandidate: AssignmentCandidate | null | undefined,
+  activePatientAction: Record<string, unknown> | null,
+): PatientConflictSuggestion | null {
+  if (captureAssignmentInfo(item, activePatientAction) !== null) return null;
+  const candidate = metadataRecord(metadataRecord(item.metadata).patient_match_candidate);
+  const status = metadataDisplay(candidate.status || candidate.decision);
+  const isSuggestion = status === "suggested_reassignment";
+  const matchedName = isSuggestion ? metadataDisplay(candidate.matchedName || candidate.displayName) || suggestionNameFromInformation(candidate) : "";
+  const spokenName = isSuggestion ? metadataDisplay(candidate.spokenName) : "";
+  if (isSuggestion && (matchedName || spokenName)) {
+    return {
+      name: matchedName || spokenName,
+      patientId: metadataDisplay(candidate.patientId) || undefined,
+      nationalId: suggestionNationalId(candidate),
+      spokenName: spokenName || undefined,
+    };
+  }
+  if (alternateCandidate) return { name: alternateCandidate.displayName, patientId: alternateCandidate.patientId };
+  return null;
+}
+
 export function CapturePatientBadges({
   activePatientAction,
   alternateCandidate,
@@ -30,120 +152,26 @@ export function CapturePatientBadges({
   needsReviewReason?: string;
 }) {
   const [dismissed, setDismissed] = React.useState(false);
-  const [applying, setApplying] = React.useState(false);
-  const [editing, setEditing] = React.useState(false);
-  const [editName, setEditName] = React.useState("");
-  const [editNationalId, setEditNationalId] = React.useState("");
 
-  // The active assignment/creation effect renders as a badge beside the title
-  // (CaptureAssignmentBadge); here we only need to know whether this capture is the source so we
-  // don't also show a reassignment suggestion on it.
-  const isSource = captureAssignmentInfo(item, activePatientAction) !== null;
-
-  // A "Suggested: reassign" surface on a NON-source capture, from a partial (fuzzy) match or an
-  // implicit mention (`patient_match_candidate`), or a prior assignment basis still in the
-  // timeline (the alternate candidate) — so staff can resolve the partial match in place.
-  const candidate = metadataRecord(metadataRecord(item.metadata).patient_match_candidate);
-  const candidateStatus = metadataDisplay(candidate.status || candidate.decision);
-  const isSuggestion = candidateStatus === "suggested_reassignment";
-  const suggestedMatchedName = isSuggestion ? metadataDisplay(candidate.matchedName || candidate.displayName) || suggestionNameFromInformation(candidate) : "";
-  const suggestedSpokenName = isSuggestion ? metadataDisplay(candidate.spokenName) : "";
-  const suggestion: { name: string; patientId?: string; nationalId?: string; spokenName?: string } | null =
-    isSuggestion && (suggestedMatchedName || suggestedSpokenName)
-      ? {
-          name: suggestedMatchedName || suggestedSpokenName,
-          patientId: metadataDisplay(candidate.patientId) || undefined,
-          nationalId: suggestionNationalId(candidate),
-          spokenName: suggestedSpokenName || undefined,
-        }
-      : alternateCandidate
-        ? { name: alternateCandidate.displayName, patientId: alternateCandidate.patientId }
-        : null;
-  const showSuggestion = Boolean(suggestion) && !isSource && !dismissed;
-  // "Matched X · you said Y" — only for a real match (a patient to keep) whose names differ.
-  const showMatchedVsSpoken = Boolean(suggestion?.patientId && suggestion?.spokenName && suggestion.spokenName !== suggestion.name);
-
+  // A pending patient conflict (partial/fuzzy match or a dictated different/new patient) on a
+  // NON-source capture — resolved in place via the shared PatientConflictResolver (also rendered at
+  // the session level in the verify region, FB8).
+  const suggestion = captureConflictSuggestion(item, alternateCandidate, activePatientAction);
+  const showSuggestion = Boolean(suggestion) && !dismissed;
   const showNeedsReview = Boolean(needsReviewReason) && !outOfContext;
   if (!showSuggestion && !outOfContext && !showNeedsReview) return null;
-
-  // Attribute the (re)assignment to this capture so it becomes the source and its chip clears.
-  const applyDraft = (draft: PatientAssignmentDraft) => {
-    if (!onApplyReassignment || applying) return;
-    setApplying(true);
-    void onApplyReassignment(draft).finally(() => setApplying(false));
-  };
-  const keepMatch = () => {
-    if (!suggestion?.patientId) return;
-    applyDraft({ patientId: suggestion.patientId, displayName: suggestion.name, basisCaptureId: item.id });
-  };
-  const createNew = (name: string, nationalId?: string) => {
-    // Seed a NEW patient from the spoken identity (never rename the matched record).
-    const display = name.trim();
-    if (!display) return;
-    applyDraft({ displayName: display, nationalId: nationalId?.trim() || undefined, basisCaptureId: item.id });
-  };
-  const openEditor = () => {
-    setEditName(suggestion?.spokenName || suggestion?.name || "");
-    setEditNationalId(suggestion?.nationalId || "");
-    setEditing(true);
-  };
 
   return (
     <div className="capture-effect-chips" aria-label="Capture effects">
       {showSuggestion && suggestion ? (
         <div className="partial-match-row">
-        <div className="effect-chip is-suggested partial-match">
-          <div className="partial-match-head">
-            <span className="effect-chip-label">
-              {suggestion.patientId ? (
-                <>Suggested: reassign to <strong>{suggestion.name}</strong></>
-              ) : (
-                <>New patient: <strong>{suggestion.name}</strong></>
-              )}
-            </span>
-            <button aria-label="Dismiss suggestion" className="partial-match-close" onClick={() => setDismissed(true)} type="button">
-              ×
-            </button>
-          </div>
-          {showMatchedVsSpoken ? (
-            <span className="partial-match-identity">
-              Matched <strong>{suggestion.name}</strong> · you said <strong>{suggestion.spokenName}</strong>
-            </span>
-          ) : null}
-          {editing ? (
-            <div className="partial-match-edit">
-              <span className="partial-match-edit-title">New patient details</span>
-              <input aria-label="Patient name" onChange={(event) => setEditName(event.target.value)} placeholder="Patient name" value={editName} />
-              <input aria-label="National ID (optional)" onChange={(event) => setEditNationalId(event.target.value)} placeholder="National ID (optional)" value={editNationalId} />
-              <div className="partial-match-edit-actions">
-                <button className="effect-chip-action" disabled={applying || !editName.trim()} onClick={() => createNew(editName, editNationalId)} type="button">
-                  {applying ? "Creating…" : "Create patient"}
-                </button>
-                <button className="effect-chip-ghost" onClick={() => setEditing(false)} type="button">
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="partial-match-actions">
-              {suggestion.patientId && onApplyReassignment ? (
-                <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
-                  {applying ? "Applying…" : "Keep match"}
-                </button>
-              ) : null}
-              {onApplyReassignment ? (
-                <button className="effect-chip-secondary" disabled={applying} onClick={openEditor} type="button">
-                  {suggestion.patientId ? "Create new instead" : "Create patient"}
-                </button>
-              ) : null}
-              {onChooseAnother ? (
-                <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">
-                  Choose another
-                </button>
-              ) : null}
-            </div>
-          )}
-        </div>
+          <PatientConflictResolver
+            suggestion={suggestion}
+            basisCaptureId={item.id}
+            onApply={onApplyReassignment}
+            onChooseAnother={onChooseAnother}
+            onDismiss={() => setDismissed(true)}
+          />
         </div>
       ) : null}
       {outOfContext ? (
