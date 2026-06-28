@@ -126,6 +126,9 @@ Read:
 - `docs/architecture.md`  
   System architecture, modules, data flow, and boundaries.
 
+- `docs/architecture/pipeline-versioning.md`  
+  Content-addressed `report_version` store + user-state overlay — the versioning foundation behind capture undo / de-effecting and safety-reconcile.
+
 - `docs/technical-decisions.md`  
   Important decisions future agents/developers need to know.
 

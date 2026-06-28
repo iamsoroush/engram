@@ -5,9 +5,11 @@ This folder is the starting point for future product and engineering work. The a
 ## Documents
 
 - [Product](product.md): product purpose, users, concepts, and high-level behavior.
+- [Spines](spines.md): multi-vertical strategy, capability/tier matrix, and per-spine sequencing.
 - [Design principles](design-principles.md): durable UX/product principles.
 - [UX docs](ux/overview.md): current user-facing screens, workflows, navigation, and shared state language.
-- [Architecture](architecture.md): product architecture, data flow, storage model, and key principles.
+- [Architecture](architecture.md): product architecture, data flow, storage model, and key principles ([pipeline-versioning](architecture/pipeline-versioning.md) is the undo/versioning foundation).
+- [Technical decisions](technical-decisions.md): important, durable decisions future work must respect.
 - [Frontend docs](frontend/README.md): capture-first UX, login, local-first outbox, browser storage, and mobile testing notes.
 - [Backend docs](backend/README.md): current backend, v2 design, auth, and storage.
 - [AI engine docs](ai_engine/README.md): worker boundary, placeholder processors, job recovery, and replacement path.
