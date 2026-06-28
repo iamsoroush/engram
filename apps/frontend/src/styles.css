@@ -6146,6 +6146,28 @@ small {
   transition: background 0.12s ease;
 }
 .sources-drawer-summary:hover { background: #eef4fc; }
+/* One-tap "Undo last capture" — sits in the always-visible drawer header area (no need to expand). */
+.sources-drawer-undo-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 16px 10px;
+}
+.sources-drawer-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid #d8e2f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #44557a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.sources-drawer-undo::before { content: "↩"; font-size: 0.9rem; }
+.sources-drawer-undo:hover { background: #fdeaea; color: #c0392b; border-color: #f1b7ad; }
 .sources-drawer-lead {
   display: inline-flex;
   align-items: center;

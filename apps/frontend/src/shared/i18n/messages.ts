@@ -270,6 +270,8 @@ const en: Dict = {
   "capture.aftercareConflictDefault": "Your dictated aftercare differs from your clinic’s “{name}” protocol — your words are used.",
   "capture.sources": "Sources",
   "capture.organizing": "Organizing…",
+  "capture.undoLast": "Undo last capture",
+  "capture.undoLastHint": "Remove the most recent capture and revert its effects",
   "capture.captureCountOne": "{count} capture",
   "capture.captureCountOther": "{count} captures",
   // App.tsx capture-flow chrome + toasts (S3) — rendered above AppLangProvider, translated app-level
@@ -1521,6 +1523,8 @@ const fa: Dict = {
   "capture.aftercareConflictDefault": "مراقبت‌های پس از درمانی که دیکته کرده‌اید با پروتکل «{name}» کلینیک شما تفاوت دارد — عبارت شما اعمال می‌شود.",
   "capture.sources": "منابع",
   "capture.organizing": "در حال سازمان‌دهی…",
+  "capture.undoLast": "واگرد آخرین ثبت",
+  "capture.undoLastHint": "حذف آخرین ثبت و بازگردانی اثر آن",
   "capture.captureCountOne": "{count} ثبت",
   "capture.captureCountOther": "{count} ثبت",
   // App.tsx capture-flow chrome + toasts (S3) — rendered above AppLangProvider, translated app-level

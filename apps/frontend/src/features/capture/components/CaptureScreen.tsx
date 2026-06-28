@@ -211,6 +211,17 @@ export function CaptureScreen({
   const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
   const captureCountLabel = t(captureCount === 1 ? "capture.captureCountOne" : "capture.captureCountOther", { count: captureCount });
+  // The most-recently-added capture — the target of the one-tap "Undo last capture" shortcut (a more
+  // accessible entry to the same de-effecting removal as the per-capture Delete). Newest by capture time.
+  const lastCapture = React.useMemo(() => {
+    const items = [...(activeSession?.items || [])];
+    if (!items.length) return null;
+    // Newest by capture time; a just-added local capture without a timestamp yet is treated as newest
+    // (it's exactly the one a quick undo targets). Stable sort keeps array order among ties.
+    const ts = (c: CaptureItem) => (c.capturedAt ? new Date(c.capturedAt).getTime() : Number.MAX_SAFE_INTEGER);
+    items.sort((a, b) => ts(a) - ts(b));
+    return items[items.length - 1];
+  }, [activeSession?.items]);
   const sessionStatusChip = sessionSummaryStatusChip(activeSession, t);
   const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession, t);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession, t);
@@ -691,6 +702,20 @@ export function CaptureScreen({
                 )}
               </span>
             </button>
+            {/* One-tap undo: remove the most-recent capture (the de-effecting removal) without having
+                to expand Sources and find it. Owner-only; same operation as the per-capture Delete. */}
+            {!isHistorical && !readOnly && onDeleteCapture && activeSession && lastCapture ? (
+              <div className="sources-drawer-undo-row">
+                <button
+                  className="sources-drawer-undo"
+                  type="button"
+                  onClick={() => onDeleteCapture(activeSession.id, lastCapture.id)}
+                  title={t("capture.undoLastHint")}
+                >
+                  {t("capture.undoLast")}
+                </button>
+              </div>
+            ) : null}
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>
         ) : null}
