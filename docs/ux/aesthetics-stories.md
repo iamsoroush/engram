@@ -15,10 +15,15 @@
 > details. **Build order:** aesthetics-**Basic** first ([foundation §6](redesign-foundation.md)) — the
 > `Basic` + `Both` stories are P1; `Pro` stories follow.
 >
-> **Status:** the `Basic` / `Both` stories' **frontend** is implemented on `build/aes-frontend`
-> (against the deterministic backend in [`../backend/aes-basic-api.md`](../backend/aes-basic-api.md)).
-> As-built notes + the manual test script: [redesign-aesthetics.md](redesign-aesthetics.md) header and
-> [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md). `Pro` stories remain unbuilt.
+> **Status (2026-06-28):** **Basic, Both, and nearly all Pro stories are built and merged to `main`** —
+> Pro synthesis (AES-107/108), patient memory + matching (AES-207/208), out-of-context (AES-109), Q&A
+> (AES-402/403), safety flags (AES-604/701), the unified report + verify surface, capture undo, and
+> multi-seat E9. As-built notes + manual test scripts: [redesign-aesthetics.md](redesign-aesthetics.md)
+> header, [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md), and
+> [`../qa/aes-pro-smoke.md`](../qa/aes-pro-smoke.md). **Remaining committed scope:** the Pro **smart-lists +
+> lot-recall** cluster — **AES-501**, **AES-502**, and **AES-705** (products/lots registry, currently only
+> implicit via extraction). Candidate extensions (⊕) and the §10 deferrals below remain proposals, not
+> committed scope; **AES-703 was dropped** (see Decisions).
 
 Legend in each story line: **`〔Tier · Persona · Build〕`**.
 
