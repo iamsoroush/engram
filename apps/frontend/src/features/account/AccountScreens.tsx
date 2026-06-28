@@ -186,6 +186,9 @@ export function SettingsScreen({
   onDeleteAftercareTemplate?: (id: string) => Promise<void>;
 }) {
   const t = useT();
+  // Localize the vertical name (aesthetics/therapy/…); fall back to the capitalized raw value if unkeyed.
+  const verticalKey = `vertical.${auth.tenant.vertical || "clinic"}`;
+  const verticalLabel = t(verticalKey) === verticalKey ? capitalize(auth.tenant.vertical || "clinic") : t(verticalKey);
   const [saving, setSaving] = React.useState(false);
   const save = (settings: TenantSettingsUpdate) => {
     setSaving(true);
@@ -287,7 +290,7 @@ export function SettingsScreen({
           <span className={`report-tier-badge ${tier}`}>{tier === "pro" ? "Pro" : "Basic"}</span>
         </SettingRow>
         <SettingRow label={t("settings.workspaceLabel")} hint={t("settings.workspaceHint", { encounter: (auth.tenant.encounterLabel || "Session").toLowerCase() })}>
-          <span className="profile-value" data-content>{capitalize(auth.tenant.vertical || "clinic")}</span>
+          <span className="profile-value">{verticalLabel}</span>
         </SettingRow>
       </Card>
 

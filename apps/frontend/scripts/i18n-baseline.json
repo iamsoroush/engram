@@ -10,23 +10,8 @@
     ") : member.isSelf ? ("
   ],
   "src/features/aesthetics/AftercareTemplatesSettings.tsx": [
-    "Add template",
-    "Aftercare templates",
-    "Avoid lying down for 4 hours.",
-    "Botox aftercare",
-    "Cancel",
-    "Delete",
-    "Edit",
-    "Instructions",
-    "Loading templates…",
-    "Name",
-    "No aftercare templates yet. Add one so it can be attached to a shared report.",
-    "Per-procedure instructions the patient sees on a shared report. Pick and edit one per send.",
-    "Procedure type",
     "Promise",
-    "botox",
-    "void | Promise",
-    "· optional"
+    "void | Promise"
   ],
   "src/features/aesthetics/LastVisitStrip.tsx": [
     "Last visit",
