@@ -3,6 +3,7 @@ import uuid
 
 from app.models import Patient, Session
 from app.services.patient_safety import (
+    apply_safety_reconciliation,
     drop_session_safety_flags,
     patient_safety_flags,
     patient_safety_flags_payload,
@@ -150,6 +151,34 @@ class PatientSyncTests(unittest.TestCase):
         self.assertEqual({f["kind"] for f in full}, {"allergy", "contraindication"})
         scoped = patient_safety_flags_payload(patient, exclude_session_id=current.id)
         self.assertEqual([f["kind"] for f in scoped], ["allergy"])  # only the PRIOR visit's flag
+
+
+class ReconcileApplyTests(unittest.TestCase):
+    def _patient_with(self, flags):
+        p = _patient(flags)
+        return p
+
+    def test_apply_hides_duplicate_and_annotates_superseded(self):
+        a = {"key": "allergy|x", "kind": "allergy", "text": "x", "sourceSessionId": "s1"}
+        b = {"key": "allergy|y", "kind": "allergy", "text": "y", "sourceSessionId": "s2"}
+        c = {"key": "contraindication|p", "kind": "contraindication", "text": "p", "sourceSessionId": "s3"}
+        patient = self._patient_with([a, b, c])
+        apply_safety_reconciliation(patient, {
+            "allergy|y": {"status": "duplicate", "ofKey": "allergy|x"},
+            "contraindication|p": {"status": "superseded", "ofKey": None},
+        })
+        payload = {f["text"]: f for f in patient_safety_flags_payload(patient)}
+        self.assertNotIn("y", payload)              # meaning-duplicate hidden
+        self.assertIn("x", payload)                 # its canonical twin kept
+        self.assertTrue(payload["p"].get("superseded"))  # superseded annotated, NOT dropped
+        self.assertEqual(set(payload), {"x", "p"})
+
+    def test_apply_resets_when_no_longer_marked(self):
+        b = {"key": "allergy|y", "kind": "allergy", "text": "y", "sourceSessionId": "s2",
+             "reconcileStatus": "duplicate", "reconcileOfKey": "allergy|x"}
+        patient = self._patient_with([b])
+        apply_safety_reconciliation(patient, {})  # no decisions → annotation cleared, flag re-surfaces
+        self.assertEqual([f["text"] for f in patient_safety_flags_payload(patient)], ["y"])
 
 
 if __name__ == "__main__":

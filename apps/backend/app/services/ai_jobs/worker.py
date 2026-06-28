@@ -54,7 +54,7 @@ from app.services.session_processing import (
     report_model_from_session_processing_output,
     session_processing_output_from_legacy_report,
 )
-from app.services.patient_safety import sync_patient_safety_flags
+from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
 from app.services.report_versions import record_report_version
 from app.services.sessions import parse_uuid
 
@@ -1037,6 +1037,11 @@ def complete_session_worker_job(
         safety_patient = db.get(Patient, session.patient_id)
         if safety_patient is not None:
             sync_patient_safety_flags(safety_patient, session)
+            # Apply the synthesis job's cross-visit safety-reconcile (D7) decisions over the freshly
+            # synced union: hide meaning-duplicates, annotate supersedes. Best-effort (raw union floor).
+            reconciliation = session.extracted_metadata.get("safety_reconciliation")
+            if isinstance(reconciliation, dict):
+                apply_safety_reconciliation(safety_patient, reconciliation)
     # Snapshot this synthesis as a content-addressed report_version (pipeline-versioning): a future undo
     # that returns the session to this capture set restores it deterministically (no re-synthesis).
     if is_synthesis:

@@ -2073,6 +2073,11 @@ def parse_safety_reconcile_output(raw_text: str, *, candidate_keys: list[str]) -
     return decisions
 
 
+def _safety_flag_key(kind: Any, text: Any) -> str:
+    """Stable key for a safety flag — MUST match backend `patient_safety.safety_flag_key`."""
+    return f"{kind}|{' '.join(str(text).strip().lower().split())}"
+
+
 def reconcile_safety_flags(payload: dict[str, Any]) -> dict[str, dict[str, Any]] | None:
     """Run the cross-visit safety reconcile through the gateway; None to fall back to the raw union.
 
@@ -2155,6 +2160,25 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
             "updated_at": utc_now().isoformat(),
         },
     }
+    # Cross-visit SAFETY RECONCILE (selection-only): dedup-by-meaning / supersede this visit's newly
+    # detected flags against the patient's existing ones. Best-effort + gated — a failure or sparse set
+    # leaves the deterministic union (the safety floor) intact; never breaks the synthesis.
+    context = payload.get("sessionProcessingContext") if isinstance(payload.get("sessionProcessingContext"), dict) else {}
+    existing_flags = context.get("patientSafetyFlags") if isinstance(context.get("patientSafetyFlags"), list) else []
+    new_flags = [
+        {"key": _safety_flag_key(flag.get("kind"), flag.get("text")), "kind": flag.get("kind"), "text": flag.get("text")}
+        for flag in extracted_metadata["safety_flags"]
+        if isinstance(flag, dict) and flag.get("kind") and flag.get("text")
+    ]
+    if len(existing_flags) + len(new_flags) >= 2:
+        try:
+            decisions = reconcile_safety_flags(
+                {"existingFlags": existing_flags, "newFlags": new_flags, "aiModels": payload.get("aiModels")}
+            )
+            if decisions:
+                extracted_metadata["safety_reconciliation"] = decisions
+        except Exception:  # noqa: BLE001 — reconcile is additive; never fail the synthesis on it
+            pass
     return {
         "status": "completed",
         "summary": synthesis["summary"],

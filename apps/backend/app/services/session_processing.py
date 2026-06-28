@@ -146,6 +146,13 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
     current_capture_ids = [str(capture.id) for capture in captures]
     prior_report_model = session.report_model if isinstance(session.report_model, dict) else None
     changeset = _session_synthesis_changeset(current_capture_ids, synthesized_capture_ids(session))
+    # The patient's EXISTING (cross-visit) safety flags, so the synthesis job can reconcile this visit's
+    # newly-detected flags against them (dedup-by-meaning / supersede) — selection-only, keys out.
+    from app.models import Patient
+    from app.services.patient_safety import patient_safety_flags_payload
+
+    _patient = db.get(Patient, session.patient_id) if session.patient_id else None
+    existing_safety_flags = patient_safety_flags_payload(_patient) if _patient is not None else []
 
     return {
         "schemaVersion": SESSION_PROCESSING_INPUT_VERSION,
@@ -168,6 +175,8 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
         "changeset": changeset,
         # Bounded prior-visit treatments enable explicit "same as last time" carry-forward.
         "referencePriorVisitTreatments": bounded_prior_visit_treatments(db, session),
+        # Patient's existing cross-visit safety flags (for the synthesis job's safety-reconcile pass).
+        "patientSafetyFlags": existing_safety_flags,
         "session": {
             "id": str(session.id),
             "tenantId": str(session.tenant_id),

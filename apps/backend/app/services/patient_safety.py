@@ -141,9 +141,44 @@ def patient_safety_flags_payload(patient: Patient, *, exclude_session_id: Any = 
     for flag in patient_safety_flags(patient):
         if exclude is not None and flag.get("sourceSessionId") == exclude:
             continue
+        # Apply the cross-visit reconcile (D7): a meaning-duplicate is collapsed (hidden — its canonical
+        # twin is kept); a superseded flag is annotated, never dropped (safety errs to inclusion).
+        if flag.get("reconcileStatus") == "duplicate":
+            continue
         key = flag.get("key") or safety_flag_key(str(flag.get("kind")), str(flag.get("text")))
         if key in seen:
             continue
         seen.add(key)
-        payload.append({"key": key, "kind": flag["kind"], "text": flag["text"]})
+        entry = {"key": key, "kind": flag["kind"], "text": flag["text"]}
+        if flag.get("reconcileStatus") == "superseded":
+            entry["superseded"] = True
+        payload.append(entry)
     return payload
+
+
+def apply_safety_reconciliation(patient: Patient, decisions: Any) -> None:
+    """Annotate the patient's safety flags with the reconcile job's decisions (status + ofKey).
+
+    ``decisions`` is ``{key: {status, ofKey}}`` from the selection-only reconcile. Idempotent: a flag
+    not marked duplicate/superseded is reset to plain keep. Never removes a flag (the union is the
+    deterministic floor); the payload merely hides meaning-duplicates + annotates supersedes. Staged on
+    the patient; the caller commits.
+    """
+    if not isinstance(decisions, dict):
+        return
+    raw = patient.safety_flags if isinstance(getattr(patient, "safety_flags", None), list) else []
+    updated: list[dict[str, Any]] = []
+    for flag in raw:
+        if not isinstance(flag, dict):
+            continue
+        flag = dict(flag)
+        decision = decisions.get(flag.get("key"))
+        status = decision.get("status") if isinstance(decision, dict) else None
+        if status in {"duplicate", "superseded"}:
+            flag["reconcileStatus"] = status
+            flag["reconcileOfKey"] = decision.get("ofKey")
+        else:
+            flag.pop("reconcileStatus", None)
+            flag.pop("reconcileOfKey", None)
+        updated.append(flag)
+    patient.safety_flags = updated
