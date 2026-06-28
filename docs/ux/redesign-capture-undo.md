@@ -157,7 +157,8 @@ While disabled, show why ("Finishing up this capture…"). This guarantees the r
   version, never baked into it.
 - **Patient projections recompute-from-source** (D4): after a removal, re-derive `Patient.safety_flags`
   (and mark patient memory stale) from the union of the patient's sessions' current kept flags — live +
-  consistent, no drift.
+  consistent, no drift. Cross-visit dedup/supersede is the [safety-reconcile job](../architecture/pipeline-versioning.md)
+  (D7, selection-only over the user-clean set); a removal itself is a deterministic filter (no LLM).
 
 ## Phased plan
 

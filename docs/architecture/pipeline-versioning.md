@@ -59,11 +59,44 @@ memory/history** (Job-4 aggregate), **treatments** (cross-visit recall + carry-f
 contributing change, **never incrementally patched**. This guarantees they're live + consistent with no
 drift.
 - **Safety flags (highest stakes — must be live + conflict-free):** on any contributing-session change
-  (undo / edit / reject / assign), recompute `Patient.safety_flags` from the **union of all that
-  patient's sessions' current kept flags** (kept = detected − rejected). Dedup by stable key; most-recent
-  statement wins per concept. True clinical contradiction reconciliation (allergic-vs-tolerated) is out
-  of scope for v1 — baseline is union + dedup (safety errs to inclusion); smarter reconciliation is
-  later, in the AI memory layer.
+  (undo / edit / reject / assign), the patient's flag set is recomputed **from source** — the **union of
+  all that patient's sessions' current kept flags** (kept = detected − user rejections). Conflict +
+  duplicate resolution is delegated to the **safety-reconcile job** (D7) — a narrow, selection-only LLM
+  step, *not* Job 4 and *not* free-generation. Removal (a rejection) is a **deterministic, instant**
+  filter (no LLM).
+
+### D7 — Safety-reconcile job (cross-visit dedup/supersede; selection-only, keys-out)
+
+A small dedicated LLM job owns cross-visit safety reconciliation — decoupled from Job 4 (so it's *fresh*,
+not lazy) and from synthesis generation (so it can't hallucinate). Properties:
+
+- **Trigger:** only when synthesis **detects** safety content for a session (most visits have none → zero
+  cost). Patient-scoped; fires on the session→patient projection.
+- **Input = the user-CLEAN candidate set.** User actions are ground truth: rejected flags are removed
+  **before** the LLM runs — it never sees, reasons over, or can re-surface a rejected item. (Rejected
+  records persist in the DB — key in `rejected_safety_flags` + the full record in the immutable
+  `report_version` — auditable / harvestable, never a candidate, never displayed.) This also avoids the
+  "survivor points at a removed cluster head" bug.
+- **Output = a status per candidate** (`keep` / `duplicate-of:<key>` / `superseded-by:<key>`) — **keys
+  only**, minimizing output tokens (the real cost). **Biased to keep:** a *distinct* concept is never
+  dropped (safety errs to inclusion); `superseded` items are **annotated, not deleted** ("previously
+  flagged, superseded in a later visit"). A deterministic step collapses duplicate clusters + keeps singletons.
+- **Selection, not generation:** clinical text stays verbatim from the candidates; the model only emits
+  keys + statuses → no rewording, no invention.
+- **Rejection needs no re-run:** removing a kept item is a deterministic filter; only *new detections*
+  invoke the LLM.
+- **New AI job ⇒ its own eval suite** (per the eval-gating rule): `safety_reconcile_eval.py` with
+  dedup-merge, distinct-allergies-both-kept, supersede, and the critical **never-drop-a-distinct-allergy**
+  guard; wired into `run_all.py`. Case list reviewed with the owner before wiring.
+- **Frontend:** a `safety_reconcile: {state}` signal on the session/patient payload drives an animated
+  "processing safety…" shimmer on the safety section while the job runs (distinct from the report's own
+  updating state) — so on an already-assigned session the clinician sees safety is being reconciled.
+- **Versioned/cached** like other artifacts: keyed by the clean candidate set, so it cache-hits (e.g. on
+  undo returning to a prior set) and stays token-cheap.
+
+> **Ground-truth invariant (extends D2):** user state (rejections, confirmations, opt-outs) is
+> authoritative and applied **before** any AI step. The AI reconciles only the user-clean set and may
+> never override or re-surface a user-decided item.
 
 ### D5 — Retention / GC: bounded ring + pins + content-addressing
 Versioning everything grows unbounded, so:
