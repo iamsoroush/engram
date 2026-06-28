@@ -67,9 +67,10 @@ An evaluator pass hardened A: per-request **live-membership authorization** (dis
 immediately, not at token expiry), the **capture bar hidden on account screens**, **tier-honest landing**
 (how-it-works/trust/placeholder-pricing; Basic led, Pro as the upgrade lane), **multi-clinic switch**
 (`/auth/switch-tenant` + a switcher), sharper sign-up errors, and committed **e2e specs** (`tests/e2e/`).
-Remaining A follow-ups: phone/OTP credentials, password reset, and — the top adoption risk for an
-Iran-first launch — **translating the authenticated app** (the app is still English-only; the public
-surfaces + onboarding are bilingual). That full-app i18n is the deferred next epic.
+Remaining A follow-ups: phone/OTP credentials and password reset. The **authenticated-app i18n** that was
+the top Iran-first adoption risk is **done** — the authed aesthetics app is fully Persian/RTL (see
+[frontend/i18n.md](frontend/i18n.md)); only the therapy vertical and patient-facing share pages remain on
+their own future i18n passes.
 
 ## What to monitor (T6 detail)
 API error rate + p95 latency · **failed uploads** (product-critical) · **AI-job failure rate + Celery/Redis

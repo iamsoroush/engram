@@ -63,11 +63,58 @@ Top-to-bottom per section. Mark **Result**: ✅ / ❌ + note. Screenshot failure
 | B4.2 | Dr → no login | Curate + share to a patient; open the read-only link. | Read-only, curated-only. | |
 | B4.3 | As/Dr/Ad | Reception worklist, attribution, mine-vs-clinic, role permissions. | Same correct behavior as Basic. | |
 
+## B5 · Unified report surface + inline verify (Pro) ⭐
+
+> Pro collapses the old `Captures`/`Live report` tabs: the **report is the primary surface**, raw captures
+> live in a collapsible **"Sources · N captures"** drawer beneath it, and a sticky **"N to confirm"** bar
+> drives verification. (Basic still uses the two tabs.)
+| ID | Persona | Steps | Expected | Result |
+|----|----|----|----|----|
+| B5.1 ⭐ | Dr | Open a Pro visit with several captures. | The **report** is the main surface; captures are tucked into a **"Sources · N captures"** drawer (with audio/photo/note count chips) — not a separate tab. | |
+| B5.2 ⭐ | Dr | Add a new capture to a visit that **already has** a synthesized report. | The prior report **stays visible** with an **"Updating · N captures…"** line + shimmer — it must **not** blank to "Preparing…"/draft. The refreshed report swaps in when ready. | |
+| B5.3 ⭐ | Dr | Cause a blocker (e.g. carried-forward dose, or an AI-created patient). | Sticky **"N to confirm"** bar shows the count (**blockers only**); **Review** jumps to the first inline confirm. | |
+| B5.4 | Dr | Confirm a carried-forward **dose** on its Treatment-performed row. | Flips to **"✓ Dose confirmed"** in place; the verify count drops by one and the confirmation **sticks** (does not revert when the report re-organizes). | |
+| B5.5 | Dr | Find a soft gap (low confidence / missing lot) → use **"Fix at source"**. | Opens the **Sources drawer** at the originating capture; correcting it re-extracts (no direct treatment-field edit). | |
+| B5.6 | Dr | On a Pro report, use the one-tap **"+ {aftercare template}"** add-button in the report card. | The aftercare section is added to the report (button lives in the report card, not a separate bar). | |
+
+## B6 · Safety flags (opt-out) ⭐
+
+> Pro synthesis surfaces **allergy / contraindication / consent** statements the clinician actually made as
+> a calm **Safety panel above the verify region**. It is **not a blocker** — the clinician only **rejects**
+> a wrong one. ("Warnings over blocking.")
+| ID | Persona | Steps | Expected | Result |
+|----|----|----|----|----|
+| B6.1 ⭐ | Dr | Dictate a safety statement (e.g. *"patient is allergic to lidocaine"*); open the visit. | A **Safety panel** (red/amber) appears **above** the verify region with the flag. It does **not** gate the report and is **not** counted as a verify blocker. | |
+| B6.2 ⭐ | Dr | **Reject (×)** a wrong/duplicate flag; then add another capture so the report re-synthesizes. | The rejected flag **stays gone** after re-synthesis (does not reappear). | |
+| B6.3 | Dr | Open the patient later. | Non-rejected flags **carry to the patient** and surface at future visits (the flag text is in the **report language**). | |
+
+## B7 · Capture undo / de-effect ⭐
+
+> Deleting/undoing a wrong capture must revert **its effects**, not just drop it from the feed — most
+> importantly a mis-transcription that spuriously **created or reassigned a patient**.
+| ID | Persona | Steps | Expected | Result |
+|----|----|----|----|----|
+| B7.1 ⭐ | Dr | Produce a capture that makes the AI **create a new patient** (e.g. a mis-heard name); then **undo/delete** that capture. | The spuriously **created/assigned patient is reverted** along with the capture — the prior state returns; the report re-organizes without the bogus entry. | |
+| B7.2 | Dr | Undo the most recent capture on a multi-capture visit. | Only that capture's effects are removed; the rest of the report is intact. | |
+
+## B8 · Persian UI (fa/en + RTL)
+
+> The authenticated app is **bilingual**: **chrome** (buttons, labels, toasts) follows the **app language**;
+> **clinical content** (transcripts, captions, report prose) follows the **report language** and is **never
+> translated**.
+| ID | Persona | Steps | Expected | Result |
+|----|----|----|----|----|
+| B8.1 ⭐ | Admin/Owner | Settings → set the clinic **app language to Persian**. | The whole authed UI flips to **Persian + RTL** (right-aligned, mirrored layout); no English chrome left in the aesthetics app. | |
+| B8.2 | Dr | With a **Persian** report, scan the report. | Section **titles are Persian**; the clinician's **dictated content** stays in the language it was produced in (content is **not** auto-translated). | |
+| B8.3 | Dr | Switch app language back to **English**. | UI flips to **LTR English** cleanly (no stale RTL, no Gregorian/Jalali date mix-up). | |
+
 ---
 
 ## 4 · 15-minute must-pass set
 **B1.1** (audio transcribes) · **B2.1** (structured report builds with treatment specifics) ·
-**B3.1 / B3.2** (Q&A: ask → inbox → draft → send).
+**B3.1 / B3.2** (Q&A: ask → inbox → draft → send) · **B5.2 / B5.3** (report doesn't blank on add; verify
+bar counts blockers) · **B6.1** (safety flag surfaces, non-blocking) · **B7.1** (undo reverts a spurious
+patient).
 
 ## 5 · Sign-off
 | Field | Value |

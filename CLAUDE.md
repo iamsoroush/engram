@@ -148,7 +148,8 @@ Read:
 
 - `docs/frontend/`  
   Frontend: `README.md` (index), `overview.md` (capture-first app structure + mobile testing),
-  `auth-login.md` (login/persona flow), `sync-outbox.md` (local-first outbox + cache policy).
+  `auth-login.md` (login/persona flow), `i18n.md` (fa/en + RTL, chrome-vs-content axis, deferred scopes),
+  `sync-outbox.md` (local-first outbox + cache policy).
 
 - `docs/qa/`  
   Manual QA scripts: `aes-basic-smoke.md`, `aes-pro-smoke.md`, `aes-frontend-scenarios.md`,
@@ -204,6 +205,11 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 - If code and docs conflict, mention the mismatch and make the smallest safe update.
 - Keep code readable, typed, and maintainable.
 - Validate with the relevant tests, linting, or type checks when available.
+- **AI jobs are eval-gated.** Re-implementing or changing an existing AI job (transcription, image
+  caption, report synthesis = treatments+aftercare+sections, patient memory, patient matching) MUST run
+  the eval suite (`apps/ai_engine/eval/run_all.py`) and not regress it. A **new** AI job MUST ship its
+  own eval suite — and you must **consult the user on its golden-set scenarios first** (don't design the
+  eval set unilaterally). See `docs/ai_engine/eval-epic.md`.
 
 ---
 
@@ -212,6 +218,11 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 - Reuse existing components where reasonable.
 - Keep presentational UI separate from API/business orchestration when practical.
 - Keep screen behavior consistent with UX docs.
+- **All new authenticated UI is bilingual (fa/en) + RTL-correct.** Route every user-facing chrome
+  string through the `shared/i18n` `t()` seam — never hardcode UI text (the lint guard fails on it) —
+  and check it under both languages. This is **chrome only**: clinical CONTENT (report prose, captions,
+  treatment text, dictated aftercare) follows `reportLanguage`, never `t()`. (Public surfaces +
+  authed app are both bilingual as of the i18n epic.)
 - Do not over-complicate frontend code to work around an inefficient or awkward backend contract. If a frontend change would require significant client-side orchestration, duplicated business logic, excessive requests, heavy data reshaping, polling, or other work that could harm responsiveness, explicitly call out the backend/API change that would make the feature simpler and faster. If appropriate, either implement the backend change yourself within the requested scope or prepare a clear hand-off prompt for a backend engineer agent.
 - Update UX docs if user-facing behavior changes.
 

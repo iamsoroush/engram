@@ -10,9 +10,9 @@ screens, managed by `UnauthShell` as a three-view state machine: **landing → l
 
 These public surfaces are bilingual **fa/en** with a language toggle in the top bar. The choice is
 persisted (`localStorage`) and defaults from the browser language, falling back to Persian
-(Iran-first). The selected language sets `dir`/`lang` on `<html>` (RTL for Persian). The
-authenticated app is English-only for now; `UnauthShell` resets `<html>` to LTR/English on unmount.
-(The shared seam lives in `shared/i18n`.)
+(Iran-first). The selected language sets `dir`/`lang` on `<html>` (RTL for Persian). On login the
+authenticated app takes over via `AppLangProvider` (tenant `app_language`) — it is also fully bilingual;
+see [frontend/i18n.md](../../frontend/i18n.md). (The shared seam lives in `shared/i18n`.)
 
 ## Views
 

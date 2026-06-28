@@ -36,7 +36,7 @@ presets in [Settings](../../backend/auth.md)). `owner` and `patient` are not ass
 
 ## Main Components
 
-- `TeamScreen` (English-only, like the other account screens).
+- `TeamScreen` (bilingual fa/en + RTL via the app-language seam, like the other account screens).
 
 ## Related APIs
 

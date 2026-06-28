@@ -8,7 +8,8 @@ The frontend owns the login experience but not authorization. The backend issues
 
 When no valid access token is available, `UnauthShell` renders before the capture shell as a
 three-view state machine — **landing → login** / **landing → sign-up** — bilingual fa/en + RTL (see
-[i18n](#bilingual--rtl-app-language) below). The authenticated app remains English-only for now.
+[i18n](#bilingual--rtl-app-language) below). The authenticated app is also fully bilingual — full
+language model in [i18n.md](i18n.md).
 
 - **Landing** (`LandingPage`): what Engram is + CTAs to sign up or log in.
 - **Sign-up** (`SignUpGate`): clinic name, your name, email, password. Calls `POST /api/v1/auth/register`,
@@ -34,6 +35,10 @@ The public surfaces use a lightweight `shared/i18n` seam (fa/en catalog + `t()` 
 `<html>`). The UI language is persisted in `localStorage`, defaults from the browser (Persian
 fallback, Iran-first), and is toggleable. `UnauthShell` resets `<html>` to LTR/English on unmount.
 On sign-up the chosen language is sent as the new tenant's `app_language`.
+
+The authenticated app picks language up from that tenant `app_language` via `AppLangProvider` (the
+authed counterpart to this public seam). The two surfaces and the chrome-vs-content rule are
+documented in full in [i18n.md](i18n.md).
 
 ## First-run onboarding
 

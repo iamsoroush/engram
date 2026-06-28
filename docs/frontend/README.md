@@ -6,6 +6,7 @@ Frontend docs describe the current app and the backend contracts it consumes.
 
 - [Frontend overview](overview.md): capture-first UX, feature structure, IndexedDB outbox, synced cache, and mobile testing notes.
 - [Authentication and login](auth-login.md): dev persona login, production token flow, and patient persona separation.
+- [Internationalization](i18n.md): fa/en + RTL, the chrome-vs-content axis, surface language authorities, and deferred scopes.
 - [Sync outbox](sync-outbox.md): local-first capture, authenticated sync, backend ID mapping, and cache policy.
 
 ## Direction

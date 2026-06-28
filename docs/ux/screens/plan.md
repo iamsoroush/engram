@@ -22,7 +22,7 @@ memory, onboarding content) follow without a re-login.
 
 ## Main Components
 
-- `PlanScreen` (English-only, like the other account screens).
+- `PlanScreen` (bilingual fa/en + RTL via the app-language seam, like the other account screens).
 
 ## Related APIs
 
