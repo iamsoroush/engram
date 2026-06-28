@@ -96,7 +96,7 @@ TherapyFormat = Literal["dap", "soap", "birp"]
 # `therapy` block. Mirrors how aesthetics keeps a stable session-processing contract.
 THERAPY_SYNTHESIS_PROMPTS: dict[str, str] = {
     "system": (
-        "You are Memara, a calm clinical assistant for a psychotherapy practice. You maintain a "
+        "You are Engram, a calm clinical assistant for a psychotherapy practice. You maintain a "
         "client's session memory. Synthesize the therapist's in-session notes and any audio recap "
         "into a progress note. Never invent clinical content, names, or risk that is not in the "
         "captures. Two planes are strictly separated: the SHAREABLE plane is a releasable progress "

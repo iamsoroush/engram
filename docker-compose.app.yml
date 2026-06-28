@@ -1,7 +1,7 @@
 # Per-stack application services (backend + ai-engine + frontend + a local redis).
 #
 # Postgres and MinIO are NOT defined here — they live in docker-compose.shared-infra.yml
-# and are reached over the external `notari-shared` network. Only the backend needs that
+# and are reached over the external `engram-shared` network. Only the backend needs that
 # network (it is the only service that talks to Postgres/MinIO directly); the ai-engine
 # reaches everything through the backend's internal HTTP API.
 #
@@ -13,7 +13,7 @@ networks:
   default: {}
   shared:
     external: true
-    name: notari-shared
+    name: engram-shared
 
 services:
   redis:
@@ -41,14 +41,14 @@ services:
       BACKEND_JWT_SECRET: ${BACKEND_JWT_SECRET:-dev-only-change-me}
       # Shared Postgres, per-stack database. Driven solely by STACK_DB (set by
       # scripts/dev-stack.sh) so a stale BACKEND_DATABASE_URL in .env can't point a
-      # worktree at the wrong database. STACK_DB defaults to the canonical notari DB.
-      BACKEND_DATABASE_URL: postgresql+psycopg://notari:notari@postgres:5432/${STACK_DB:-notari}
+      # worktree at the wrong database. STACK_DB defaults to the canonical engram DB.
+      BACKEND_DATABASE_URL: postgresql+psycopg://engram:engram@postgres:5432/${STACK_DB:-engram}
       # Shared MinIO, per-stack bucket (STACK_BUCKET defaults to the canonical bucket).
       BACKEND_OBJECT_STORAGE_ENDPOINT: ${BACKEND_OBJECT_STORAGE_ENDPOINT:-http://minio:9000}
       BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT: ${BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT:-http://localhost:9010}
-      BACKEND_OBJECT_STORAGE_BUCKET: ${STACK_BUCKET:-notari-captures}
-      BACKEND_OBJECT_STORAGE_ACCESS_KEY: ${BACKEND_OBJECT_STORAGE_ACCESS_KEY:-notari-dev}
-      BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:-notari-dev-secret}
+      BACKEND_OBJECT_STORAGE_BUCKET: ${STACK_BUCKET:-engram-captures}
+      BACKEND_OBJECT_STORAGE_ACCESS_KEY: ${BACKEND_OBJECT_STORAGE_ACCESS_KEY:-engram-dev}
+      BACKEND_OBJECT_STORAGE_SECRET_KEY: ${BACKEND_OBJECT_STORAGE_SECRET_KEY:-engram-dev-secret}
       BACKEND_OBJECT_STORAGE_SECURE: ${BACKEND_OBJECT_STORAGE_SECURE:-false}
       BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS: ${BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS:-300}
       BACKEND_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
@@ -103,7 +103,7 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
-    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/notari-celerybeat-schedule
+    command: celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/engram-celerybeat-schedule
 
   frontend:
     build:

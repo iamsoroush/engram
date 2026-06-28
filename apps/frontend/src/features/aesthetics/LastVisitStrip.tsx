@@ -1,6 +1,7 @@
 import React from "react";
 import type { LastVisitInfo, LastVisitMedia } from "../../domain/appTypes";
 import { formatDate } from "../../shared/lib/datetime";
+import { useT } from "../../shared/i18n";
 
 /**
  * AES-106 — Last visit, one glance + "same as last time". For a returning patient the capture
@@ -19,6 +20,7 @@ export function LastVisitStrip({
   onUseAsNote?: (text: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   if (!lastVisit?.hasPriorVisit || !lastVisit.visit) return null;
   const visit = lastVisit.visit;
   const dateLabel = formatVisitDate(visit.capturedAt || visit.updatedAt);
@@ -26,39 +28,39 @@ export function LastVisitStrip({
   const sameNote = lastVisit.sameAsLastTime?.note;
 
   return (
-    <section className="last-visit-strip" aria-label="Last visit">
+    <section className="last-visit-strip" aria-label={t("lastvisit.title")}>
       <span className="last-visit-icon" aria-hidden="true">
         <CopyIcon />
       </span>
       <div className="last-visit-copy">
         <p className="last-visit-line">
-          <strong>Last visit{dateLabel ? ` · ${dateLabel}` : ""}</strong>
+          <strong>{dateLabel ? t("lastvisit.titleWithDate", { date: dateLabel }) : t("lastvisit.title")}</strong>
           {note ? (
             <>
-              {" — your note: "}
-              <span className="last-visit-note" dir={textDir(note)}>&ldquo;{note}&rdquo;</span>
+              {t("lastvisit.yourNote")}
+              <span className="last-visit-note" dir={textDir(note)} data-content>&ldquo;{note}&rdquo;</span>
             </>
           ) : (
-            " — no typed note on the prior visit."
+            t("lastvisit.noTypedNote")
           )}
           {onOpenVisit && visit.sessionId ? (
             <button className="last-visit-link" onClick={() => onOpenVisit(visit.sessionId)} type="button">
-              View visit
+              {t("lastvisit.viewVisit")}
             </button>
           ) : null}
         </p>
         {visit.media.length ? (
-          <div className="last-visit-thumbs" aria-label="Last visit photos">
+          <div className="last-visit-thumbs" aria-label={t("lastvisit.photos")}>
             {visit.media.slice(0, 4).map((media) => (
               <LastVisitThumb key={media.captureId} media={media} onResolveFile={onResolveFile} />
             ))}
-            <span className="last-visit-thumbs-note">compare by eye</span>
+            <span className="last-visit-thumbs-note">{t("lastvisit.compareByEye")}</span>
           </div>
         ) : null}
       </div>
       {sameNote && onUseAsNote ? (
         <button className="last-visit-use" onClick={() => onUseAsNote(sameNote)} type="button">
-          Same as last time
+          {t("lastvisit.sameAsLastTime")}
         </button>
       ) : null}
     </section>
@@ -66,6 +68,7 @@ export function LastVisitStrip({
 }
 
 function LastVisitThumb({ media, onResolveFile }: { media: LastVisitMedia; onResolveFile: (endpoint: string) => Promise<string> }) {
+  const t = useT();
   const [url, setUrl] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
@@ -83,7 +86,7 @@ function LastVisitThumb({ media, onResolveFile }: { media: LastVisitMedia; onRes
   React.useEffect(() => () => {
     if (url.startsWith("blob:")) URL.revokeObjectURL(url);
   }, [url]);
-  return <span className="last-visit-thumb">{url ? <img alt="Last visit photo" src={url} /> : null}</span>;
+  return <span className="last-visit-thumb">{url ? <img alt={t("lastvisit.photoAlt")} src={url} /> : null}</span>;
 }
 
 function formatVisitDate(value?: string | null) {

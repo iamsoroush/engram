@@ -10,11 +10,14 @@ import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
+import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
-import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark } from "./CaptureBadges";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, workspaceStructuredReportCopy } from "../captureModel";
+import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
-import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon } from "./CaptureIcons";
+import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
+import { isPersianLocale } from "../../../shared/lib/datetime";
+import { useT } from "../../../shared/i18n";
 
 export function CaptureScreen({
   activeSession,
@@ -27,7 +30,7 @@ export function CaptureScreen({
   onDeleteCapture,
   mode = "active",
   onBack,
-  backLabel = "Clinical Memory",
+  backLabel,
   onResumeCapture,
   assignmentOpen,
   onAssignPatient,
@@ -38,7 +41,9 @@ export function CaptureScreen({
   onStartNewSession,
   onMarkRelevant,
   onConfirmCarriedForward,
+  onRateReport,
   onFetchPatient,
+  onFetchCapture,
   tier,
   reportLanguage,
   sessionContext,
@@ -49,6 +54,7 @@ export function CaptureScreen({
   onUseAsNote,
   aftercareTemplates,
   onDismissAftercare,
+  onRejectSafetyFlag,
   offline = false,
   sessionOrdinal = null,
   currentUserId = null,
@@ -87,7 +93,11 @@ export function CaptureScreen({
   onMarkRelevant?: (sessionId: string, captureId: string) => Promise<void>;
   /** Q3 — confirm a carried-forward dose (by area|product key) so the Pro report can complete. */
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
+  /** Record a lightweight thumbs rating on the Pro report (eval golden-set harvester; eval-epic §1b). */
+  onRateReport?: (sessionId: string, rating: number) => void;
   onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
+  /** Resolve a citation's source capture not in the loaded set (cross-visit) — for "tap a claim → source". */
+  onFetchCapture?: (captureId: string) => Promise<CaptureItem | null>;
   tier?: string | null;
   /** Tenant report-content language (distinct from app UI language) — localizes the report's section
    * titles so a Persian report doesn't show English headings. */
@@ -107,6 +117,8 @@ export function CaptureScreen({
   aftercareTemplates?: AftercareTemplate[];
   /** Opt an auto-included clinic aftercare template in/out of this visit (persisted). */
   onDismissAftercare?: (sessionId: string, templateId: string, dismissed: boolean) => Promise<void>;
+  /** Reject (×) an auto-kept session safety flag (opt-out, persisted). Not a verify-bar blocker. */
+  onRejectSafetyFlag?: (sessionId: string, flagKey: string) => Promise<void>;
   /** No connection / backend unreachable — gates the only sync indicators we show. */
   offline?: boolean;
   /** This session's 1-based rank among the patient's sessions (for "{patient}'s Nth session"). */
@@ -120,6 +132,7 @@ export function CaptureScreen({
   onAssignActiveToNext?: () => void;
   onStartNextVisit?: () => void;
 }) {
+  const t = useT();
   const isPro = tier !== "basic";
   // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
   // visit (deterministic match against the extracted treatments). Basic shows the flat list.
@@ -156,7 +169,7 @@ export function CaptureScreen({
   // name. Title = the patient's Nth session when assigned, else the session date+time. Sync state
   // only shows when offline/unreachable (calm when everything is fine).
   const lightHeader = !isPro && !isHistorical;
-  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal);
+  const lightTitle = lightSessionTitle(activeSession, sessionOrdinal, t);
   const sessionPending = !isHistorical && Boolean(activeSession?.items.some((item) => captureNotSynced(item.status)));
   const processingState = activeSession?.processingStatus?.state;
   // A just-added capture is "in flight" the instant it lands (local → syncing → uploaded → processing)
@@ -179,23 +192,28 @@ export function CaptureScreen({
   // inline state, never a gate. Pro = synthesized; Basic = chronological.
   const isUpdatingReport =
     isPro && (processingState === "processing" || activeSession?.report?.status === "generating" || captureBeingIncluded);
-  const reportState = workspaceReportState(activeSession);
+  // Surface-by-exception: instead of a persistent "everything's fine" line, show a calm "Organizing…"
+  // pulse on the Sources header only while captures are still being processed into the report.
+  const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
+  const reportState = workspaceReportState(activeSession, t);
   const selectedReportView = reportView;
-  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical);
+  const sessionTitle = sessionSummaryTitle(activeSession, isHistorical, t);
   // Pro keeps its status chip + meta, but the title gets the same meaningful naming as Basic — a
   // real AI report title when there is one, otherwise "{patient}'s Nth session" / the date+time
-  // (instead of a raw "Session <timestamp>" label).
+  // (instead of a raw "Session <timestamp>" label). The generic-title test is language-independent
+  // (isPlaceholderSessionTitle) so it survives translation; the raw "Session <ts>" label case is a
+  // local/backend label, still matched textually.
   const proTitle =
-    !isHistorical && (sessionTitle === "Current session" || /^session\s/i.test(sessionTitle))
-      ? lightSessionTitle(activeSession, sessionOrdinal)
+    !isHistorical && (isPlaceholderSessionTitle(activeSession, isHistorical) || /^session\s/i.test(sessionTitle))
+      ? lightSessionTitle(activeSession, sessionOrdinal, t)
       : sessionTitle;
-  const patientName = sessionPatientName(activeSession);
+  const patientName = sessionPatientName(activeSession, t);
   const aiPatientAction = aiPatientActionForSession(activeSession);
   const captureCount = activeSession?.items.length || 0;
-  const captureCountLabel = `${captureCount} capture${captureCount === 1 ? "" : "s"}`;
-  const sessionStatusChip = sessionSummaryStatusChip(activeSession);
-  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession);
-  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession);
+  const captureCountLabel = t(captureCount === 1 ? "capture.captureCountOne" : "capture.captureCountOther", { count: captureCount });
+  const sessionStatusChip = sessionSummaryStatusChip(activeSession, t);
+  const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession, t);
+  const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession, t);
 
   // FB8 unified Pro layout: the synthesized report is the primary surface, the raw captures become a
   // collapsible "Sources" drawer, and a sticky bar drives verification. Basic keeps its Captures /
@@ -210,13 +228,37 @@ export function CaptureScreen({
     (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key),
   );
   const patientVerifyNeeded = Boolean(aiPatientAction && onCompleteAiCreatedPatient);
-  const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0);
+  // Patient CONFLICTS (a capture dictated a different/partial-match patient than the assigned one) are
+  // a session-level blocker too — surfaced in the verify region + counted, not buried in the Sources
+  // drawer (FB8). Resolution is in place via the shared PatientConflictResolver. Local dismiss only.
+  const [dismissedConflicts, setDismissedConflicts] = React.useState<Set<string>>(new Set());
+  React.useEffect(() => setDismissedConflicts(new Set()), [activeSession?.id]);
+  const assignmentCandidates = sessionAssignmentCandidates(activeSession);
+  const activeAssignmentAction = activePatientAssignmentActionForSession(activeSession);
+  const patientConflicts =
+    !isHistorical && onAssignPatient
+      ? (activeSession?.items || [])
+          .map((item) => ({
+            captureId: item.id,
+            suggestion: captureConflictSuggestion(item, alternateCandidateForCapture(assignmentCandidates, item.id), activeAssignmentAction),
+          }))
+          .filter((conflict) => conflict.suggestion && !dismissedConflicts.has(conflict.captureId))
+      : [];
+  const verifyCount = openDoseConfirmations.length + (patientVerifyNeeded ? 1 : 0) + patientConflicts.length;
+  // Session-level SAFETY flags (allergy/contraindication/consent) detected this visit. Auto-kept
+  // (opt-out): shown by default, the clinician acts only to reject a wrong one. Deliberately NOT part
+  // of `verifyCount` — safety is surfaced/prominent but requires no action, so it never gates the
+  // report ("warnings over blocking"). Errs toward inclusion: kept unless the clinician rejects it.
+  const keptSafetyFlags = !isHistorical ? sessionKeptSafetyFlags(activeSession) : [];
   const verifyRegionRef = React.useRef<HTMLDivElement>(null);
-  // "Review" jumps to the first thing needing confirmation: a carried-forward dose now lives inline on
-  // its treatment row in the report; patient-identity verification is the panel above the report.
+  // "Review" jumps to the TOPMOST unresolved item. Every counted blocker is reachable without opening
+  // the Sources drawer: patient conflicts + AI-created-patient identity live in the verify region
+  // (above the report), and a carried-forward dose lives inline on its treatment row in the report. The
+  // region (when present) is highest on the page, so it wins; otherwise the first inline dose row.
   const scrollToVerify = () => {
-    const target = document.querySelector(".treatment-item.needs-confirm") || verifyRegionRef.current;
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const region = verifyRegionRef.current;
+    const target = region || document.querySelector(".treatment-item.needs-confirm");
+    target?.scrollIntoView({ behavior: "smooth", block: region ? "start" : "center" });
   };
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
@@ -233,6 +275,20 @@ export function CaptureScreen({
   const onFixAtSource = () => {
     setSourcesOpen(true);
     window.requestAnimationFrame(() => sourcesDrawerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  // "Tap a claim → its source capture" (the redesign's assistive+cited principle): open the cited
+  // capture in the source preview. It is usually one of this session's captures; a carried-forward
+  // claim cites a prior visit, so fall back to fetching the capture by id when it isn't loaded here.
+  const openSourceCapture = async (captureId: string) => {
+    const local = (activeSession?.items || []).find((item) => item.id === captureId);
+    if (local) {
+      setSelectedCapture(local);
+      return;
+    }
+    if (onFetchCapture) {
+      const fetched = await onFetchCapture(captureId);
+      if (fetched) setSelectedCapture(fetched);
+    }
   };
   // Capture-type breakdown for the Sources drawer chips (voice folds into audio).
   const captureTypeCounts = (activeSession?.items || []).reduce<Record<string, number>>((counts, item) => {
@@ -284,11 +340,11 @@ export function CaptureScreen({
   );
 
   return (
-    <section className="capture-current session-workspace" aria-label={isHistorical ? "Historical session review" : "Active session workspace"}>
+    <section className="capture-current session-workspace" aria-label={isHistorical ? t("capture.historicalSessionReview") : t("capture.activeSessionWorkspace")}>
       {onBack ? (
         <button className="context-back-button" onClick={onBack} type="button">
           <BackIcon />
-          {backLabel}
+          {backLabel ?? t("capture.backToMemory")}
         </button>
       ) : null}
       <div className={`active-session-summary${lightHeader ? " light" : ""}`}>
@@ -302,7 +358,7 @@ export function CaptureScreen({
               <p>
                 {captureCountLabel}
                 {offline && sessionPending ? (
-                  <span className="session-sync-pending"><SyncIcon /> Trying to sync the session</span>
+                  <span className="session-sync-pending"><SyncIcon /> {t("capture.tryingToSyncSession")}</span>
                 ) : null}
               </p>
             </>
@@ -315,20 +371,20 @@ export function CaptureScreen({
                   {sessionStatusChip.label}
                 </span>
               </div>
-              <p>{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+              <p data-testid="session-meta">{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
             </>
           )}
         </div>
         <div className="workspace-header-actions">
           {isHistorical && onResumeCapture ? (
             <Button disabled={!activeSession} onClick={onResumeCapture} size="sm" type="button" variant="secondary">
-              Add capture
+              {t("capture.addCapture")}
             </Button>
           ) : null}
           {!isHistorical && onStartNewSession ? (
             <Button className="current-new-session" onClick={onStartNewSession} size="sm" type="button" variant="secondary">
               <span aria-hidden="true">+</span>
-              New session
+              {t("capture.newSession")}
             </Button>
           ) : null}
         </div>
@@ -338,8 +394,8 @@ export function CaptureScreen({
           <span aria-hidden="true">🔒</span>
           <span>
             {activeSession.createdBy?.displayName
-              ? `Started by ${activeSession.createdBy.displayName} — read-only for you. You can still add captures.`
-              : "Owned by another clinician — read-only for you. You can still add captures."}
+              ? t("capture.readOnlyStartedBy", { name: activeSession.createdBy.displayName })
+              : t("capture.readOnlyOwnedByOther")}
           </span>
         </div>
       ) : null}
@@ -355,9 +411,9 @@ export function CaptureScreen({
           <p>
             {activeSession?.patientId || activeSession?.patientName
               ? activeSession.assignmentSource
-                ? assignmentSourceLabel(activeSession.assignmentSource)
-                : "Assigned manually"
-              : "Capture-first — assign when ready"}
+                ? assignmentSourceLabel(activeSession.assignmentSource, t)
+                : t("capture.assignedManually")
+              : t("capture.captureFirstAssignWhenReady")}
           </p>
         </div>
         <div className="patient-context-actions">
@@ -368,7 +424,7 @@ export function CaptureScreen({
               type="button"
             >
               <ClockHistoryIcon />
-              History
+              {t("capture.history")}
             </button>
           ) : null}
           {onAssignPatient ? (
@@ -380,12 +436,12 @@ export function CaptureScreen({
               {activeSession?.patientId || activeSession?.patientName ? (
                 <>
                   <EditIcon />
-                  Change
+                  {t("capture.change")}
                 </>
               ) : (
                 <>
                   <AddPatientIcon />
-                  Assign
+                  {t("capture.assign")}
                 </>
               )}
             </button>
@@ -395,21 +451,52 @@ export function CaptureScreen({
       {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
         <div className="next-lined-up" role="note">
           <span className="next-lined-up-copy">
-            Next in your list: <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
+            {t("capture.nextInYourList")} <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
           </span>
           <span className="next-lined-up-actions">
             {activeSession.items.length && onAssignActiveToNext ? (
               <Button size="sm" type="button" onClick={onAssignActiveToNext}>
-                Assign this visit
+                {t("capture.assignThisVisit")}
               </Button>
             ) : null}
             {onStartNextVisit ? (
               <Button size="sm" variant="secondary" type="button" onClick={onStartNextVisit}>
-                Start their visit
+                {t("capture.startTheirVisit")}
               </Button>
             ) : null}
           </span>
         </div>
+      ) : null}
+      {/* Session-level safety panel — highest priority, so it sits ABOVE the context card and the
+          verify region. Opt-out: every detected flag is shown by default; the × rejects a wrong one.
+          NOT a verify-bar blocker (not in verifyRegionRef, not counted). Flag body is report-language
+          clinical content (dir auto, never translated); only the chrome routes through appT. */}
+      {keptSafetyFlags.length ? (
+        <section className="session-safety-panel" aria-label={t("capture.safety.label")}>
+          <div className="session-safety-head">
+            <span className="session-safety-label">{t("capture.safety.label")}</span>
+            <span className="session-safety-hint">{t("capture.safety.hint")}</span>
+          </div>
+          {keptSafetyFlags.map((flag) => (
+            <div className={`session-safety-flag safety-${flag.kind}`} key={flag.key}>
+              <span className="session-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
+              <p className="session-safety-text" dir={textDirection(flag.text)}>
+                {flag.text}
+              </p>
+              {onRejectSafetyFlag && !readOnly && activeSession ? (
+                <button
+                  className="session-safety-remove"
+                  type="button"
+                  aria-label={t("capture.safety.reject")}
+                  title={t("capture.safety.reject")}
+                  onClick={() => onRejectSafetyFlag(activeSession.id, flag.key)}
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </section>
       ) : null}
       {!isHistorical && activeSession?.patientId && sessionContext ? (
         <SessionContextCard
@@ -421,9 +508,26 @@ export function CaptureScreen({
           onResolveFile={onResolveFile}
         />
       ) : null}
-      {!isHistorical && activeSession && aiPatientAction && onCompleteAiCreatedPatient ? (
+      {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (
         <div className="session-verify-region" ref={verifyRegionRef}>
-          <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
+          {patientConflicts.length ? (
+            <section className="session-patient-conflicts" aria-label={t("capture.patientNeedsConfirmation")}>
+              <span className="session-patient-conflicts-label">{t("capture.patientNeedsConfirmation")}</span>
+              {patientConflicts.map((conflict) => (
+                <PatientConflictResolver
+                  key={conflict.captureId}
+                  suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
+                  basisCaptureId={conflict.captureId}
+                  onApply={onAssignPatient ? (draft) => onAssignPatient(activeSession.id, draft) : undefined}
+                  onChooseAnother={onOpenResolver}
+                  onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
+                />
+              ))}
+            </section>
+          ) : null}
+          {aiPatientAction && onCompleteAiCreatedPatient ? (
+            <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
+          ) : null}
         </div>
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
@@ -432,11 +536,11 @@ export function CaptureScreen({
             <span className="report-title-icon" aria-hidden="true">
               <ClipboardIcon />
             </span>
-            <h2>Clinical report</h2>
+            <h2>{t("capture.clinicalReport")}</h2>
             {/* AI-provenance mark: the Pro report is AI-synthesized; the spark twinkles while the
                 synthesis is organizing (the "editing" phase), so the icon itself signals AI is at work. */}
             {isPro ? (
-              <span className="report-ai-mark" role="img" aria-label="AI-synthesized report" title="AI-synthesized report">
+              <span className="report-ai-mark" role="img" aria-label={t("capture.aiSynthesizedReport")} title={t("capture.aiSynthesizedReport")}>
                 <AiSpark working={isUpdatingReport} />
               </span>
             ) : null}
@@ -445,34 +549,38 @@ export function CaptureScreen({
             {isUpdatingReport ? (
               <span className="report-updating" aria-live="polite">
                 <span className="report-updating-spinner" aria-hidden="true" />
-                {reportUpdatingLabel(activeSession)}
+                {reportUpdatingLabel(activeSession, t)}
               </span>
+            ) : null}
+            {/* Compact share affordance in the header (a share icon, not a full sentence on its own
+                row) — a curated clinic→patient action; opens the curate+preview sheet. */}
+            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
+              <button className="report-share-button" type="button" onClick={onShareVisit} aria-label={t("capture.shareWithPatient")} title={t("capture.shareWithPatient")}>
+                <ShareIcon />
+                <span className="report-share-button-label">{t("capture.share")}</span>
+              </button>
             ) : null}
           </div>
         </div>
-        <div className="report-toolbar">
-          <div className="report-toolbar-actions">
-            {!useUnifiedLayout ? (
-              <div className="report-view-switch" aria-label="Report view">
+        {/* Basic keeps the Captures / Live-report tab switch; Pro's unified layout has no toolbar row. */}
+        {!useUnifiedLayout ? (
+          <div className="report-toolbar">
+            <div className="report-toolbar-actions">
+              <div className="report-view-switch" aria-label={t("capture.reportView")}>
                 <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                  Captures
+                  {t("capture.capturesTab")}
                 </button>
                 <button
                   className={selectedReportView === "structured" ? "active" : ""}
                   onClick={() => setReportView("structured")}
                   type="button"
                 >
-                  Live report
+                  {t("capture.liveReportTab")}
                 </button>
               </div>
-            ) : null}
-            {isPro && !isHistorical && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
-              <button className="report-share-button" type="button" onClick={onShareVisit}>
-                Share with patient
-              </button>
-            ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {assignmentOpen && activeSession && onAssignPatient ? (
           <PatientAssignmentSheet
             session={activeSession}
@@ -492,6 +600,7 @@ export function CaptureScreen({
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              onOpenSource={openSourceCapture}
               reportLanguage={reportLanguage}
             />
           ) : (
@@ -504,8 +613,8 @@ export function CaptureScreen({
             When the doctor DICTATED aftercare that differs from a protocol, the dictation wins and a
             conflict note is shown instead of silently including the contradicting protocol. */}
         {useUnifiedLayout && !isHistorical && !readOnly && (includedAftercare.length || aftercareConflicts.length) ? (
-          <section className="report-aftercare-included" aria-label="Aftercare for this visit">
-            <span className="report-aftercare-included-label">Aftercare for this visit · from your clinic protocol</span>
+          <section className="report-aftercare-included" aria-label={t("capture.aftercareForThisVisit")}>
+            <span className="report-aftercare-included-label">{t("capture.aftercareForThisVisitFromProtocol")}</span>
             {includedAftercare.map((template) => (
               <div className="aftercare-included-card" key={template.id}>
                 <div className="aftercare-included-body">
@@ -516,8 +625,8 @@ export function CaptureScreen({
                   <button
                     className="aftercare-included-remove"
                     type="button"
-                    aria-label={`Remove ${template.name}`}
-                    title="Remove from this visit"
+                    aria-label={t("capture.removeTemplate", { name: template.name })}
+                    title={t("capture.removeFromThisVisit")}
                     onClick={() => onDismissAftercare(activeSession.id, template.id, true)}
                   >
                     ✕
@@ -531,15 +640,23 @@ export function CaptureScreen({
                 <span>
                   {conflict.note ? (
                     <>
-                      {conflict.note} <span className="aftercare-conflict-source">(differs from your clinic’s “{conflict.template.name}” protocol)</span>
+                      {conflict.note} <span className="aftercare-conflict-source">{t("capture.aftercareConflictSource", { name: conflict.template.name })}</span>
                     </>
                   ) : (
-                    <>Your dictated aftercare differs from your clinic’s “{conflict.template.name}” protocol — your words are used.</>
+                    <>{t("capture.aftercareConflictDefault", { name: conflict.template.name })}</>
                   )}
                 </span>
               </div>
             ))}
           </section>
+        ) : null}
+        {/* Report thumbs rating (eval golden-set harvester; eval-epic §1b) — a quiet end-cap AFTER the
+            aftercare section so it reads "rate-after-reading" and never splits the clinical content;
+            on mobile it's the last thing before the collapsible raw Sources. Pro report only. */}
+        {useUnifiedLayout && onRateReport && activeSession && reportHasContent ? (
+          // The rating prompt is app chrome, so it follows the APP UI language (isPersianLocale),
+          // not the report's CONTENT language — a Persian report under an English app shows English.
+          <ReportFeedbackBar isPersian={isPersianLocale()} onRate={(rating) => onRateReport(activeSession.id, rating)} />
         ) : null}
         {useUnifiedLayout && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,
@@ -554,8 +671,14 @@ export function CaptureScreen({
             >
               <span className="sources-drawer-lead">
                 <span className="sources-drawer-chev" aria-hidden="true">{sourcesShown ? "▾" : "▸"}</span>
-                <span className="sources-drawer-title">Sources</span>
+                <span className="sources-drawer-title">{t("capture.sources")}</span>
                 <span className="sources-drawer-count">{captureCount}</span>
+                {sourcesProcessing ? (
+                  <span className="sources-drawer-organizing" aria-live="polite">
+                    <span className="sources-organizing-dot" aria-hidden="true" />
+                    {t("capture.organizing")}
+                  </span>
+                ) : null}
               </span>
               <span className="sources-drawer-types" aria-hidden="true">
                 {(["audio", "photo", "note"] as const).map((type) =>
@@ -571,15 +694,6 @@ export function CaptureScreen({
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>
         ) : null}
-        <div className="workspace-report-footer">
-          <div className="workspace-report-footer-copy">
-            {isUpdatingReport ? (
-              <span>{reportUpdatingLabel(activeSession)}</span>
-            ) : isPro && activeSession?.complete ? (
-              <span className="report-complete-note">✓ Complete · captures processed, patient assigned, report up to date</span>
-            ) : null}
-          </div>
-        </div>
       </Card>
       <SourcePreviewDialog
         item={selectedCapture}

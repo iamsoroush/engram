@@ -1,6 +1,7 @@
 import React from "react";
 import type { AuthSession, ClinicMember, PatientSummary, WorklistEntry } from "../../../domain/appTypes";
 import { Button, Card, Input } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { attributionName, currentUserRoles } from "../../../shared/lib/multiseat";
 
 // AES-903 — the soft "Today / up next" worklist. Role-aware (foundation §7):
@@ -36,6 +37,7 @@ export function WorklistSection({
   onPeekPatient: (patientId: string, patientName: string | undefined, worklistEntryId: string, canStartVisit: boolean) => void;
   refreshSignal?: number;
 }) {
+  const t = useT();
   const roles = currentUserRoles(auth);
   const viewerIsDoctor = roles.includes("doctor");
   // Assistant is the reception/intake seat here; admin manages the clinic. Both create line-ups.
@@ -80,11 +82,8 @@ export function WorklistSection({
     void onStartVisit(entry.patientId, entry.id).catch(() => undefined);
   };
 
-  const subtitle =
-    scope === "mine"
-      ? "Patients reception lined up for you. Tap one to see their recap, then start. The footer always starts a fresh capture too."
-      : "Everyone lined up across the clinic. Line a patient up for a doctor, or tap to see their recap.";
-  const emptyCopy = "No one is lined up right now.";
+  const subtitle = scope === "mine" ? t("needsinput.subtitleMine") : t("needsinput.subtitleClinic");
+  const emptyCopy = t("needsinput.empty");
 
   // A pure consumer (doctor, not reception) with an empty queue gets *no box at all* — the worklist
   // only appears once reception has lined someone up. Reception always sees it (they add to it).
@@ -95,11 +94,11 @@ export function WorklistSection({
       <div className="worklist-head">
         <div className="worklist-head-copy">
           <div className="worklist-title-row">
-            <h3>Up next</h3>
+            <h3>{t("needsinput.title")}</h3>
             <button
               type="button"
               className="worklist-info-btn"
-              aria-label="About the worklist"
+              aria-label={t("needsinput.aboutAria")}
               aria-expanded={showInfo}
               onClick={() => setShowInfo((v) => !v)}
             >
@@ -108,7 +107,7 @@ export function WorklistSection({
           </div>
           {showInfo ? <p className="worklist-subtle">{subtitle}</p> : null}
         </div>
-        <div className="mine-clinic-toggle" role="group" aria-label="Worklist scope">
+        <div className="mine-clinic-toggle" role="group" aria-label={t("needsinput.scopeAria")}>
           {(["mine", "clinic"] as WorklistScope[]).map((value) => (
             <button
               key={value}
@@ -117,14 +116,14 @@ export function WorklistSection({
               className={scope === value ? "active" : ""}
               onClick={() => setScope(value)}
             >
-              {value === "mine" ? "Mine" : "Clinic"}
+              {value === "mine" ? t("needsinput.scopeMine") : t("needsinput.scopeClinic")}
             </button>
           ))}
         </div>
       </div>
 
       {loading && entries.length === 0 ? (
-        <p className="worklist-empty">Loading…</p>
+        <p className="worklist-empty">{t("needsinput.loading")}</p>
       ) : entries.length === 0 ? (
         <p className="worklist-empty">{emptyCopy}</p>
       ) : (
@@ -139,29 +138,41 @@ export function WorklistSection({
                   onClick={() => onPeekPatient(entry.patientId, entry.patientName || undefined, entry.id, mine)}
                 >
                   <span className="worklist-item-headcopy">
-                    <span className="worklist-item-name">{entry.patientName || "Unnamed patient"}</span>
+                    <span className="worklist-item-name" data-content>
+                      {entry.patientName || t("needsinput.unnamedPatient")}
+                    </span>
                     <span className="worklist-item-meta">
-                      {!mine && entry.clinician ? `for ${attributionName(entry.clinician, auth?.user.id)} · ` : ""}
-                      lined up {entry.linedUpBy ? `by ${attributionName(entry.linedUpBy, auth?.user.id)}` : ""}
+                      {!mine && entry.clinician
+                        ? `${t("needsinput.forClinician", { name: attributionName(entry.clinician, auth?.user.id) })} · `
+                        : ""}
+                      {entry.linedUpBy
+                        ? t("needsinput.linedUpBy", { name: attributionName(entry.linedUpBy, auth?.user.id) })
+                        : t("needsinput.linedUp")}
                       {entry.note ? ` · ${entry.note}` : ""}
                     </span>
                   </span>
-                  <span className="worklist-item-peek">Recap ›</span>
+                  <span className="worklist-item-peek">{t("needsinput.recap")}</span>
                 </button>
 
                 <div className="worklist-item-actions">
                   {mine && onStartVisit ? (
                     <Button size="sm" type="button" onClick={() => startVisit(entry)}>
-                      Start visit
+                      {t("needsinput.startVisit")}
                     </Button>
                   ) : null}
                   {mine ? (
                     <Button size="sm" variant="ghost" type="button" onClick={() => markSeen(entry)}>
-                      Done
+                      {t("needsinput.done")}
                     </Button>
                   ) : (
-                    <Button size="sm" variant="ghost" type="button" onClick={() => cancel(entry)} aria-label="Remove from worklist">
-                      Remove
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      type="button"
+                      onClick={() => cancel(entry)}
+                      aria-label={t("needsinput.removeAria")}
+                    >
+                      {t("needsinput.remove")}
                     </Button>
                   )}
                 </div>
@@ -188,7 +199,7 @@ export function WorklistSection({
           />
         ) : (
           <Button size="sm" variant="secondary" type="button" className="worklist-add" onClick={() => setAdding(true)}>
-            + Line up a patient for a doctor
+            {t("needsinput.lineUpCta")}
           </Button>
         )
       ) : null}
@@ -209,6 +220,7 @@ function LineUpForm({
   onSubmit: (input: { patientId: string; clinicianUserId: string; note?: string }) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [query, setQuery] = React.useState("");
   const [results, setResults] = React.useState<PatientSummary[]>([]);
   const [patient, setPatient] = React.useState<PatientSummary | null>(null);
@@ -261,16 +273,16 @@ function LineUpForm({
     <div className="worklist-lineup">
       {patient ? (
         <div className="worklist-lineup-chosen">
-          <span>{patient.displayName}</span>
+          <span data-content>{patient.displayName}</span>
           <Button size="sm" variant="ghost" type="button" onClick={() => setPatient(null)}>
-            Change
+            {t("needsinput.change")}
           </Button>
         </div>
       ) : (
         <>
           <Input
-            aria-label="Find a patient"
-            placeholder="Find a patient…"
+            aria-label={t("needsinput.findPatient")}
+            placeholder={t("needsinput.findPatientPlaceholder")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -278,7 +290,7 @@ function LineUpForm({
             <ul className="worklist-lineup-results">
               {results.map((result) => (
                 <li key={result.id}>
-                  <button type="button" onClick={() => setPatient(result)}>
+                  <button type="button" onClick={() => setPatient(result)} data-content>
                     {result.displayName}
                   </button>
                 </li>
@@ -288,28 +300,28 @@ function LineUpForm({
         </>
       )}
       <label className="worklist-lineup-field">
-        <span>For Dr.</span>
-        <select aria-label="Doctor" value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
-          {doctors.length === 0 ? <option value="">No doctors in this clinic</option> : null}
+        <span>{t("needsinput.forDr")}</span>
+        <select aria-label={t("needsinput.doctorAria")} value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
+          {doctors.length === 0 ? <option value="">{t("needsinput.noDoctors")}</option> : null}
           {doctors.map((member) => (
-            <option key={member.userId} value={member.userId}>
+            <option key={member.userId} value={member.userId} data-content>
               {member.displayName}
             </option>
           ))}
         </select>
       </label>
       <Input
-        aria-label="Note (optional)"
-        placeholder="Note (optional)"
+        aria-label={t("needsinput.noteOptional")}
+        placeholder={t("needsinput.noteOptional")}
         value={note}
         onChange={(event) => setNote(event.target.value)}
       />
       <div className="worklist-lineup-actions">
         <Button size="sm" type="button" disabled={!patient || !clinicianId || saving} onClick={submit}>
-          {saving ? "Adding…" : "Line up"}
+          {saving ? t("needsinput.adding") : t("needsinput.lineUp")}
         </Button>
         <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
-          Cancel
+          {t("needsinput.cancel")}
         </Button>
       </div>
     </div>

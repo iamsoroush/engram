@@ -64,7 +64,7 @@ The backend stores generated report body content in `sessions.report_model`, a J
 
 The singleton `default` report template is centralized in backend reporting code and currently exposes clinic context and body rendering rules. Patient information is injected from the assigned database patient and identifiers at render time; AI-generated body text must not be treated as the source of truth for patient demographics.
 
-TODO: Add tenant-aware multi-template selection when Memara supports more than the default clinic report layout.
+TODO: Add tenant-aware multi-template selection when Engram supports more than the default clinic report layout.
 
 ## Entity Model: Patient Universal, Encounter Generalizes By Vertical (A0)
 

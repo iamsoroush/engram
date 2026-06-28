@@ -2,7 +2,7 @@
 
 This repository is developed with AI coding agents.
 
-**Naming:** the platform/codebase is **Notari** (repo, services, infra, API). Its first product is **Memara** — capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Rule of thumb in code and docs: **internal/infra → Notari; customer-facing product surfaces → Memara.**
+**Naming:** the platform and product share a single brand — **Engram** — used everywhere: repo, services, infra, API, and all customer-facing surfaces. Engram is capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals).
 
 Use this file as the starting guide. Do not read the whole repository blindly. Start from the relevant README/docs, then inspect only the files needed for the task.
 
@@ -238,10 +238,10 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 
 ## 8. Running the app in a git worktree (isolated dev stack)
 
-**Where to create worktrees:** under **`~/notari-worktrees/<branch-slug>`** — grouped in one place
+**Where to create worktrees:** under **`~/engram-worktrees/<branch-slug>`** — grouped in one place
 and *outside* the repo, so the repo's Docker build context (`COPY . .`), `rg`/test discovery, and
 dev-stack scripts never pick up a nested checkout. E.g.
-`git worktree add ~/notari-worktrees/therapy -b p2/therapy-ux`. All worktrees share the main repo's
+`git worktree add ~/engram-worktrees/therapy -b p2/therapy-ux`. All worktrees share the main repo's
 `.git` (same branches + objects), so a worktree's branch is merged from the primary checkout with a
 normal `git merge <branch>` — the worktree's on-disk location is irrelevant to merging.
 
@@ -261,7 +261,7 @@ scripts/dev-stack.sh up      # provision + start; prints this stack's app/API UR
 ```
 
 This uses shared Postgres + MinIO but gives your worktree its **own database** (cloned
-from the canonical `notari` DB, so you inherit real data to test against) and its **own
+from the canonical `engram` DB, so you inherit real data to test against) and its **own
 bucket**, on **unique host ports**. Your branch's new Alembic migrations apply on top of
 the cloned schema automatically. Stop it with `scripts/dev-stack.sh down` (add `--data`
 to also drop this worktree's database + bucket). Full details:
@@ -278,6 +278,6 @@ to also drop this worktree's database + bucket). Full details:
    `git worktree remove <path>` then `git branch -d <branch>`. The `clean` command prints
    these exact commands for the current worktree.
 
-In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `notari`
+In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `engram`
 stack (the clone source); the plain root `docker compose up` also still works as a
 self-contained, non-shared environment.

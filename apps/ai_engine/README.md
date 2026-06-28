@@ -1,6 +1,6 @@
 # AI Engine
 
-Celery worker app for Notari AI processing jobs.
+Celery worker app for Engram AI processing jobs.
 
 Detailed processing contracts and replacement boundaries live in [docs/ai_engine](../../docs/ai_engine/README.md).
 
@@ -27,7 +27,7 @@ For local Python development:
 ```sh
 cd apps/ai_engine
 pip install -r requirements.txt
-AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/notari-celerybeat-schedule
+AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_app.celery_app worker --loglevel=INFO --queues=ai_jobs --beat --schedule=/tmp/engram-celerybeat-schedule
 ```
 
 ## Environment

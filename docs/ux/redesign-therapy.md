@@ -1,6 +1,6 @@
-# Memara for Therapy — UX Design (greenfield)
+# Engram for Therapy — UX Design (greenfield)
 
-> The therapy vertical of Memara (Spine A), designed **greenfield** — not aesthetics re-skinned.
+> The therapy vertical of Engram (Spine A), designed **greenfield** — not aesthetics re-skinned.
 > Grounded in [redesign-therapy-research.md](archive/redesign-therapy-research.md); built on the shared
 > foundation [redesign-foundation.md](redesign-foundation.md) and the capture/memory surfaces
 > ([redesign-capture-surface.md](redesign-capture-surface.md), `patient-memory-states.html`).

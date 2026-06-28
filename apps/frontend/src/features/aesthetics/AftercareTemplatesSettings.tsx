@@ -1,6 +1,7 @@
 import React from "react";
 import type { AftercareTemplate, AftercareTemplateDraft } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
+import { useT } from "../../shared/i18n";
 
 /**
  * AES-702 — manage per-procedure aftercare instruction templates. Deterministic templates, picked &
@@ -22,6 +23,7 @@ export function AftercareTemplatesSettings({
   const [editing, setEditing] = React.useState<string | null>(null);
   const [adding, setAdding] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const t = useT();
 
   const reload = React.useCallback(() => {
     void onList()
@@ -57,7 +59,7 @@ export function AftercareTemplatesSettings({
   };
 
   const remove = async (template: AftercareTemplate) => {
-    if (!window.confirm(`Delete the "${template.name}" aftercare template?`)) return;
+    if (!window.confirm(t("aftercare.confirmDelete", { name: template.name }))) return;
     setBusy(true);
     try {
       await onDelete(template.id);
@@ -70,13 +72,13 @@ export function AftercareTemplatesSettings({
   return (
     <Card className="settings-group">
       <div className="settings-group-head">
-        <h2>Aftercare templates</h2>
-        <p>Per-procedure instructions the patient sees on a shared report. Pick and edit one per send.</p>
+        <h2>{t("aftercare.title")}</h2>
+        <p>{t("aftercare.subtitle")}</p>
       </div>
 
       <div className="aftercare-list">
         {!loaded ? (
-          <p className="aftercare-empty">Loading templates…</p>
+          <p className="aftercare-empty">{t("aftercare.loading")}</p>
         ) : templates.length ? (
           templates.map((template) =>
             editing === template.id ? (
@@ -89,14 +91,14 @@ export function AftercareTemplatesSettings({
                   <p>{template.body}</p>
                 </div>
                 <div className="aftercare-actions">
-                  <button className="aftercare-edit" disabled={busy} onClick={() => setEditing(template.id)} type="button">Edit</button>
-                  <button className="aftercare-delete" disabled={busy} onClick={() => void remove(template)} type="button">Delete</button>
+                  <button className="aftercare-edit" disabled={busy} onClick={() => setEditing(template.id)} type="button">{t("aftercare.edit")}</button>
+                  <button className="aftercare-delete" disabled={busy} onClick={() => void remove(template)} type="button">{t("aftercare.delete")}</button>
                 </div>
               </div>
             ),
           )
         ) : (
-          <p className="aftercare-empty">No aftercare templates yet. Add one so it can be attached to a shared report.</p>
+          <p className="aftercare-empty">{t("aftercare.empty")}</p>
         )}
       </div>
 
@@ -105,7 +107,7 @@ export function AftercareTemplatesSettings({
       ) : (
         <div className="settings-group-actions">
           <Button onClick={() => setAdding(true)} size="sm" type="button">
-            <span aria-hidden="true">+</span> Add template
+            <span aria-hidden="true">+</span> {t("aftercare.add")}
           </Button>
         </div>
       )}
@@ -124,6 +126,7 @@ function AftercareEditor({
   onSave: (draft: AftercareTemplateDraft) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useT();
   const [name, setName] = React.useState(initial?.name || "");
   const [procedureType, setProcedureType] = React.useState(initial?.procedureType || "");
   const [body, setBody] = React.useState(initial?.body || "");
@@ -132,26 +135,26 @@ function AftercareEditor({
   return (
     <div className="aftercare-editor">
       <label className="aftercare-field">
-        <span>Name</span>
-        <input onChange={(event) => setName(event.target.value)} placeholder="Botox aftercare" value={name} />
+        <span>{t("aftercare.fieldName")}</span>
+        <input onChange={(event) => setName(event.target.value)} placeholder={t("aftercare.namePlaceholder")} value={name} />
       </label>
       <label className="aftercare-field">
-        <span>Procedure type <small>· optional</small></span>
-        <input onChange={(event) => setProcedureType(event.target.value)} placeholder="botox" value={procedureType} />
+        <span>{t("aftercare.procedureType")} <small>{t("aftercare.optional")}</small></span>
+        <input onChange={(event) => setProcedureType(event.target.value)} placeholder={t("aftercare.procedurePlaceholder")} value={procedureType} />
       </label>
       <label className="aftercare-field">
-        <span>Instructions</span>
-        <textarea onChange={(event) => setBody(event.target.value)} placeholder="Avoid lying down for 4 hours." rows={3} value={body} />
+        <span>{t("aftercare.instructions")}</span>
+        <textarea onChange={(event) => setBody(event.target.value)} placeholder={t("aftercare.instructionsPlaceholder")} rows={3} value={body} />
       </label>
       <div className="aftercare-editor-actions">
-        <button className="aftercare-cancel" onClick={onCancel} type="button">Cancel</button>
+        <button className="aftercare-cancel" onClick={onCancel} type="button">{t("aftercare.cancel")}</button>
         <button
           className="aftercare-save"
           disabled={!canSave}
           onClick={() => void onSave({ name: name.trim(), procedureType: procedureType.trim() || null, body: body.trim() })}
           type="button"
         >
-          {busy ? "Saving…" : "Save template"}
+          {busy ? t("aftercare.saving") : t("aftercare.save")}
         </button>
       </div>
     </div>

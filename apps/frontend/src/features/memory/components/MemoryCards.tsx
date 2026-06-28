@@ -4,8 +4,9 @@ import React from "react";
 import type { LineupCard as LineupCardModel, LineupCardHero, PatientMemoryHistory } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
 import { Badge, Button, Card } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
-import { ClinicalTone, NeedsInputCardItem, TimelineSessionModel, memoryTextDirection, latestSessionTime, captureCounts, sessionTimeLabel, formatSessionTime, avatarInitials } from "./memoryModel";
+import { ClinicalTone, NeedsInputCardItem, PatientBadge, TimelineSessionModel, memoryTextDirection, latestSessionTime, captureCounts, sessionTimeLabel, formatSessionTime, avatarInitials } from "./memoryModel";
 import { NeedsInputDecisionIcon, SparkleIcon, ChevronIcon, captureTypeIcon } from "./MemoryIcons";
 
 export function AssistantStatusPill({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
@@ -173,6 +174,7 @@ export function NeedsInputDecisionCard({
   onSelect?: () => void;
   onPrimaryAction: () => void;
 }) {
+  const t = useT();
   return (
     <Card
       className={["needs-input-card", onSelect ? "clinical-row-selectable" : "", `needs-input-card-${item.tone}`].join(" ")}
@@ -198,27 +200,35 @@ export function NeedsInputDecisionCard({
         <div className="needs-input-title-row">
           <h3>{item.title}</h3>
         </div>
-        <div className="visit-metadata" aria-label="Decision context">
+        <div className="visit-metadata" aria-label={t("memcard.decisionContext")}>
           {item.contextLabel ? (
-            <div>
-              <span>{item.contextLabel.split(":")[0]}:</span>
-              <strong>{item.contextLabel.split(":").slice(1).join(":").trim() || item.contextLabel}</strong>
-            </div>
+            // For patient-bound decisions contextLabel is a patient name (shown under a "Patient" label);
+            // for the storage warning it is a standalone phrase with no value to pair it with.
+            item.kind === "review-storage" ? (
+              <div>
+                <span>{item.contextLabel}</span>
+              </div>
+            ) : (
+              <div>
+                <span>{t("memcard.patientLabel")}</span>
+                <strong data-content>{item.contextLabel}</strong>
+              </div>
+            )
           ) : null}
           {item.sessionLabel ? (
             <div>
-              <span>Session:</span>
-              <strong>{item.sessionLabel.replace(/^Session:\s*/, "")}</strong>
+              <span>{t("memcard.sessionLabel")}</span>
+              <strong data-content>{item.sessionLabel}</strong>
             </div>
           ) : null}
           {item.needsInputSinceLabel ? (
             <div className="visit-metadata-attention">
-              <span>Needs input since:</span>
-              <strong>{item.needsInputSinceLabel.replace(/^Needs input since:\s*/, "")}</strong>
+              <span>{t("memcard.needsInputSinceLabel")}</span>
+              <strong data-content>{item.needsInputSinceLabel}</strong>
             </div>
           ) : null}
         </div>
-        <p>{item.explanation}</p>
+        <p data-content>{item.explanation}</p>
         {item.session && item.kind !== "choose-patient" ? <CaptureChips session={item.session} tone={item.tone === "purple" ? "blue" : item.tone} /> : null}
       </div>
       {item.possiblePatients?.length ? <PossiblePatientOptions patients={item.possiblePatients} /> : null}
@@ -239,12 +249,13 @@ export function NeedsInputDecisionCard({
 }
 
 export function PossiblePatientOptions({ patients }: { patients: string[] }) {
+  const t = useT();
   return (
-    <div className="possible-patients" aria-label="Possible patients">
+    <div className="possible-patients" aria-label={t("memcard.possiblePatients")}>
       {patients.slice(0, 3).map((patient) => (
         <div className="possible-patient" key={patient}>
-          <span>{avatarInitials(patient).slice(0, 1)}</span>
-          <strong>{patient}</strong>
+          <span data-content>{avatarInitials(patient).slice(0, 1)}</span>
+          <strong data-content>{patient}</strong>
         </div>
       ))}
     </div>
@@ -252,36 +263,37 @@ export function PossiblePatientOptions({ patients }: { patients: string[] }) {
 }
 
 export function VisitMetadata({ session, tone }: { session: CaptureSession; tone: ClinicalTone }) {
+  const t = useT();
   const patientName = session.patientName || session.patientId;
-  const inputTime = formatSessionTime(latestSessionTime(session));
+  const inputTime = formatSessionTime(latestSessionTime(session), t);
   const showNeedsInputSince = tone === "amber" && !patientName;
   const showUpdatedTodayStatus = tone === "blue";
   return (
-    <div className="visit-metadata" aria-label="Visit details">
+    <div className="visit-metadata" aria-label={t("memcard.visitDetails")}>
       {patientName ? (
         <div>
-          <span>Patient:</span>
-          <strong>{patientName}</strong>
+          <span>{t("memcard.patientLabel")}</span>
+          <strong data-content>{patientName}</strong>
         </div>
       ) : null}
       <div>
-        <span>Session:</span>
-        <strong>{sessionTimeLabel(session)}</strong>
+        <span>{t("memcard.sessionLabel")}</span>
+        <strong data-content>{sessionTimeLabel(session, t)}</strong>
       </div>
       {showNeedsInputSince ? (
         <div className="visit-metadata-attention">
-          <span>Needs input since:</span>
-          <strong>{inputTime}</strong>
+          <span>{t("memcard.needsInputSinceLabel")}</span>
+          <strong data-content>{inputTime}</strong>
         </div>
       ) : showUpdatedTodayStatus ? (
         <div className="visit-metadata-success">
-          <span>Updated:</span>
-          <strong>{formatSessionTime(latestSessionTime(session))}</strong>
+          <span>{t("memcard.updatedLabel")}</span>
+          <strong data-content>{formatSessionTime(latestSessionTime(session), t)}</strong>
         </div>
       ) : (
         <div>
-          <span>Updated:</span>
-          <strong>{formatSessionTime(latestSessionTime(session))}</strong>
+          <span>{t("memcard.updatedLabel")}</span>
+          <strong data-content>{formatSessionTime(latestSessionTime(session), t)}</strong>
         </div>
       )}
     </div>
@@ -303,7 +315,7 @@ export function PatientRow({
   onSelect,
 }: {
   actionLabel?: string;
-  badges: string[];
+  badges: PatientBadge[];
   latestVisitLabel: string | null;
   patientName: string;
   summary: string;
@@ -313,17 +325,19 @@ export function PatientRow({
   onAction: () => void;
   onSelect: () => void;
 }) {
+  const t = useT();
   return (
     <ClinicalMemoryCard actionLabel={actionLabel} className="clinical-patient-row" tone={tone} onAction={onAction} onSelect={onSelect}>
       <Avatar label={patientName} tone={tone} />
       <div className="clinical-row-copy">
-        <h3>{patientName}</h3>
-        {latestVisitLabel ? <span className="patient-latest-visit">{latestVisitLabel}</span> : null}
+        <h3 data-content>{patientName}</h3>
+        {latestVisitLabel ? <span className="patient-latest-visit" data-content>{latestVisitLabel}</span> : null}
         <MemorySummary text={summary} status={summaryStatus} isPro={isPro} />
-        <div className="patient-memory-badges" aria-label="Patient memory status">
+        <div className="patient-memory-badges" aria-label={t("memcard.patientMemoryStatus")}>
           {badges.map((badge) => (
-            <span className={`patient-memory-badge ${badge.startsWith("Needs input") || badge.includes("need your input") ? "needs-input" : badge === "Complete" ? "verified" : ""}`} key={badge}>
-              {badge}
+            // Style on the badge's stable `kind`, not its localized text (the old string-match broke under fa).
+            <span className={`patient-memory-badge ${badge.kind === "needs-input" ? "needs-input" : badge.kind === "complete" ? "verified" : ""}`} key={badge.label}>
+              {badge.label}
             </span>
           ))}
         </div>
@@ -342,7 +356,8 @@ export function MemorySpark({ working }: { working?: boolean }) {
   );
 }
 
-export function MemoryUpdatingPill({ label = "Organizing memory" }: { label?: string }) {
+export function MemoryUpdatingPill({ label }: { label?: string }) {
+  const t = useT();
   return (
     <span className="memory-updating-pill">
       <span className="memory-updating-dots" aria-hidden="true">
@@ -350,7 +365,7 @@ export function MemoryUpdatingPill({ label = "Organizing memory" }: { label?: st
         <i />
         <i />
       </span>
-      {label}…
+      {label ?? t("memcard.organizingMemory")}…
     </span>
   );
 }
@@ -364,7 +379,7 @@ export function MemorySummary({ text, status, isPro }: { text: string; status?: 
     <div className={`patient-memory-summary${updating ? " updating" : ""}`}>
       <p className="patient-memory-summary-text" dir={memoryTextDirection(text)} key={text}>
         {isPro ? <MemorySpark working={updating} /> : null}
-        <span className="memory-text">{text}</span>
+        <span className="memory-text" data-content>{text}</span>
         <span className="memory-sweep" aria-hidden="true" />
       </p>
       {updating ? <MemoryUpdatingPill /> : null}
@@ -385,11 +400,12 @@ export function PatientHistoryBlock({
   loading: boolean;
   fallbackSnapshot?: string | null;
 }) {
+  const t = useT();
   const updating = history?.status === "updating";
   const heading = (
     <div className="patient-history-head">
       {isPro ? <MemorySpark working={updating} /> : null}
-      <h2>Patient history</h2>
+      <h2>{t("memcard.patientHistory")}</h2>
       {updating ? <MemoryUpdatingPill /> : null}
     </div>
   );
@@ -400,7 +416,7 @@ export function PatientHistoryBlock({
         <section className="patient-history-card">
           <div className="patient-history-head">
             {isPro ? <MemorySpark working /> : null}
-            <h2>Patient history</h2>
+            <h2>{t("memcard.patientHistory")}</h2>
           </div>
           <div className="patient-history-skeleton" aria-hidden="true">
             <span />
@@ -414,7 +430,7 @@ export function PatientHistoryBlock({
     return (
       <section className="patient-history-card">
         {heading}
-        <p className="patient-history-snapshot" dir={memoryTextDirection(fallbackSnapshot)}>{fallbackSnapshot}</p>
+        <p className="patient-history-snapshot" dir={memoryTextDirection(fallbackSnapshot)} data-content>{fallbackSnapshot}</p>
       </section>
     );
   }
@@ -423,22 +439,22 @@ export function PatientHistoryBlock({
     <section className={`patient-history-card${updating ? " updating" : ""}`}>
       {heading}
       <div className="patient-history-body" key={`${history.snapshot}|${history.sections.length}|${history.visits.length}`}>
-        <p className="patient-history-snapshot" dir={memoryTextDirection(history.snapshot)}>{history.snapshot}</p>
+        <p className="patient-history-snapshot" dir={memoryTextDirection(history.snapshot)} data-content>{history.snapshot}</p>
         {history.mode === "pro"
           ? history.sections.map((section) => (
               <div className="patient-history-section" key={section.label}>
-                <h3>{section.label}</h3>
-                <p dir={memoryTextDirection(section.body)}>{section.body}</p>
+                <h3 data-content>{section.label}</h3>
+                <p dir={memoryTextDirection(section.body)} data-content>{section.body}</p>
               </div>
             ))
           : (
               <div className="patient-history-section">
-                <h3>Recent visits</h3>
+                <h3>{t("memcard.recentVisits")}</h3>
                 <ul className="patient-history-visits">
                   {history.visits.map((visit, index) => (
                     <li key={index}>
                       <span className="patient-history-visit-dot" aria-hidden="true" />
-                      <span dir={memoryTextDirection(visit)}>{visit}</span>
+                      <span dir={memoryTextDirection(visit)} data-content>{visit}</span>
                     </li>
                   ))}
                 </ul>
@@ -454,6 +470,7 @@ export function PatientHistoryBlock({
 // of the primary area). Resolves the capture's content endpoint to a blob URL, same as the
 // before/after thumbs.
 function LineupHero({ hero, onResolveFile }: { hero: LineupCardHero; onResolveFile?: (endpoint: string) => Promise<string> }) {
+  const t = useT();
   const [url, setUrl] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
@@ -470,7 +487,7 @@ function LineupHero({ hero, onResolveFile }: { hero: LineupCardHero; onResolveFi
   }, [hero.contentEndpoint, hero.fileEndpoint, onResolveFile]);
   return (
     <span className="lineup-card-hero">
-      {url ? <img alt={hero.caption || "Most recent photo"} src={url} /> : <span className="lineup-card-hero-skeleton" aria-hidden="true" />}
+      {url ? <img alt={hero.caption || t("memcard.mostRecentPhoto")} src={url} /> : <span className="lineup-card-hero-skeleton" aria-hidden="true" />}
     </span>
   );
 }
@@ -487,34 +504,35 @@ export function LineupCard({
   isPro: boolean;
   onResolveFile?: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   if (!isPro || !card) return null;
   const flags = card.flags || [];
   const hasContent = Boolean(card.storySoFar || card.rightNow || card.sinceLastVisit || flags.length || card.hero);
   if (!hasContent) return null;
   const updating = card.status === "updating";
   return (
-    <section className={`lineup-card${updating ? " updating" : ""}`} aria-label="Line-up recap">
+    <section className={`lineup-card${updating ? " updating" : ""}`} aria-label={t("memcard.lineupRecap")}>
       <div className="lineup-card-head">
         <MemorySpark working={updating} />
-        <h3>At a glance</h3>
+        <h3>{t("memcard.atAGlance")}</h3>
         {updating ? <MemoryUpdatingPill /> : null}
       </div>
       <div className="lineup-card-body">
         {card.hero ? <LineupHero hero={card.hero} onResolveFile={onResolveFile} /> : null}
         <div className="lineup-card-copy" key={`${card.storySoFar}|${card.rightNow}`}>
           {card.storySoFar ? (
-            <p className="lineup-card-story" dir={memoryTextDirection(card.storySoFar)}>{card.storySoFar}</p>
+            <p className="lineup-card-story" dir={memoryTextDirection(card.storySoFar)} data-content>{card.storySoFar}</p>
           ) : null}
           {card.rightNow ? (
-            <p className="lineup-card-now" dir={memoryTextDirection(card.rightNow)}>{card.rightNow}</p>
+            <p className="lineup-card-now" dir={memoryTextDirection(card.rightNow)} data-content>{card.rightNow}</p>
           ) : null}
           {card.sinceLastVisit ? (
-            <p className="lineup-card-delta" dir={memoryTextDirection(card.sinceLastVisit)}>{card.sinceLastVisit}</p>
+            <p className="lineup-card-delta" dir={memoryTextDirection(card.sinceLastVisit)} data-content>{card.sinceLastVisit}</p>
           ) : null}
           {flags.length ? (
-            <ul className="lineup-card-flags" aria-label="Flags to remember">
+            <ul className="lineup-card-flags" aria-label={t("memcard.flagsToRemember")}>
               {flags.map((flag, index) => (
-                <li key={`${flag.kind}-${index}`} className={`lineup-flag lineup-flag-${flag.kind}`} dir={memoryTextDirection(flag.label)}>
+                <li key={`${flag.kind}-${index}`} className={`lineup-flag lineup-flag-${flag.kind}`} dir={memoryTextDirection(flag.label)} data-content>
                   {flag.label}
                 </li>
               ))}
@@ -562,14 +580,15 @@ export function PatientListLoading() {
 }
 
 export function CaptureChips({ session, tone }: { session: CaptureSession; tone: ClinicalTone }) {
-  const counts = captureCounts(session);
+  const t = useT();
+  const counts = captureCounts(session, t);
   if (!counts.length) return null;
   return (
-    <div className="capture-chips" aria-label="Capture types">
+    <div className="capture-chips" aria-label={t("memcard.captureTypes")}>
       {counts.map((item) => (
         <span className={`capture-chip capture-chip-${tone}`} key={item.label}>
           {captureTypeIcon(item.type)}
-          {item.count} {item.label}
+          <span data-content>{item.count}</span> {t(`memcard.captureChip.${item.type}`)}
         </span>
       ))}
     </div>
@@ -585,13 +604,14 @@ export function TimelineCaptureChips({
   session: TimelineSessionModel;
   tone: ClinicalTone;
 }) {
+  const t = useT();
   if (localSession) return <CaptureChips session={localSession} tone={tone} />;
   if (!session.captureCount) return null;
   return (
-    <div className="capture-chips" aria-label="Capture types">
+    <div className="capture-chips" aria-label={t("memcard.captureTypes")}>
       <span className={`capture-chip capture-chip-${tone}`}>
         {captureTypeIcon("note")}
-        {session.captureCount} capture{session.captureCount === 1 ? "" : "s"}
+        <span data-content>{session.captureCount}</span> {t("memcard.captureCountUnit", { n: session.captureCount })}
       </span>
     </div>
   );

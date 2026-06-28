@@ -9,7 +9,7 @@ init_sentry()
 
 
 celery_app = Celery(
-    "notari_ai_engine",
+    "engram_ai_engine",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
     include=["ai_engine.tasks"],

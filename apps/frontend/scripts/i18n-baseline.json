@@ -1,0 +1,229 @@
+{
+  "src/features/account/AccountScreens.tsx": [
+    "Promise"
+  ],
+  "src/features/account/SwitchClinicScreen.tsx": [
+    "Promise"
+  ],
+  "src/features/account/TeamScreen.tsx": [
+    ") : listError ? (",
+    ") : member.isSelf ? ("
+  ],
+  "src/features/aesthetics/AftercareTemplatesSettings.tsx": [
+    "Promise",
+    "void | Promise"
+  ],
+  "src/features/aesthetics/LastVisitStrip.tsx": [
+    "Promise"
+  ],
+  "src/features/aesthetics/MediaOverlay.tsx": [
+    "Promise"
+  ],
+  "src/features/aesthetics/PatientPhotoGallery.tsx": [
+    "Promise"
+  ],
+  "src/features/aesthetics/RegisterPatientForm.tsx": [
+    "Promise"
+  ],
+  "src/features/aesthetics/SessionContextCard.tsx": [
+    ") : visit ? (",
+    "Promise",
+    "recent.photos.length ? ("
+  ],
+  "src/features/aesthetics/SharePatientSheet.tsx": [
+    ") : created ? (",
+    "Promise",
+    "[] as Array"
+  ],
+  "src/features/aesthetics/VoiceMemoPlayer.tsx": [
+    "Promise"
+  ],
+  "src/features/auth/AuthGates.tsx": [
+    "Development personas",
+    "Development tenant tier",
+    "Limited access",
+    "Logout",
+    "Patient preview",
+    "Promise",
+    "Tier"
+  ],
+  "src/features/auth/UnauthShell.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/BasicNoteEditor.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/BeforeAfterSlider.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/CaptureBadges.tsx": [
+    ") ) : onSave ? (",
+    ") : hasText ? ( // Tap the text itself to edit it inline — no separate Edit button. onSave ? (",
+    "Promise"
+  ],
+  "src/features/capture/components/CaptureDialogs.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/CaptureScreen.tsx": [
+    "0 ? ( // The raw captures, demoted to a collapsible \"Sources\" drawer beneath the report. Editing, // deleting, re-assigning and tapping into a capture all still live here (and via the report's // own source links). Auto-expanded while the report has no content yet.",
+    "Promise",
+    "captureTypeCounts[type] ? ("
+  ],
+  "src/features/capture/components/LiveDraftReport.tsx": [
+    ") : captionStillProcessing ? (",
+    "Promise"
+  ],
+  "src/features/capture/components/LiveReport.tsx": [
+    ") : freshness ? (",
+    ") : isConfirmed ? (",
+    ")) ) : isUpdating || session?.items.length ? (",
+    "Promise"
+  ],
+  "src/features/capture/components/PatientAssignmentSheet.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/ReportFeedbackBar.tsx": [
+    "void | Promise"
+  ],
+  "src/features/capture/components/SourcePreview.tsx": [
+    "Promise"
+  ],
+  "src/features/capture/components/StorageGuardDialog.tsx": [
+    "Promise"
+  ],
+  "src/features/landing/LandingPage.tsx": [
+    "Engram"
+  ],
+  "src/features/memory/components/MemoryCards.tsx": [
+    ") : showUpdatedTodayStatus ? (",
+    "Promise"
+  ],
+  "src/features/memory/components/MemorySheets.tsx": [
+    ") : !detailLoading ? (",
+    "Promise"
+  ],
+  "src/features/memory/components/PatientTimeline.tsx": [
+    "Promise"
+  ],
+  "src/features/memory/components/PatientsHome.tsx": [
+    "0 && remaining",
+    "Promise"
+  ],
+  "src/features/memory/components/WorklistSection.tsx": [
+    "Promise"
+  ],
+  "src/features/patient-surface/PatientQaPage.tsx": [
+    "Ask a question",
+    "Ask your care team",
+    "Couldn’t load your questions",
+    "Engram",
+    "Have a question between visits? Send it here and your clinic will reply. Replies are reviewed by your clinician before you see them.",
+    "Loading",
+    "Loading your questions…",
+    "No questions yet. Ask your care team below.",
+    "Sent — your clinic will reply here.",
+    "This link is no longer available",
+    "This question was closed by your clinic.",
+    "Try again",
+    "Waiting for your clinic to reply…",
+    "You asked",
+    "Your conversation",
+    "Your question",
+    "e.g. Is the swelling on my forehead normal?",
+    "verified by your clinic"
+  ],
+  "src/features/patient-surface/PatientSharePage.tsx": [
+    "Aftercare",
+    "Couldn’t load your visit",
+    "Engram",
+    "Loading",
+    "Loading your visit…",
+    "Photo unavailable",
+    "This link is no longer available",
+    "Try again",
+    "What we did",
+    "Your photos"
+  ],
+  "src/features/qa/DoctorQaInbox.tsx": [
+    ") : ( // Collapsed resolved conversation: one-line preview of the latest message.",
+    ") : draftPending ? (",
+    ") : expanded && canReroute ? (",
+    ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply."
+  ],
+  "src/features/qa/QaChannelButton.tsx": [
+    "Promise"
+  ],
+  "src/features/therapy/TherapyApp.tsx": [
+    ") : clientDetail ? (",
+    ") : clientDetail.history && (clientDetail.history.snapshot || clientDetail.history.sections.length) ? (",
+    "Active session",
+    "Back to clients",
+    "Client history",
+    "Clients",
+    "Create a client in your caseload. You can capture before consent — reception/consent catches up.",
+    "Go to clients",
+    "Intake",
+    "My caseload",
+    "New client",
+    "New session",
+    "No clients in your caseload yet. Add your first client.",
+    "No session in progress",
+    "No sessions yet. Start the first session.",
+    "Open a client and start a session, or capture below to begin — capture-first, assign when ready.",
+    "Promise",
+    "Session timeline",
+    "Sessions",
+    "You see only your own clients — therapy caseloads are private between clinicians."
+  ],
+  "src/features/therapy/components/TherapyCaptureScreen.tsx": [
+    "(most-private)",
+    "(or Audio / Photo) from the bar below — shorthand is fine, it gets cleaned into clinical prose.",
+    "(therapist-only)",
+    ") : risk?.suggested ? (",
+    "Add a note to build the shareable progress note.",
+    "Assisted detection — review and confirm if appropriate.",
+    "Audio recap transcript",
+    "Cancel",
+    "Captures",
+    "Clear",
+    "Confidential 1:1 — this client is in your caseload only",
+    "Confirm flag",
+    "Confirm risk flag",
+    "Flag risk",
+    "High",
+    "Hypotheses, process notes — never shared with the client or exported.",
+    "Level",
+    "Low",
+    "Moderate",
+    "No audio recap for this session.",
+    "No captures yet. Add a",
+    "Note",
+    "Note format",
+    "Plane",
+    "Private",
+    "Processing…",
+    "Reflections",
+    "Release to client",
+    "Released summaries draw only from this shareable plane — never the private layer.",
+    "Risk is clinician-confirmed and dated — never set automatically.",
+    "Safety",
+    "Safety note / plan",
+    "Save reflections",
+    "Session",
+    "Session so far",
+    "Session summary",
+    "Session view",
+    "Shareable",
+    "Summary",
+    "Therapy",
+    "Therapy session workspace",
+    "Withdraw",
+    "audio recap · private",
+    "photo",
+    "updating…",
+    "⚠ Possible risk detected",
+    "✨ decorated note",
+    "🔒 Everything you capture is private by default. Nothing reaches the client until you explicitly release it.",
+    "🔒 Private plane"
+  ]
+}

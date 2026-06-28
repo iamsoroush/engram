@@ -304,7 +304,7 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
         for part in (
             configured_prompt if configured_prompt and configured_prompt != "Transcribe this audio." else None,
             (
-                f"You are transcribing and extracting clinical identity details for Memara, a clinical memory system. The clinical setting is a {label}. "
+                f"You are transcribing and extracting clinical identity details for Engram, a clinical memory system. The clinical setting is a {label}. "
                 "The audio may be Persian/Farsi, English, or mixed. Preserve the transcript faithfully, including clinically relevant filler words when useful. "
                 f"{language_directive} "
                 "Keep names inside the transcript exactly as spoken (original script); provide a readable English transliteration ONLY in standardized_display_name (with alternates in alternate_transliterations) — do not let that transliteration change the transcript text. "
@@ -529,7 +529,7 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
     findings_hint = f" (e.g. {', '.join(caption_findings)})" if caption_findings else ""
     return "\n\n".join(
         (
-            f"You describe photos for Memara, a clinical memory system, turning each photo into a faithful "
+            f"You describe photos for Engram, a clinical memory system, turning each photo into a faithful "
             f"text description that can stand in for the image in later processing. The setting is a {label}. "
             "You are an OBJECTIVE describer, not a diagnostician.",
             (
@@ -1620,6 +1620,15 @@ def report_synthesis_json_schema() -> dict[str, Any]:
         },
         "required": ["templateId", "status"],
     }
+    safety_flag = {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "enum": ["allergy", "contraindication", "consent"]},
+            "text": {"type": "string"},
+            "sourceCaptureIds": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["kind", "text"],
+    }
     return {
         "type": "object",
         "properties": {
@@ -1629,8 +1638,17 @@ def report_synthesis_json_schema() -> dict[str, Any]:
             "treatments": {"type": "array", "items": treatment},
             "uncertainties": {"type": "array", "items": {"type": "string"}},
             "aftercareSelections": {"type": "array", "items": aftercare_selection},
+            "safetyFlags": {"type": "array", "items": safety_flag},
         },
-        "required": ["summary", "language", "sections", "treatments", "uncertainties", "aftercareSelections"],
+        "required": [
+            "summary",
+            "language",
+            "sections",
+            "treatments",
+            "uncertainties",
+            "aftercareSelections",
+            "safetyFlags",
+        ],
     }
 
 
@@ -1655,12 +1673,12 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
     section_lines = "; ".join(f"{section_id} ({title})" for section_id, title in SYNTHESIS_SECTIONS)
     return "\n\n".join(
         (
-            f"You are Memara, synthesizing ONE per-visit clinical report and extracting the performed "
+            f"You are Engram, synthesizing ONE per-visit clinical report and extracting the performed "
             f"treatments for a {label}. Work only from the provided captures (audio transcripts, photo "
             f"captions, and raw text notes) and the prior visit context. Invent nothing.",
             (
                 "Produce a strict JSON object with EXACTLY these keys: summary, language, sections, "
-                "treatments, uncertainties, aftercareSelections.\n"
+                "treatments, uncertainties, aftercareSelections, safetyFlags.\n"
                 f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
                 "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
                 "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
@@ -1731,6 +1749,28 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
                 "protocol entirely. note = one short sentence in the report language saying so.\n"
                 "Prefer the clinician's dictated aftercare over a fixed protocol whenever they differ; never "
                 "silently include a protocol that contradicts what the clinician said."
+            ),
+            (
+                "SAFETY FLAGS (highest priority — surface, never gate): scan EVERY capture for any ALLERGY, "
+                "CONTRAINDICATION, or CONSENT statement actually made this visit, and return one entry per "
+                "distinct mention in `safetyFlags` [{kind, text, sourceCaptureIds}].\n"
+                "- kind='allergy': a stated allergy or prior adverse reaction (e.g. «به لیدوکائین حساسیت "
+                "داره», «آلرژی به پنی‌سیلین»).\n"
+                "- kind='contraindication': a stated reason to avoid or use caution with a treatment — "
+                "pregnancy/breastfeeding, anticoagulants, active infection at the site, recent isotretinoin, "
+                "autoimmune or keloid history, a drug interaction the clinician flags.\n"
+                "- kind='consent': a statement about informed consent for a procedure — given, declined, "
+                "withdrawn, or still pending/required (e.g. «رضایت‌نامه امضا شد», «هنوز رضایت نگرفتیم»).\n"
+                "- text: ONE short clinical sentence, in the REPORT LANGUAGE using its native script, stating "
+                "exactly what the capture says (quote the clinician's own words where possible). NEVER "
+                "translate, soften, or generalize the clinical content.\n"
+                "- GROUNDING: flag ONLY what a capture EXPLICITLY states. Invent nothing; never infer an "
+                "allergy or contraindication from the treatment itself, and NEVER emit a negative/absence "
+                "statement (no «no known allergies», no «مشکلی نداشت»). Set sourceCaptureIds to the "
+                "captureId(s) that state it.\n"
+                "- Safety errs toward INCLUSION: when a statement plausibly reads as an allergy / "
+                "contraindication / consent concern, include it — the clinician removes a wrong one. Return "
+                "[] only when no capture states any such thing."
             ),
             (
                 "uncertainties: a list of short human-readable sentences for anything a clinician should "
@@ -1852,6 +1892,7 @@ def parse_session_synthesis_output(
         "sourceReferences": source_references,
         "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
         "aftercareSelections": _clean_aftercare_selections(parsed.get("aftercareSelections")),
+        "safetyFlags": _clean_safety_flags(parsed.get("safetyFlags")),
         "generatedBy": "ai-engine",
         "generatedAt": utc_now().isoformat(),
     }
@@ -1876,6 +1917,38 @@ def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
             {"templateId": template_id, "status": status, "note": note if isinstance(note, str) and note.strip() else None}
         )
     return selections
+
+
+def _clean_safety_flags(raw: Any) -> list[dict[str, Any]]:
+    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds} items.
+
+    Safety errs toward inclusion (opt-out): a flag the model surfaced is kept — the clinician removes a
+    wrong one downstream. We only drop items that are structurally unusable (unknown kind, empty text).
+    ``text`` is clinical content in the report language and is never translated.
+    """
+    flags: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return flags
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        text = item.get("text")
+        if kind not in {"allergy", "contraindication", "consent"}:
+            continue
+        if not isinstance(text, str) or not text.strip():
+            continue
+        source_ids = item.get("sourceCaptureIds")
+        flags.append(
+            {
+                "kind": kind,
+                "text": text.strip(),
+                "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)]
+                if isinstance(source_ids, list)
+                else [],
+            }
+        )
+    return flags
 
 
 def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -1952,6 +2025,10 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
         "uncertainties": synthesis["uncertainties"],
         # The model's intelligent aftercare matches (which clinic protocols apply + dictation conflicts).
         "aftercare_selections": synthesis.get("aftercareSelections", []),
+        # Session-level safety flags (allergy/contraindication/consent) detected from the captures.
+        # Auto-kept (opt-out): the clinician rejects a wrong one; the backend persists the rest to the
+        # patient so they surface cross-visit. Clinical text stays in the report language (never translated).
+        "safety_flags": synthesis.get("safetyFlags", []),
         "processing_status": {
             "state": "complete",
             "label": "Complete",
@@ -2014,7 +2091,7 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     )
     return "\n\n".join(
         (
-            "You are Memara, a calm clinical assistant that maintains a patient's longitudinal memory. "
+            "You are Engram, a calm clinical assistant that maintains a patient's longitudinal memory. "
             f"The clinical setting is a {label}.",
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
@@ -2152,7 +2229,7 @@ def qa_draft_prompt(payload: dict[str, Any]) -> str:
     qa = payload.get("qaDraft") if isinstance(payload.get("qaDraft"), dict) else {}
     return "\n\n".join(
         (
-            "You are Memara, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
+            "You are Engram, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
             "between-visits question. The doctor will review and edit before sending.",
             (
                 "Write a warm, concise reply (2-4 sentences) in the patient's voice-appropriate register. "
@@ -2241,7 +2318,7 @@ def qa_revise_prompt(payload: dict[str, Any]) -> str:
     qa = payload.get("qaRevise") if isinstance(payload.get("qaRevise"), dict) else {}
     return "\n\n".join(
         (
-            "You are Memara, helping an aesthetics-clinic doctor edit a reply to a patient's question "
+            "You are Engram, helping an aesthetics-clinic doctor edit a reply to a patient's question "
             "using a voice note they just recorded. The doctor reviews and approves before sending.",
             (
                 "Decide from the VOICE NOTE whether the doctor is REVISING the current draft (e.g. "

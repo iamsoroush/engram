@@ -86,7 +86,7 @@ class PublicThreadWithholdingTests(unittest.TestCase):
     def test_projection_shape_and_statuses(self):
         messages, doctor_id = self._thread_messages()
         payload = _public_thread_projection(
-            clinic_name="Memara Demo Clinic",
+            clinic_name="Engram Demo Clinic",
             patient_name="Sara N.",
             messages=messages,
             doctor_names={doctor_id: "Dr. Demo"},

@@ -4,8 +4,18 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, FastAPI, File, Form, Header, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required
-from app.auth.service import dev_login, login, logout, me_response, refresh, update_tenant_settings
+from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff_or_admin_required, staff_required, tenant_admin_required
+from app.auth.service import (
+    dev_login,
+    login,
+    logout,
+    me_response,
+    refresh,
+    register,
+    set_tenant_plan,
+    switch_tenant,
+    update_tenant_settings,
+)
 from app.config import settings
 from app.observability import init_sentry, instrument
 from app.observability.metrics import record_ai_job
@@ -36,7 +46,19 @@ from app.schemas.api import (
     WorklistEntryCreate,
     WorklistEntryResolve,
 )
-from app.schemas.auth import DevLoginRequest, LoginRequest, LogoutRequest, RefreshRequest, TenantSettingsUpdate
+from app.schemas.auth import (
+    DevLoginRequest,
+    LoginRequest,
+    LogoutRequest,
+    MemberCreateRequest,
+    MemberUpdateRequest,
+    PlanUpdateRequest,
+    RefreshRequest,
+    RegisterRequest,
+    SwitchTenantRequest,
+    TenantSettingsUpdate,
+)
+from app.services.team import create_team_member, list_team_members, update_team_member
 from app.services.ai_model_config import ai_model_settings_payload, set_ai_model_overrides
 from app.services.ai_jobs import (
     complete_worker_job,
@@ -90,6 +112,7 @@ from app.services.sessions import (
     assign_session_patient,
     confirm_carried_forward_dose,
     set_aftercare_dismissed,
+    set_safety_flag_rejected,
     create_session,
     get_session,
     list_session_artifacts,
@@ -230,7 +253,7 @@ def internal_ai_job_complete(
 ) -> dict[str, Any]:
     """Persist successful AI processing output from the worker."""
     result = complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
-    # AI-job outcome metric (notari_ai_jobs_total): completion is always a terminal success.
+    # AI-job outcome metric (engram_ai_jobs_total): completion is always a terminal success.
     record_ai_job("succeeded")
     return result
 
@@ -277,7 +300,7 @@ def internal_ai_job_fail(
         retry_count=request.retry_count,
         retry_reason=request.retry_reason,
     )
-    # AI-job outcome metric (notari_ai_jobs_total): count a failure only when the job is now
+    # AI-job outcome metric (engram_ai_jobs_total): count a failure only when the job is now
     # terminal. fail_worker_job may instead schedule a durable retry (status stays failed but
     # retryable) — that is a transient attempt, not a terminal failure, so it must not inflate the
     # failure rate the AIJobFailureRate alert watches.
@@ -316,10 +339,33 @@ def auth_login(request: LoginRequest, db: Session = Depends(get_db)) -> Any:
     return login(db, request.email, request.password, request.tenant_id)
 
 
+@api_v1.post("/auth/register", status_code=201)
+def auth_register(request: RegisterRequest, db: Session = Depends(get_db)) -> Any:
+    """Self-serve clinic sign-up: create a tenant + its founding owner user and return credentials."""
+    return register(
+        db,
+        clinic_name=request.clinicName,
+        full_name=request.fullName,
+        email=request.email,
+        password=request.password,
+        app_language=request.appLanguage,
+    )
+
+
 @api_v1.post("/auth/refresh")
 def auth_refresh(request: RefreshRequest, db: Session = Depends(get_db)) -> Any:
     """Exchange a valid refresh token for a new access token."""
     return refresh(db, request.refresh_token)
+
+
+@api_v1.post("/auth/switch-tenant")
+def auth_switch_tenant(
+    request: SwitchTenantRequest,
+    principal: CurrentPrincipal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Re-issue a session for another clinic the signed-in user belongs to (multi-clinic switch)."""
+    return switch_tenant(db, principal, tenant_id=request.tenant_id)
 
 
 @api_v1.post("/auth/logout")
@@ -562,6 +608,18 @@ def set_aftercare_dismissal_route(
     return set_aftercare_dismissed(db, principal, session_id, templateId, dismissed)
 
 
+@api_v1.post("/sessions/{session_id}/safety-flag-rejection")
+def set_safety_flag_rejection_route(
+    session_id: str,
+    flagKey: str = Body(..., embed=True),
+    rejected: bool = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Reject (or re-accept) an auto-kept session safety flag (allergy/contraindication/consent)."""
+    return set_safety_flag_rejected(db, principal, session_id, flagKey, rejected)
+
+
 @api_v1.post("/sessions/{session_id}/save")
 def save_session_route(
     session_id: str,
@@ -716,6 +774,48 @@ def clinic_members_route(
 ) -> dict[str, Any]:
     """List the clinic's active staff members (for the worklist line-up picker; AES-903)."""
     return list_clinic_members(db, principal)
+
+
+@api_v1.get("/clinic/team")
+def team_list_route(
+    principal: CurrentPrincipal = Depends(tenant_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """List all clinic members (any status) for the Team management screen (owner/admin only)."""
+    return list_team_members(db, principal)
+
+
+@api_v1.post("/clinic/team", status_code=201)
+def team_create_route(
+    request: MemberCreateRequest,
+    principal: CurrentPrincipal = Depends(tenant_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Add a clinic member (creates the user + active membership) with a temp password (owner/admin)."""
+    return create_team_member(
+        db, principal, full_name=request.fullName, email=request.email, password=request.password, role=request.role
+    )
+
+
+@api_v1.patch("/clinic/team/{user_id}")
+def team_update_route(
+    user_id: str,
+    request: MemberUpdateRequest,
+    principal: CurrentPrincipal = Depends(tenant_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Change a member's role and/or status (owner/admin; the owner + your own row are protected)."""
+    return update_team_member(db, principal, user_id=user_id, role=request.role, status_value=request.status)
+
+
+@api_v1.patch("/clinic/plan")
+def clinic_plan_route(
+    request: PlanUpdateRequest,
+    principal: CurrentPrincipal = Depends(tenant_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Switch the clinic plan/tier (basic | pro) — owner/admin, no payment. Returns the tenant profile."""
+    return set_tenant_plan(db, principal, tier=request.tier)
 
 
 @api_v1.get("/worklist")
@@ -1041,3 +1141,8 @@ from app.qa_api import qa_api, qa_internal_api  # noqa: E402
 
 app.include_router(qa_api)
 app.include_router(qa_internal_api)
+
+# AI-quality feedback harvester (eval golden-set; eval-epic §1b). Self-contained router.
+from app.feedback_api import feedback_api  # noqa: E402
+
+app.include_router(feedback_api)

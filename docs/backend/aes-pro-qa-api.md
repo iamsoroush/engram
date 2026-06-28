@@ -121,7 +121,7 @@ The reply-draft model is selectable like every other task via `PUT /ai-config/mo
   "schemaVersion": "2026-06-13.patient-qa.v1",
   "payloadType": "post_session_qa",
   "status": "active",
-  "clinic": { "name": "Memara Demo Clinic" },
+  "clinic": { "name": "Engram Demo Clinic" },
   "patientName": "Sara N.",
   "exchanges": [
     {

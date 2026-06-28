@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# dev-stack.sh — run an isolated Notari app stack for the current checkout.
+# dev-stack.sh — run an isolated Engram app stack for the current checkout.
 #
 # Shared Postgres + MinIO (docker-compose.shared-infra.yml) are started once and
-# reused. Each git worktree gets its own database (cloned from the canonical `notari`
-# DB) and its own bucket (mirrored from `notari-captures`), plus its own backend /
+# reused. Each git worktree gets its own database (cloned from the canonical `engram`
+# DB) and its own bucket (mirrored from `engram-captures`), plus its own backend /
 # ai-engine / frontend / redis containers on unique host ports. The main checkout runs
-# the canonical stack (database `notari`, the clone source for every worktree).
+# the canonical stack (database `engram`, the clone source for every worktree).
 #
 # Usage (run from inside the checkout you want to launch — main repo or a worktree):
 #   scripts/dev-stack.sh up            # provision + start this stack
@@ -29,25 +29,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-INFRA_PROJECT="notari-infra"
+INFRA_PROJECT="engram-infra"
 INFRA_FILE="$MAIN_ROOT/docker-compose.shared-infra.yml"
 APP_FILE="$MAIN_ROOT/docker-compose.app.yml"
 
-PGUSER="${POSTGRES_USER:-notari}"
+PGUSER="${POSTGRES_USER:-engram}"
 # MUST match the shared infra MinIO's actual root credentials (docker-compose.shared-infra.yml /
-# the running notari-infra-minio volume). These are used both to provision each stack's bucket
+# the running engram-infra-minio volume). These are used both to provision each stack's bucket
 # (ensure_bucket) and to pin the app's object-storage keys (ensure_env); a mismatch fails uploads
 # with InvalidAccessKeyId — a capture stuck "trying to sync".
-MINIO_USER="${MINIO_ROOT_USER:-notari-dev}"
-MINIO_PASS="${MINIO_ROOT_PASSWORD:-notari-dev-secret}"
+MINIO_USER="${MINIO_ROOT_USER:-engram-dev}"
+MINIO_PASS="${MINIO_ROOT_PASSWORD:-engram-dev-secret}"
 
-CANONICAL_DB="notari"
-CANONICAL_BUCKET="notari-captures"
+CANONICAL_DB="engram"
+CANONICAL_BUCKET="engram-captures"
 
 # Target checkout = git toplevel of the current directory.
 WT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$WT" ]]; then
-  echo "error: run this from inside the Notari git checkout you want to launch." >&2
+  echo "error: run this from inside the Engram git checkout you want to launch." >&2
   exit 1
 fi
 
@@ -59,20 +59,20 @@ if [[ "$GIT_DIR" == "$GIT_COMMON" ]]; then
   SLUG="main"
   STACK_DB="$CANONICAL_DB"
   STACK_BUCKET="$CANONICAL_BUCKET"
-  PROJECT="notari-main"
+  PROJECT="engram-main"
 else
   IS_WORKTREE=1
   BRANCH="$(cd "$WT" && git rev-parse --abbrev-ref HEAD)"
   SLUG="$(printf '%s' "$BRANCH" | tr '[:upper:]/' '[:lower:]_' | tr -cd 'a-z0-9_' | cut -c1-24)"
   [[ -n "$SLUG" ]] || SLUG="$(basename "$WT" | tr -cd 'a-z0-9_')"
-  STACK_DB="notari_${SLUG}"
+  STACK_DB="engram_${SLUG}"
   # MinIO/S3 bucket names forbid underscores and must end alphanumeric. The slug keeps
   # underscores (valid for the DB name and Compose project), so hyphenate a copy for the
   # bucket and trim any trailing hyphen. Otherwise branches like `feature/x` produce an
   # invalid bucket name that `mc mb` silently rejects (data then has nowhere to go).
   BUCKET_SLUG="$(printf '%s' "$SLUG" | tr '_' '-' | sed 's/-*$//')"
-  STACK_BUCKET="notari-captures-${BUCKET_SLUG}"
-  PROJECT="notari_${SLUG}"
+  STACK_BUCKET="engram-captures-${BUCKET_SLUG}"
+  PROJECT="engram_${SLUG}"
 fi
 
 ENV_FILE="$WT/.env"
@@ -211,7 +211,7 @@ ensure_env() {
   set_env_var "$ENV_FILE" BACKEND_CORS_ORIGINS "[\"http://localhost:${fport}\"]"
   # Keep .env consistent with the per-stack DB/bucket (override any value copied from
   # .env.example). Compose derives the DB from STACK_DB regardless; these are for clarity.
-  set_env_var "$ENV_FILE" BACKEND_DATABASE_URL "postgresql+psycopg://notari:notari@postgres:5432/${STACK_DB}"
+  set_env_var "$ENV_FILE" BACKEND_DATABASE_URL "postgresql+psycopg://engram:engram@postgres:5432/${STACK_DB}"
   set_env_var "$ENV_FILE" BACKEND_OBJECT_STORAGE_BUCKET "$STACK_BUCKET"
   # Object storage MUST point at the shared infra MinIO with its real credentials. A worktree's .env
   # (copied from .env.example) can carry stale keys that don't match the shared MinIO, which fails

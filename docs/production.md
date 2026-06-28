@@ -89,12 +89,12 @@ For local LAN testing over HTTP, audio capture may fall back to file input.
 Backend:
 
 ```sh
-BACKEND_APP_NAME=Notari API
-BACKEND_CORS_ORIGINS=["https://notari.example.com"]
+BACKEND_APP_NAME=Engram API
+BACKEND_CORS_ORIGINS=["https://engram.example.com"]
 BACKEND_AUTH_MODE=production
 BACKEND_DATABASE_URL=postgresql+psycopg://...
 BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
+BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
 BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
 BACKEND_OBJECT_STORAGE_SECRET_KEY=...
 BACKEND_OBJECT_STORAGE_SECURE=true
@@ -250,26 +250,26 @@ is set, optionally copies the dump **off-box** + mirrors MinIO media, and prunes
 
 **One-time off-box setup** (offsite durability — do this; a local-only backup dies with the box):
 
-1. In the **ArvanCloud dashboard**, create an Object Storage bucket (e.g. `notari-backups`) + an access key.
+1. In the **ArvanCloud dashboard**, create an Object Storage bucket (e.g. `engram-backups`) + an access key.
 2. On the VPS, install `mc` (MinIO client) and add the alias:
    ```sh
    mc alias set offsite https://<arvan-s3-endpoint> <access-key> <secret-key>
    ```
-3. In `.env.prod`: `OFFSITE_ALIAS=offsite` and `OFFSITE_BUCKET=notari-backups`.
+3. In `.env.prod`: `OFFSITE_ALIAS=offsite` and `OFFSITE_BUCKET=engram-backups`.
 
 **Schedule** (cron, nightly):
 
 ```sh
-0 2 * * *  cd /srv/notari && scripts/backup.sh >> /var/log/notari-backup.log 2>&1
+0 2 * * *  cd /srv/engram && scripts/backup.sh >> /var/log/engram-backup.log 2>&1
 ```
 
 **Restore** (DESTRUCTIVE — overwrites the DB; cleanest into a fresh, empty DB):
 
 ```sh
-scripts/restore.sh /var/backups/notari/pg-YYYYMMDD-HHMMSS.sql.gz
+scripts/restore.sh /var/backups/engram/pg-YYYYMMDD-HHMMSS.sql.gz
 ```
 
 **Rehearse restores regularly** (e.g. monthly): load the latest dump into a scratch/staging database
 and verify the data + app work — an untested backup is not a backup. Note: `restore.sh` covers
 **Postgres only**; recover MinIO media by re-mirroring from the off-box copy
-(`mc mirror offsite/notari-backups/media local/notari-captures`).
+(`mc mirror offsite/engram-backups/media local/engram-captures`).

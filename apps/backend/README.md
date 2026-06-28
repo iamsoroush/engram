@@ -1,6 +1,6 @@
 # Backend
 
-FastAPI API server for Notari, the platform behind Memara (clinical memory for aesthetics and therapy clinics).
+FastAPI API server for Engram, the platform behind Engram (clinical memory for aesthetics and therapy clinics).
 
 ## Runtime
 
@@ -82,13 +82,13 @@ Backend settings use the `BACKEND_` prefix.
 Common variables:
 
 ```sh
-BACKEND_APP_NAME=Notari API
+BACKEND_APP_NAME=Engram API
 BACKEND_CORS_ORIGINS=["http://localhost:5183"]
 BACKEND_AUTH_MODE=dev
 BACKEND_JWT_SECRET=dev-only-change-me
-BACKEND_DATABASE_URL=postgresql+psycopg://notari:notari@postgres:5432/notari
+BACKEND_DATABASE_URL=postgresql+psycopg://engram:engram@postgres:5432/engram
 BACKEND_OBJECT_STORAGE_ENDPOINT=http://minio:9000
-BACKEND_OBJECT_STORAGE_BUCKET=notari-captures
+BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
 BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
 BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
 BACKEND_AI_JOB_MAX_RETRIES=3

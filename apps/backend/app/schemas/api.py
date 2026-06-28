@@ -154,6 +154,8 @@ class PatientMemoryDetailResponse(BaseModel):
     # Pro line-up projection (storySoFar/rightNow/flags/hero/sinceLastVisit/status). Built by the
     # service; passthrough dict so the session context card can surface the curated brief.
     lineupCard: dict[str, Any] | None = None
+    # Cross-visit clinical safety flags (allergy/contraindication/consent): [{key, kind, text}].
+    safetyFlags: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AiModelConfigUpdate(BaseModel):
@@ -232,6 +234,28 @@ class AssignPatientRequest(BaseModel):
     # `Suggested: reassign` so the assignment is attributed to that capture (its suggestion chip
     # clears), and the prior basis capture becomes a switchable alternate.
     basis_capture_id: str | None = Field(default=None, alias="basisCaptureId")
+
+    model_config = {"populate_by_name": True}
+
+
+class FeedbackCreate(BaseModel):
+    """A client-supplied AI-quality signal — the report/brief thumbs rating (eval-epic §1b).
+
+    Staff corrections of transcript/caption/treatment/patient-match are harvested server-side; this
+    endpoint carries the lightweight rating (``kind="rating"``, ``rating`` = +1/-1) and any other
+    client signal. ``context`` is PII-scrubbed before it is stored.
+    """
+
+    kind: str | None = "rating"
+    ai_output_type: str | None = Field(default="report", alias="aiOutputType")
+    before: str | None = None
+    after: str | None = None
+    rating: int | None = None
+    comment: str | None = None
+    session_id: str | None = Field(default=None, alias="sessionId")
+    capture_id: str | None = Field(default=None, alias="captureId")
+    patient_id: str | None = Field(default=None, alias="patientId")
+    context: dict[str, Any] | None = None
 
     model_config = {"populate_by_name": True}
 

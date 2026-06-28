@@ -14,4 +14,4 @@ RUN pip install --no-cache-dir -r /tmp/ai-engine-requirements.txt
 
 COPY ai_engine /app
 
-CMD ["celery", "-A", "ai_engine.celery_app.celery_app", "worker", "--loglevel=INFO", "--queues=ai_jobs", "--beat", "--schedule=/tmp/notari-celerybeat-schedule"]
+CMD ["celery", "-A", "ai_engine.celery_app.celery_app", "worker", "--loglevel=INFO", "--queues=ai_jobs", "--beat", "--schedule=/tmp/engram-celerybeat-schedule"]

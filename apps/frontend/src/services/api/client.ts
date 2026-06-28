@@ -25,6 +25,8 @@ import type {
   Persona,
   ClinicMember,
   RolePermissions,
+  SafetyFlag,
+  SafetyFlagKind,
   SessionContext,
   SmartPatientSearchResponse,
   WorklistEntry,
@@ -34,6 +36,24 @@ import type { Attribution, CaptureItem, CaptureSession, StructuredPatientInforma
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
+
+/**
+ * An HTTP error that carries the response status, so callers can distinguish a "the resource is
+ * gone" 404 (self-heal: clear the stale reference) from a transient/network error (retry/queue).
+ */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** True when an error is a 404 — the referenced patient/session no longer exists (deleted/merged). */
+export function isNotFoundError(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
 
 export async function loginWithPersona(persona: Persona, tier: DevTier = "pro") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
@@ -52,6 +72,40 @@ export async function loginWithPassword(email: string, password: string) {
     body: JSON.stringify({ email, password }),
   });
   if (!response.ok) throw new Error("Login failed");
+  return (await response.json()) as AuthSession;
+}
+
+export interface RegisterClinicInput {
+  clinicName: string;
+  fullName: string;
+  email: string;
+  password: string;
+  appLanguage: string;
+}
+
+/** Self-serve clinic sign-up. Throws an Error tagged with `.status` so the form can map 409/422. */
+export async function registerClinic(input: RegisterClinicInput) {
+  const response = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = new Error("Registration failed") as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+  return (await response.json()) as AuthSession;
+}
+
+/** Switch the signed-in user's active clinic (re-issues a session for another of their tenants). */
+export async function switchTenant(apiFetch: ApiFetch, tenantId: string) {
+  const response = await apiFetch(`${API_BASE}/auth/switch-tenant`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tenantId }),
+  });
+  if (!response.ok) throw new Error("Could not switch clinic");
   return (await response.json()) as AuthSession;
 }
 
@@ -307,6 +361,23 @@ export async function fetchLastVisit(apiFetch: ApiFetch, patientId: string, excl
   return normalizeLastVisit((await response.json()) as Record<string, unknown>, patientId);
 }
 
+const SAFETY_FLAG_KINDS: SafetyFlagKind[] = ["allergy", "contraindication", "consent"];
+
+/** Cross-visit patient safety flags ({key, kind, text}) from the session-context / memory payloads. */
+function normalizeSafetyFlags(raw: unknown): SafetyFlag[] {
+  if (!Array.isArray(raw)) return [];
+  const flags: SafetyFlag[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const kind = String(record.kind || "");
+    const text = String(record.text || "");
+    if (!text || !SAFETY_FLAG_KINDS.includes(kind as SafetyFlagKind)) continue;
+    flags.push({ key: String(record.key || `${kind}|${text.trim().toLowerCase().replace(/\s+/g, " ")}`), kind: kind as SafetyFlagKind, text });
+  }
+  return flags;
+}
+
 export async function fetchSessionContext(apiFetch: ApiFetch, patientId: string, excludeSessionId?: string): Promise<SessionContext> {
   const params = new URLSearchParams();
   if (excludeSessionId) params.set("excludeSessionId", excludeSessionId);
@@ -331,7 +402,19 @@ export async function fetchSessionContext(apiFetch: ApiFetch, patientId: string,
     totalPriorVisits: numberValue(payload.totalPriorVisits, 0),
     visitOrdinal: numberValue(payload.visitOrdinal, 1),
     keyFacts: stringOrNull(payload.keyFacts),
+    safetyFlags: normalizeSafetyFlags(payload.safetyFlags),
   };
+}
+
+/** Reject (×) — or re-accept — an auto-kept session safety flag (opt-out). Returns the updated session. */
+export async function rejectSafetyFlag(apiFetch: ApiFetch, sessionId: string, flagKey: string, rejected = true) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/safety-flag-rejection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ flagKey, rejected }),
+  });
+  if (!response.ok) throw new Error("Could not update safety flag");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
 function normalizeAftercareTemplate(raw: Record<string, unknown>): AftercareTemplate {
@@ -517,6 +600,7 @@ export async function fetchPatientMemoryDetail(apiFetch: ApiFetch, patientId: st
       payload.lineupCard && typeof payload.lineupCard === "object"
         ? normalizeLineupCard(payload.lineupCard as Record<string, unknown>)
         : null,
+    safetyFlags: normalizeSafetyFlags(payload.safetyFlags),
   };
 }
 
@@ -613,6 +697,7 @@ export async function updateAiModels(apiFetch: ApiFetch, models: Record<string, 
 export async function updateTenantSettings(
   apiFetch: ApiFetch,
   settings: {
+    appLanguage?: string;
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
@@ -630,11 +715,77 @@ export async function updateTenantSettings(
     id: string;
     name: string;
     tier?: string;
+    appLanguage?: string;
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
     rolePermissions?: RolePermissions;
   };
+}
+
+export interface TeamMember {
+  userId: string;
+  displayName: string;
+  email: string;
+  role: string;
+  status: string;
+  isSelf: boolean;
+  isOwner: boolean;
+}
+
+export interface CreateMemberInput {
+  fullName: string;
+  email: string;
+  // Required for a brand-new person; omit for an existing Engram account (added across clinics).
+  password?: string;
+  role: string;
+}
+
+export async function fetchTeamMembers(apiFetch: ApiFetch): Promise<TeamMember[]> {
+  const response = await apiFetch(`${API_BASE}/clinic/team`);
+  if (!response.ok) throw new Error("Could not load members");
+  return ((await response.json()) as { items: TeamMember[] }).items;
+}
+
+/** Create or attach a clinic member (`created` is false when an existing account was added across
+ * clinics). Throws an Error tagged with `.status` so the form can map 409/422. */
+export async function createTeamMember(apiFetch: ApiFetch, input: CreateMemberInput): Promise<TeamMember & { created: boolean }> {
+  const response = await apiFetch(`${API_BASE}/clinic/team`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error = new Error("Could not add member") as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
+  return (await response.json()) as TeamMember & { created: boolean };
+}
+
+/** Switch the clinic plan/tier (basic | pro). Returns the updated tenant profile. */
+export async function setClinicPlan(apiFetch: ApiFetch, tier: string): Promise<{ tier: string }> {
+  const response = await apiFetch(`${API_BASE}/clinic/plan`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier }),
+  });
+  if (!response.ok) throw new Error("Could not change plan");
+  return (await response.json()) as { tier: string };
+}
+
+export async function updateTeamMember(
+  apiFetch: ApiFetch,
+  userId: string,
+  patch: { role?: string; status?: string },
+): Promise<TeamMember> {
+  const response = await apiFetch(`${API_BASE}/clinic/team/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) throw new Error("Could not update member");
+  return (await response.json()) as TeamMember;
 }
 
 // --- E9 multi-seat: clinic directory + worklist (AES-903) ---
@@ -779,7 +930,7 @@ export async function updatePatient(apiFetch: ApiFetch, patientId: string, draft
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error("Could not update patient");
+  if (!response.ok) throw new ApiError("Could not update patient", response.status);
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
 }
 
@@ -798,7 +949,31 @@ export async function verifyAiPatientCreation(apiFetch: ApiFetch, sessionId: str
       },
     }),
   });
-  if (!response.ok) throw new Error("Could not verify patient creation");
+  if (!response.ok) throw new ApiError("Could not verify patient creation", response.status);
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/**
+ * Dismiss a stuck AI-created-patient "verify" panel by neutralizing the session's `ai_patient_action`
+ * (needsVerification → false). Used by the stale-client self-heal when the referenced patient was
+ * deleted/merged out from under the panel — so it stops asking the staff to verify a dead record.
+ */
+export async function dismissAiPatientAction(apiFetch: ApiFetch, sessionId: string, reason = "patient-unavailable") {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      extractedMetadata: {
+        ai_patient_action: {
+          status: "stale",
+          needsVerification: false,
+          dismissedReason: reason,
+          dismissedAt: new Date().toISOString(),
+        },
+      },
+    }),
+  });
+  if (!response.ok) throw new ApiError("Could not dismiss AI patient action", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -810,7 +985,7 @@ export async function assignSessionPatient(apiFetch: ApiFetch, sessionId: string
     headers,
     body: JSON.stringify({ patientId, source: "staff", reason: "Lightweight assignment", basisCaptureId }),
   });
-  if (!response.ok) throw new Error("Could not assign patient");
+  if (!response.ok) throw new ApiError("Could not assign patient", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -822,7 +997,7 @@ export async function unassignSessionPatient(apiFetch: ApiFetch, sessionId: stri
     headers,
     body: JSON.stringify({ patientId: null, source: "staff", reason: "Unassigned by staff" }),
   });
-  if (!response.ok) throw new Error("Could not unassign patient");
+  if (!response.ok) throw new ApiError("Could not unassign patient", response.status);
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
@@ -901,6 +1076,44 @@ export async function updateCaptureTranscript(apiFetch: ApiFetch, captureId: str
   });
   if (!response.ok) throw new Error("Could not update capture transcript");
   return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+/** Fetch one capture by id (for opening a citation's source capture that isn't in the loaded set). */
+export async function fetchCapture(apiFetch: ApiFetch, captureId: string): Promise<CaptureItem | null> {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}`);
+  if (!response.ok) return null;
+  return normalizeApiCaptureItem((await response.json()) as Record<string, unknown>);
+}
+
+export type FeedbackInput = {
+  kind?: "rating" | "correction" | "confirmation";
+  aiOutputType?: "report" | "brief" | "transcript" | "caption" | "treatment" | "patient_match";
+  rating?: number;
+  comment?: string;
+  before?: string;
+  after?: string;
+  sessionId?: string;
+  captureId?: string;
+  patientId?: string;
+  context?: Record<string, unknown>;
+};
+
+/**
+ * Send an AI-quality signal (eval golden-set harvester; eval-epic §1b). Fire-and-forget: a rating is
+ * a nice-to-have, never part of the clinical flow, so failures are swallowed and never surfaced.
+ * Staff *corrections* (transcript/caption/treatment/patient-match) are harvested server-side; this is
+ * the lightweight report/brief thumbs rating.
+ */
+export async function postFeedback(apiFetch: ApiFetch, input: FeedbackInput): Promise<void> {
+  try {
+    await apiFetch(`${API_BASE}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    // Feedback instrumentation must never disrupt the user.
+  }
 }
 
 export async function updateCaptureNote(apiFetch: ApiFetch, captureId: string, text: string) {

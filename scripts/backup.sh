@@ -2,7 +2,7 @@
 #
 # backup.sh — production backup: Postgres dump (+ optional off-box copy and MinIO media mirror).
 # Run from the repo root ON THE PROD HOST, with the stack up and .env.prod present. Schedule via cron:
-#   0 2 * * *  cd /srv/notari && scripts/backup.sh >> /var/log/notari-backup.log 2>&1
+#   0 2 * * *  cd /srv/engram && scripts/backup.sh >> /var/log/engram-backup.log 2>&1
 #
 # Off-box copy + media mirror require `mc` (MinIO client) on the host with two aliases configured:
 #   mc alias set local    http://127.0.0.1:<minio-host-port> $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD
@@ -17,12 +17,12 @@ set -a; . ./.env.prod; set +a
 
 COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
 TS="$(date -u +%Y%m%d-%H%M%S)"
-DIR="${BACKUP_DIR:-/var/backups/notari}"
+DIR="${BACKUP_DIR:-/var/backups/engram}"
 mkdir -p "$DIR"
 DUMP="$DIR/pg-${TS}.sql.gz"
 
 echo "[backup] dumping Postgres -> $DUMP"
-$COMPOSE exec -T postgres pg_dump -U "${POSTGRES_USER:-notari}" "${POSTGRES_DB:-notari}" | gzip > "$DUMP"
+$COMPOSE exec -T postgres pg_dump -U "${POSTGRES_USER:-engram}" "${POSTGRES_DB:-engram}" | gzip > "$DUMP"
 test -s "$DUMP" || { echo "[backup] ERROR: empty dump" >&2; exit 1; }
 
 # Encrypt at rest (recommended) so an off-box / provider breach yields ciphertext, not patient data.
@@ -43,7 +43,7 @@ if [ -n "${OFFSITE_ALIAS:-}" ] && command -v mc >/dev/null; then
   # Mirror media only when using self-hosted MinIO (skip if media is already in ArvanCloud S3).
   case "${BACKEND_OBJECT_STORAGE_ENDPOINT:-}" in
     *minio*) echo "[backup] mirroring media -> ${OFFSITE_ALIAS}/${OFFSITE_BUCKET}/media"
-             mc mirror --overwrite "local/${BACKEND_OBJECT_STORAGE_BUCKET:-notari-captures}" \
+             mc mirror --overwrite "local/${BACKEND_OBJECT_STORAGE_BUCKET:-engram-captures}" \
                "${OFFSITE_ALIAS}/${OFFSITE_BUCKET}/media" || echo "[backup] WARN: media mirror failed" ;;
   esac
 else

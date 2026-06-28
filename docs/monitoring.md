@@ -183,8 +183,8 @@ backend effort should:
    `APIHighLatency` alerts.
 3. Add two custom counters for the product-critical alerts (names are referenced by
    `monitoring/prometheus/alert.rules.yml`):
-   - `notari_capture_uploads_failed_total` — increment on a failed capture upload.
-   - `notari_ai_jobs_total{status="succeeded|failed|..."}` — increment on AI-job completion
+   - `engram_capture_uploads_failed_total` — increment on a failed capture upload.
+   - `engram_ai_jobs_total{status="succeeded|failed|..."}` — increment on AI-job completion
      (backend or worker).
 
 Until then, queue depth (`redis_key_size{key="ai_jobs"}`) already gives a strong proxy for
@@ -195,7 +195,7 @@ AI-job health with no code change.
 Grafana auto-provisions on boot from `monitoring/grafana/provisioning/`:
 
 - **Datasource** — Prometheus at `http://prometheus:9090` (default).
-- **Dashboard** — *Notari — Production Overview* (`monitoring/grafana/dashboards/notari-overview.json`):
+- **Dashboard** — *Engram — Production Overview* (`monitoring/grafana/dashboards/engram-overview.json`):
   host CPU/mem/disk, per-container CPU/mem, Postgres connections + DB size, Redis memory,
   Celery `ai_jobs` queue depth, and API request-rate + p95 panels (populate once `/metrics` lands).
 
@@ -246,8 +246,8 @@ Backups (production-readiness **T3**, owned by the deploy-stack effort) should r
 freshness signal Prometheus can alert on. Recommended once T3 lands:
 
 - Have `scripts/backup.sh` write a metric to the **node-exporter textfile collector** on
-  success, e.g. `notari_last_backup_success_timestamp_seconds <epoch>`, then add an alert:
-  `time() - notari_last_backup_success_timestamp_seconds > 90000` (>25h). This needs
+  success, e.g. `engram_last_backup_success_timestamp_seconds <epoch>`, then add an alert:
+  `time() - engram_last_backup_success_timestamp_seconds > 90000` (>25h). This needs
   node-exporter's `--collector.textfile.directory` + a mounted dir — a small follow-up to wire
   with the backup effort. Until then, monitor backup freshness via Uptime Kuma push or a cron
   heartbeat check.

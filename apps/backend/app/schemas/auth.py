@@ -33,6 +33,47 @@ class LoginRequest(BaseModel):
     tenant_id: str | None = None
 
 
+class RegisterRequest(BaseModel):
+    """Self-serve clinic sign-up: creates a tenant + its founding ``owner`` user.
+
+    ``appLanguage`` is the UI language the founder signed up in (drives the new tenant's app language +
+    date calendar); validated against the supported set, defaulting to Persian (Iran-first) when omitted.
+    """
+
+    clinicName: str = Field(min_length=1, max_length=200)
+    fullName: str = Field(min_length=1, max_length=240)
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=200)
+    appLanguage: str | None = None
+
+
+class MemberCreateRequest(BaseModel):
+    """Owner/admin adds a clinic member. ``role`` is one of doctor | assistant | admin.
+
+    For a brand-new person, ``password`` is a temporary password to hand over (no email-invite infra).
+    For someone who already has a Engram account (an existing email), ``password`` is omitted — they
+    keep their credentials and are simply added to this clinic."""
+
+    fullName: str = Field(min_length=1, max_length=240)
+    email: str = Field(min_length=3, max_length=320)
+    password: str | None = Field(default=None, max_length=200)
+    role: str
+
+
+class PlanUpdateRequest(BaseModel):
+    """Owner/admin switches the clinic plan/tier (basic | pro). No payment for now."""
+
+    tier: str
+
+
+class MemberUpdateRequest(BaseModel):
+    """Change a member's role (doctor | assistant | admin) and/or status (active | disabled).
+    Only the keys provided are changed."""
+
+    role: str | None = None
+    status: str | None = None
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(alias="refreshToken")
 
@@ -75,6 +116,14 @@ class TenantProfile(BaseModel):
 class MembershipProfile(BaseModel):
     tenant_id: str = Field(alias="tenantId")
     role: str
+    # The clinic name, so a multi-clinic user can recognize + switch between their clinics.
+    tenant_name: str = Field(default="", alias="tenantName")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class SwitchTenantRequest(BaseModel):
+    tenant_id: str = Field(alias="tenantId")
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -2,7 +2,7 @@
 
 ## User Goal
 
-Keep capturing with almost no friction while Memara quietly saves, organizes, summarizes, and asks for help only when human judgment is required.
+Keep capturing with almost no friction while Engram quietly saves, organizes, summarizes, and asks for help only when human judgment is required.
 
 ## Entry Points
 

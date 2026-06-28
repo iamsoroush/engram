@@ -1,6 +1,16 @@
 import type { Screen } from "../domain/types";
 
-const SCREEN_HASHES: Screen[] = ["active-session", "patients", "qa-inbox", "search", "settings", "profile"];
+const SCREEN_HASHES: Screen[] = [
+  "active-session",
+  "patients",
+  "qa-inbox",
+  "search",
+  "settings",
+  "profile",
+  "team",
+  "plan",
+  "switch-clinic",
+];
 
 export function screenFromLocation(): Screen {
   if (typeof window === "undefined") return "active-session";

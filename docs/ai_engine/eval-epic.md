@@ -10,7 +10,7 @@ Existing pattern to copy: `eval/treatments_eval.py`, `eval/aftercare_conflict_ev
 All evals **SKIP (exit 0) without a gateway**, so they never block CI; with a gateway, non-zero on fail.
 
 ```sh
-docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
+docker exec engram-main-ai-engine-1 python /app/eval/run_all.py
 ```
 
 ---
@@ -63,6 +63,17 @@ docker exec notari-main-ai-engine-1 python /app/eval/run_all.py
   treatment/patient-match, log the before→after (PII-scrubbed) as a candidate eval case; (2) a
   lightweight **thumbs/rating** on a report/brief. This instrumentation is itself a build task (see the
   production list) — it turns every production correction into a future golden-set entry.
+  - **BUILT (2026-06-25).** `ai_feedback_events` (backend table + migration) is the harvest store; a
+    thin `POST/GET /api/v1/feedback` endpoint (`app/feedback_api.py` → `app/services/feedback.py`)
+    serves the report/brief thumbs and a tenant-scoped read for the harvester. **Corrections are emitted
+    server-side, non-bypassably**, in the existing correction transaction (like `audit`): a
+    transcript/caption edit (`services/captures.update_capture`), a treatments-array edit + a
+    carried-forward `confirmation` (`services/sessions`), and a patient-match reassignment
+    (`services/sessions.assign_session_patient`). Rows carry `kind` (`correction`/`confirmation`/
+    `rating`), `ai_output_type`, the before/after AI-output **text verbatim** (the eval target), and a
+    **PII-scrubbed** `context` (names/national-id/phone/DOB/match-evidence redacted by
+    `feedback.scrub_context`). **Harvest read:** `GET /api/v1/feedback?kind=correction&aiOutputType=transcript`
+    (newest-first) — each row is a candidate eval case; the agent authors the matcher/judge from it.
 - **Depth over breadth, transcription first.** Transcription is the foundation (garbage in → garbage
   everywhere); its failures (dose tokens ۲/۳/۲۳, confusable names معاضد/معاصد) are highest-stakes
   alongside patient-matching. Build it deep before spreading thin.

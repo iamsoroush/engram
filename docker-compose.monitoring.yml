@@ -1,5 +1,5 @@
 # =============================================================================
-# Notari — self-hosted monitoring OVERLAY
+# Engram — self-hosted monitoring OVERLAY
 #
 # Run together with the prod stack (SAME Compose project, so these services join
 # the prod default network and can scrape `backend`, `postgres`, `redis` by name):
@@ -121,7 +121,7 @@ services:
     restart: unless-stopped
     environment:
       # Reuses the app DB creds. POSTGRES_* already exist in .env.prod.
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-notari}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-notari}?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-engram}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-engram}?sslmode=disable"
     expose:
       - "9187"
     depends_on:

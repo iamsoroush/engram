@@ -1,4 +1,5 @@
 import type { CaptureDraft } from "../../../domain/appTypes";
+import { useT } from "../../../shared/i18n";
 
 export function CaptureActions({
   compact,
@@ -12,6 +13,7 @@ export function CaptureActions({
   /** Footer order encodes the tier: Basic leads with Note (audio = voice memo); Pro leads with Audio (dictate). */
   tier?: string | null;
 }) {
+  const t = useT();
   const isBasic = tier === "basic";
   // Basic (aesthetics): Note is primary, audio is a labelled voice memo. Pro: Audio-first dictation.
   const actions: Array<{
@@ -22,14 +24,14 @@ export function CaptureActions({
     icon: "audio" | "photo" | "note";
   }> = isBasic
     ? [
-        { kind: "note", label: "Note", sub: "memo", tone: "primary", icon: "note" },
-        { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
-        { kind: "audio", label: "Audio", sub: "memo", tone: "secondary", icon: "audio" },
+        { kind: "note", label: t("capturebar.note"), sub: t("capturebar.memo"), tone: "primary", icon: "note" },
+        { kind: "photo", label: t("capturebar.photo"), tone: "secondary", icon: "photo" },
+        { kind: "audio", label: t("capturebar.audio"), sub: t("capturebar.memo"), tone: "secondary", icon: "audio" },
       ]
     : [
-        { kind: "audio", label: "Record", sub: "dictate", tone: "primary", icon: "audio" },
-        { kind: "photo", label: "Photo", tone: "secondary", icon: "photo" },
-        { kind: "note", label: "Note", tone: "secondary", icon: "note" },
+        { kind: "audio", label: t("capturebar.record"), sub: t("capturebar.dictate"), tone: "primary", icon: "audio" },
+        { kind: "photo", label: t("capturebar.photo"), tone: "secondary", icon: "photo" },
+        { kind: "note", label: t("capturebar.note"), tone: "secondary", icon: "note" },
       ];
 
   const actionButtons = actions.map((action) => (
@@ -53,7 +55,10 @@ export function CaptureActions({
     return (
       <div className="capture-pills">
         {contextLabel ? <div className="capture-pills-context">{contextLabel}</div> : null}
-        <div className="capture-pills-actions">{actionButtons}</div>
+        {/* data-onboarding anchors the first-run spotlight tour to the live capture bar. */}
+        <div className="capture-pills-actions" data-onboarding="capture-bar">
+          {actionButtons}
+        </div>
       </div>
     );
   }

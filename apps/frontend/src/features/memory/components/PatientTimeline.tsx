@@ -5,6 +5,7 @@ import type { PatientMemoryDetailResponse } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Badge, Button, Card } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { attributionName } from "../../../shared/lib/multiseat";
 import { PatientPhotoGallery, type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
 import { QaChannelButton } from "../../qa/QaChannelButton";
@@ -14,6 +15,7 @@ import { ClinicalMemoryReturnContext, PatientRowModel, TimelineSessionModel, ses
 import { BackIcon, CalendarIcon, EditPatientIcon, ShareSmallIcon, ChevronIcon, InfoIcon } from "./MemoryIcons";
 import { Avatar, PatientHistoryBlock, EmptyClinicalState, TimelineCaptureChips } from "./MemoryCards";
 import { PatientIdentityEditor } from "./MemorySheets";
+import { appT } from "../../../shared/i18n";
 
 export function PatientTimelineDetail({
   activeSession,
@@ -61,9 +63,10 @@ export function PatientTimelineDetail({
   onOpenQaChannel?: (patientId: string) => Promise<QaThreadSummary>;
   onToast?: (message: string) => void;
 }) {
+  const t = useT();
   const [editingPatient, setEditingPatient] = React.useState(false);
   const localSessions = patientSessionsForDetail(patient, sessions, activeSession);
-  const timelineGroups = buildTimelineGroups(detail, localSessions);
+  const timelineGroups = buildTimelineGroups(detail, localSessions, t);
   const sessionCount = detail?.patient.sessionCount || patient.sessionCount || localSessions.length;
   const firstSeen = firstSeenLabel(detail?.sessions, localSessions);
   // AES-202 — recent visits, most-recent first, fed to the visit-grouped photo gallery (Basic).
@@ -71,46 +74,72 @@ export function PatientTimelineDetail({
     .flatMap((group) => group.sessions)
     .map((session) => ({
       sessionId: session.sessionId,
-      title: sanitizeSessionLabel(session.title) || (session.localSession ? sessionVisitTitle(session.localSession) : "Visit"),
-      dateLabel: timelineSessionTimeLabel(session, session.localSession),
+      title: sanitizeSessionLabel(session.title, t) || (session.localSession ? sessionVisitTitle(session.localSession, t) : t("timeline.visitFallbackTitle")),
+      dateLabel: timelineSessionTimeLabel(session, t, session.localSession),
     }))
     .filter((visit) => visit.sessionId);
+  // Render-only translation of the closed timeline-group enum from buildTimelineGroups
+  // (the raw value stays the Map key / sort anchor; this only localizes the heading text).
+  const groupLabelText = (label: string): string =>
+    label === "Today"
+      ? t("timeline.groupToday")
+      : label === "Earlier this week"
+        ? t("timeline.groupEarlierThisWeek")
+        : label === "Older"
+          ? t("timeline.groupOlder")
+          : label;
 
   return (
-    <div className="patient-detail" aria-label={`${patient.name} patient memory`}>
+    <div className="patient-detail" aria-label={t("timeline.patientMemoryAria", { name: patient.name })}>
       {onBackToVisit ? (
         <button className="context-back-button context-back-button--to-visit" onClick={onBackToVisit} type="button">
           <BackIcon />
-          Back to this visit
+          {t("timeline.backToThisVisit")}
         </button>
       ) : (
         <button className="context-back-button" onClick={onBack} type="button">
           <BackIcon />
-          Patients
+          {t("timeline.backToPatients")}
         </button>
       )}
 
       <section className="patient-detail-header">
         <Avatar label={patient.name} tone={patient.needsInput ? "amber" : "green"} />
         <div className="patient-detail-heading">
-          <h1>{patient.name}</h1>
-          <div className="patient-detail-meta" aria-label="Patient metadata">
-            <span>{visitCountLabel(sessionCount)}</span>
-            {firstSeen ? <span>First seen {firstSeen}</span> : null}
+          <h1 data-content>{patient.name}</h1>
+          <div className="patient-detail-meta" aria-label={t("timeline.patientMetadataAria")}>
+            <span>{visitCountLabel(sessionCount, t)}</span>
+            {firstSeen ? <span>{t("timeline.firstSeen")} <span data-content>{firstSeen}</span></span> : null}
           </div>
         </div>
       </section>
+
+      {/* Cross-visit clinical safety flags — confirmed (non-rejected) across this patient's visits,
+          surfaced prominently at the top of their file. Flag body is report-language content. */}
+      {detail?.safetyFlags?.length ? (
+        <div className="patient-detail-safety" role="note" aria-label={appT("context.safety.aria")}>
+          <span className="patient-detail-safety-label">{appT("context.safety.label")}</span>
+          <ul className="patient-detail-safety-list">
+            {detail.safetyFlags.map((flag) => (
+              <li key={flag.key} className={`patient-detail-safety-flag safety-${flag.kind}`} dir="auto">
+                <span className="patient-detail-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
+                <span className="patient-detail-safety-text">{flag.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {(onUpdatePatient || onShare) && !editingPatient ? (
         <div className="patient-detail-actions">
           {onUpdatePatient ? (
             <button className="patient-detail-action" onClick={() => setEditingPatient(true)} type="button">
-              <EditPatientIcon /> Edit details
+              <EditPatientIcon /> {t("timeline.editDetails")}
             </button>
           ) : null}
           {onShare ? (
             <button className="patient-detail-action" onClick={() => onShare(galleryVisits)} type="button">
-              <ShareSmallIcon /> Share with patient
+              <ShareSmallIcon /> {t("timeline.shareWithPatient")}
             </button>
           ) : null}
           {isPro && onOpenQaChannel ? (
@@ -137,8 +166,8 @@ export function PatientTimelineDetail({
       {!isPro ? (
         <TryProTeaser
           className="patient-file-teaser"
-          title={'Try Pro — AI history & "what did we use last time?"'}
-          subtitle="Basic lists the facts. Pro synthesizes the story and recalls products / units / lot."
+          title={t("timeline.tryProTitle")}
+          subtitle={t("timeline.tryProSubtitle")}
         />
       ) : null}
 
@@ -151,15 +180,15 @@ export function PatientTimelineDetail({
         />
       ) : null}
 
-      {loadError ? <p className="clinical-offline-note"><InfoIcon /> Showing memory saved on this device.</p> : null}
+      {loadError ? <p className="clinical-offline-note"><InfoIcon /> {t("timeline.savedOnThisDevice")}</p> : null}
       {loading && !timelineGroups.length ? <PatientTimelineLoading /> : null}
 
-      <div className="patient-timeline" aria-label="Visit timeline">
+      <div className="patient-timeline" aria-label={t("timeline.visitTimelineAria")}>
         {timelineGroups.length ? (
           timelineGroups.map((group) => (
             <section className="patient-timeline-group" key={group.label}>
               <div className="patient-timeline-marker" aria-hidden="true" />
-              <h2>{group.label}</h2>
+              <h2>{groupLabelText(group.label)}</h2>
               <div className="patient-timeline-cards">
                 {group.sessions.map((session) => (
                   <PatientTimelineCard
@@ -177,7 +206,7 @@ export function PatientTimelineDetail({
             </section>
           ))
         ) : loading ? null : (
-          <EmptyClinicalState title="No visits yet." copy="Patient visits will appear here after capture." />
+          <EmptyClinicalState title={t("timeline.emptyTitle")} copy={t("timeline.emptyCopy")} />
         )}
       </div>
     </div>
@@ -201,12 +230,14 @@ export function PatientTimelineCard({
   onOpenSession: (sessionId: string) => void;
   onReviewSummary: (sessionId: string) => void;
 }) {
-  const status = timelineSessionStatus(session, localSession);
-  const action = timelineSessionAction(session, localSession);
-  const tone = status.startsWith("Needs input") ? "amber" : status === "Complete" ? "blue" : "green";
-  const title = session.title || (localSession ? sessionVisitTitle(localSession) : "Visit");
-  const summary = session.generatedSummary || session.summary || (localSession ? naturalSessionSummary(localSession) : "") || "This visit is saved in patient memory.";
-  const updatedLabel = timelineUpdatedLabel(session, localSession);
+  const t = useT();
+  const status = timelineSessionStatus(session, t, localSession);
+  const action = timelineSessionAction(session, t, localSession);
+  // Style on the helper's stable `tone` enum, never by parsing its now-localized label text.
+  const tone = status.tone;
+  const title = session.title || (localSession ? sessionVisitTitle(localSession, t) : t("timeline.visitFallbackTitle"));
+  const summary = session.generatedSummary || session.summary || (localSession ? naturalSessionSummary(localSession, t) : "") || t("timeline.visitSavedSummary");
+  const updatedLabel = timelineUpdatedLabel(session, t, localSession);
 
   const runAction = () => {
     if (action.kind === "continue") onContinueSession(session.sessionId);
@@ -222,28 +253,28 @@ export function PatientTimelineCard({
       </div>
       <div className="patient-timeline-card-copy">
         <div className="visit-card-title-row">
-          <h3>{title}</h3>
-          <Badge tone={tone}>{status}</Badge>
+          <h3 data-content>{title}</h3>
+          <Badge tone={tone}>{status.label}</Badge>
         </div>
-        <div className="visit-metadata" aria-label="Visit times">
+        <div className="visit-metadata" aria-label={t("timeline.visitTimesAria")}>
           <div>
-            <span>Session:</span>
-            <strong>{timelineSessionTimeLabel(session, localSession)}</strong>
+            <span>{t("timeline.sessionLabel")}</span>
+            <strong data-content>{timelineSessionTimeLabel(session, t, localSession)}</strong>
           </div>
-          {updatedLabel ? (
-            <div className={updatedLabel.startsWith("Updated today") ? "visit-metadata-success" : undefined}>
-              {updatedLabel.startsWith("Updated today") ? null : <span>Updated:</span>}
-              <strong>{updatedLabel}</strong>
+          {updatedLabel.label ? (
+            <div className={updatedLabel.assignedToday ? "visit-metadata-success" : undefined}>
+              {updatedLabel.assignedToday ? null : <span>{t("timeline.updatedLabel")}</span>}
+              <strong data-content>{updatedLabel.label}</strong>
             </div>
           ) : null}
           {session.createdBy ? (
             <div className="visit-metadata-attribution">
-              <span>By:</span>
-              <strong>{attributionName(session.createdBy, currentUserId)}</strong>
+              <span>{t("timeline.byLabel")}</span>
+              <strong data-content>{attributionName(session.createdBy, currentUserId)}</strong>
             </div>
           ) : null}
         </div>
-        <p>{summary}</p>
+        <p data-content>{summary}</p>
         <TimelineCaptureChips session={session} localSession={localSession} tone={tone} />
       </div>
       <div className="patient-timeline-actions">

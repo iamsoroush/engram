@@ -13,6 +13,27 @@ Primary working screen for building and reviewing a session from audio, photo, a
 >
 > **Pro session unified into one living report (FB8, 2026-06-23).** For **Pro**, the `Captures`/`Live report` tabs are gone: the synthesized **report is the primary surface**, the raw captures are demoted to a collapsible **"Sources · N captures"** drawer beneath it (auto-expanded while the report is still empty; all capture edit/delete/reassign/open affordances unchanged), and a sticky **"N to confirm"** verify bar at the top drives verification. The bar counts **blockers only** — unconfirmed carried-forward doses + AI-created-patient identity — and "Review" jumps to the first inline confirm. Soft extraction gaps (low confidence, missing lot) render as quiet inline flags on the treatment row with a **"Fix at source"** deep-link that opens the Sources drawer (correct the originating capture; the AI re-extracts — no direct treatment-field edit). **Basic is unchanged** (keeps the `Captures`/`Live report` tabs — it has no synthesis to make primary). Components: `SessionVerifyBar`, the `sources-drawer`, and `TreatmentsList`'s inline confirm + `Fix at source`.
 >
+> **Session safety flags (opt-out, 2026-06-27).** The Pro synthesis detects clinical **safety flags**
+> from the captures — **allergy / contraindication / consent** statements the clinician actually made —
+> and surfaces them as a calm red/amber **Safety panel** rendered **above** the verify region (safety is
+> highest priority). They are **opt-out**: every detected flag is shown and **kept by default**; the
+> clinician acts only to **Reject (×)** a wrong one. The panel is **not a verify-bar blocker** — it
+> requires no action and never gates the report ("warnings over blocking"). A rejection persists in
+> `extracted_metadata.rejected_safety_flags` (stable key), **survives re-synthesis**, and is logged as an
+> AI-feedback signal (eval-epic §1b). Non-rejected flags persist to the **patient** and surface
+> **cross-visit** in the [session-context card](../redesign-session-context.md) flags slot and the patient
+> timeline at every future visit. The flag **body is clinical content in the report language and is never
+> translated** — only the chrome routes through the shared i18n seam. Endpoint:
+> `POST /sessions/{id}/safety-flag-rejection`. Components: the `session-safety-panel` (CaptureScreen),
+> `sessionKeptSafetyFlags` (captureModel), and the `SessionContextCard` safety slot.
+>
+> **Patient-conflict resolution lifted to the session level (2026-06-27).** A dictated different/
+> partial-match patient is a session blocker, not a feed detail — so the resolver (Keep match / Create
+> new / Choose another / Edit) now renders in the **verify region above the report** as a "Patient needs
+> your confirmation" panel and is **counted by the sticky verify bar**, not hidden in the Sources drawer.
+> The same `PatientConflictResolver` still renders per-capture in the drawer (it pinpoints which capture
+> said the other name). Shared via `captureConflictSuggestion` + `PatientConflictResolver` (CaptureBadges).
+>
 > **Confirmations embedded in the report (2026-06-23).** The clinician's "Needs your confirmation" items no longer sit in a separate section above the report — they live **inline where the data is**. A carried-forward dose shows its **"Confirm dose"** action directly on its Treatment-performed row (matched by `area|product`); confirming flips it to **"✓ Dose confirmed"** in place. The synthesis's softer uncertainties (ambiguous notes) render as **calm gray footnotes** beneath the treatments list. The session verify-region above the report now holds only the **AI-created-patient identity** panel (a different concern — *who* the patient is, not report content). The `SessionConfirmations` component was removed.
 >
 > **Live-report refinements (2026-06-23).** (a) Adding a capture no longer blanks the report: while the new synthesis organizes, the **prior synthesized report stays visible** with an "Updating · N captures…" line + a shimmer on the report card, instead of dropping to a "Preparing…"/deterministic-baseline view (the held model is swapped out only when a fresh synthesis arrives; guarded on the fixed synthesis section ids so Basic is untouched). (b) **Content-driven aftercare moved into the report card** as one-tap "+ {template}" add-buttons (e.g. `+ مراقبت بعد از بوتاکس`), replacing the separate bar above the report. (c) The **Sources drawer** shows a count badge + per-type chips (audio/photo/note). (d) **Report section titles follow the report language** (Persian titles for a Persian report) — fixed both at the source (`ai_engine` emits localized titles per `reportLanguage`) and at render (`LiveReport` maps section-id → localized title, so existing reports localize without re-synthesis).
@@ -33,7 +54,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 
 ## Visible Data
 
-- Mobile-first app header with centered `Memara`, a left menu affordance, and a compact user/avatar area.
+- Mobile-first app header with centered `Engram`, a left menu affordance, and a compact user/avatar area.
 - Session summary with `Current session`, verified chip, patient context, capture count, updated time, and compact New session action.
 - Separate patient context card with patient avatar, assignment source, and Edit patient action.
 - Single `Clinical report` card with `Live draft` and `Structured report` tabs.
@@ -111,6 +132,7 @@ Primary working screen for building and reviewing a session from audio, photo, a
 - `POST /api/v1/captures`
 - `POST /api/v1/sessions/{session_id}/save`
 - `POST /api/v1/sessions/{session_id}/assign-patient`
+- `POST /api/v1/sessions/{session_id}/safety-flag-rejection`
 - `POST /api/v1/sessions/{session_id}/verify`
 - `GET /api/v1/patients`
 - `POST /api/v1/patients`

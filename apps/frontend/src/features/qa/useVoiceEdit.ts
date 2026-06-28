@@ -1,5 +1,6 @@
 import React from "react";
 import type { ApiFetch } from "../../domain/appTypes";
+import type { Translator } from "../../shared/i18n";
 import { preferredAudioRecorderOptions } from "../capture/audio";
 import { fetchQaMessageDraft, requestQaVoiceEdit } from "./qaClient";
 
@@ -16,12 +17,15 @@ export function useVoiceEdit({
   getDraft,
   onApplied,
   onError,
+  t,
 }: {
   apiFetch: ApiFetch;
   messageId: string | undefined;
   getDraft: () => string;
   onApplied: (text: string, mode: "revise" | "replace") => void;
   onError?: (message: string) => void;
+  /** App-language translator — the hook's error copy is chrome and must be localized. */
+  t: Translator;
 }) {
   const [state, setState] = React.useState<VoiceState>("idle");
   const [seconds, setSeconds] = React.useState(0);
@@ -52,19 +56,19 @@ export function useVoiceEdit({
           const draft = await fetchQaMessageDraft(apiFetch, messageId);
           if (draft.draftStatus !== "revising") {
             if (draft.draftStatus === "ready" && draft.draft) onApplied(draft.draft, draft.draftMode || "revise");
-            else onError?.("Couldn’t apply your voice note.");
+            else onError?.(t("qa.voiceApplyError"));
             setState("idle");
             return;
           }
         }
-        onError?.("Voice edit is taking longer than expected — try again.");
+        onError?.(t("qa.voiceTimeout"));
         setState("idle");
       } catch {
-        onError?.("Couldn’t apply your voice note.");
+        onError?.(t("qa.voiceApplyError"));
         setState("idle");
       }
     },
-    [apiFetch, messageId, getDraft, onApplied, onError],
+    [apiFetch, messageId, getDraft, onApplied, onError, t],
   );
 
   const start = React.useCallback(async () => {
@@ -94,10 +98,10 @@ export function useVoiceEdit({
       timerRef.current = window.setInterval(() => setSeconds((value) => value + 1), 1000);
     } catch {
       cleanup();
-      onError?.("Microphone access is needed to record a voice note.");
+      onError?.(t("qa.voiceMicNeeded"));
       setState("idle");
     }
-  }, [apply, cleanup, messageId, onError, state]);
+  }, [apply, cleanup, messageId, onError, state, t]);
 
   const stop = React.useCallback(() => {
     if (recorderRef.current && state === "recording") {

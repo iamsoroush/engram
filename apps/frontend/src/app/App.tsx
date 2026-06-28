@@ -20,10 +20,14 @@ import type {
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
-import { setAppLanguage } from "../shared/lib/datetime";
+import { AppLangProvider, toLang, translate, type Translator } from "../shared/i18n";
 import {
   assignSessionPatient,
   confirmCarriedForward,
+  dismissAiPatientAction,
+  isNotFoundError,
+  postFeedback,
+  rejectSafetyFlag,
   setAftercareDismissed,
   unassignSessionPatient,
   checkDuplicatePatient,
@@ -37,6 +41,7 @@ import {
   cancelWorklistEntry,
   createSession,
   createWorklistEntry,
+  fetchCapture,
   fetchClinicMembers,
   fetchLastVisit,
   fetchSessionContext,
@@ -57,6 +62,9 @@ import {
   logoutSession,
   markCaptureRelevant,
   refreshAuthToken,
+  registerClinic,
+  type RegisterClinicInput,
+  switchTenant,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
@@ -87,9 +95,15 @@ import {
   sessionDismissedAftercare,
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
+import { TeamScreen } from "../features/account/TeamScreen";
+import { PlanScreen } from "../features/account/PlanScreen";
+import { SwitchClinicScreen } from "../features/account/SwitchClinicScreen";
 import { SharePatientSheet } from "../features/aesthetics/SharePatientSheet";
 import type { GalleryVisit } from "../features/aesthetics/PatientPhotoGallery";
-import { LoginGate, PatientPreviewGate } from "../features/auth/AuthGates";
+import { PatientPreviewGate } from "../features/auth/AuthGates";
+import { UnauthShell } from "../features/auth/UnauthShell";
+import { OnboardingOverlay } from "../features/onboarding/OnboardingOverlay";
+import { clearOnboardingPending, isOnboardingPending, markOnboardingPending } from "../features/onboarding/onboardingState";
 import { TherapyApp } from "../features/therapy/TherapyApp";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
@@ -146,12 +160,21 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
 
 export function App() {
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
-  // Drive app-wide UI language + date formatting (Jalali when Persian) from the tenant's APP
-  // language — distinct from report language, which scopes only report/share content.
-  setAppLanguage(auth?.tenant.appLanguage ?? null);
+  // App-wide UI language, date/Jalali formatting, and document direction are all driven from the
+  // tenant's APP language (distinct from report language, which scopes only report/share content) by
+  // <AppLangProvider>, which wraps every authed render branch below.
   const [authReady, setAuthReady] = React.useState(false);
   const [authError, setAuthError] = React.useState("");
+  // First-run guided capture: shown once for a freshly signed-up founder (flagged in handleRegister),
+  // dismissed (and the flag cleared) when they finish or skip the tour.
+  const [onboardingDismissed, setOnboardingDismissed] = React.useState(false);
   const authRef = React.useRef<AuthSession | null>(null);
+  // App() renders ABOVE <AppLangProvider>, so it can't useT(); bind a translator to the live app
+  // language (via authRef, always current) for the capture-flow chrome/toasts produced here.
+  const appT = React.useCallback<Translator>(
+    (key, vars) => translate(toLang(authRef.current?.tenant.appLanguage), key, vars),
+    [],
+  );
   const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
@@ -386,14 +409,14 @@ export function App() {
   const exportQueuedCaptures = React.useCallback(async () => {
     const pending = await loadPendingCaptures();
     if (!pending.length) {
-      setToast("No queued captures to export.");
+      setToast(appT("capture.toastNoQueuedExport"));
       return;
     }
     try {
       const count = await exportPendingCaptures(pending, new Date().toISOString());
-      setToast(`Exported ${count} queued capture${count === 1 ? "" : "s"}.`);
+      setToast(appT("capture.toastExportedQueued", { count }));
     } catch {
-      setToast("Could not export queued captures.");
+      setToast(appT("capture.toastCouldNotExportQueued"));
     }
   }, []);
 
@@ -466,7 +489,7 @@ export function App() {
         setAssignmentSessionId(workspace.assignmentSessionId);
         setPendingCaptureKind(workspace.pendingCaptureKind);
       }
-      setToast("Offline · Captures are saved on this device.");
+      setToast(appT("capture.toastOfflineSavedDevice"));
     } finally {
       workspaceHydratedRef.current = true;
     }
@@ -715,14 +738,25 @@ export function App() {
         const completed = await syncPendingOperation(operation, tenantId);
         if (!completed) continue;
       } catch (error) {
+        if (isNotFoundError(error)) {
+          // The op targets a patient/session that no longer exists (deleted/merged). Retrying would
+          // 404 forever — drop it and self-heal the stale reference instead of stranding the outbox.
+          await removePendingOperation(operation.id);
+          const opSessionId = operation.backendSessionId || operation.localSessionId;
+          const opPatientId =
+            operation.backendPatientId ||
+            (typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined);
+          await selfHealStalePatient(opSessionId, opPatientId);
+          continue;
+        }
         await updatePendingOperation(operation.id, (current) => ({
           ...current,
           status: "failed",
           retryCount: current.retryCount + 1,
           updatedAt: Date.now(),
-          lastError: error instanceof Error ? error.message : "Sync failed",
+          lastError: error instanceof Error ? error.message : appT("capture.syncFailed"),
         }));
-        setSyncError("Some local changes need retry");
+        setSyncError(appT("capture.syncNeedsRetry"));
         setBackendReachable(false);
         failed = true;
       }
@@ -794,7 +828,7 @@ export function App() {
               : current,
           );
           setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
-          setToast("Capture safely transferred.");
+          setToast(appT("capture.toastCaptureTransferred"));
           if (result.item.status === "uploaded" || result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
           scheduleMemoryRefresh();
           try {
@@ -813,7 +847,7 @@ export function App() {
             await removePendingCapture(capture.id);
             await refreshPendingCount();
           } catch {
-            setToast("Capture safely transferred.");
+            setToast(appT("capture.toastCaptureTransferred"));
           }
         } catch (uploadError) {
           // Was swallowed silently — log the real reason so a perpetually-stuck capture is diagnosable.
@@ -822,9 +856,9 @@ export function App() {
           updateItemStatus(capture.item.id, "saved");
           await rebuildLocalPendingSessions();
           setBackendReachable(false);
-          setSyncError("Capture upload failed");
+          setSyncError(appT("capture.syncUploadFailed"));
           captureFailed = true;
-          setToast("Saved on this device. I'll organize it when connection returns.");
+          setToast(appT("capture.toastSavedDeviceWillOrganize"));
           continue;
         }
       }
@@ -868,12 +902,12 @@ export function App() {
         navigateScreen("active-session");
       });
     } catch {
-      setToast(draft.kind === "audio" ? "Audio conversion failed." : "Device storage failed.");
+      setToast(draft.kind === "audio" ? appT("capture.toastAudioConversionFailed") : appT("capture.toastDeviceStorageFailed"));
       return;
     }
 
     void saveSyncedCaptureCache(pending.item, pending.draft.file);
-    setToast("Saved on device.");
+    setToast(appT("capture.toastSavedDevice"));
     void refreshPendingCount();
     if (authRef.current?.tenant.id) void processOutbox();
   };
@@ -933,7 +967,7 @@ export function App() {
     setSelectedSessionId("");
     setAssignmentSessionId("");
     navigateScreen("active-session");
-    setToast("New session ready.");
+    setToast(appT("capture.toastNewSessionReady"));
   };
 
   // AES-903 — worklist "Start visit": open a fresh session already assigned to the patient, mark the
@@ -958,7 +992,7 @@ export function App() {
         // Capture-for-patient: drop straight into the recorder/photo/note for the new visit.
         if (openCaptureKind) openCaptureDialog(openCaptureKind);
       } catch {
-        setToast("Could not start the visit.");
+        setToast(appT("capture.toastCouldNotStartVisit"));
       }
     },
     [apiFetch],
@@ -995,7 +1029,7 @@ export function App() {
   }, [nextLinedUpPatient, startVisitForPatient]);
 
   const clearLocalPendingCaptures = async () => {
-    if (!window.confirm("Clear captures saved only on this device? This cannot be undone.")) return;
+    if (!window.confirm(appT("capture.confirmClearLocal"))) return;
     processingRef.current = false;
     setSyncing(false);
     await clearLocalCaptureData();
@@ -1007,7 +1041,7 @@ export function App() {
     setPendingCaptureKind(null);
     setPendingCount(0);
     setPendingOperationCount(0);
-    setToast("Local pending captures cleared.");
+    setToast(appT("capture.toastPendingCleared"));
     void hydrateFromStorage();
   };
 
@@ -1034,8 +1068,8 @@ export function App() {
       processingStatus: {
         schemaVersion: session.processingStatus?.schemaVersion,
         state: "processing",
-        label: "Generating structured report",
-        detail: "Background AI is organizing the latest captures.",
+        label: appT("capture.generatingReport"),
+        detail: appT("capture.generatingReportDetail"),
         stage: "report",
         progress: session.processingStatus?.progress ?? null,
         canEdit: false,
@@ -1055,7 +1089,7 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("Saved on this device. I'll organize it when connection returns.");
+        setToast(appT("capture.toastSavedDeviceWillOrganize"));
       }
       void processOutbox();
       return;
@@ -1066,7 +1100,7 @@ export function App() {
         current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, processingSession) : session)),
       );
       setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, processingSession) : current));
-      setToast("Structured report is generating.");
+      setToast(appT("capture.toastReportGenerating"));
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
       if (authRef.current?.tenant.id) {
@@ -1077,11 +1111,11 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("Saved. I'll organize it when available.");
+        setToast(appT("capture.toastSavedWillOrganize"));
         void processOutbox();
         return;
       }
-      setToast("Saved on this device. I'll organize it when connection returns.");
+      setToast(appT("capture.toastSavedDeviceWillOrganize"));
     }
   };
 
@@ -1111,7 +1145,7 @@ export function App() {
             payload: { title },
           });
         }
-        setToast("Session title updated.");
+        setToast(appT("capture.toastTitleUpdated"));
         return;
       }
       try {
@@ -1120,7 +1154,7 @@ export function App() {
           current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
         );
         setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
-        setToast("Session title updated.");
+        setToast(appT("capture.toastTitleUpdated"));
       } catch {
         if (authRef.current?.tenant.id) {
           await queueOperation({
@@ -1130,11 +1164,11 @@ export function App() {
             tenantId: authRef.current.tenant.id,
             payload: { title },
           });
-          setToast("Title saved on this device.");
+          setToast(appT("capture.toastTitleSavedDevice"));
           void processOutbox();
           return;
         }
-        setToast("Could not update title.");
+        setToast(appT("capture.toastCouldNotUpdateTitle"));
       }
     },
     [apiFetch],
@@ -1154,7 +1188,7 @@ export function App() {
           item: { ...current.item, title },
           session: updateLocalItem(current.session),
         }));
-        setToast("Capture renamed.");
+        setToast(appT("capture.toastCaptureRenamed"));
         return;
       }
       const updated = await updateCaptureTitle(apiFetch, captureId, title);
@@ -1176,7 +1210,7 @@ export function App() {
           ? { ...current, items: current.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
           : current,
       );
-      setToast("Capture renamed.");
+      setToast(appT("capture.toastCaptureRenamed"));
     },
     [apiFetch],
   );
@@ -1222,7 +1256,7 @@ export function App() {
           item: updateItem(current.item),
           session: updateSession(current.session),
         }));
-        setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+        setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
         const currentItem = activeSession?.id === sessionId ? activeSession.items.find((item) => item.id === captureId) : null;
         return currentItem ? updateItem(currentItem) : null;
       }
@@ -1243,7 +1277,7 @@ export function App() {
         session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(mergeCaptionUpdate) }) : session;
       setSessions((current) => current.map(updateBackendSession));
       setActiveSession((current) => (current?.id === sessionId ? updateBackendSession(current) : current));
-      setToast(field === "caption" ? "Caption updated." : "Transcript updated.");
+      setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
       return updated;
     },
     [activeSession?.id, activeSession?.items, apiFetch, auth?.user.displayName, auth?.user.email],
@@ -1259,7 +1293,7 @@ export function App() {
         setSessions((current) => current.map(removeLocalItem));
         setActiveSession((current) => (current?.id === sessionId ? removeLocalItem(current) : current));
         await removePendingCapture(captureId);
-        setToast("Capture deleted.");
+        setToast(appT("capture.toastCaptureDeleted"));
         return;
       }
       const updated = await deleteCapture(apiFetch, captureId);
@@ -1277,7 +1311,7 @@ export function App() {
       );
       // Deleting a capture regenerates the Pro live report; poll for the refreshed result.
       scheduleCaptureProcessingRefresh(sessionId);
-      setToast("Capture deleted. The live report is updating.");
+      setToast(appT("capture.toastCaptureDeletedUpdating"));
     },
     [apiFetch, scheduleCaptureProcessingRefresh],
   );
@@ -1294,7 +1328,7 @@ export function App() {
       setActiveSession((current) => (current?.id === sessionId ? applyItem(current) : current));
       // Marking relevant re-folds the capture into the Pro live report; poll for the refresh.
       scheduleCaptureProcessingRefresh(sessionId);
-      setToast("Marked relevant. The live report is updating.");
+      setToast(appT("capture.toastMarkedRelevant"));
     },
     [apiFetch, scheduleCaptureProcessingRefresh],
   );
@@ -1312,13 +1346,26 @@ export function App() {
       try {
         const updated = await confirmCarriedForward(apiFetch, sessionId, key);
         applySessionUpdate(sessionId, updated);
-        setToast("Dose confirmed.");
+        setToast(appT("capture.toastDoseConfirmed"));
       } catch {
-        setToast("Could not confirm the dose. Try again.");
+        setToast(appT("capture.toastCouldNotConfirmDose"));
       }
     },
     [apiFetch, applySessionUpdate],
   );
+
+  // Report thumbs rating → the AI-quality feedback harvester (eval golden-set; eval-epic §1b).
+  // Fire-and-forget: a quiet "noted" toast, never blocks; failures are swallowed in postFeedback.
+  const rateReport = React.useCallback(
+    (sessionId: string, rating: number) => {
+      void postFeedback(apiFetch, { kind: "rating", aiOutputType: "report", rating, sessionId });
+    },
+    [apiFetch],
+  );
+
+  // Resolve a citation's source capture by id when it isn't in the open session (a carried-forward
+  // claim cites a prior visit) — for "tap a claim → its source capture".
+  const fetchCaptureById = React.useCallback((captureId: string) => fetchCapture(apiFetch, captureId), [apiFetch]);
 
   // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
   const dismissAftercareTemplate = React.useCallback(
@@ -1327,7 +1374,21 @@ export function App() {
         const updated = await setAftercareDismissed(apiFetch, sessionId, templateId, dismissed);
         applySessionUpdate(sessionId, updated);
       } catch {
-        setToast("Could not update aftercare. Try again.");
+        setToast(appT("capture.toastCouldNotUpdateAftercare"));
+      }
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
+  // Safety-flag opt-out: reject (×) an auto-kept safety flag this visit. Persisted, survives
+  // re-synthesis, and removes the flag from the patient's cross-visit store (backend re-syncs).
+  const rejectSafetyFlagFromSession = React.useCallback(
+    async (sessionId: string, flagKey: string) => {
+      try {
+        const updated = await rejectSafetyFlag(apiFetch, sessionId, flagKey);
+        applySessionUpdate(sessionId, updated);
+      } catch {
+        setToast(appT("capture.toastCouldNotUpdateSafetyFlag"));
       }
     },
     [apiFetch, applySessionUpdate],
@@ -1355,6 +1416,53 @@ export function App() {
     [apiFetch],
   );
 
+  // Stale-client self-heal: a patient a session/panel still references was deleted or merged away, so
+  // a patient-scoped call 404s. Rather than freeze (the known incident: deleting a merged patient left
+  // the AI-created "verify" panel PATCHing a dead id → 404 forever), clear the stale reference across
+  // the caches, dismiss the verify panel for good, drop any queued assignment to that dead id so the
+  // outbox stops looping, and tell the user calmly. Safe to call from any 404 catch.
+  const selfHealStalePatient = React.useCallback(
+    async (sessionId: string | undefined, deadPatientId?: string) => {
+      const stripPatient = (session: CaptureSession): CaptureSession =>
+        markReportStaleForPatientChange(session, {
+          ...session,
+          patientId: undefined,
+          patientName: undefined,
+          assignmentSource: undefined,
+        });
+      // Drop a queued assignment to the vanished patient so the outbox stops retrying the 404.
+      if (sessionId && authRef.current?.tenant.id) {
+        await removePendingOperation(`${authRef.current.tenant.id}:patientAssignment:${sessionId}`).catch(() => {});
+      }
+      // Neutralize the AI-created-patient action server-side so the verify panel dismisses permanently.
+      if (sessionId && !isLocalSessionId(sessionId)) {
+        try {
+          const cleared = await dismissAiPatientAction(apiFetch, sessionId);
+          applySessionUpdate(sessionId, cleared);
+        } catch (error) {
+          // The session itself is gone too — evict it from the caches entirely.
+          if (isNotFoundError(error)) {
+            setSessions((current) => current.filter((session) => session.id !== sessionId));
+            setActiveSession((current) => (current?.id === sessionId ? null : current));
+            setSelectedSessionId((current) => (current === sessionId ? "" : current));
+          }
+        }
+      }
+      // Clear the stale patient reference from cached session(s) — the server already SET NULL the FK.
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === sessionId || (deadPatientId && session.patientId === deadPatientId) ? stripPatient(session) : session,
+        ),
+      );
+      setActiveSession((current) =>
+        current && (current.id === sessionId || (deadPatientId && current.patientId === deadPatientId)) ? stripPatient(current) : current,
+      );
+      setAssignmentSessionId((current) => (current === sessionId ? "" : current));
+      setToast(appT("memory.toastPatientRecordGone"));
+    },
+    [apiFetch, applySessionUpdate],
+  );
+
   const assignPatientToSession = React.useCallback(
     async (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => {
       if (draft.unassign) {
@@ -1373,7 +1481,7 @@ export function App() {
             payload: { unassign: true },
           });
         }
-        setToast("Visit unassigned.");
+        setToast(appT("memory.toastVisitUnassigned"));
         void processOutbox();
         return;
       }
@@ -1453,14 +1561,21 @@ export function App() {
         );
         setAssignmentSessionId("");
         setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
-      } catch {
+      } catch (error) {
+        // The chosen patient was deleted/merged: queuing the assignment would 404 forever in the
+        // outbox — self-heal the stale reference and let the user pick again instead.
+        if (isNotFoundError(error)) {
+          await selfHealStalePatient(sessionId, localPatient.id);
+          return;
+        }
+        // Otherwise treat as a transient/offline failure: keep the local assignment and queue it.
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
         setToast(successMessage);
         void processOutbox();
       }
     },
-    [apiFetch, ensurePatient],
+    [apiFetch, ensurePatient, selfHealStalePatient],
   );
 
   // AES-301/903 — file the current unassigned visit onto the doctor's next lined-up patient.
@@ -1491,25 +1606,35 @@ export function App() {
       draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
       action: Record<string, unknown>,
     ) => {
-      const patient = await updatePatient(apiFetch, patientId, {
-        displayName: draft.displayName,
-        nationalId: draft.nationalId || null,
-        phone: draft.phone || null,
-        dateOfBirth: draft.dateOfBirth || null,
-        sex: draft.sex || null,
-        notes: draft.notes || null,
-      });
-      const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
-        ...action,
-        displayName: patient.displayName,
-        patientId: patient.id,
-      });
-      const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
-      setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
-      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
-      setToast("AI-created patient verified.");
+      try {
+        const patient = await updatePatient(apiFetch, patientId, {
+          displayName: draft.displayName,
+          nationalId: draft.nationalId || null,
+          phone: draft.phone || null,
+          dateOfBirth: draft.dateOfBirth || null,
+          sex: draft.sex || null,
+          notes: draft.notes || null,
+        });
+        const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
+          ...action,
+          displayName: patient.displayName,
+          patientId: patient.id,
+        });
+        const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
+        setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
+        setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
+        setToast(appT("memory.toastAiPatientVerified"));
+      } catch (error) {
+        // The AI-created patient was deleted/merged out from under the panel: self-heal instead of
+        // leaving the verify panel frozen on a dead id (the known incident).
+        if (isNotFoundError(error)) {
+          await selfHealStalePatient(sessionId, patientId);
+          return;
+        }
+        throw error;
+      }
     },
-    [apiFetch],
+    [apiFetch, selfHealStalePatient],
   );
   const editPatientDetails = React.useCallback(
     async (patientId: string, draft: PatientEditDraft) => {
@@ -1520,7 +1645,7 @@ export function App() {
         );
         setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
       }
-      setToast("Patient details updated.");
+      setToast(appT("memory.toastPatientDetailsUpdated"));
     },
     [apiFetch],
   );
@@ -1528,10 +1653,10 @@ export function App() {
     async (draft: PatientAssignmentDraft): Promise<PatientSummary | null> => {
       try {
         const patient = await createPatient(apiFetch, draft);
-        setToast("Patient created.");
+        setToast(appT("memory.toastPatientCreated"));
         return patient;
       } catch {
-        setToast("Could not create patient.");
+        setToast(appT("memory.toastCouldNotCreatePatient"));
         return null;
       }
     },
@@ -1585,7 +1710,7 @@ export function App() {
       };
       setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
       setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
-      setToast("Summary added to patient memory");
+      setToast(appT("memory.toastSummaryAdded"));
     },
     [],
   );
@@ -1684,7 +1809,7 @@ export function App() {
         setSessions((current) => current.map(applySession));
         setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
         await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
-        setToast("Note updated.");
+        setToast(appT("memory.toastNoteUpdated"));
         return;
       }
       const updated = await updateCaptureNote(apiFetch, captureId, text);
@@ -1693,7 +1818,7 @@ export function App() {
         session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
       setSessions((current) => current.map(mergeSession));
       setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
-      setToast("Note updated.");
+      setToast(appT("memory.toastNoteUpdated"));
     },
     [apiFetch],
   );
@@ -1705,7 +1830,7 @@ export function App() {
       commitAuth(next);
       navigateScreen(defaultScreenForAuth(next));
     } catch {
-      setAuthError("Could not sign in with that persona.");
+      setAuthError(appT("auth.toastCouldNotSignInPersona"));
     }
   };
 
@@ -1720,8 +1845,47 @@ export function App() {
     }
   };
 
+  // Self-serve clinic sign-up. Lets the error propagate so the sign-up form can map 409/422; on
+  // success we flag the new founder for the guided first-capture tour before entering the app.
+  const handleRegister = async (input: RegisterClinicInput) => {
+    setAuthError("");
+    const next = await registerClinic(input);
+    markOnboardingPending(next.user.id);
+    commitAuth(next);
+    navigateScreen(defaultScreenForAuth(next));
+  };
+
+  // Plan switch (Plan screen): reflect the new tier in the in-app tenant so capabilities + UI follow.
+  const handleTierChanged = (tier: string) => {
+    const current = authRef.current;
+    if (!current) return;
+    const next = { ...current, tenant: { ...current.tenant, tier } };
+    authRef.current = next;
+    setAuth(next);
+    persistAuthProfile(next);
+    setToast(appT("capture.toastSwitchedTier", { tier: tier === "pro" ? "Pro" : "Basic" }));
+  };
+
+  // Multi-clinic switch: re-issue a session for another of the user's clinics. Lets the error
+  // propagate so the chooser can show it; on success we commit the new tenant + tokens.
+  const handleSwitchClinic = async (tenantId: string) => {
+    const next = await switchTenant(apiFetch, tenantId);
+    commitAuth(next);
+    navigateScreen(defaultScreenForAuth(next));
+  };
+
+  // Re-arm the first-run guide so a user who skipped it can replay it (from the account menu).
+  const handleReplayGuide = () => {
+    const current = authRef.current;
+    if (!current) return;
+    markOnboardingPending(current.user.id);
+    setOnboardingDismissed(false);
+    navigateScreen("active-session");
+  };
+
   const handleUpdateTenantSettings = React.useCallback(
     async (settings: {
+      appLanguage?: string;
       transcriptionLanguage?: string;
       reportLanguage?: string | null;
       matchStrictness?: string;
@@ -1737,6 +1901,8 @@ export function App() {
           ...currentAuth,
           tenant: {
             ...currentAuth.tenant,
+            // Propagate the app language so changing it LIVE re-renders <AppLangProvider> (no reload).
+            appLanguage: updated.appLanguage ?? settings.appLanguage ?? currentAuth.tenant.appLanguage,
             transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
             reportLanguage: updated.reportLanguage ?? null,
             matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,
@@ -1746,18 +1912,18 @@ export function App() {
         });
         setToast(
           changingPermissions
-            ? "Role permissions updated."
+            ? appT("settings.toastRolePermsUpdated")
             : changingStrictness
-              ? "Patient-matching preference updated."
-              : "Language preferences updated.",
+              ? appT("settings.toastMatchingUpdated")
+              : appT("settings.toastLanguageUpdated"),
         );
       } catch {
         setToast(
           changingPermissions
-            ? "Could not update role permissions."
+            ? appT("settings.toastCouldNotUpdateRolePerms")
             : changingStrictness
-              ? "Could not update matching preference."
-              : "Could not update language preferences.",
+              ? appT("settings.toastCouldNotUpdateMatching")
+              : appT("settings.toastCouldNotUpdateLanguage"),
         );
       }
     },
@@ -1808,7 +1974,7 @@ export function App() {
           .then((captures) => {
             setActiveSession((current) => (current?.id === session.id ? { ...session, items: captures } : current));
           })
-          .catch(() => setToast("Could not load captures for this session."));
+          .catch(() => setToast(appT("capture.toastCouldNotLoadCaptures")));
       }
       return;
     }
@@ -1876,7 +2042,8 @@ export function App() {
   const handleShellNavigate = (nextScreen: Screen) => {
     // Settings/Profile are utility pages reached from the account menu; remember where we came
     // from so Back returns there (don't record an account page as its own return target).
-    if ((nextScreen === "settings" || nextScreen === "profile") && screen !== "settings" && screen !== "profile") {
+    const accountScreens: Screen[] = ["settings", "profile", "team", "plan", "switch-clinic"];
+    if (accountScreens.includes(nextScreen) && !accountScreens.includes(screen)) {
       accountReturnRef.current = screen;
     }
     setClinicalMemoryReturnContext(null);
@@ -1889,7 +2056,7 @@ export function App() {
     if (!session) return;
     const nextSession: CaptureSession = {
       ...session,
-      reviewReason: session.reviewReason || "Current capture destination",
+      reviewReason: session.reviewReason || appT("capture.currentCaptureDestination"),
     };
     setSelectedSessionId("");
     setActiveSession(nextSession);
@@ -1899,9 +2066,9 @@ export function App() {
         .then((captures) => {
           setActiveSession((current) => (current?.id === session.id ? { ...nextSession, items: captures } : current));
         })
-        .catch(() => setToast("Could not load captures for this session."));
+        .catch(() => setToast(appT("capture.toastCouldNotLoadCaptures")));
     }
-    setToast("Add the next capture to this session.");
+    setToast(appT("capture.toastAddNext"));
   };
 
   const renderCurrentScreen = () => {
@@ -1930,6 +2097,24 @@ export function App() {
         />
       );
     }
+    if (screen === "team" && auth) {
+      return <TeamScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
+    }
+    if (screen === "plan" && auth) {
+      return (
+        <PlanScreen
+          auth={auth}
+          apiFetch={apiFetch}
+          onBack={() => navigateScreen(accountReturnRef.current)}
+          onTierChanged={handleTierChanged}
+        />
+      );
+    }
+    if (screen === "switch-clinic" && auth) {
+      return (
+        <SwitchClinicScreen auth={auth} onBack={() => navigateScreen(accountReturnRef.current)} onSwitch={handleSwitchClinic} />
+      );
+    }
     if (screen !== "active-session" && selectedSession) {
       return (
         <CaptureScreen
@@ -1939,11 +2124,11 @@ export function App() {
           onResumeCapture={() => {
             setActiveSession({
               ...selectedSession,
-              reviewReason: "Current capture destination",
+              reviewReason: appT("capture.currentCaptureDestination"),
             });
             setSelectedSessionId("");
             navigateScreen("active-session");
-            setToast("Add the next capture to this session.");
+            setToast(appT("capture.toastAddNext"));
           }}
           assignmentOpen={assignmentSessionId === selectedSession.id}
           onAssignPatient={assignPatientToSession}
@@ -1962,6 +2147,8 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           offline={offline}
@@ -2003,6 +2190,8 @@ export function App() {
           onDeleteCapture={removeCaptureFromSession}
           onMarkRelevant={markCaptureRelevantInSession}
           onConfirmCarriedForward={confirmCarriedForwardDose}
+          onRateReport={rateReport}
+          onFetchCapture={fetchCaptureById}
           tier={auth?.tenant.tier}
           reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}
@@ -2013,6 +2202,7 @@ export function App() {
           onUseAsNote={composeNoteFromText}
           aftercareTemplates={aftercareTemplates}
           onDismissAftercare={dismissAftercareTemplate}
+          onRejectSafetyFlag={rejectSafetyFlagFromSession}
           offline={offline}
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}
@@ -2090,32 +2280,69 @@ export function App() {
 
   if (!auth) {
     return (
-      <LoginGate
+      <UnauthShell
         error={authError}
-        pendingCount={pendingCount}
         onLogin={handlePasswordLogin}
         onPersonaLogin={handlePersonaLogin}
+        onRegister={handleRegister}
+        pendingCount={pendingCount}
       />
     );
   }
 
   if (auth.user.persona === "patient-preview") {
-    return <PatientPreviewGate auth={auth} onLogout={handleLogout} />;
+    return (
+      <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+        <PatientPreviewGate auth={auth} onLogout={handleLogout} />
+      </AppLangProvider>
+    );
   }
 
   // Therapy vertical is a greenfield surface (note-first capture, two-plane synthesis, federated
   // caseloads) — render its own self-contained app rather than the aesthetics capture shell.
   if (auth.tenant.vertical === "therapy") {
-    return <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />;
+    return (
+      <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+        <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />
+      </AppLangProvider>
+    );
   }
 
   return (
-    <>
+    <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
+      <>
+      {!onboardingDismissed && isOnboardingPending(auth.user.id) ? (
+        <OnboardingOverlay
+          canInviteTeam={auth.memberships.some(
+            (m) => m.tenantId === auth.tenant.id && (m.role === "owner" || m.role === "admin"),
+          )}
+          captureCount={activeSession?.items.length ?? 0}
+          captureDialogOpen={textOpen || photoOpen || audioOpen}
+          displayName={auth.user.displayName || auth.user.email || ""}
+          lang={auth.tenant.appLanguage === "fa" ? "fa" : "en"}
+          onFinish={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+          }}
+          onInviteTeam={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+            navigateScreen("team");
+          }}
+          onSeePlan={() => {
+            clearOnboardingPending();
+            setOnboardingDismissed(true);
+            navigateScreen("plan");
+          }}
+          tier={auth.tenant.tier ?? "basic"}
+        />
+      ) : null}
       <Shell
         auth={auth}
-        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient)}
+        captureContextLabel={captureContextLabel(activeSession, screen, viewedPatient, appT)}
         onCapture={beginCapture}
         onLogout={handleLogout}
+        onReplayGuide={handleReplayGuide}
         screen={screen}
         syncHealth={syncHealth}
         onNavigate={handleShellNavigate}
@@ -2195,7 +2422,8 @@ export function App() {
         />
       ) : null}
       <Toast message={toast} />
-    </>
+      </>
+    </AppLangProvider>
   );
 }
 
@@ -2203,13 +2431,14 @@ function isLocalAssignmentPatient(patientId: string) {
   return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
 }
 
-function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null) {
-  // On a patient's file the footer captures for *them* (a new visit) — make that explicit.
+function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null, t: Translator) {
+  // On a patient's file the footer captures for *them* (a new visit) — make that explicit. The patient
+  // NAME stays as data; only the surrounding chrome is translated.
   if (screen === "patients" && viewedPatient) {
-    return `Capturing for: ${viewedPatient.name} · new visit`;
+    return t("capture.capturingForNewVisit", { name: viewedPatient.name });
   }
-  const patient = session?.patientName || "Unassigned visit";
-  return `Capturing for: ${patient} · Today's visit`;
+  const patient = session?.patientName || t("capture.unassignedVisit");
+  return t("capture.capturingForToday", { name: patient });
 }
 
 function createClientSideId() {

@@ -1,4 +1,4 @@
-# Memara (Aesthetics) — **Pro tier** QA/QC Smoke Suite
+# Engram (Aesthetics) — **Pro tier** QA/QC Smoke Suite
 
 > **Audience:** QA/QC testers. **No coding required.** **Goal:** verify the most important **Pro-tier**
 > workflows. **Budget:** ~30–45 min. Basic tier has its own suite: [aes-basic-smoke.md](aes-basic-smoke.md).
@@ -8,7 +8,7 @@
 > in the build you're handed before filing failures as bugs.
 
 ## 0 · What you are testing
-**Memara** files a clinic's notes/photos/audio by **patient** and **visit**. **Pro** adds an **AI layer** on
+**Engram** files a clinic's notes/photos/audio by **patient** and **visit**. **Pro** adds an **AI layer** on
 top of capture: audio is **transcribed**, photos get **captions**, notes are **cleaned up**, each visit
 produces a **structured report**, and patients can ask **questions** answered by the clinic. (Basic, by
 contrast, has *no* AI — that contrast is itself a key test; see the Basic suite.)
@@ -26,7 +26,7 @@ Assistant / Admin / Patient preview.
 ## 1 · Environment & access
 - **App:** `http://localhost:5183` (Chrome).
 - **Sign in (no password):** pick the **Pro** tier on the switch, then a **persona**. Header should read
-  *"Memara Demo Clinic"* (Pro). Log out (top-right) to switch persona.
+  *"Engram Demo Clinic"* (Pro). Log out (top-right) to switch persona.
 - **Test data:** unique patient names per run; don't delete existing demo data.
 
 ## 2 · How to run & record

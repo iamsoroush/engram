@@ -27,7 +27,7 @@ GLITCHTIP_SECRET_KEY=$(openssl rand -hex 48)
 GLITCHTIP_POSTGRES_PASSWORD=$(safe 40)
 BACKUP_ENCRYPTION_KEY=$(safe 48)
 # Remember to update BACKEND_DATABASE_URL to use the POSTGRES_PASSWORD above:
-#   BACKEND_DATABASE_URL=postgresql+psycopg://notari:${PG_PASS}@postgres:5432/notari
+#   BACKEND_DATABASE_URL=postgresql+psycopg://engram:${PG_PASS}@postgres:5432/engram
 # And create an APP-SCOPED object-storage key (not the MinIO root) for
 #   BACKEND_OBJECT_STORAGE_ACCESS_KEY / _SECRET_KEY  (see docs/production.md).
 EOF

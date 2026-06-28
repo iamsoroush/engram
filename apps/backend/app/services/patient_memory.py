@@ -33,6 +33,7 @@ from app.services.patient_memory_intelligence import (
     stored_history,
     tenant_tier,
 )
+from app.services.patient_safety import patient_safety_flags_payload
 from app.services.patients import get_patient, patient_payload
 from app.services.session_contracts import session_is_complete
 from app.services.session_processing import capture_is_out_of_context
@@ -753,4 +754,6 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         "history": history,
         # Compact, glanceable line-up card for the worklist recap (Pro only; None for Basic).
         "lineupCard": build_lineup_card(db, principal.tenant_id, patient, list(sessions), tier),
+        # Cross-visit clinical safety flags (allergy/contraindication/consent), surfaced on the timeline.
+        "safetyFlags": patient_safety_flags_payload(patient),
     }

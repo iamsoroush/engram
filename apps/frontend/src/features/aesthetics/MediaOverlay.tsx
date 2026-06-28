@@ -1,5 +1,6 @@
 import React from "react";
 import type { LastVisitMedia } from "../../domain/appTypes";
+import { useT } from "../../shared/i18n";
 
 /**
  * Non-destructive media viewer for the session-context card. Captures and progress photos open
@@ -41,7 +42,7 @@ function OverlayImage({ item, onResolveFile }: { item: OverlayMedia; onResolveFi
   return (
     <figure className="media-overlay-figure">
       {url ? <img alt={item.media.caption || item.label} src={url} /> : <div className="media-overlay-loading" aria-hidden="true" />}
-      <figcaption className="media-overlay-caption">
+      <figcaption className="media-overlay-caption" data-content>
         <span className="media-overlay-date">{item.label}</span>
         {item.media.caption ? (
           <span className="media-overlay-text" dir="auto">
@@ -54,6 +55,7 @@ function OverlayImage({ item, onResolveFile }: { item: OverlayMedia; onResolveFi
 }
 
 function SingleViewer({ items, initial, onResolveFile }: { items: OverlayMedia[]; initial: number; onResolveFile: (endpoint: string) => Promise<string> }) {
+  const t = useT();
   const [index, setIndex] = React.useState(initial);
   const safe = Math.min(Math.max(index, 0), items.length - 1);
   return (
@@ -61,13 +63,13 @@ function SingleViewer({ items, initial, onResolveFile }: { items: OverlayMedia[]
       <OverlayImage item={items[safe]} onResolveFile={onResolveFile} />
       {items.length > 1 ? (
         <div className="media-overlay-nav">
-          <button type="button" onClick={() => setIndex((p) => (p - 1 + items.length) % items.length)} aria-label="Previous photo">
+          <button type="button" onClick={() => setIndex((p) => (p - 1 + items.length) % items.length)} aria-label={t("media.previousPhoto")}>
             ‹
           </button>
-          <span>
+          <span data-content>
             {safe + 1} / {items.length}
           </span>
-          <button type="button" onClick={() => setIndex((p) => (p + 1) % items.length)} aria-label="Next photo">
+          <button type="button" onClick={() => setIndex((p) => (p + 1) % items.length)} aria-label={t("media.nextPhoto")}>
             ›
           </button>
         </div>
@@ -85,6 +87,7 @@ export function MediaOverlay({
   onClose: () => void;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -94,9 +97,9 @@ export function MediaOverlay({
   }, [onClose]);
 
   return (
-    <div className="media-overlay" role="dialog" aria-modal="true" aria-label="Photo viewer" onClick={onClose}>
+    <div className="media-overlay" role="dialog" aria-modal="true" aria-label={t("media.photoViewer")} onClick={onClose}>
       <div className="media-overlay-inner" onClick={(event) => event.stopPropagation()}>
-        <button className="media-overlay-close" type="button" onClick={onClose} aria-label="Close">
+        <button className="media-overlay-close" type="button" onClick={onClose} aria-label={t("media.close")}>
           ✕
         </button>
         {state.mode === "compare" ? (

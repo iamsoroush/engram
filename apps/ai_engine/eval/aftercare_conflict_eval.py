@@ -10,7 +10,7 @@ one. This guards the "intelligent, not keyword" aftercare behaviour the determin
 
 Run it where a gateway is reachable::
 
-    docker exec notari-main-ai-engine-1 python /app/eval/aftercare_conflict_eval.py
+    docker exec engram-main-ai-engine-1 python /app/eval/aftercare_conflict_eval.py
 
 No gateway → SKIP (exit 0). With a gateway it exits non-zero if any case fails.
 """

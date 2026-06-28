@@ -11,6 +11,8 @@ from app.auth.service import audit
 from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSource, Patient, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
+from app.services.feedback import record_feedback_event
+from app.services.patient_safety import drop_session_safety_flags, session_detected_safety_flags, sync_patient_safety_flags
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -188,6 +190,7 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
             detail="This session is owned by another clinician; your role can't edit it.",
         )
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    original_treatments = metadata.get("treatments")
     if request.title is not None:
         session.title = request.title
     if request.summary is not None:
@@ -233,6 +236,25 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
             session.status = SessionStatus(request.status)
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status") from exc
+    # Harvest a staff edit of the AI-extracted treatments as a candidate eval case (eval-epic §1b):
+    # the structured before→after of the treatments[] store feeds the report-synthesis/treatments eval.
+    if isinstance(request.extracted_metadata, dict) and "treatments" in request.extracted_metadata:
+        new_treatments = request.extracted_metadata.get("treatments")
+        if new_treatments != original_treatments:
+            import json
+
+            record_feedback_event(
+                db,
+                tenant_id=principal.tenant_id,
+                actor_user_id=principal.user_id,
+                kind="correction",
+                ai_output_type="treatment",
+                before_value=json.dumps(original_treatments, ensure_ascii=False) if original_treatments is not None else None,
+                after_value=json.dumps(new_treatments, ensure_ascii=False) if new_treatments is not None else None,
+                session_id=session.id,
+                patient_id=session.patient_id,
+                context={"source": "session-update"},
+            )
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.update", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
@@ -259,6 +281,18 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
         confirmed.append(key)
     metadata["confirmed_carried_forward"] = confirmed
     session.extracted_metadata = metadata
+    # A confirmed carried-forward dose is a positive signal: the AI's carry-forward was accepted. Harvest
+    # it (keyed by area|product) so the patient-memory/carry-forward eval has true positives too.
+    record_feedback_event(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        kind="confirmation",
+        ai_output_type="treatment",
+        session_id=session.id,
+        patient_id=session.patient_id,
+        context={"action": "confirm_carried_forward", "key": key},
+    )
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.confirm_carried_forward", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
@@ -289,6 +323,59 @@ def set_aftercare_dismissed(
     metadata["dismissed_aftercare"] = dismissed_ids
     session.extracted_metadata = metadata
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.dismiss_aftercare", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
+def set_safety_flag_rejected(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, flag_key: str, rejected: bool
+) -> dict[str, Any]:
+    """Record whether a detected session safety flag was rejected by the clinician (opt-out).
+
+    Safety flags (allergy/contraindication/consent) detected by the synthesis are auto-kept and shown
+    by default; the clinician acts only to REJECT a wrong one. The rejected flag's stable ``flag_key``
+    is stored in ``extracted_metadata.rejected_safety_flags`` so it stays rejected across re-synthesis
+    and reloads (user state, not AI output). Re-accepting (``rejected=False``) clears it. The patient's
+    cross-visit safety store is re-synced from the visit's kept flags, and a rejection is harvested as
+    an AI-feedback signal (the rejected flag IS the eval target). User state, not AI output.
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't change its safety flags.",
+        )
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    rejected_keys = [str(value) for value in (metadata.get("rejected_safety_flags") or []) if isinstance(value, str)]
+    if rejected and flag_key not in rejected_keys:
+        rejected_keys.append(flag_key)
+    elif not rejected:
+        rejected_keys = [value for value in rejected_keys if value != flag_key]
+    metadata["rejected_safety_flags"] = rejected_keys
+    session.extracted_metadata = metadata
+    if rejected:
+        # A rejection is a failure signal: the synthesis surfaced a wrong safety flag. Harvest it (the
+        # rejected flag text is the eval target) so the safety-flags eval gathers real negatives.
+        rejected_flag = next((flag for flag in session_detected_safety_flags(session) if flag["key"] == flag_key), None)
+        record_feedback_event(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            kind="rejection",
+            ai_output_type="safety_flag",
+            before_value=rejected_flag["text"] if rejected_flag else None,
+            session_id=session.id,
+            patient_id=session.patient_id,
+            context={"action": "reject_safety_flag", "key": flag_key, "flagKind": rejected_flag["kind"] if rejected_flag else None},
+        )
+    # Re-project this visit's kept flags onto the patient so the rejection (or re-accept) is reflected
+    # cross-visit immediately.
+    if session.patient_id is not None:
+        patient = db.get(Patient, session.patient_id)
+        if patient is not None:
+            sync_patient_safety_flags(patient, session)
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.reject_safety_flag", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
     return session_payload(session, db)
@@ -343,6 +430,9 @@ def assign_session_patient(
     )
     session.extracted_metadata = append_patient_assignment_event(existing_metadata, event)
     apply_active_patient_assignment(db, session)
+    match_candidate = (
+        (basis_capture.capture_metadata or {}).get("patient_match_candidate") if basis_capture is not None else None
+    )
     if basis_capture is not None:
         # The suggestion on the now-applied capture is consumed — drop it so the chip clears.
         basis_capture.capture_metadata = {
@@ -350,6 +440,38 @@ def assign_session_patient(
             for key, value in (basis_capture.capture_metadata or {}).items()
             if key != "patient_match_candidate"
         }
+    # Harvest the patient-match decision as a candidate eval case (eval-epic §1b): a reassignment is a
+    # correction of the prior (often AI) match; acting on a suggestion to file an unassigned visit is a
+    # confirmation. Only IDs + match metadata are stored — names/evidence are scrubbed out (PII).
+    if is_reassignment or match_candidate is not None:
+        record_feedback_event(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            kind="correction" if is_reassignment else "confirmation",
+            ai_output_type="patient_match",
+            session_id=session.id,
+            patient_id=next_patient_id,
+            context={
+                "previous_patient_id": str(previous) if previous else None,
+                "next_patient_id": str(next_patient_id) if next_patient_id else None,
+                "source": request.source,
+                "reassignment": is_reassignment,
+                "basis_capture_id": str(basis_capture.id) if basis_capture is not None else None,
+                "match_candidate": match_candidate if isinstance(match_candidate, dict) else None,
+            },
+        )
+    # Safety flags are detected during synthesis regardless of assignment, but only persist to a
+    # PATIENT once one is known — and assignment does NOT re-run synthesis. So project this visit's
+    # kept safety flags onto the (re)assigned patient now, and drop this visit's contribution from a
+    # prior patient on reassignment/unassignment, so the cross-visit safety store stays correct even
+    # for the capture-first flow (flag dictated while unassigned, patient assigned later).
+    if previous is not None and (next_patient_id is None or str(previous) != str(next_patient_id)):
+        old_patient = db.get(Patient, previous)
+        if old_patient is not None:
+            drop_session_safety_flags(old_patient, session.id)
+    if patient is not None:
+        sync_patient_safety_flags(patient, session)
     audit(
         db,
         tenant_id=principal.tenant_id,

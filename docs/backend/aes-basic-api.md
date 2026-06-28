@@ -250,7 +250,7 @@ revoked, or expired (no existence leak).
   "schemaVersion": "2026-06-12.patient-share.v1",
   "payloadType": "report_aftercare",
   "status": "active",
-  "clinic": { "name": "Memara Demo Clinic" },
+  "clinic": { "name": "Engram Demo Clinic" },
   "patientName": "Sara Nazari",
   "title": "Your Botox visit",
   "visitDate": "iso|null",

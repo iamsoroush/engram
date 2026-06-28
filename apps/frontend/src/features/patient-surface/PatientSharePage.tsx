@@ -29,7 +29,7 @@ export function PatientSharePage({ token }: { token: string }) {
       const clinic = result.payload.clinic?.name;
       document.title = clinic ? `${clinic} — your visit` : "Your visit";
     } else {
-      document.title = "Memara";
+      document.title = "Engram";
     }
   }, [result]);
 

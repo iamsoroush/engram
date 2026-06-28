@@ -2,7 +2,7 @@
 
 ## Assistant-State Language
 
-Memara should translate technical system work into calm assistant language.
+Engram should translate technical system work into calm assistant language.
 
 Preferred user-facing states:
 
@@ -66,6 +66,19 @@ Do not show `Failed` as a default state in normal memory surfaces. If something 
 
 ## Success
 
+Surface success **by exception** — a calm UI signals "all good" by the *absence* of warnings, not by a
+persistent confirmation. The Pro report has **no** standing "✓ Complete · captures processed, patient
+assigned, report up to date" line; completeness is already read from the `Complete` badge + the
+`✓ Reflects all N captures` freshness line. The underlying concerns surface only when they need
+attention, at their source:
+
+- **Captures still processing** → a calm `Organizing…` pulse on the **Sources** header (hidden once all
+  are processed).
+- **Report not up to date** → the `Updating · N of M captures not yet in this report` freshness line +
+  the header AI spark.
+- **No patient yet** → the patient card takes a **soft amber** attention state (never a red error —
+  capture-first / assign-when-ready stays non-blocking) with the primary `Assign` action.
+
 Examples:
 
 - `Saved.`
@@ -87,6 +100,15 @@ Use human-readable warnings:
 - `Source preview is not available right now.`
 
 Avoid exposing backend validation, AI job, upload, or sync details unless the user must act to keep data safe.
+
+### Stale reference self-heal (deleted/merged patient)
+
+When a patient a visit still references has been deleted or merged away, any patient-scoped call (verify
+an AI-created patient, assign a patient, or a queued assignment in the outbox) returns `404`. The client
+**self-heals** instead of freezing: it clears the stale patient reference (the visit reverts to
+`Unassigned`), dismisses the AI-created **verify** panel, drops the queued operation so the outbox stops
+retrying, and shows one calm warning — `That patient record is no longer available — the visit was set
+back to unassigned. Please assign it again.` No error code, no stuck spinner, no manual cache reset.
 
 ## Empty
 

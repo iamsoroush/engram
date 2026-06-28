@@ -50,7 +50,7 @@ entry. That gap — **fast, mobile, Persian-first capture before any structure**
 - **Provider-customizable charting templates/macros** to cut documentation time — but a known source of
   bloat (see §4). ([Nextech](https://www.nextech.com/plastic-surgery/ehr-system))
 
-## 3. The Apple-Notes reality (where Memara's tiers land)
+## 3. The Apple-Notes reality (where Engram's tiers land)
 
 Today the un-tooled clinic runs on **Apple Notes + camera roll + WhatsApp/Instagram DMs + a
 spreadsheet**. Failure modes, mapped to the tier that resolves them:
@@ -88,9 +88,9 @@ spreadsheet**. Failure modes, mapped to the tier that resolves them:
 - **Capture friction**: photos, consent, and treatment notes are separate structured steps, not one
   fast flow — exactly where reception/injector friction lives.
 
-## 5. Where Memara wins
+## 5. Where Engram wins
 
-**Thesis:** Memara is **capture-first** — capture never blocks reception or the injector; structure and
+**Thesis:** Engram is **capture-first** — capture never blocks reception or the injector; structure and
 intelligence are derived *after*, not demanded up front.
 
 - **Apple-Notes-simple Basic** that genuinely beats Notes at the four jobs clinics misuse it for
@@ -103,7 +103,7 @@ intelligence are derived *after*, not demanded up front.
 
 **Honest concessions (not competing in v1):** incumbents are genuinely ahead on **legally-robust
 e-consent**, **deep inventory/POS**, **payments/financing**, **insurance/billing**, and
-**marketing/CRM automation**. Memara should do *enough* consent + lot capture to be useful, and not try
+**marketing/CRM automation**. Engram should do *enough* consent + lot capture to be useful, and not try
 to out-suite the suites.
 
 ## 6. Implications for the design

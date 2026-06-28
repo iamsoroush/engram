@@ -835,6 +835,177 @@ small {
   background: currentColor;
   animation: capture-status-pulse 1.45s ease-out infinite;
 }
+
+/* Lightweight report thumbs rating → the AI-quality feedback harvester (eval-epic §1b). */
+.report-feedback-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  /* Sits between the aftercare section and the collapsible Sources drawer; the bottom margin keeps
+     it from crowding Sources, the top divider separates it from the report content above, and the
+     horizontal padding aligns the prompt with the report body / aftercare text (which are inset). */
+  margin: 4px 0 18px;
+  padding: 16px 16px 0;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.report-feedback-prompt {
+  font-weight: 600;
+}
+.report-feedback-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+.report-feedback-bar[dir="rtl"] .report-feedback-actions {
+  margin-right: auto;
+}
+.report-feedback-bar[dir="ltr"] .report-feedback-actions {
+  margin-left: auto;
+}
+.report-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  font-size: 1.02rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.report-feedback-btn:hover {
+  border-color: var(--color-text-soft);
+}
+.report-feedback-thanks {
+  font-weight: 600;
+  color: var(--color-success, #0f766e);
+}
+
+/* Before/after media (redesign-pro-report §2.4): side-by-side + draggable compare slider. */
+.before-after {
+  margin: 14px 0;
+}
+.ba-toolbar {
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ba-toolbar button {
+  padding: 4px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text-soft);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ba-toolbar button.on {
+  background: var(--color-accent-soft, #eef2ff);
+  color: var(--color-accent, #2456d6);
+  border-color: var(--color-accent, #2456d6);
+}
+.ba-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ba-fig {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-border);
+  aspect-ratio: 4 / 5;
+}
+.ba-fig img,
+.ba-layer {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.ba-tag {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.ba-tag-r {
+  left: auto;
+  right: 8px;
+}
+.ba-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: repeating-linear-gradient(45deg, #e5e7eb, #e5e7eb 8px, #eef0f3 8px, #eef0f3 16px);
+}
+.ba-captions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+}
+.ba-compare {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: var(--color-border);
+  touch-action: none;
+  user-select: none;
+  cursor: ew-resize;
+}
+.ba-compare .ba-before {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.ba-compare .ba-after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.ba-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.92);
+  z-index: 4;
+  transform: translateX(-1px);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2);
+  pointer-events: none;
+}
+.ba-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #fff;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35);
+}
 .report-doc-status {
   color: var(--color-muted);
   font-size: 0.82rem;
@@ -1377,11 +1548,11 @@ small {
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -1486,7 +1657,8 @@ small {
   border-radius: 8px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   color: #1f2937;
-  padding: 4px 10px 4px 6px;
+  padding-block: 4px;
+  padding-inline: 6px 10px;
   font-size: 0.76rem;
   font-weight: 800;
   box-shadow: 0 8px 20px rgb(15 23 42 / 7%);
@@ -1554,7 +1726,7 @@ small {
 .user-menu-panel {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  inset-inline-end: 0;
   z-index: 30;
   display: grid;
   width: min(252px, calc(100vw - 28px));
@@ -1622,7 +1794,7 @@ small {
   font-weight: 700;
   color: var(--color-text);
   cursor: pointer;
-  text-align: left;
+  text-align: start;
 }
 .user-menu-item:hover {
   background: #f3f6fb;
@@ -1643,6 +1815,11 @@ small {
 }
 .user-menu-item-danger svg {
   color: #b42318;
+}
+/* The logout glyph is directional (a door + an exit arrow pointing "out"). Mirror it under RTL so the
+   arrow points out toward the inline-start edge, matching reading direction. */
+[dir="rtl"] .user-menu-item-danger svg {
+  transform: scaleX(-1);
 }
 
 /* B4 — Settings & Profile pages */
@@ -2516,9 +2693,9 @@ small {
    indicator is the only cue; no pointer-events block or dimming here. */
 
 .report-heading {
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -2542,6 +2719,7 @@ small {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  flex: 0 0 auto;
 }
 
 .report-heading-actions .btn {
@@ -3699,9 +3877,8 @@ small {
 
 .app-version {
   position: fixed;
-  right: 0;
+  inset-inline: 0;
   bottom: 8px;
-  left: 0;
   z-index: 19;
   width: min(100%, 760px);
   margin: 0 auto;
@@ -5171,16 +5348,15 @@ small {
   }
 
   .app-navigator button {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-inline: 12px;
   }
 
   .report-heading {
-    grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .report-heading-actions,
+  /* Keep the header a single row on mobile: title left, compact share icon right (it does NOT
+     stretch full-width like the Basic toolbar actions below). */
   .report-toolbar-actions {
     align-items: stretch;
     flex-direction: column;
@@ -5302,7 +5478,8 @@ small {
 .patient-context-avatar path,
 .report-title-icon path,
 .edit-patient-button path,
-.capture-action-icon path {
+.capture-action-icon path,
+.report-share-button path {
   fill: none;
   stroke: currentColor;
   stroke-linecap: round;
@@ -5370,7 +5547,7 @@ small {
 }
 
 .user-menu-panel {
-  right: 0;
+  inset-inline-end: 0;
   width: min(248px, calc(100vw - 28px));
   gap: 10px;
   border-color: #dce6f2;
@@ -5543,8 +5720,12 @@ small {
   padding: 12px 14px;
 }
 
+/* Unassigned visit: a calm AMBER attention (matches the verify-bar palette), never a red error —
+   capture-first means "assign when ready" stays non-blocking; the amber + the primary Assign CTA
+   draw the eye without alarming. */
 .patient-context-card.unassigned {
-  background: var(--color-surface-soft);
+  background: #fff8ea;
+  border-color: #f0d49a;
 }
 
 .patient-context-avatar {
@@ -5559,8 +5740,8 @@ small {
 }
 
 .patient-context-card.unassigned .patient-context-avatar {
-  background: #eef2f9;
-  color: var(--color-muted);
+  background: #fdeccb;
+  color: #b07d1e;
 }
 
 .patient-context-avatar svg {
@@ -5737,15 +5918,23 @@ small {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 13px;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-pill, 999px);
   background: transparent;
   color: var(--color-primary);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
+}
+.report-share-button svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.9;
+}
+.report-share-button-label {
+  line-height: 1;
 }
 .report-share-button:hover { background: color-mix(in srgb, var(--color-primary) 10%, #fff); }
 
@@ -5784,12 +5973,158 @@ small {
   cursor: pointer;
 }
 .session-verify-bar-action:hover { background: #a57314; }
+/* The verify-bar "Review →" affordance: the arrow is split out (so the label goes through t()).
+   It points toward the content; mirror it under RTL so it points to the inline-start edge. */
+.verify-arrow { display: inline-block; margin-inline-start: 4px; }
+[dir="rtl"] .verify-arrow { transform: scaleX(-1); }
 
 .session-verify-region {
   display: grid;
   gap: 10px;
   margin-bottom: 12px;
   scroll-margin-top: 64px;
+}
+
+/* Session-level patient-conflict panel (FB8) — the dictated-different-patient resolver lifted out of
+   the Sources drawer into the verify region so it's never missed. */
+.session-patient-conflicts {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #f0d49a;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff8ea, #fef3da);
+}
+.session-patient-conflicts-label {
+  color: #6b4e12;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+/* Session-level SAFETY panel — highest-priority, calm red/amber strip above the verify region.
+   Opt-out: each detected allergy/contraindication/consent flag is shown by default; the × rejects a
+   wrong one. NOT a verify-bar blocker (requires no action). Flag body is report-language content. */
+.session-safety-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border: 1px solid #f1b7ad;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fff4f1, #fdeae6);
+}
+.session-safety-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.session-safety-label {
+  color: #a4321f;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+.session-safety-hint {
+  color: #9a6a5e;
+  font-size: 0.72rem;
+}
+.session-safety-flag {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid #f3cabf;
+  border-radius: 12px;
+  background: #fff;
+}
+.session-safety-kind {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+.session-safety-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: #2a1d1a;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.session-safety-remove {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #b08079;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.session-safety-remove:hover { background: #fdeaea; color: #c0392b; }
+
+/* Per-kind chip tint (shared by the capture panel, context card, and timeline). */
+.safety-allergy .session-safety-kind, .session-context-safety-flag.safety-allergy .session-context-safety-kind,
+.safety-allergy.session-safety-flag .session-safety-kind { background: #fde4e0; color: #b3271a; }
+.safety-contraindication .session-safety-kind { background: #fdeccc; color: #9a6212; }
+.safety-consent .session-safety-kind { background: #dcecfb; color: #1f5d9a; }
+
+/* Cross-visit safety flags on the session-context card + patient timeline (reference, read-only). */
+.session-context-safety, .patient-detail-safety {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid #f1b7ad;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #fff4f1, #fdeae6);
+}
+.patient-detail-safety { margin-bottom: 14px; }
+.session-context-safety-label, .patient-detail-safety-label {
+  color: #a4321f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.session-context-safety-list, .patient-detail-safety-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.session-context-safety-flag, .patient-detail-safety-flag {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.session-context-safety-kind, .patient-detail-safety-kind {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  background: #fde4e0;
+  color: #b3271a;
+}
+.safety-contraindication .session-context-safety-kind, .safety-contraindication .patient-detail-safety-kind { background: #fdeccc; color: #9a6212; }
+.safety-consent .session-context-safety-kind, .safety-consent .patient-detail-safety-kind { background: #dcecfb; color: #1f5d9a; }
+.session-context-safety-text, .patient-detail-safety-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #2a1d1a;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .sources-drawer {
@@ -5820,10 +6155,29 @@ small {
 .sources-drawer-chev {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  font-size: 0.66rem;
-  color: #5a6b85;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: #e7eefb;
+  font-size: 0.82rem;
+  line-height: 1;
+  color: #3b537e;
+}
+.sources-drawer-organizing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2456d6;
+}
+.sources-organizing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: capture-status-pulse 1.45s ease-out infinite;
 }
 .sources-drawer-title {
   font-size: 0.86rem;
@@ -5991,6 +6345,25 @@ small {
   white-space: nowrap;
 }
 .treatment-fix-at-source:hover { background: #f2f7fd; }
+
+/* Per-claim source citation: tap a treatment row / cited block → open the source capture. */
+.source-citation {
+  margin-inline-start: 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.source-citation:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
 
 /* Inline carried-forward dose confirmation, embedded on its own treatment row (Q3) — replaces the
    separate "Needs your confirmation" section. A calm amber highlight marks the row that needs a tap. */
@@ -6252,7 +6625,7 @@ small {
 @media (min-width: 720px) {
   .phone-shell {
     padding-right: 28px;
-    padding-left: 28px;
+    padding-inline-start: 28px;
   }
 
   .session-workspace {
@@ -6298,7 +6671,9 @@ small {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .report-heading-actions {
+  /* Keep the header actions on mobile so the compact share icon shows (it used to hold only the
+     inline "updating" spinner, which was hidden here — that spinner stays hidden, the share shows). */
+  .report-heading-actions .report-updating {
     display: none;
   }
 
@@ -7201,14 +7576,14 @@ small {
   position: relative;
   display: grid;
   gap: 18px;
-  padding-left: 28px;
+  padding-inline-start: 28px;
 }
 
 .patient-timeline::before {
   position: absolute;
   top: 10px;
   bottom: 10px;
-  left: 8px;
+  inset-inline-start: 8px;
   width: 2px;
   background: #dbe5f2;
   content: "";
@@ -7223,7 +7598,7 @@ small {
 .patient-timeline-marker {
   position: absolute;
   top: 3px;
-  left: -27px;
+  inset-inline-start: -27px;
   width: 18px;
   height: 18px;
   border: 4px solid #eff5ff;
@@ -8124,15 +8499,15 @@ small {
   }
 
   .patient-timeline {
-    padding-left: 22px;
+    padding-inline-start: 22px;
   }
 
   .patient-timeline::before {
-    left: 7px;
+    inset-inline-start: 7px;
   }
 
   .patient-timeline-marker {
-    left: -23px;
+    inset-inline-start: -23px;
   }
 
   .patient-timeline-card {
@@ -9673,7 +10048,7 @@ small {
   width: 100%;
   margin-top: 9px;
   padding: 9px 11px;
-  text-align: left;
+  text-align: start;
   border: 1px solid var(--violet-border);
   background: var(--violet-soft);
   border-radius: var(--radius-md);
@@ -9723,7 +10098,7 @@ small {
   color: var(--violet);
 }
 .try-pro-go {
-  margin-left: auto;
+  margin-inline-start: auto;
   flex: 0 0 auto;
   align-self: center;
   color: var(--violet);
@@ -9792,7 +10167,7 @@ small {
   cursor: pointer;
   padding: 0;
 }
-.last-visit-link { margin-left: 6px; }
+.last-visit-link { margin-inline-start: 6px; }
 .last-visit-use {
   flex: 0 0 auto;
   align-self: center;
@@ -9847,7 +10222,7 @@ small {
   margin: 0; font-size: 0.8rem; line-height: 1.45; color: var(--color-text);
   padding: 7px 9px; border-radius: 8px; background: #fff8ec; border: 1px solid #f5d9a8;
 }
-.session-context-facts-label { font-weight: 700; color: #8a5a12; margin-right: 4px; }
+.session-context-facts-label { font-weight: 700; color: #8a5a12; margin-inline-end: 4px; }
 .session-context-digest { display: flex; flex-direction: column; gap: 7px; }
 .session-context-digest-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 0.8rem; color: var(--color-text); }
 .session-context-counts { color: var(--color-muted); font-size: 0.74rem; }
@@ -9920,7 +10295,7 @@ small {
 }
 .media-overlay-inner { position: relative; width: min(100%, 920px); max-height: 92vh; display: flex; flex-direction: column; }
 .media-overlay-close {
-  position: absolute; top: -6px; right: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
+  position: absolute; top: -6px; inset-inline-end: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
   border: 0; background: #fff; color: #111; font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .media-overlay-single { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -9944,6 +10319,10 @@ small {
   .media-overlay-compare { gap: 6px; }
   .media-overlay-vs { font-size: 1rem; }
 }
+/* RTL: the photo-nav row + compare row reverse via flow direction; mirror the directional glyphs
+   (‹ › prev/next and the before→after arrow) so they point the right way. */
+[dir="rtl"] .media-overlay-nav button,
+[dir="rtl"] .media-overlay-vs { transform: scaleX(-1); }
 
 /* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
 .lineup-card {
@@ -10080,7 +10459,7 @@ small {
   margin-bottom: 10px;
 }
 .patient-gallery-head h2 { margin: 0; font-size: 0.95rem; font-weight: 800; }
-.patient-gallery-meta { margin-left: auto; font-size: 0.72rem; color: var(--color-muted); }
+.patient-gallery-meta { margin-inline-start: auto; font-size: 0.72rem; color: var(--color-muted); }
 .patient-gallery-visit { margin-bottom: 11px; }
 .patient-gallery-visit-head {
   font-size: 0.72rem;
@@ -10112,7 +10491,7 @@ small {
   border-radius: var(--radius-sm);
   background: linear-gradient(90deg, #eef2f9, #f8fbff, #eef2f9);
 }
-.patient-detail-share { margin-left: auto; align-self: flex-start; }
+.patient-detail-share { margin-inline-start: auto; align-self: flex-start; }
 
 /* --- Smart search (AES-204) --- */
 .smart-search-note {
@@ -10292,7 +10671,7 @@ small {
 .share-incl-copy { display: flex; flex-direction: column; min-width: 0; }
 .share-incl-copy b { font-size: 0.84rem; }
 .share-incl-copy span { font-size: 0.7rem; color: var(--color-muted); }
-.share-aftercare-select { width: auto; margin-left: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
+.share-aftercare-select { width: auto; margin-inline-start: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
 .share-toggle {
   flex: 0 0 auto;
   width: 36px;
@@ -10307,16 +10686,16 @@ small {
 .share-toggle span {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 17px;
   height: 17px;
   border-radius: 50%;
   background: #fff;
-  transition: left 140ms ease;
+  transition: inset-inline-start 140ms ease;
 }
 .share-toggle.on { background: var(--color-primary); }
-.share-toggle.on span { left: 17px; }
-.share-note-input { margin-left: 46px; }
+.share-toggle.on span { inset-inline-start: 17px; }
+.share-note-input { margin-inline-start: 46px; }
 .share-photo-thumb {
   flex: 0 0 auto;
   width: 46px;
@@ -10355,7 +10734,7 @@ small {
 .share-preview-photo img { width: 100%; height: 96px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: block; }
 .share-preview-photo figcaption { font-size: 0.68rem; color: var(--color-muted); margin-top: 3px; }
 .share-preview-note { margin: 0 0 9px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
-.share-preview-treatments { margin: 0 0 9px; padding-left: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
+.share-preview-treatments { margin: 0 0 9px; padding-inline-start: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
 .share-preview-aftercare h4 { margin: 0 0 3px; font-size: 0.8rem; }
 .share-preview-aftercare p { margin: 0; font-size: 0.82rem; color: var(--color-text-soft); line-height: 1.5; }
 .share-actions { display: flex; gap: 9px; margin-top: 14px; }
@@ -10678,7 +11057,7 @@ small {
 .try-pro-info-x {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: inline-flex;
   width: 30px;
   height: 30px;
@@ -10720,7 +11099,7 @@ small {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  text-align: left;
+  text-align: start;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -10916,3 +11295,654 @@ small {
 .report-review .report-review-chip.confirmed { border-color: #bfe3c4; background: #f1faf2; color: #2f6b3a; }
 .report-review .report-review-chip-confirmed { flex: 0 0 auto; font-weight: 700; }
 .treatments-performed .treatment-flag.confirmed { color: #2f6b3a; }
+
+/* ============================================================================
+   Public / first-run surfaces: landing, login, sign-up, onboarding.
+   Bilingual + RTL-aware — all flow uses logical/symmetric layout so `dir="rtl"`
+   on `.auth-root` mirrors correctly with no per-rule overrides.
+   ============================================================================ */
+.auth-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-page);
+  color: var(--color-text);
+}
+.auth-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px clamp(16px, 5vw, 40px);
+}
+.auth-brand {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+  color: var(--color-primary);
+}
+.auth-lang-toggle {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.auth-lang-toggle:hover {
+  border-color: var(--color-border-strong);
+}
+/* A quiet text link used under the auth forms (switch to login / sign-up). */
+.auth-link {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  padding: 2px;
+  text-align: center;
+}
+.auth-link:hover {
+  text-decoration: underline;
+}
+.field-hint {
+  color: var(--color-muted);
+  font-weight: 500;
+  font-size: var(--text-xs);
+  margin-bottom: 4px;
+}
+/* Inside the unauthenticated shell the card sits below the top bar — top-align it (with breathing
+   room) instead of dead-centering in a full viewport, which left a large empty band on mobile. */
+.auth-root .login-shell {
+  min-height: 0;
+  flex: 1;
+  align-items: start;
+  padding-top: clamp(16px, 5vh, 48px);
+}
+/* Developer-only persona sign-in, separated from the real form. */
+.dev-signin {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--color-border);
+}
+
+/* --- Landing --- */
+.landing {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(36px, 6vw, 64px);
+  padding: clamp(12px, 3vw, 28px) clamp(16px, 5vw, 40px) 48px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+}
+/* Hero: single column on mobile, two columns (copy | product preview) on desktop. */
+.landing-hero {
+  display: grid;
+  gap: clamp(24px, 4vw, 44px);
+  align-items: center;
+}
+.landing-hero-copy {
+  display: grid;
+  gap: 16px;
+  max-width: 560px;
+}
+.landing-title {
+  font-size: clamp(1.9rem, 5.5vw, 2.9rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.landing-subtitle {
+  font-size: clamp(1rem, 2.4vw, 1.15rem);
+  line-height: 1.6;
+  color: var(--color-muted);
+  margin: 0;
+}
+.landing-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+.landing-hero-visual {
+  display: flex;
+  justify-content: center;
+}
+
+/* Product preview — a stylized phone built from the app's own tokens (not a screenshot). */
+.landing-preview {
+  margin: 0;
+  width: min(300px, 100%);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.landing-preview-screen {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 24px;
+  box-shadow: var(--shadow-float);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+.landing-preview-topbar {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 2px;
+}
+.landing-preview-brand {
+  font-weight: 800;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+}
+.landing-preview-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+.landing-preview-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--green);
+}
+.landing-preview-chip {
+  justify-self: start;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 5px 11px;
+}
+.landing-preview-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+}
+.landing-preview-line {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+}
+.landing-preview-line.w90 {
+  width: 90%;
+}
+.landing-preview-line.w70 {
+  width: 70%;
+}
+.landing-preview-line.w55 {
+  width: 55%;
+}
+.landing-preview-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.landing-preview-action {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 4px;
+}
+.landing-preview-action.primary {
+  color: #fff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.landing-preview-action svg,
+.landing-step-chip svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.landing-preview-caption {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* Generic landing section */
+.landing-section {
+  display: grid;
+  gap: 18px;
+}
+.landing-section-title {
+  margin: 0;
+  font-size: clamp(1.3rem, 3vw, 1.7rem);
+  letter-spacing: -0.01em;
+}
+
+/* How it works */
+.landing-steps,
+.landing-trust {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+.landing-step {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.landing-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.landing-step h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.landing-step p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+  font-size: var(--text-md);
+}
+.landing-step-modalities {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.landing-step-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+/* Trust */
+.landing-trust-item {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.landing-trust-item h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.landing-trust-item p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+  font-size: var(--text-sm);
+}
+
+/* Pro tag — reused on the Pro plan teaser. */
+.landing-pro-tag {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--violet);
+  background: var(--violet-soft);
+  border: 1px solid var(--violet-border);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+}
+
+/* Pricing */
+.landing-pricing-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.landing-pricing-note {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+}
+.landing-plans {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.landing-plan {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--shadow-card);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.landing-plan-pro {
+  border-color: var(--violet-border);
+  background: linear-gradient(180deg, var(--violet-soft), var(--color-surface) 55%);
+}
+.landing-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.landing-plan-head h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.landing-plan-price {
+  margin: 0;
+  font-weight: 700;
+}
+.landing-plan-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.landing-plan-features li {
+  position: relative;
+  padding-inline-start: 22px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.landing-plan-features li::before {
+  content: "✓";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--color-success);
+  font-weight: 800;
+}
+.landing-footer {
+  color: var(--color-muted-2);
+  font-size: var(--text-sm);
+  padding-top: 8px;
+}
+
+@media (min-width: 860px) {
+  .landing-hero {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+  .landing-preview {
+    width: min(320px, 100%);
+  }
+}
+
+/* --- Onboarding (guided first capture) --- */
+.onboarding-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(8 13 45 / 55%);
+  backdrop-filter: blur(2px);
+  animation: onboarding-fade 0.2s ease-out;
+}
+@keyframes onboarding-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes onboarding-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+.onboarding-card {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 18px;
+  box-shadow: var(--shadow-float);
+  animation: onboarding-pop 0.22s ease-out;
+}
+/* A small step pill, shared by the modal card + the spotlight bubble. */
+.onboarding-step-index {
+  justify-self: start;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.onboarding-card h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+}
+.onboarding-card p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+.onboarding-dots {
+  display: flex;
+  gap: 6px;
+  margin: 2px 0;
+}
+.onboarding-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-strong);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+.onboarding-dot.active {
+  width: 18px;
+  background: var(--color-primary);
+}
+.onboarding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+/* --- Team (member management) --- */
+.team-add-form {
+  margin-top: 4px;
+}
+.team-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.team-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+.team-member-id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.team-member-id strong {
+  font-size: var(--text-md);
+}
+.team-member-id small {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+.team-member-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Onboarding spotlight (coachmark on the live capture bar) --- */
+.onboarding-spotlight {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  /* The container spans the viewport, so it must not itself swallow clicks — only the dim panels
+     (which surround the target) and the bubble are interactive; the target hole stays clickable. */
+  pointer-events: none;
+}
+/* Four dim panels around the highlighted target leave it uncovered (so it stays clickable). */
+.onboarding-dim {
+  position: fixed;
+  background: rgb(8 13 45 / 55%);
+  pointer-events: auto;
+}
+.onboarding-ring {
+  position: fixed;
+  border: 2px solid var(--color-primary);
+  border-radius: 14px;
+  pointer-events: none;
+  box-shadow: 0 0 0 4px rgb(7 94 255 / 25%);
+  animation: onboarding-pulse 1.6s ease-in-out infinite;
+}
+@keyframes onboarding-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgb(7 94 255 / 25%);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgb(7 94 255 / 8%);
+  }
+}
+.onboarding-bubble {
+  position: fixed;
+  max-width: 460px;
+  margin: 0 auto;
+  background: var(--color-surface);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: var(--shadow-float);
+  display: grid;
+  gap: 10px;
+  pointer-events: auto;
+  animation: onboarding-pop 0.22s ease-out;
+}
+.onboarding-bubble h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.onboarding-bubble p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+/* --- Plan (Basic vs Pro) --- */
+.plan-intro {
+  margin-top: -4px;
+}
+.plan-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.plan-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+.plan-card-pro {
+  border-color: var(--violet-border);
+  background: linear-gradient(180deg, var(--violet-soft), var(--color-surface) 60%);
+}
+.plan-card-current {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+.plan-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.plan-card-head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+.plan-card-tagline {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.plan-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 7px;
+}
+.plan-features li {
+  position: relative;
+  padding-inline-start: 22px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+.plan-features li::before {
+  content: "✓";
+  position: absolute;
+  inset-inline-start: 0;
+  color: var(--color-success);
+  font-weight: 800;
+}
+/* The "Everything in Basic, plus:" lead-in row reads as a heading, not a checklist item. */
+.plan-card-pro .plan-features li:first-child {
+  font-weight: 700;
+  color: var(--color-text);
+}
+.plan-card-pro .plan-features li:first-child::before {
+  content: "";
+}

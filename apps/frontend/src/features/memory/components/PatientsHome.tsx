@@ -5,6 +5,7 @@ import type { AftercareTemplate, AssignmentSuggestionResponse, AuthSession, Clin
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Input } from "../../../shared/ui/primitives";
+import { useT } from "../../../shared/i18n";
 import { WorklistSection } from "./WorklistSection";
 import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
@@ -112,6 +113,7 @@ export function PatientsHome({
   onToast?: (message: string) => void;
   onLoadAssignmentSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
+  const t = useT();
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
@@ -155,30 +157,30 @@ export function PatientsHome({
   // Pro tenants get AI-maintained memory artifacts (the ✨ surfaces); Basic gets deterministic text.
   const isPro = tier !== "basic";
   const today = React.useMemo(
-    () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds }),
-    [activeSession, resolvedDecisionIds, sessions, syncHealth],
+    () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds, t }),
+    [activeSession, resolvedDecisionIds, sessions, syncHealth, t],
   );
   const localPatientRows = React.useMemo(
-    () => buildPatientRows({ activeSession, sessions, resolvedDecisionIds }),
-    [activeSession, resolvedDecisionIds, sessions],
+    () => buildPatientRows({ activeSession, sessions, resolvedDecisionIds, t }),
+    [activeSession, resolvedDecisionIds, sessions, t],
   );
   const localNeedsInputItems = React.useMemo(
-    () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds }),
-    [activeSession, resolvedDecisionIds, sessions, storageWarning],
+    () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds, t }),
+    [activeSession, resolvedDecisionIds, sessions, storageWarning, t],
   );
   // Prefer the backend-computed decisions (so the tab matches the patient-card badges exactly);
   // keep the client-only storage warning plus any local-only sessions the backend has not seen.
   const needsInputItems = React.useMemo(() => {
     if (!needsInputRowsLoaded) return localNeedsInputItems;
     const backendCards = needsInputRows.flatMap((row) =>
-      patientNeedsInputItemsFromApi(row).map((item) => needsInputCardFromApi(row, item)),
+      patientNeedsInputItemsFromApi(row, t).map((item) => needsInputCardFromApi(row, item, t)),
     );
     const backendSessionIds = new Set(backendCards.map((card) => card.sessionId).filter(Boolean));
     const localExtras = localNeedsInputItems.filter(
       (card) => card.kind === "review-storage" || (card.sessionId && !backendSessionIds.has(card.sessionId)),
     );
     return [...localExtras, ...backendCards].sort((a, b) => b.sortTime - a.sortTime);
-  }, [needsInputRowsLoaded, needsInputRows, localNeedsInputItems]);
+  }, [needsInputRowsLoaded, needsInputRows, localNeedsInputItems, t]);
   // First page: re-fetched from offset 0 whenever the tab, search query, filter, or a create
   // (patientListVersion) changes — keeping the list in sync with the shared search box.
   React.useEffect(() => {
@@ -289,12 +291,12 @@ export function PatientsHome({
   const patientRows = React.useMemo(
     () =>
       backendPatientRows.length && !patientRowsError
-        ? backendPatientRows.map(patientRowFromApi)
+        ? backendPatientRows.map((row) => patientRowFromApi(row, t))
         : localPatientRows.filter((patient) => {
             if (patientFilter === "active") return patient.isActive;
             return true;
           }),
-    [backendPatientRows, localPatientRows, patientFilter, patientRowsError],
+    [backendPatientRows, localPatientRows, patientFilter, patientRowsError, t],
   );
   const needsInputSessions = today.needsInputSessions;
   const needsInputCount = needsInputItems.length;
@@ -303,7 +305,7 @@ export function PatientsHome({
   const filteredPatients = backendRowsActive
     ? patientRows
     : patientRows.filter((patient) =>
-        normalizedQuery ? [patient.name, patient.summary, patient.badges.join(" ")].join(" ").toLowerCase().includes(normalizedQuery) : true,
+        normalizedQuery ? [patient.name, patient.summary, patient.badges.map((badge) => badge.label).join(" ")].join(" ").toLowerCase().includes(normalizedQuery) : true,
       );
   const assignmentSession = assignmentSessionId
     ? sessions.find((session) => session.id === assignmentSessionId) || (activeSession?.id === assignmentSessionId ? activeSession : null)
@@ -319,13 +321,13 @@ export function PatientsHome({
     ? patientRows.find((patient) => patient.id === selectedPatientId) ||
       (() => {
         const match = smartResults?.find((result) => result.id === selectedPatientId);
-        return match ? patientRowFromSmartMatch(match) : undefined;
+        return match ? patientRowFromSmartMatch(match, t) : undefined;
       })() ||
       // Opened by id from a surface that isn't the loaded list (e.g. the worklist): resolve from the
       // fetched detail, or a lightweight stub (its name) so the detail renders without a tab flash.
-      (selectedPatientDetail ? patientRowFromApi(selectedPatientDetail.patient) : undefined) ||
+      (selectedPatientDetail ? patientRowFromApi(selectedPatientDetail.patient, t) : undefined) ||
       (pendingPatientStub && pendingPatientStub.id === selectedPatientId
-        ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name)
+        ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name, t)
         : undefined)
     : null;
   const viewedPatientId = selectedPatient?.id;
@@ -334,7 +336,7 @@ export function PatientsHome({
   // Report the open patient's file up to App so the global footer can capture *for them* (E9). On
   // unmount (leaving Clinical Memory) clear it, so the capture target reverts to the active session.
   React.useEffect(() => {
-    onViewingPatientChange?.(viewedPatientId ? { id: viewedPatientId, name: viewedPatientName || "Patient" } : null);
+    onViewingPatientChange?.(viewedPatientId ? { id: viewedPatientId, name: viewedPatientName || t("patients.fallbackName") } : null);
   }, [viewedPatientId, viewedPatientName, onViewingPatientChange]);
   React.useEffect(() => () => onViewingPatientChange?.(null), [onViewingPatientChange]);
 
@@ -447,7 +449,7 @@ export function PatientsHome({
   };
 
   return (
-    <section className="clinical-memory" aria-label="Clinical Memory">
+    <section className="clinical-memory" aria-label={t("patients.clinicalMemory")}>
       {decisionListPatient ? (
         <PatientDecisionListSheet
           patient={decisionListPatient}
@@ -519,7 +521,7 @@ export function PatientsHome({
           <ChoosePatientResolver
             session={assignmentSession}
             onAssign={async (draft) => {
-              await onAssignPatient(assignmentSession.id, draft, { successMessage: "Patient confirmed" });
+              await onAssignPatient(assignmentSession.id, draft, { successMessage: t("patients.toast.patientConfirmed") });
               setResolvedDecisionIds((current) => new Set(current).add(decisionIdForSession(assignmentSession)));
               setAssignmentSessionId("");
             }}
@@ -577,33 +579,33 @@ export function PatientsHome({
         <>
       <div className="clinical-memory-hero">
         <div>
-          <h1>Clinical Memory</h1>
-          <p>Your calm, intelligent assistant for capturing and organizing what matters most.</p>
+          <h1>{t("patients.clinicalMemory")}</h1>
+          <p>{t("patients.heroSubtitle")}</p>
         </div>
         <button className="needs-input-pill" onClick={() => setActiveTab("needs-input")} type="button">
           <SparkleIcon />
-          {needsInputCount ? `${needsInputCount} need your input` : "All caught up"}
+          {needsInputCount ? t("patients.needYourInputCount", { n: needsInputCount }) : t("patients.allCaughtUp")}
           <ChevronIcon />
         </button>
       </div>
 
       {today.isOffline ? (
         <AssistantStatusPill icon={<OfflineIcon />}>
-          Offline · Captures are saved on this device
+          {t("patients.offlineCapturesSaved")}
         </AssistantStatusPill>
       ) : null}
 
       <label className="clinical-search">
         <SearchIcon />
         <Input
-          aria-label="Search patients"
+          aria-label={t("patients.searchAriaLabel")}
           onChange={(event) => {
             // The search drives patient results, so typing jumps to the Patients tab where it acts
             // (rather than sitting inert on Today / Needs input).
             setQuery(event.target.value);
             if (event.target.value.trim() && activeTab !== "patients") setActiveTab("patients");
           }}
-          placeholder="Search patients by name, phone, or ID..."
+          placeholder={t("patients.searchPlaceholder")}
           value={query}
         />
         <span aria-hidden="true" className="clinical-search-filter">
@@ -611,7 +613,7 @@ export function PatientsHome({
         </span>
       </label>
 
-      <div className="clinical-tabs" role="tablist" aria-label="Clinical Memory sections">
+      <div className="clinical-tabs" role="tablist" aria-label={t("patients.sectionsAriaLabel")}>
         {clinicalTabs.map((tab) => (
           <button
             aria-selected={activeTab === tab.value}
@@ -622,7 +624,7 @@ export function PatientsHome({
             type="button"
           >
             <span aria-hidden="true">{tab.icon}</span>
-            {tab.label}
+            {t(`patients.tab.${tab.value}`)}
           </button>
         ))}
       </div>
@@ -640,19 +642,19 @@ export function PatientsHome({
               onSearchPatients={onSearchPatients}
               onStartVisit={onStartVisit}
               onPeekPatient={(patientId, patientName, worklistEntryId, canStartVisit) =>
-                setRecapPatient({ id: patientId, name: patientName || "Patient", entryId: worklistEntryId, canStart: canStartVisit })
+                setRecapPatient({ id: patientId, name: patientName || t("patients.fallbackName"), entryId: worklistEntryId, canStart: canStartVisit })
               }
               refreshSignal={memoryRefreshSignal}
             />
           ) : null}
           <ClinicalSection
-            title="Active session"
-            badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session) : undefined}
+            title={t("patients.section.activeSession")}
+            badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session, t) : undefined}
             badgeTone={today.currentVisit?.tone === "amber" ? "amber" : "green"}
           >
             {today.currentVisit ? (
               <VisitCard
-                primaryActionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? "Continue visit" : "Assign patient"}
+                primaryActionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? t("patients.action.continueVisit") : t("patients.action.assignPatient")}
                 summary={today.currentVisit.summary}
                 session={today.currentVisit.session}
                 statusLabel={today.currentVisit.statusLabel}
@@ -670,14 +672,14 @@ export function PatientsHome({
                 }}
               />
             ) : (
-              <EmptyClinicalState title="No active visit." copy="Start with audio, photo, or note." />
+              <EmptyClinicalState title={t("patients.empty.noActiveVisit.title")} copy={t("patients.empty.noActiveVisit.copy")} />
             )}
           </ClinicalSection>
           {!today.isOffline ? (
-            <ClinicalSection title="Needs your input" badge={needsInputSessions.length ? visitCountLabel(needsInputSessions.length) : undefined} badgeTone="amber">
+            <ClinicalSection title={t("patients.section.needsYourInput")} badge={needsInputSessions.length ? visitCountLabel(needsInputSessions.length, t) : undefined} badgeTone="amber">
               {today.needsInputPreview ? (
                 <VisitCard
-                  primaryActionLabel={todayNeedsInputActionLabel(today.needsInputPreview.session)}
+                  primaryActionLabel={todayNeedsInputActionLabel(today.needsInputPreview.session, t)}
                   summary={today.needsInputPreview.summary}
                   session={today.needsInputPreview.session}
                   statusLabel={today.needsInputPreview.statusLabel}
@@ -699,13 +701,13 @@ export function PatientsHome({
                   }}
                 />
               ) : (
-                <EmptyClinicalState title="All caught up." copy="Nothing needs your input right now." />
+                <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copyToday")} />
               )}
             </ClinicalSection>
           ) : (
-            <p className="clinical-offline-note"><InfoIcon /> You're offline. Patient search may be limited.</p>
+            <p className="clinical-offline-note"><InfoIcon /> {t("patients.offlineSearchLimited")}</p>
           )}
-          <ClinicalSection title="Updated today" badge={today.recentMemory.length ? today.recentMemoryBadge : undefined}>
+          <ClinicalSection title={t("patients.section.updatedToday")} badge={today.recentMemory.length ? today.recentMemoryBadge : undefined}>
             {today.recentMemory.length ? (
               <div className="clinical-list">
                 {today.recentMemory.map((memory) => (
@@ -721,7 +723,7 @@ export function PatientsHome({
                 ))}
               </div>
             ) : (
-              <EmptyClinicalState title="No visits updated today." copy="Visits appear here when captures or patient details change today." />
+              <EmptyClinicalState title={t("patients.empty.noVisitsToday.title")} copy={t("patients.empty.noVisitsToday.copy")} />
             )}
           </ClinicalSection>
         </div>
@@ -730,7 +732,7 @@ export function PatientsHome({
       {activeTab === "patients" ? (
         <div className="clinical-tab-panel" role="tabpanel">
           <div className="patients-toolbar">
-            <div className="clinical-filter-row" aria-label="Patient filters">
+            <div className="clinical-filter-row" aria-label={t("patients.filtersAriaLabel")}>
               {patientFilters.map((filter) => (
                 <button
                   aria-pressed={patientFilter === filter.value}
@@ -739,12 +741,12 @@ export function PatientsHome({
                   onClick={() => setPatientFilter(filter.value)}
                   type="button"
                 >
-                  {filter.label}
+                  {t(`patients.filter.${filter.value}`)}
                 </button>
               ))}
             </div>
             {myUserId ? (
-              <div className="mine-clinic-toggle" role="group" aria-label="Mine vs Clinic">
+              <div className="mine-clinic-toggle" role="group" aria-label={t("patients.scopeAriaLabel")}>
                 {(["mine", "clinic"] as const).map((value) => (
                   <button
                     key={value}
@@ -753,19 +755,19 @@ export function PatientsHome({
                     onClick={() => setOwnershipScope(value)}
                     type="button"
                   >
-                    {value === "mine" ? "Mine" : "Clinic"}
+                    {value === "mine" ? t("patients.scope.mine") : t("patients.scope.clinic")}
                   </button>
                 ))}
               </div>
             ) : null}
             {onCreatePatient ? (
               <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
-                <span aria-hidden="true">+</span> New patient
+                <span aria-hidden="true">+</span> {t("patients.newPatient")}
               </button>
             ) : null}
           </div>
           {creatingPatient && onCreatePatient ? (
-            <section className="patient-edit-card" aria-label="Create a new patient">
+            <section className="patient-edit-card" aria-label={t("patients.createPatientAriaLabel")}>
               {onDuplicateCheck ? (
                 <RegisterPatientForm
                   initialName={query.trim()}
@@ -778,24 +780,24 @@ export function PatientsHome({
                   }}
                 />
               ) : (
-                <PatientForm onCancel={() => setCreatingPatient(false)} onSubmit={submitNewPatient} submitLabel="Create patient" />
+                <PatientForm onCancel={() => setCreatingPatient(false)} onSubmit={submitNewPatient} submitLabel={t("patients.createPatient")} />
               )}
             </section>
           ) : null}
           {smartResults ? (
             <div className="clinical-list">
               <p className="smart-search-note">
-                <SearchIcon /> Deterministic, Persian-aware match · {smartSearching ? "searching…" : `${smartResults.length} result${smartResults.length === 1 ? "" : "s"}`}
+                <SearchIcon /> {t("patients.smartMatch")} · {smartSearching ? t("patients.searching") : t("patients.resultCount", { n: smartResults.length })}
               </p>
               {smartResults.length ? (
                 smartResults.map((match) => (
                   <PatientRow
-                    actionLabel="View history"
-                    badges={smartMatchBadges(match)}
-                    latestVisitLabel={match.lastVisit ? `Last visit ${formatPatientLastVisit(match.lastVisit)}` : null}
+                    actionLabel={t("patients.viewHistory")}
+                    badges={smartMatchBadges(match, t)}
+                    latestVisitLabel={match.lastVisit ? t("patients.lastVisit", { date: formatPatientLastVisit(match.lastVisit, t) }) : null}
                     key={match.id}
                     patientName={match.displayName}
-                    summary={match.reason || "Matched patient record."}
+                    summary={match.reason || t("patients.matchedRecord")}
                     isPro={isPro}
                     tone="green"
                     onAction={() => setSelectedPatientId(match.id)}
@@ -804,15 +806,15 @@ export function PatientsHome({
                 ))
               ) : (
                 <EmptyClinicalState
-                  title="No matching patients found."
-                  copy={/^\d{1,3}$/.test(query.trim()) ? "Enter at least 4 digits of a phone or national ID — or search by name." : "Try another name, phone, or national ID."}
+                  title={t("patients.empty.noMatches.title")}
+                  copy={/^\d{1,3}$/.test(query.trim()) ? t("patients.empty.noMatches.copyDigits") : t("patients.empty.noMatches.copy")}
                 />
               )}
             </div>
           ) : (
           <div className="clinical-list">
             {patientRowsError ? (
-              <p className="clinical-offline-note"><InfoIcon /> Patient memory is showing saved items from this device.</p>
+              <p className="clinical-offline-note"><InfoIcon /> {t("patients.savedFromDevice")}</p>
             ) : null}
             {patientRowsLoading && !filteredPatients.length ? (
               <PatientListLoading />
@@ -834,18 +836,18 @@ export function PatientsHome({
               ))
             ) : (
               <EmptyClinicalState
-                title={patientRows.length ? "No matching patients found." : "No patients yet."}
-                copy={patientRows.length ? "Try another search or filter." : "Start by capturing audio, photo, or a note."}
+                title={patientRows.length ? t("patients.empty.noMatches.title") : t("patients.empty.noPatients.title")}
+                copy={patientRows.length ? t("patients.empty.noMatches.copyFilter") : t("patients.empty.noPatients.copy")}
               />
             )}
           </div>
           )}
           {!smartResults && backendRowsActive && filteredPatients.length ? (
             <div className="patients-pagination">
-              <span className="patients-count">Showing {filteredPatients.length} of {patientTotal}</span>
+              <span className="patients-count">{t("patients.showingOf", { shown: filteredPatients.length, total: patientTotal })}</span>
               {filteredPatients.length < patientTotal ? (
                 <button className="patients-load-more" disabled={patientLoadingMore} onClick={loadMorePatients} type="button">
-                  {patientLoadingMore ? "Loading…" : "Load more"}
+                  {patientLoadingMore ? t("patients.loading") : t("patients.loadMore")}
                 </button>
               ) : null}
             </div>
@@ -855,7 +857,7 @@ export function PatientsHome({
 
       {activeTab === "needs-input" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          <p className="clinical-helper">A few things need your judgment to keep memory accurate and useful.</p>
+          <p className="clinical-helper">{t("patients.needsInputHelper")}</p>
           <div className="needs-input-list">
             {needsInputItems.length ? (
               needsInputItems.map((item) => (
@@ -867,7 +869,7 @@ export function PatientsHome({
                 />
               ))
             ) : (
-              <EmptyClinicalState title="All caught up." copy="Nothing needs your input." />
+              <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copy")} />
             )}
           </div>
         </div>

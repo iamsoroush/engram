@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import io
 import uuid
@@ -78,6 +79,55 @@ def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid
     return session
 
 
+def _report_model_with_media_pairing(
+    structured_report: dict[str, Any], db: DbSession, session: Session
+) -> dict[str, Any]:
+    """Attach each ``media`` image block's capture ``photo_pairing`` to the serialized report model.
+
+    The deterministic before/after pairing lives on the photo capture (``recompute_session_photo_pairing``).
+    Carrying it on the report's image blocks lets the client render the before/after **slider** directly
+    — "the rendering consumes pairs, it does not pair" (redesign-pro-report §2.4) — without an extra
+    fetch per photo. Returns a deep copy when anything is attached, so the ORM JSONB is never mutated.
+    """
+    sections = structured_report.get("sections")
+    if not isinstance(sections, list):
+        return structured_report
+    image_capture_ids: set[str] = set()
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for block in section.get("blocks") or []:
+            if isinstance(block, dict) and block.get("type") == "image" and block.get("captureId"):
+                image_capture_ids.add(str(block["captureId"]))
+    parsed_ids = []
+    for capture_id in image_capture_ids:
+        try:
+            parsed_ids.append(uuid.UUID(capture_id))
+        except ValueError:
+            continue
+    if not parsed_ids:
+        return structured_report
+    pairing_by_capture: dict[str, dict[str, Any]] = {}
+    for capture in db.execute(
+        select(Capture).where(Capture.tenant_id == session.tenant_id, Capture.id.in_(parsed_ids))
+    ).scalars():
+        pairing = (capture.capture_metadata or {}).get("photo_pairing")
+        if isinstance(pairing, dict):
+            pairing_by_capture[str(capture.id)] = pairing
+    if not pairing_by_capture:
+        return structured_report
+    enriched = copy.deepcopy(structured_report)
+    for section in enriched.get("sections") or []:
+        if not isinstance(section, dict):
+            continue
+        for block in section.get("blocks") or []:
+            if isinstance(block, dict) and block.get("type") == "image":
+                pairing = pairing_by_capture.get(str(block.get("captureId")))
+                if pairing is not None:
+                    block["pairing"] = pairing
+    return enriched
+
+
 def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
     from app.services.attribution import attribution_payload
 
@@ -85,6 +135,8 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
     extracted_metadata = session.extracted_metadata or {}
     assignment_source = extracted_metadata.get("patient_assignment_source")
     structured_report = session.report_model if isinstance(session.report_model, dict) and session.report_model else None
+    if structured_report is not None and db is not None:
+        structured_report = _report_model_with_media_pairing(structured_report, db, session)
     rendered_body = None
     patient_information = patient_information_from_assignment(db, session)
     patient_name = None
@@ -377,7 +429,7 @@ async def upload_source_capture(
         }
     except Exception:
         # Product-critical: a failed capture upload breaks the capture-first promise. Count it for
-        # the FailedUploadsSpike alert (notari_capture_uploads_failed_total).
+        # the FailedUploadsSpike alert (engram_capture_uploads_failed_total).
         record_capture_upload_failed()
         db.rollback()
         if object_key is not None:

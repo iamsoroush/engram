@@ -2,10 +2,10 @@
 
 > ⚠️ **Archived** — one-time research input, superseded by the therapy spec [../redesign-therapy.md](../redesign-therapy.md). Kept for history.
 >
-> Greenfield design grounding for **Memara for Therapy** (Spine A, single-tier — the AI *is* the
+> Greenfield design grounding for **Engram for Therapy** (Spine A, single-tier — the AI *is* the
 > value; see [redesign-foundation.md](../redesign-foundation.md) §1, §5 and [../spines.md](../../spines.md)
 > §2–4). Started 2026-06-11, **pre-PMF**. This brief scans the therapy-documentation landscape →
-> distills the patterns that matter → names the gaps → states **where Memara-therapy differentiates**.
+> distills the patterns that matter → names the gaps → states **where Engram-therapy differentiates**.
 > The feature set, journeys, and prototype that build on it live in
 > [redesign-therapy.md](../redesign-therapy.md).
 >
@@ -32,14 +32,14 @@ arc — **prep before, support during, documentation after.**
 **The convergence is the headline.** Category B is the direction of travel: the winning therapy product
 is no longer "where I store notes," it's **"the assistant that carries the thread between sessions."**
 Blueprint states it plainly — surface insights *"before, during, and after every client session."* That
-arc is exactly Spine-A's thesis (capture-first memory, narrative-secondary). **Memara-therapy enters as a
+arc is exactly Spine-A's thesis (capture-first memory, narrative-secondary). **Engram-therapy enters as a
 category-B product with a memory center of gravity** — and that's the right side of the trend.
 
 ---
 
 ## 2. Category patterns that matter (and our stance on each)
 
-| Pattern | What the category does | Memara-therapy stance |
+| Pattern | What the category does | Engram-therapy stance |
 | --- | --- | --- |
 | **Note formats** | SOAP / DAP / BIRP (+ GIRP, PIRP, PIE, EMDR, intake, MSE). Upheal/Mentalyc offer ~10 formats; DAP & BIRP dominate outpatient. | Ship **one strong default (DAP-leaning narrative)** + a small format switch. Don't open a 10-format template bazaar at v1 — but **structure-behind-narrative** so a format can be projected later. |
 | **Treatment plan ("golden thread")** | Goals → objectives → interventions, SMART, tied to medical necessity; AI now drafts it from intake + early sessions (Upheal *Golden Thread*, Blueprint smart plans). | A **living plan that threads the arc** — but framed as *memory*, not an insurance artifact (our market isn't US payers). The plan is "where we're heading"; each session's summary references it. |
@@ -86,7 +86,7 @@ Therapy data is the most sensitive in Spine A, so the norms below become **desig
    - **Psychotherapy (process) note** — the therapist's *private* reflections, hypotheses, the verbatim
      content of the conversation. Specially protected; kept **physically separate**; even the client has
      no right of access; blending the two **destroys** the protection of the private note.
-   - **Design implication:** Memara must model **two visibility planes** on every session —
+   - **Design implication:** Engram must model **two visibility planes** on every session —
      a **shareable summary** (progress-note-shaped) and a **private layer** (the therapist's reflections,
      the raw transcript). The patient-facing surface and any export draw **only** from the shareable
      plane. This is the single most important structural lesson from the category.
@@ -112,9 +112,9 @@ Therapy data is the most sensitive in Spine A, so the norms below become **desig
 
 ---
 
-## 5. Differentiation — where Memara-therapy wins
+## 5. Differentiation — where Engram-therapy wins
 
-1. **Memory is the product, not the note.** Competitors organize around the note/EHR; Memara organizes
+1. **Memory is the product, not the note.** Competitors organize around the note/EHR; Engram organizes
    around **longitudinal client memory** (the existing summary + history artifact). The note/summary is a
    *projection* of memory, not the home.
 2. **The pre-session brief is the front door.** We productize the moment everyone else treats as a

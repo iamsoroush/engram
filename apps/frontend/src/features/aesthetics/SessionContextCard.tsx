@@ -2,6 +2,8 @@ import React from "react";
 import type { LastVisitMedia, LineupCard as LineupCardModel, SessionContext } from "../../domain/appTypes";
 import { LineupCard } from "../memory/components/MemoryCards";
 import { formatDate } from "../../shared/lib/datetime";
+import { useT, type Translator } from "../../shared/i18n";
+import { ORDINAL_WORDS } from "../capture/captureModel";
 import { MediaOverlay, type MediaOverlayState } from "./MediaOverlay";
 
 /**
@@ -28,12 +30,13 @@ export function SessionContextCard({
   onUseAsNote?: (text: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   const [overlay, setOverlay] = React.useState<MediaOverlayState | null>(null);
   if (!context) return null;
-  const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts } = context;
+  const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts, safetyFlags } = context;
   const visit = lastVisit.hasPriorVisit ? lastVisit.visit : null;
-  // Nothing worth a card for a brand-new patient with no prior content or pinned facts.
-  if (!visit && !keyFacts && !(isPro && lineupCard)) return null;
+  // Nothing worth a card for a brand-new patient with no prior content, pinned facts, or safety flags.
+  if (!visit && !keyFacts && !safetyFlags.length && !(isPro && lineupCard)) return null;
 
   // Tapping a progress thumb compares that visit against the most recent OTHER one (before/after),
   // oldest on the left so progress reads left → right.
@@ -61,26 +64,43 @@ export function SessionContextCard({
   const audioCount = visit?.audioCount ?? visit?.audio?.length ?? 0;
   const counts = visit
     ? [
-        visit.captureCount ? `${visit.captureCount} capture${visit.captureCount === 1 ? "" : "s"}` : null,
-        photoCount ? `${photoCount} photo${photoCount === 1 ? "" : "s"}` : null,
-        audioCount ? `${audioCount} voice memo${audioCount === 1 ? "" : "s"}` : null,
+        visit.captureCount ? t("context.captureCount", { n: visit.captureCount }) : null,
+        photoCount ? t("context.photoCount", { n: photoCount }) : null,
+        audioCount ? t("context.voiceMemoCount", { n: audioCount }) : null,
       ].filter(Boolean).join(" · ")
     : "";
   // The progress strip is only meaningful across ≥2 visits with photos.
   const showProgress = recentVisits.length >= 2;
 
   return (
-    <section className="session-context-card" aria-label="Patient context">
+    <section className="session-context-card" aria-label={t("context.patientContext")}>
       <header className="session-context-head">
         <span className="session-context-ordinal">
-          {ordinalText(visitOrdinal)} visit
-          {totalPriorVisits > 0 ? ` · ${totalPriorVisits} prior` : " · new patient"}
+          {t("context.ordinalVisit", { ordinal: ordinalText(visitOrdinal, t) })}
+          {totalPriorVisits > 0 ? ` · ${t("context.priorCount", { n: totalPriorVisits })}` : ` · ${t("context.newPatient")}`}
         </span>
       </header>
 
+      {/* Cross-visit clinical safety flags (allergy/contraindication/consent) — highest priority, so
+          they sit at the top of the card. Reference only here (the per-visit opt-out lives at capture);
+          the flag body is report-language clinical content (never translated). */}
+      {safetyFlags.length ? (
+        <div className="session-context-safety" role="note" aria-label={t("context.safety.aria")}>
+          <span className="session-context-safety-label">{t("context.safety.label")}</span>
+          <ul className="session-context-safety-list">
+            {safetyFlags.map((flag) => (
+              <li key={flag.key} className={`session-context-safety-flag safety-${flag.kind}`} dir={textDir(flag.text)}>
+                <span className="session-context-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
+                <span className="session-context-safety-text">{flag.text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {keyFacts ? (
         <p className="session-context-facts" dir={textDir(keyFacts)}>
-          <span className="session-context-facts-label">Key facts</span> {keyFacts}
+          <span className="session-context-facts-label">{t("context.keyFacts")}</span> {keyFacts}
         </p>
       ) : null}
 
@@ -90,11 +110,11 @@ export function SessionContextCard({
       ) : visit ? (
         <div className="session-context-digest">
           <div className="session-context-digest-head">
-            <strong>Last visit{dateLabel ? ` · ${dateLabel}` : ""}</strong>
+            <strong>{dateLabel ? t("context.lastVisitWithDate", { date: dateLabel }) : t("context.lastVisit")}</strong>
             {counts ? <span className="session-context-counts">{counts}</span> : null}
             {onOpenVisit && visit.sessionId ? (
               <button className="session-context-link" onClick={() => onOpenVisit(visit.sessionId)} type="button">
-                View visit
+                {t("context.viewVisit")}
               </button>
             ) : null}
           </div>
@@ -104,17 +124,17 @@ export function SessionContextCard({
             </p>
           ) : null}
           {visit.media.length ? (
-            <div className="session-context-thumbs" aria-label="Last visit photos">
+            <div className="session-context-thumbs" aria-label={t("context.lastVisitPhotos")}>
               {visit.media.slice(0, 4).map((media, index) => (
                 <button
                   key={media.captureId}
                   className="session-context-thumb-button"
                   type="button"
-                  aria-label="View photo"
+                  aria-label={t("context.viewPhoto")}
                   onClick={() =>
                     setOverlay({
                       mode: "single",
-                      items: visit.media.map((m) => ({ media: m, label: dateLabel ? `Last visit · ${dateLabel}` : "Last visit" })),
+                      items: visit.media.map((m) => ({ media: m, label: dateLabel ? t("context.lastVisitWithDate", { date: dateLabel }) : t("context.lastVisit") })),
                       index,
                     })
                   }
@@ -123,13 +143,13 @@ export function SessionContextCard({
                 </button>
               ))}
               {visit.media.length > 4 ? <span className="session-context-more">+{visit.media.length - 4}</span> : null}
-              <span className="session-context-thumbs-note">tap to view</span>
+              <span className="session-context-thumbs-note">{t("context.tapToView")}</span>
             </div>
           ) : null}
           {/* Basic surfaces raw voice memos to play back; Pro is text-forward (the transcript/summary
               carries the content), so it shows the count (above) but not raw audio players. */}
           {!isPro && visit.audio?.length ? (
-            <div className="session-context-audio" aria-label="Last visit voice memos">
+            <div className="session-context-audio" aria-label={t("context.lastVisitVoiceMemos")}>
               {visit.audio.map((memo, index) => (
                 <VoiceMemo key={memo.captureId} memo={memo} index={index} onResolveFile={onResolveFile} />
               ))}
@@ -137,15 +157,15 @@ export function SessionContextCard({
           ) : null}
           {sameNote && onUseAsNote ? (
             <button className="session-context-use" onClick={() => onUseAsNote(sameNote)} type="button">
-              Same as last time
+              {t("context.sameAsLastTime")}
             </button>
           ) : null}
         </div>
       ) : null}
 
       {showProgress ? (
-        <div className="session-context-progress" aria-label="Progress across recent visits">
-          <span className="session-context-progress-label">Progress · recent visits</span>
+        <div className="session-context-progress" aria-label={t("context.progressAria")}>
+          <span className="session-context-progress-label">{t("context.progressLabel")}</span>
           <div className="session-context-progress-row">
             {recentVisits.map((recent, index) =>
               recent.photos.length ? (
@@ -154,7 +174,7 @@ export function SessionContextCard({
                   className="session-context-progress-visit"
                   type="button"
                   onClick={() => openCompare(index)}
-                  title={`Compare ${formatVisitDate(recent.capturedAt) || recent.title}`}
+                  title={t("context.compare", { date: formatVisitDate(recent.capturedAt) || recent.title })}
                 >
                   <MediaThumb media={recent.photos[0]} onResolveFile={onResolveFile} />
                   <span className="session-context-progress-date">{formatVisitDate(recent.capturedAt) || "—"}</span>
@@ -163,7 +183,7 @@ export function SessionContextCard({
               ) : null,
             )}
           </div>
-          <span className="session-context-thumbs-note">tap a visit to compare before/after</span>
+          <span className="session-context-thumbs-note">{t("context.tapToCompare")}</span>
         </div>
       ) : null}
 
@@ -173,6 +193,7 @@ export function SessionContextCard({
 }
 
 function MediaThumb({ media, onResolveFile }: { media: LastVisitMedia; onResolveFile: (endpoint: string) => Promise<string> }) {
+  const t = useT();
   const [url, setUrl] = React.useState("");
   React.useEffect(() => {
     let cancelled = false;
@@ -193,11 +214,12 @@ function MediaThumb({ media, onResolveFile }: { media: LastVisitMedia; onResolve
     },
     [url],
   );
-  return <span className="session-context-thumb">{url ? <img alt={media.caption || "Visit photo"} src={url} /> : null}</span>;
+  return <span className="session-context-thumb">{url ? <img alt={media.caption || t("context.visitPhoto")} src={url} /> : null}</span>;
 }
 
 /** A playable prior-visit voice memo (resolved lazily on first play to avoid eager downloads). */
 function VoiceMemo({ memo, index, onResolveFile }: { memo: LastVisitMedia; index: number; onResolveFile: (endpoint: string) => Promise<string> }) {
+  const t = useT();
   const [url, setUrl] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   React.useEffect(
@@ -218,17 +240,16 @@ function VoiceMemo({ memo, index, onResolveFile }: { memo: LastVisitMedia; index
   if (url) return <audio className="session-context-audio-player" controls src={url} />;
   return (
     <button className="session-context-audio-play" type="button" onClick={load} disabled={loading}>
-      ▶ Voice memo {index + 1}
+      {t("context.voiceMemo", { index: index + 1 })}
       {loading ? "…" : ""}
     </button>
   );
 }
 
-function ordinalText(n: number): string {
-  if (!Number.isFinite(n) || n < 1) return "Next";
-  const mod100 = n % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
-  return `${n}${["th", "st", "nd", "rd"][n % 10] || "th"}`;
+function ordinalText(n: number, t: Translator): string {
+  if (!Number.isFinite(n) || n < 1) return t("model.ordinal.next");
+  if (n >= 1 && n <= 10) return t(`model.ordinal.${ORDINAL_WORDS[n]}`);
+  return t("model.ordinal.nth", { n });
 }
 
 function formatVisitDate(value?: string | null) {

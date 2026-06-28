@@ -4,6 +4,7 @@ import { Button, Card } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { isAdmin as isAdminViewer } from "../../shared/lib/multiseat";
 import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
+import { useT } from "../../shared/i18n";
 
 type TenantSettingsUpdate = {
   transcriptionLanguage?: string;
@@ -15,14 +16,15 @@ type TenantSettingsUpdate = {
 };
 
 // AES-905 — the non-owner roles an admin can configure + the ordered presets.
-const CONFIGURABLE_ROLES: Array<{ role: string; label: string; hint: string }> = [
-  { role: "assistant", label: "Assistants / reception", hint: "What an assistant may do on a visit they don't own." },
-  { role: "doctor", label: "Other doctors", hint: "What another doctor may do on a colleague's visit." },
+// Labels/hints are resolved through the i18n seam at render time (see RolePermissionsSettings).
+const CONFIGURABLE_ROLES: Array<{ role: string; labelKey: string; hintKey: string }> = [
+  { role: "assistant", labelKey: "settings.roleAssistantLabel", hintKey: "settings.roleAssistantHint" },
+  { role: "doctor", labelKey: "settings.roleDoctorLabel", hintKey: "settings.roleDoctorHint" },
 ];
-const PERMISSION_PRESETS: Array<{ value: string; label: string }> = [
-  { value: "contribute", label: "Contribute — add captures only" },
-  { value: "reassign", label: "Reassign — add + change the patient" },
-  { value: "full", label: "Full — add, reassign + edit the visit" },
+const PERMISSION_PRESETS: Array<{ value: string; labelKey: string }> = [
+  { value: "contribute", labelKey: "settings.permPresetContribute" },
+  { value: "reassign", labelKey: "settings.permPresetReassign" },
+  { value: "full", labelKey: "settings.permPresetFull" },
 ];
 const PRESET_DEFAULTS: RolePermissions = { assistant: "reassign", doctor: "contribute" };
 
@@ -35,32 +37,33 @@ function RolePermissionsSettings({
   saving: boolean;
   onSave: (settings: TenantSettingsUpdate) => void;
 }) {
+  const t = useT();
   const resolved = auth.tenant.rolePermissions || {};
   return (
     <Card className="settings-group">
       <div className="settings-group-head">
-        <h2>Role permissions</h2>
-        <p>
-          A visit is owned by whoever started it; editing it is owner-only by default. Set what other roles may do — the
-          owner and admins are always allowed. Contributing (adding captures) is always open.
-        </p>
+        <h2>{t("settings.rolePermissionsTitle")}</h2>
+        <p>{t("settings.rolePermissionsHint")}</p>
       </div>
-      {CONFIGURABLE_ROLES.map(({ role, label, hint }) => (
-        <SettingRow key={role} label={label} hint={hint}>
-          <select
-            aria-label={`${label} permission`}
-            disabled={saving}
-            onChange={(event) => onSave({ rolePermissions: { [role]: event.target.value } })}
-            value={String(resolved[role] || PRESET_DEFAULTS[role] || "contribute")}
-          >
-            {PERMISSION_PRESETS.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-        </SettingRow>
-      ))}
+      {CONFIGURABLE_ROLES.map(({ role, labelKey, hintKey }) => {
+        const label = t(labelKey);
+        return (
+          <SettingRow key={role} label={label} hint={t(hintKey)}>
+            <select
+              aria-label={t("settings.rolePermissionAria", { role: label })}
+              disabled={saving}
+              onChange={(event) => onSave({ rolePermissions: { [role]: event.target.value } })}
+              value={String(resolved[role] || PRESET_DEFAULTS[role] || "contribute")}
+            >
+              {PERMISSION_PRESETS.map((preset) => (
+                <option key={preset.value} value={preset.value}>
+                  {t(preset.labelKey)}
+                </option>
+              ))}
+            </select>
+          </SettingRow>
+        );
+      })}
     </Card>
   );
 }
@@ -68,17 +71,18 @@ function RolePermissionsSettings({
 const capitalize = (value: string) => (value ? value[0].toUpperCase() + value.slice(1) : value);
 
 function AccountHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  const t = useT();
   return (
     <div className="account-header">
       <Button className="account-back" onClick={onBack} size="sm" variant="secondary" type="button">
-        <span aria-hidden="true">←</span> Back
+        <span aria-hidden="true">←</span> {t("settings.back")}
       </Button>
       <h1>{title}</h1>
     </div>
   );
 }
 
-function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function SettingRow({ label, hint, children }: { label: React.ReactNode; hint?: string; children: React.ReactNode }) {
   return (
     <div className="setting-row">
       <span className="setting-row-main">
@@ -97,6 +101,7 @@ function AiModelsSettings({
   onListAiModels: () => Promise<AiModelConfig>;
   onUpdateAiModels: (models: Record<string, string>) => Promise<AiModelConfig>;
 }) {
+  const t = useT();
   const [tasks, setTasks] = React.useState<AiModelConfig["tasks"]>([]);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [loaded, setLoaded] = React.useState(false);
@@ -133,17 +138,17 @@ function AiModelsSettings({
   return (
     <Card className="settings-group">
       <div className="settings-group-head">
-        <h2>AI models</h2>
-        <p>Pick the model for each AI task. Changes apply to the next request — no restart. Blank = the worker's default.</p>
+        <h2>{t("settings.aiModelsTitle")}</h2>
+        <p>{t("settings.aiModelsHint")}</p>
       </div>
       {tasks.map((task) => (
-        <SettingRow key={task.task} label={task.label}>
+        <SettingRow key={task.task} label={<span data-content>{task.label}</span>}>
           <input
-            aria-label={`${task.label} model`}
+            aria-label={t("settings.aiModelInputAria", { task: task.label })}
             className="setting-text-input"
             disabled={saving || !loaded}
             onChange={(event) => setDrafts((current) => ({ ...current, [task.task]: event.target.value }))}
-            placeholder="Worker default"
+            placeholder={t("settings.aiModelPlaceholder")}
             spellCheck={false}
             value={drafts[task.task] ?? ""}
           />
@@ -151,9 +156,9 @@ function AiModelsSettings({
       ))}
       <div className="settings-group-actions">
         <Button disabled={!dirty || saving} onClick={save} size="sm" type="button">
-          {saving ? "Saving…" : "Save AI models"}
+          {saving ? t("settings.aiModelsSaving") : t("settings.aiModelsSave")}
         </Button>
-        {savedAt && !dirty ? <span className="setting-saved-note">Saved</span> : null}
+        {savedAt && !dirty ? <span className="setting-saved-note">{t("settings.savedNote")}</span> : null}
       </div>
     </Card>
   );
@@ -180,81 +185,96 @@ export function SettingsScreen({
   onUpdateAftercareTemplate?: (id: string, draft: Partial<AftercareTemplateDraft>) => Promise<AftercareTemplate>;
   onDeleteAftercareTemplate?: (id: string) => Promise<void>;
 }) {
+  const t = useT();
+  // Localize the vertical name (aesthetics/therapy/…); fall back to the capitalized raw value if unkeyed.
+  const verticalKey = `vertical.${auth.tenant.vertical || "clinic"}`;
+  const verticalLabel = t(verticalKey) === verticalKey ? capitalize(auth.tenant.vertical || "clinic") : t(verticalKey);
   const [saving, setSaving] = React.useState(false);
   const save = (settings: TenantSettingsUpdate) => {
     setSaving(true);
     void Promise.resolve(onUpdateSettings(settings)).finally(() => setSaving(false));
   };
   const tier = auth.tenant.tier === "basic" ? "basic" : "pro";
+  // Language-choice options are AUTONYMS: each language renders in its own script regardless of UI
+  // language, so they are NOT routed through t(). The "auto"/"" rows ARE chrome → translated.
+  const APP_LANGUAGE_OPTIONS = [
+    { value: "en", label: "English" },
+    { value: "fa", label: "فارسی" },
+    { value: "ar", label: "العربية" },
+  ];
   return (
     <div className="account-screen">
-      <AccountHeader title="Settings" onBack={onBack} />
+      <AccountHeader title={t("settings.title")} onBack={onBack} />
 
       <Card className="settings-group">
         <div className="settings-group-head">
-          <h2>Languages</h2>
-          <p>The app's interface + dates, how Memara transcribes audio, and how it writes the report.</p>
+          <h2>{t("settings.languagesTitle")}</h2>
+          <p>{t("settings.languagesHint")}</p>
         </div>
-        <SettingRow label="App" hint="The interface language and date calendar (Persian shows Jalali dates). Separate from the report's language.">
+        <SettingRow label={t("settings.appLabel")} hint={t("settings.appHint")}>
           <SelectMenu
-            ariaLabel="App language"
+            ariaLabel={t("settings.appLanguageAria")}
             disabled={saving}
             value={auth.tenant.appLanguage || "en"}
             onChange={(value) => save({ appLanguage: value })}
-            options={[{ value: "en", label: "English" }, { value: "fa", label: "Persian" }, { value: "ar", label: "Arabic" }]}
+            options={APP_LANGUAGE_OPTIONS}
           />
         </SettingRow>
-        <SettingRow label="Transcription" hint="Auto transcribes verbatim in the spoken script — best for mixed-language clinics; avoids romanization that breaks name matching.">
+        <SettingRow label={t("settings.transcriptionLabel")} hint={t("settings.transcriptionHint")}>
           <SelectMenu
-            ariaLabel="Transcription language"
+            ariaLabel={t("settings.transcriptionLanguageAria")}
             disabled={saving}
             value={auth.tenant.transcriptionLanguage || "auto"}
             onChange={(value) => save({ transcriptionLanguage: value })}
-            options={[{ value: "auto", label: "Auto (verbatim)" }, { value: "fa", label: "Persian" }, { value: "en", label: "English" }, { value: "ar", label: "Arabic" }]}
+            options={[{ value: "auto", label: t("settings.transcriptionAuto") }, ...APP_LANGUAGE_OPTIONS]}
           />
         </SettingRow>
-        <SettingRow label="Report" hint="The language the synthesized report is written in.">
+        <SettingRow label={t("settings.reportLabel")} hint={t("settings.reportHint")}>
           <SelectMenu
-            ariaLabel="Report language"
+            ariaLabel={t("settings.reportLanguageAria")}
             disabled={saving}
             value={auth.tenant.reportLanguage || ""}
             onChange={(value) => save({ reportLanguage: value || null })}
-            options={[{ value: "", label: "Report default" }, { value: "fa", label: "Persian" }, { value: "en", label: "English" }, { value: "ar", label: "Arabic" }]}
+            options={[{ value: "", label: t("settings.reportDefault") }, ...APP_LANGUAGE_OPTIONS]}
           />
         </SettingRow>
       </Card>
 
       <Card className="settings-group">
         <div className="settings-group-head">
-          <h2>Patient matching</h2>
-          <p>How aggressively AI auto-assigns a close (fuzzy) name match.</p>
+          <h2>{t("settings.patientMatchingTitle")}</h2>
+          <p>{t("settings.patientMatchingHint")}</p>
         </div>
         <SettingRow
-          label="Auto-apply"
-          hint="Strict = deterministic matches only. Balanced/Lenient also auto-apply a single high-confidence close match on an explicit instruction. The national-ID conflict guard and ambiguous routing apply at every level."
+          label={t("settings.autoApplyLabel")}
+          hint={t("settings.autoApplyHint")}
         >
           <SelectMenu
-            ariaLabel="Auto-apply"
+            ariaLabel={t("settings.autoApplyAria")}
             disabled={saving}
             value={auth.tenant.matchStrictness || "strict"}
             onChange={(value) => save({ matchStrictness: value })}
-            options={[{ value: "strict", label: "Strict (exact only)" }, { value: "balanced", label: "Balanced (close match)" }, { value: "lenient", label: "Lenient (looser)" }]}
+            options={[
+              { value: "strict", label: t("settings.matchStrict") },
+              { value: "balanced", label: t("settings.matchBalanced") },
+              { value: "lenient", label: t("settings.matchLenient") },
+            ]}
           />
         </SettingRow>
       </Card>
 
       <Card className="settings-group">
         <div className="settings-group-head">
-          <h2>Patient sharing</h2>
-          <p>What a curated patient share may include. Doses, lots, and the treatment table are always withheld.</p>
+          <h2>{t("settings.patientSharingTitle")}</h2>
+          <p>{t("settings.patientSharingHint")}</p>
         </div>
         <SettingRow
-          label="Include brands"
-          hint="When a doctor shares a 'what we did' summary, include commercial brand names (e.g. Juvederm). Off = generic only (e.g. «گونه — فیلر»)."
+          label={t("settings.includeBrandsLabel")}
+          hint={t("settings.includeBrandsHint")}
         >
           <input
             type="checkbox"
-            aria-label="Include brands in patient shares"
+            aria-label={t("settings.includeBrandsAria")}
             disabled={saving}
             checked={Boolean(auth.tenant.shareIncludeBrands)}
             onChange={(event) => save({ shareIncludeBrands: event.target.checked })}
@@ -264,13 +284,13 @@ export function SettingsScreen({
 
       <Card className="settings-group">
         <div className="settings-group-head">
-          <h2>Plan</h2>
+          <h2>{t("settings.planTitle")}</h2>
         </div>
-        <SettingRow label="Tier" hint={tier === "pro" ? "Pro: AI assignment, image captions, and a synthesized live report." : "Basic: transcription and manual patient assignment."}>
+        <SettingRow label={t("settings.tierLabel")} hint={tier === "pro" ? t("settings.tierHintPro") : t("settings.tierHintBasic")}>
           <span className={`report-tier-badge ${tier}`}>{tier === "pro" ? "Pro" : "Basic"}</span>
         </SettingRow>
-        <SettingRow label="Workspace" hint={`Each visit is recorded as a ${(auth.tenant.encounterLabel || "Session").toLowerCase()}.`}>
-          <span className="profile-value">{capitalize(auth.tenant.vertical || "clinic")}</span>
+        <SettingRow label={t("settings.workspaceLabel")} hint={t("settings.workspaceHint", { encounter: (auth.tenant.encounterLabel || "Session").toLowerCase() })}>
+          <span className="profile-value">{verticalLabel}</span>
         </SettingRow>
       </Card>
 
@@ -303,6 +323,7 @@ export function ProfileScreen({
   onLogout: () => void;
   onClearLocal?: () => void;
 }) {
+  const t = useT();
   const displayName = auth.user.displayName || auth.user.email;
   const role = auth.memberships[0]?.role || auth.user.persona || "user";
   const isAdmin = auth.memberships.some((membership) => membership.role === "admin") || auth.user.persona === "admin";
@@ -315,34 +336,34 @@ export function ProfileScreen({
       .join("") || "A";
   return (
     <div className="account-screen">
-      <AccountHeader title="Profile" onBack={onBack} />
+      <AccountHeader title={t("settings.profileTitle")} onBack={onBack} />
 
       <Card className="profile-card">
-        <span className="profile-avatar" aria-hidden="true">{initials}</span>
+        <span className="profile-avatar" aria-hidden="true" data-content>{initials}</span>
         <div className="profile-identity">
-          <strong>{displayName}</strong>
-          <span>{auth.user.email}</span>
+          <strong data-content>{displayName}</strong>
+          <span data-content>{auth.user.email}</span>
         </div>
       </Card>
 
       <Card className="settings-group">
-        <SettingRow label="Role"><span className="profile-value">{role}</span></SettingRow>
-        <SettingRow label="Clinic"><span className="profile-value">{auth.tenant.name}</span></SettingRow>
+        <SettingRow label={t("settings.roleLabel")}><span className="profile-value" data-content>{role}</span></SettingRow>
+        <SettingRow label={t("settings.clinicLabel")}><span className="profile-value" data-content>{auth.tenant.name}</span></SettingRow>
       </Card>
 
       <Card className="settings-group profile-actions">
         <Button onClick={onLogout} size="sm" type="button" variant="secondary">
-          Logout
+          {t("settings.logout")}
         </Button>
       </Card>
 
       {isAdmin && onClearLocal ? (
         <Card className="settings-group">
           <div className="settings-group-head">
-            <h2>Debug</h2>
+            <h2>{t("settings.debugTitle")}</h2>
           </div>
           <Button onClick={onClearLocal} size="sm" type="button" variant="ghost">
-            Clear local capture cache
+            {t("settings.clearLocalCache")}
           </Button>
         </Card>
       ) : null}

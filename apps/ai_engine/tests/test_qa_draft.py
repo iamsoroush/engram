@@ -9,7 +9,7 @@ PAYLOAD = {
         "patientContext": {"displayName": "Sara N.", "recentVisitSummaries": ["Forehead Botox 20u."]},
         "priorAnswers": [{"question": "swelling?", "answer": "usually settles in a day or two"}],
         "doctorName": "Dr. Demo",
-        "clinicName": "Memara Demo Clinic",
+        "clinicName": "Engram Demo Clinic",
     },
     "deterministicFallback": {"draft": "Hi Sara, please rest for 24 hours. — Dr. Demo", "source": "mock-deterministic"},
     "aiModels": {},

@@ -1,6 +1,7 @@
 import React from "react";
 import type { CaptureItem } from "../../domain/types";
 import { getCachedCapture } from "../../services/storage/captureStorage";
+import { useT } from "../../shared/i18n";
 
 /**
  * A compact voice-memo player for Basic audio — a play/pause button, a slim seekable progress bar,
@@ -14,6 +15,7 @@ export function VoiceMemoPlayer({
   item: CaptureItem;
   onResolveFile: (endpoint: string) => Promise<string>;
 }) {
+  const t = useT();
   const [src, setSrc] = React.useState(() => (item.sourceUrl && !item.sourceUrl.startsWith("/api/v1/") ? item.sourceUrl : ""));
   const [playing, setPlaying] = React.useState(false);
   const [current, setCurrent] = React.useState(0);
@@ -84,7 +86,7 @@ export function VoiceMemoPlayer({
         }}
         preload="metadata"
       />
-      <button className="voice-memo-play" onClick={toggle} type="button" aria-label={playing ? "Pause" : "Play"} disabled={!src}>
+      <button className="voice-memo-play" onClick={toggle} type="button" aria-label={playing ? t("voice.pause") : t("voice.play")} disabled={!src}>
         {playing ? (
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="6" width="3.5" height="12" rx="1" /><rect x="13.5" y="6" width="3.5" height="12" rx="1" /></svg>
         ) : (
@@ -98,11 +100,11 @@ export function VoiceMemoPlayer({
         max={100}
         value={pct}
         onChange={seek}
-        aria-label="Seek"
+        aria-label={t("voice.seek")}
         style={{ "--vm-progress": `${pct}%` } as React.CSSProperties}
         disabled={!src || !duration}
       />
-      <span className="voice-memo-time">{formatTime(current)}{duration ? ` / ${formatTime(duration)}` : ""}</span>
+      <span className="voice-memo-time" data-content>{formatTime(current)}{duration ? ` / ${formatTime(duration)}` : ""}</span>
     </div>
   );
 }

@@ -19,7 +19,7 @@ from app.services.patient_surface import (
 def _content() -> dict:
     return {
         "schemaVersion": SHARE_SCHEMA_VERSION,
-        "clinicName": "Memara Demo Clinic",
+        "clinicName": "Engram Demo Clinic",
         "patientName": "Sara Nazari",
         "title": "Your Botox visit",
         "visitDate": "2026-06-12T10:00:00+00:00",
@@ -95,7 +95,7 @@ class PublicContentTests(unittest.TestCase):
     def test_projects_curated_payload_with_media_urls(self):
         payload = _public_content(_share())
         self.assertEqual(payload["patientName"], "Sara Nazari")
-        self.assertEqual(payload["clinic"]["name"], "Memara Demo Clinic")
+        self.assertEqual(payload["clinic"]["name"], "Engram Demo Clinic")
         self.assertEqual([s["label"] for s in payload["sections"]], ["Visit"])
         self.assertEqual(payload["media"][0]["url"], "/api/v1/share/tok123/media/cap-abc")
         self.assertEqual(payload["aftercare"]["name"], "Botox aftercare")
