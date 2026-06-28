@@ -341,8 +341,10 @@ def regenerate_session_report_if_idle(
     # with a synthesis gateway — the single-pass LLM synthesis is dispatched to refine it.
     regenerate_session_report(db, session=session)
     db.commit()
+    # `force` re-synthesizes on a content change (edit/delete) even though all captures are already
+    # contributed — otherwise the deterministic baseline runs but treatments/safety_flags stay stale.
     maybe_dispatch_session_synthesis(
-        db, tenant_id=tenant_id, session_id=session_id, created_by_user_id=created_by_user_id
+        db, tenant_id=tenant_id, session_id=session_id, created_by_user_id=created_by_user_id, force=force
     )
 
 
@@ -352,6 +354,7 @@ def maybe_dispatch_session_synthesis(
     tenant_id: uuid.UUID,
     session_id: uuid.UUID,
     created_by_user_id: uuid.UUID | None = None,
+    force: bool = False,
 ) -> None:
     """Dispatch the Pro single-pass report synthesis (revived `session_organize`) once data settles.
 
@@ -359,6 +362,11 @@ def maybe_dispatch_session_synthesis(
     reportable capture, and is debounced via the existing guards (no pending capture jobs, no active
     report job) so a settle burst coalesces to one synthesis. The job is a quiet refinement — it does
     not flip the session to `processing`, so the baseline report stays visible while it runs.
+
+    ``force`` re-synthesizes even when every capture is already contributed — required after a
+    CONTENT-CHANGING edit (a capture's text changed) or removal (a capture deleted), where the existing
+    captures are all "contributed" yet the synthesized treatments/safety_flags must be recomputed for
+    the new set. The pending-jobs / active-report-job debounce guards still apply.
     """
     if not session_synthesis_enabled(db, tenant_id):
         return
@@ -366,7 +374,7 @@ def maybe_dispatch_session_synthesis(
         return
     if session_has_active_report_job(db, tenant_id=tenant_id, session_id=session_id):
         return
-    if not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
+    if not force and not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
         return
     session = db.execute(
         select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
