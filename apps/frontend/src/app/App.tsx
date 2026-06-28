@@ -409,14 +409,14 @@ export function App() {
   const exportQueuedCaptures = React.useCallback(async () => {
     const pending = await loadPendingCaptures();
     if (!pending.length) {
-      setToast("No queued captures to export.");
+      setToast(appT("capture.toastNoQueuedExport"));
       return;
     }
     try {
       const count = await exportPendingCaptures(pending, new Date().toISOString());
-      setToast(`Exported ${count} queued capture${count === 1 ? "" : "s"}.`);
+      setToast(appT("capture.toastExportedQueued", { count }));
     } catch {
-      setToast("Could not export queued captures.");
+      setToast(appT("capture.toastCouldNotExportQueued"));
     }
   }, []);
 
@@ -489,7 +489,7 @@ export function App() {
         setAssignmentSessionId(workspace.assignmentSessionId);
         setPendingCaptureKind(workspace.pendingCaptureKind);
       }
-      setToast("Offline · Captures are saved on this device.");
+      setToast(appT("capture.toastOfflineSavedDevice"));
     } finally {
       workspaceHydratedRef.current = true;
     }
@@ -754,9 +754,9 @@ export function App() {
           status: "failed",
           retryCount: current.retryCount + 1,
           updatedAt: Date.now(),
-          lastError: error instanceof Error ? error.message : "Sync failed",
+          lastError: error instanceof Error ? error.message : appT("capture.syncFailed"),
         }));
-        setSyncError("Some local changes need retry");
+        setSyncError(appT("capture.syncNeedsRetry"));
         setBackendReachable(false);
         failed = true;
       }
@@ -828,7 +828,7 @@ export function App() {
               : current,
           );
           setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
-          setToast("Capture safely transferred.");
+          setToast(appT("capture.toastCaptureTransferred"));
           if (result.item.status === "uploaded" || result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
           scheduleMemoryRefresh();
           try {
@@ -847,7 +847,7 @@ export function App() {
             await removePendingCapture(capture.id);
             await refreshPendingCount();
           } catch {
-            setToast("Capture safely transferred.");
+            setToast(appT("capture.toastCaptureTransferred"));
           }
         } catch (uploadError) {
           // Was swallowed silently — log the real reason so a perpetually-stuck capture is diagnosable.
@@ -856,9 +856,9 @@ export function App() {
           updateItemStatus(capture.item.id, "saved");
           await rebuildLocalPendingSessions();
           setBackendReachable(false);
-          setSyncError("Capture upload failed");
+          setSyncError(appT("capture.syncUploadFailed"));
           captureFailed = true;
-          setToast("Saved on this device. I'll organize it when connection returns.");
+          setToast(appT("capture.toastSavedDeviceWillOrganize"));
           continue;
         }
       }
@@ -902,12 +902,12 @@ export function App() {
         navigateScreen("active-session");
       });
     } catch {
-      setToast(draft.kind === "audio" ? "Audio conversion failed." : "Device storage failed.");
+      setToast(draft.kind === "audio" ? appT("capture.toastAudioConversionFailed") : appT("capture.toastDeviceStorageFailed"));
       return;
     }
 
     void saveSyncedCaptureCache(pending.item, pending.draft.file);
-    setToast("Saved on device.");
+    setToast(appT("capture.toastSavedDevice"));
     void refreshPendingCount();
     if (authRef.current?.tenant.id) void processOutbox();
   };
@@ -1029,7 +1029,7 @@ export function App() {
   }, [nextLinedUpPatient, startVisitForPatient]);
 
   const clearLocalPendingCaptures = async () => {
-    if (!window.confirm("Clear captures saved only on this device? This cannot be undone.")) return;
+    if (!window.confirm(appT("capture.confirmClearLocal"))) return;
     processingRef.current = false;
     setSyncing(false);
     await clearLocalCaptureData();
@@ -1041,7 +1041,7 @@ export function App() {
     setPendingCaptureKind(null);
     setPendingCount(0);
     setPendingOperationCount(0);
-    setToast("Local pending captures cleared.");
+    setToast(appT("capture.toastPendingCleared"));
     void hydrateFromStorage();
   };
 
@@ -1089,7 +1089,7 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("Saved on this device. I'll organize it when connection returns.");
+        setToast(appT("capture.toastSavedDeviceWillOrganize"));
       }
       void processOutbox();
       return;
@@ -1111,11 +1111,11 @@ export function App() {
           tenantId: authRef.current.tenant.id,
           payload: { reportTemplateKey: "default" },
         });
-        setToast("Saved. I'll organize it when available.");
+        setToast(appT("capture.toastSavedWillOrganize"));
         void processOutbox();
         return;
       }
-      setToast("Saved on this device. I'll organize it when connection returns.");
+      setToast(appT("capture.toastSavedDeviceWillOrganize"));
     }
   };
 
@@ -1164,7 +1164,7 @@ export function App() {
             tenantId: authRef.current.tenant.id,
             payload: { title },
           });
-          setToast("Title saved on this device.");
+          setToast(appT("capture.toastTitleSavedDevice"));
           void processOutbox();
           return;
         }
@@ -1388,7 +1388,7 @@ export function App() {
         const updated = await rejectSafetyFlag(apiFetch, sessionId, flagKey);
         applySessionUpdate(sessionId, updated);
       } catch {
-        setToast("Could not update the safety flag. Try again.");
+        setToast(appT("capture.toastCouldNotUpdateSafetyFlag"));
       }
     },
     [apiFetch, applySessionUpdate],
@@ -1458,7 +1458,7 @@ export function App() {
         current && (current.id === sessionId || (deadPatientId && current.patientId === deadPatientId)) ? stripPatient(current) : current,
       );
       setAssignmentSessionId((current) => (current === sessionId ? "" : current));
-      setToast("That patient record is no longer available — the visit was set back to unassigned. Please assign it again.");
+      setToast(appT("memory.toastPatientRecordGone"));
     },
     [apiFetch, applySessionUpdate],
   );
@@ -1481,7 +1481,7 @@ export function App() {
             payload: { unassign: true },
           });
         }
-        setToast("Visit unassigned.");
+        setToast(appT("memory.toastVisitUnassigned"));
         void processOutbox();
         return;
       }
@@ -1623,7 +1623,7 @@ export function App() {
         const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
         setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
         setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
-        setToast("AI-created patient verified.");
+        setToast(appT("memory.toastAiPatientVerified"));
       } catch (error) {
         // The AI-created patient was deleted/merged out from under the panel: self-heal instead of
         // leaving the verify panel frozen on a dead id (the known incident).
@@ -1645,7 +1645,7 @@ export function App() {
         );
         setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
       }
-      setToast("Patient details updated.");
+      setToast(appT("memory.toastPatientDetailsUpdated"));
     },
     [apiFetch],
   );
@@ -1653,10 +1653,10 @@ export function App() {
     async (draft: PatientAssignmentDraft): Promise<PatientSummary | null> => {
       try {
         const patient = await createPatient(apiFetch, draft);
-        setToast("Patient created.");
+        setToast(appT("memory.toastPatientCreated"));
         return patient;
       } catch {
-        setToast("Could not create patient.");
+        setToast(appT("memory.toastCouldNotCreatePatient"));
         return null;
       }
     },
@@ -1710,7 +1710,7 @@ export function App() {
       };
       setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
       setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
-      setToast("Summary added to patient memory");
+      setToast(appT("memory.toastSummaryAdded"));
     },
     [],
   );
@@ -1809,7 +1809,7 @@ export function App() {
         setSessions((current) => current.map(applySession));
         setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
         await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
-        setToast("Note updated.");
+        setToast(appT("memory.toastNoteUpdated"));
         return;
       }
       const updated = await updateCaptureNote(apiFetch, captureId, text);
@@ -1818,7 +1818,7 @@ export function App() {
         session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
       setSessions((current) => current.map(mergeSession));
       setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
-      setToast("Note updated.");
+      setToast(appT("memory.toastNoteUpdated"));
     },
     [apiFetch],
   );
@@ -1830,7 +1830,7 @@ export function App() {
       commitAuth(next);
       navigateScreen(defaultScreenForAuth(next));
     } catch {
-      setAuthError("Could not sign in with that persona.");
+      setAuthError(appT("auth.toastCouldNotSignInPersona"));
     }
   };
 
@@ -1863,7 +1863,7 @@ export function App() {
     authRef.current = next;
     setAuth(next);
     persistAuthProfile(next);
-    setToast(`Switched to ${tier === "pro" ? "Pro" : "Basic"}.`);
+    setToast(appT("capture.toastSwitchedTier", { tier: tier === "pro" ? "Pro" : "Basic" }));
   };
 
   // Multi-clinic switch: re-issue a session for another of the user's clinics. Lets the error
@@ -1885,6 +1885,7 @@ export function App() {
 
   const handleUpdateTenantSettings = React.useCallback(
     async (settings: {
+      appLanguage?: string;
       transcriptionLanguage?: string;
       reportLanguage?: string | null;
       matchStrictness?: string;
@@ -1900,6 +1901,8 @@ export function App() {
           ...currentAuth,
           tenant: {
             ...currentAuth.tenant,
+            // Propagate the app language so changing it LIVE re-renders <AppLangProvider> (no reload).
+            appLanguage: updated.appLanguage ?? settings.appLanguage ?? currentAuth.tenant.appLanguage,
             transcriptionLanguage: updated.transcriptionLanguage ?? currentAuth.tenant.transcriptionLanguage,
             reportLanguage: updated.reportLanguage ?? null,
             matchStrictness: updated.matchStrictness ?? currentAuth.tenant.matchStrictness,
@@ -1909,18 +1912,18 @@ export function App() {
         });
         setToast(
           changingPermissions
-            ? "Role permissions updated."
+            ? appT("settings.toastRolePermsUpdated")
             : changingStrictness
-              ? "Patient-matching preference updated."
-              : "Language preferences updated.",
+              ? appT("settings.toastMatchingUpdated")
+              : appT("settings.toastLanguageUpdated"),
         );
       } catch {
         setToast(
           changingPermissions
-            ? "Could not update role permissions."
+            ? appT("settings.toastCouldNotUpdateRolePerms")
             : changingStrictness
-              ? "Could not update matching preference."
-              : "Could not update language preferences.",
+              ? appT("settings.toastCouldNotUpdateMatching")
+              : appT("settings.toastCouldNotUpdateLanguage"),
         );
       }
     },

@@ -1,0 +1,13 @@
+{
+  "said": "بیست واحد بوتاکس روی پیشانی زدم.",
+  "expect": {
+    "containsFa": ["بوتاکس", "واحد"],
+    "containsAny": [["بیست", "۲۰"]],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "doseFidelity"],
+    "minScore": 0.6
+  }
+}

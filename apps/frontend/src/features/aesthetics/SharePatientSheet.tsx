@@ -3,6 +3,7 @@ import type { AftercareTemplate, CreatePatientShareInput, LastVisitInfo, Patient
 import type { CaptureItem, CaptureSession, SessionTreatment } from "../../domain/types";
 import { workspaceTreatments } from "../capture/captureModel";
 import { Button } from "../../shared/ui/primitives";
+import { useT } from "../../shared/i18n";
 import type { GalleryVisit } from "./PatientPhotoGallery";
 
 /** The synthesized 1–2 line visit summary (patient-friendly), from the report's visit-summary section. */
@@ -70,6 +71,7 @@ export function SharePatientSheet({
   onRevokeShare?: (id: string) => Promise<PatientShare>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [loading, setLoading] = React.useState(true);
   const [visit, setVisit] = React.useState<LastVisitInfo["visit"]>(null);
   const [title, setTitle] = React.useState("Your visit");
@@ -177,7 +179,7 @@ export function SharePatientSheet({
 
   const send = async () => {
     if (sending) return;
-    if (!window.confirm(`Send ${patientName} a read-only link with the selected photos and aftercare? Internal notes, lots, and IDs are never included.`)) return;
+    if (!window.confirm(t("share.confirmSend", { name: patientName }))) return;
     setSending(true);
     setError("");
     const input: CreatePatientShareInput = {
@@ -196,7 +198,7 @@ export function SharePatientSheet({
       const share = await onCreateShare(input);
       setCreated(share);
     } catch {
-      setError("Could not create the share link. Please try again.");
+      setError(t("share.createError"));
     } finally {
       setSending(false);
     }
@@ -213,53 +215,53 @@ export function SharePatientSheet({
 
   const revoke = async () => {
     if (!created || !onRevokeShare) return;
-    if (!window.confirm("Revoke this link? The patient will immediately lose access.")) return;
+    if (!window.confirm(t("share.confirmRevoke"))) return;
     const updated = await onRevokeShare(created.id);
     setCreated(updated);
   };
 
   return (
     <div className="share-backdrop" role="presentation" onClick={onClose}>
-      <section className="share-sheet" role="dialog" aria-modal="true" aria-label="Share with patient" onClick={(event) => event.stopPropagation()}>
+      <section className="share-sheet" role="dialog" aria-modal="true" aria-label={t("share.dialogLabel")} onClick={(event) => event.stopPropagation()}>
         <header className="share-head">
           <span className="share-head-icon" aria-hidden="true"><ShareIcon /></span>
-          <h2>Share with patient</h2>
-          <button className="share-close" onClick={onClose} type="button" aria-label="Close">×</button>
+          <h2>{t("share.heading")}</h2>
+          <button className="share-close" onClick={onClose} type="button" aria-label={t("share.close")}>×</button>
         </header>
 
         {loading ? (
-          <p className="share-loading">Preparing the share…</p>
+          <p className="share-loading">{t("share.preparing")}</p>
         ) : created ? (
           <div className="share-created">
             <p className={`share-created-status ${created.status}`}>
-              {created.status === "revoked" ? "Link revoked — the patient can no longer open it." : `Read-only link ready for ${patientName}.`}
+              {created.status === "revoked" ? t("share.revokedStatus") : t("share.readyStatus", { name: patientName })}
             </p>
             {created.status !== "revoked" ? (
               <>
                 <div className="share-link-row">
-                  <input className="share-link-input" readOnly value={shareUrl} aria-label="Patient link" onFocus={(event) => event.target.select()} />
-                  <Button onClick={copyLink} size="sm" type="button">{copied ? "Copied" : "Copy link"}</Button>
+                  <input className="share-link-input" readOnly value={shareUrl} aria-label={t("share.patientLink")} onFocus={(event) => event.target.select()} />
+                  <Button onClick={copyLink} size="sm" type="button">{copied ? t("share.copied") : t("share.copyLink")}</Button>
                 </div>
-                <p className="share-link-hint">Deliver by SMS / WhatsApp or any channel — it's a plain link. {created.mediaCount} photo{created.mediaCount === 1 ? "" : "s"} shared.</p>
+                <p className="share-link-hint">{t("share.deliverHint", { n: created.mediaCount })}</p>
                 {onRevokeShare ? (
-                  <button className="share-revoke" onClick={() => void revoke()} type="button">Revoke access</button>
+                  <button className="share-revoke" onClick={() => void revoke()} type="button">{t("share.revokeAccess")}</button>
                 ) : null}
               </>
             ) : null}
-            <Button onClick={onClose} size="sm" type="button" variant="secondary">Done</Button>
+            <Button onClick={onClose} size="sm" type="button" variant="secondary">{t("share.done")}</Button>
           </div>
         ) : (
           <>
-            <p className="share-instruction">Pick what {patientName} sees. They get a read-only link — nothing else from the file.</p>
+            <p className="share-instruction">{t("share.instruction", { name: patientName })}</p>
 
             <label className="share-field">
-              <span>Title</span>
-              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Your visit" />
+              <span>{t("share.titleLabel")}</span>
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t("share.titlePlaceholder")} />
             </label>
 
             <div className="share-incl-list">
               <div className="share-incl-group">
-                <span className="share-incl-group-label">Before / after photos</span>
+                <span className="share-incl-group-label">{t("share.beforeAfterPhotos")}</span>
                 {media.length ? (
                   media.map((item, index) => (
                     <SharePhotoRow
@@ -271,48 +273,48 @@ export function SharePatientSheet({
                     />
                   ))
                 ) : (
-                  <p className="share-empty-photos">No photos on file for this patient yet — capture some on a visit to share before/after.</p>
+                  <p className="share-empty-photos">{t("share.noPhotos")}</p>
                 )}
               </div>
 
               <div className={`share-incl-row${noteIncluded ? "" : " off"}`}>
-                <Toggle on={noteIncluded} onChange={() => setNoteIncluded((value) => !value)} label="Include visit summary" />
+                <Toggle on={noteIncluded} onChange={() => setNoteIncluded((value) => !value)} label={t("share.includeVisitSummary")} />
                 <div className="share-incl-copy">
-                  <b>Visit summary</b>
-                  <span>auto-written from the report — editable</span>
+                  <b>{t("share.visitSummaryTitle")}</b>
+                  <span>{t("share.visitSummaryHint")}</span>
                 </div>
               </div>
               {noteIncluded ? (
-                <textarea className="share-note-input" rows={2} dir="auto" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder="A short summary for the patient" />
+                <textarea className="share-note-input" rows={2} dir="auto" value={noteBody} onChange={(event) => setNoteBody(event.target.value)} placeholder={t("share.summaryPlaceholder")} />
               ) : null}
 
               <div className={`share-incl-row${treatmentsIncluded ? "" : " off"}`}>
-                <Toggle on={treatmentsIncluded} onChange={() => setTreatmentsIncluded((value) => !value)} label="Include what we did" />
+                <Toggle on={treatmentsIncluded} onChange={() => setTreatmentsIncluded((value) => !value)} label={t("share.includeWhatWeDid")} />
                 <div className="share-incl-copy">
-                  <b>What we did</b>
-                  <span>plain-words summary — no doses or lots{`; brands only if your clinic enabled it`}</span>
+                  <b>{t("share.whatWeDidTitle")}</b>
+                  <span>{t("share.whatWeDidHint")}</span>
                 </div>
               </div>
 
               {assessmentBody ? (
                 <div className={`share-incl-row${assessmentIncluded ? "" : " off"}`}>
-                  <Toggle on={assessmentIncluded} onChange={() => setAssessmentIncluded((value) => !value)} label="Include assessment" />
+                  <Toggle on={assessmentIncluded} onChange={() => setAssessmentIncluded((value) => !value)} label={t("share.includeAssessment")} />
                   <div className="share-incl-copy">
-                    <b>Assessment</b>
-                    <span>your clinical findings — off by default; can alarm out of context</span>
+                    <b>{t("share.assessmentTitle")}</b>
+                    <span>{t("share.assessmentHint")}</span>
                   </div>
                 </div>
               ) : null}
 
               <div className={`share-incl-row${aftercareId ? "" : " off"}`}>
-                <Toggle on={Boolean(aftercareId)} onChange={() => setAftercareId(aftercareId ? "" : templates[0]?.id || "")} label="Include aftercare" />
+                <Toggle on={Boolean(aftercareId)} onChange={() => setAftercareId(aftercareId ? "" : templates[0]?.id || "")} label={t("share.includeAftercare")} />
                 <div className="share-incl-copy">
-                  <b>Aftercare instructions</b>
-                  <span>{templates.length ? "choose a template below" : "no templates yet — add one in Settings"}</span>
+                  <b>{t("share.aftercareTitle")}</b>
+                  <span>{templates.length ? t("share.aftercareChoose") : t("share.aftercareNoTemplates")}</span>
                 </div>
               </div>
               {aftercareId && templates.length ? (
-                <select className="share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label="Aftercare template">
+                <select className="share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label={t("share.aftercareTemplateLabel")}>
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>{template.name}{template.procedureType ? ` · ${template.procedureType}` : ""}</option>
                   ))}
@@ -322,7 +324,7 @@ export function SharePatientSheet({
 
             <div className="share-withheld">
               <LockIcon />
-              Always withheld: raw audio, internal notes, lot numbers, national ID, other visits.
+              {t("share.alwaysWithheld")}
             </div>
 
             {preview ? (
@@ -340,10 +342,10 @@ export function SharePatientSheet({
             {error ? <p className="share-error">{error}</p> : null}
 
             <div className="share-actions">
-              <button className="share-pillbtn" onClick={() => setPreview((value) => !value)} type="button">{preview ? "Hide preview" : "Preview"}</button>
+              <button className="share-pillbtn" onClick={() => setPreview((value) => !value)} type="button">{preview ? t("share.hidePreview") : t("share.preview")}</button>
               <Button className="share-pillbtn primary" disabled={sending || (!includedMedia.length && !(noteIncluded && noteBody.trim()) && !selectedTemplate && !treatmentsIncluded)} onClick={() => void send()} type="button">
                 <ShareIcon />
-                {sending ? "Sending…" : "Send link"}
+                {sending ? t("share.sending") : t("share.sendLink")}
               </Button>
             </div>
           </>
@@ -364,14 +366,15 @@ function SharePhotoRow({
   onToggle: () => void;
   onCaption: (caption: string) => void;
 }) {
+  const t = useT();
   const url = useResolvedUrl(choice.endpoint, onResolveFile);
   return (
     <div className={`share-photo-row${choice.included ? "" : " off"}`}>
-      <Toggle on={choice.included} onChange={onToggle} label="Include photo" />
-      <span className="share-photo-thumb">{url ? <img alt="Shared photo" src={url} /> : null}</span>
+      <Toggle on={choice.included} onChange={onToggle} label={t("share.includePhoto")} />
+      <span className="share-photo-thumb">{url ? <img alt={t("share.photoThumbAlt")} src={url} /> : null}</span>
       <div className="share-photo-copy">
-        {choice.visitLabel ? <small className="share-photo-visit">{choice.visitLabel}</small> : null}
-        <input className="share-photo-caption" value={choice.caption} onChange={(event) => onCaption(event.target.value)} placeholder="Caption (optional)" disabled={!choice.included} />
+        {choice.visitLabel ? <small className="share-photo-visit" data-content>{choice.visitLabel}</small> : null}
+        <input className="share-photo-caption" value={choice.caption} onChange={(event) => onCaption(event.target.value)} placeholder={t("share.captionPlaceholder")} disabled={!choice.included} />
       </div>
     </div>
   );
@@ -394,11 +397,12 @@ function SharePreviewPane({
   onResolveFile: (endpoint: string) => Promise<string>;
   aftercare: AftercareTemplate | null;
 }) {
+  const t = useT();
   return (
-    <div className="share-preview" aria-label="What the patient sees">
+    <div className="share-preview" data-content data-testid="share-preview" aria-label={t("share.previewAria")}>
       <div className="share-preview-head">
-        <strong>{title || "Your visit"}</strong>
-        <span>For {patientName}</span>
+        <strong data-content>{title || "Your visit"}</strong>
+        <span data-content>For {patientName}</span>
       </div>
       {media.length ? (
         <div className="share-preview-photos">

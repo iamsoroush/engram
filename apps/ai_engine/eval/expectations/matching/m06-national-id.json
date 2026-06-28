@@ -1,0 +1,7 @@
+{
+  "_note": "National ID read digit-by-digit; must be normalized to a Latin-digit string.",
+  "said": "کد ملی صفر صفر یک دو سه چهار پنج شش هفت هشت.",
+  "expect": {
+    "nationalId": "0012345678"
+  }
+}

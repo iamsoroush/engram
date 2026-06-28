@@ -1,5 +1,6 @@
 import React from "react";
 import type { AuthSession } from "../../domain/appTypes";
+import { useT } from "../../shared/i18n";
 import { Badge, Button } from "../../shared/ui/primitives";
 
 /**
@@ -15,6 +16,9 @@ export function SwitchClinicScreen({
   onBack: () => void;
   onSwitch: (tenantId: string) => Promise<void>;
 }) {
+  const t = useT();
+  const KNOWN_ROLES = ["owner", "admin", "doctor", "assistant", "therapist-b", "patient-preview", "user"];
+  const roleLabel = (role: string) => (KNOWN_ROLES.includes(role) ? t(`role.${role}`) : role);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState("");
 
@@ -29,7 +33,7 @@ export function SwitchClinicScreen({
     try {
       await onSwitch(tenantId);
     } catch {
-      setError("Could not switch clinic. Please try again.");
+      setError(t("switchclinic.switchError"));
       setBusy(null);
     }
   };
@@ -38,26 +42,26 @@ export function SwitchClinicScreen({
     <div className="account-screen" data-screen="switch-clinic">
       <div className="account-header">
         <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> {t("switchclinic.back")}
         </Button>
-        <h1>Switch clinic</h1>
+        <h1>{t("switchclinic.title")}</h1>
       </div>
-      <p className="muted">You're a member of more than one clinic. Choose which one to work in.</p>
+      <p className="muted">{t("switchclinic.intro")}</p>
       <ul className="team-list">
         {clinics.map((clinic) => {
           const current = clinic.tenantId === auth.tenant.id;
           return (
             <li className="team-member" key={clinic.tenantId}>
               <div className="team-member-id">
-                <strong>{clinic.tenantName || clinic.tenantId}</strong>
-                <small>{clinic.role}</small>
+                <strong data-content="clinic-name">{clinic.tenantName || clinic.tenantId}</strong>
+                <small>{roleLabel(clinic.role)}</small>
               </div>
               <div className="team-member-controls">
                 {current ? (
-                  <Badge tone="blue">Current</Badge>
+                  <Badge tone="blue">{t("switchclinic.currentBadge")}</Badge>
                 ) : (
                   <Button disabled={busy !== null} onClick={() => void choose(clinic.tenantId)} size="sm" type="button">
-                    {busy === clinic.tenantId ? "Switching…" : "Switch"}
+                    {busy === clinic.tenantId ? t("switchclinic.switching") : t("switchclinic.switch")}
                   </Button>
                 )}
               </div>

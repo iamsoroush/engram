@@ -1,22 +1,23 @@
 import React from "react";
 import type { ApiFetch, AuthSession } from "../../domain/appTypes";
 import { setClinicPlan } from "../../services/api/client";
+import { useT } from "../../shared/i18n";
 import { Badge, Button, Card } from "../../shared/ui/primitives";
 
-const BASIC_FEATURES = [
-  "Fast capture — audio, photo, or note",
-  "Saved on device, synced when online",
-  "Captures organized into visit sessions",
-  "Last-visit reference at capture",
+const BASIC_FEATURE_KEYS = [
+  "plan.basicFeature1",
+  "plan.basicFeature2",
+  "plan.basicFeature3",
+  "plan.basicFeature4",
 ];
 
-const PRO_FEATURES = [
-  "Everything in Basic, plus:",
-  "AI transcription + photo captions",
-  "AI-drafted visit reports & summaries",
-  "AI patient matching & out-of-context checks",
-  "Longitudinal patient memory across visits",
-  "Post-session patient Q&A (doctor-verified)",
+const PRO_FEATURE_KEYS = [
+  "plan.proFeature1",
+  "plan.proFeature2",
+  "plan.proFeature3",
+  "plan.proFeature4",
+  "plan.proFeature5",
+  "plan.proFeature6",
 ];
 
 function PlanCard({
@@ -36,11 +37,12 @@ function PlanCard({
   busy: boolean;
   onSwitch: () => void;
 }) {
+  const t = useT();
   return (
     <Card className={`plan-card${highlight ? " plan-card-pro" : ""}${current ? " plan-card-current" : ""}`}>
       <div className="plan-card-head">
         <h2>{name}</h2>
-        {current ? <Badge tone="blue">Current plan</Badge> : null}
+        {current ? <Badge tone="blue">{t("plan.currentBadge")}</Badge> : null}
       </div>
       <p className="plan-card-tagline">{tagline}</p>
       <ul className="plan-features">
@@ -50,11 +52,11 @@ function PlanCard({
       </ul>
       {current ? (
         <Button disabled type="button" variant="secondary">
-          Your current plan
+          {t("plan.currentButton")}
         </Button>
       ) : (
         <Button disabled={busy} onClick={onSwitch} type="button">
-          {busy ? "Switching…" : `Switch to ${name}`}
+          {busy ? t("plan.switching") : t("plan.switchTo", { name })}
         </Button>
       )}
     </Card>
@@ -77,6 +79,7 @@ export function PlanScreen({
   onBack: () => void;
   onTierChanged: (tier: string) => void;
 }) {
+  const t = useT();
   const current = auth.tenant.tier === "pro" ? "pro" : "basic";
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -88,7 +91,7 @@ export function PlanScreen({
       const result = await setClinicPlan(apiFetch, tier);
       onTierChanged(result.tier);
     } catch {
-      setError("Could not change your plan. Please try again.");
+      setError(t("plan.switchError"));
     } finally {
       setBusy(false);
     }
@@ -98,31 +101,31 @@ export function PlanScreen({
     <div className="account-screen" data-screen="plan">
       <div className="account-header">
         <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> {t("plan.back")}
         </Button>
-        <h1>Plan</h1>
+        <h1>{t("plan.title")}</h1>
       </div>
       <p className="muted plan-intro">
-        No payment yet — switch freely to explore each plan. {auth.tenant.name} is on{" "}
+        {t("plan.intro")} <span data-content="clinic-name">{auth.tenant.name}</span> {t("plan.introOn")}{" "}
         <strong>{current === "pro" ? "Pro" : "Basic"}</strong>.
       </p>
       <div className="plan-grid">
         <PlanCard
           busy={busy}
           current={current === "basic"}
-          features={BASIC_FEATURES}
+          features={BASIC_FEATURE_KEYS.map((key) => t(key))}
           name="Basic"
           onSwitch={() => switchTo("basic")}
-          tagline="Capture-first record keeping — fast, reliable, offline-friendly."
+          tagline={t("plan.basicTagline")}
         />
         <PlanCard
           busy={busy}
           current={current === "pro"}
-          features={PRO_FEATURES}
+          features={PRO_FEATURE_KEYS.map((key) => t(key))}
           highlight
           name="Pro"
           onSwitch={() => switchTo("pro")}
-          tagline="Adds the full AI layer: reports, patient memory, and Q&A."
+          tagline={t("plan.proTagline")}
         />
       </div>
       {error ? <div className="alert alert-red">{error}</div> : null}

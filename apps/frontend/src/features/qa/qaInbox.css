@@ -100,7 +100,7 @@
   background: transparent;
   padding: 0;
   cursor: pointer;
-  text-align: left;
+  text-align: start;
   font: inherit;
 }
 
@@ -455,7 +455,7 @@
 }
 
 .qa-reroute-list button {
-  text-align: left;
+  text-align: start;
   border: none;
   background: transparent;
   padding: 8px 10px;
@@ -500,12 +500,13 @@
 .qa-history-msg {
   font-size: 13px;
   line-height: 1.45;
-  border-left: 3px solid #e2e6ee;
-  padding: 2px 0 2px 10px;
+  border-inline-start: 3px solid #e2e6ee;
+  padding-block: 2px;
+  padding-inline-start: 10px;
 }
 
 .qa-history-msg.doctor {
-  border-left-color: #9bb0ff;
+  border-inline-start-color: #9bb0ff;
 }
 
 .qa-history-role {

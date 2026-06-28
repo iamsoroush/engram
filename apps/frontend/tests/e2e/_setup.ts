@@ -9,6 +9,8 @@ export type AuthOptions = {
   role?: string;
   userId?: string;
   tenantId?: string;
+  /** App-UI language for the authed app. Set to "fa" to render the Persian/RTL chrome. */
+  appLanguage?: string;
   memberships?: Array<{ tenantId: string; role: string; tenantName?: string }>;
 };
 
@@ -23,7 +25,7 @@ export function authPayload(options: AuthOptions = {}) {
       id: tenantId,
       name: "E2E Clinic",
       tier: options.tier ?? "basic",
-      appLanguage: "en",
+      appLanguage: options.appLanguage ?? "en",
       transcriptionLanguage: "auto",
       reportLanguage: null,
       matchStrictness: "strict",
@@ -46,6 +48,15 @@ export async function installAppMocks(page: Page, payload: ReturnType<typeof aut
   const json = (data: unknown) => async (route: import("@playwright/test").Route) =>
     route.fulfill({ contentType: "application/json", json: data as object });
 
+  // Catch-all FIRST (lowest Playwright priority — later routes win): any unmocked /api/v1/** call
+  // returns an empty 200 instead of 401→refreshAccessToken→re-render→re-fetch (the 5c loop that
+  // corrupted hermetic app-language tests). Specific routes below override per-endpoint.
+  await page.route("**/api/v1/**", async (route) => {
+    const url = route.request().url();
+    const body = /\/(inbox|members|threads|treating-doctors)/.test(url) ? { items: [], total: 0 } : {};
+    await route.fulfill({ contentType: "application/json", json: body });
+  });
+
   await page.route("**/api/v1/auth/dev-login", json(payload));
   await page.route("**/api/v1/auth/register", json(payload));
   await page.route("**/api/v1/auth/login", json(payload));
@@ -56,4 +67,46 @@ export async function installAppMocks(page: Page, payload: ReturnType<typeof aut
   await page.route("**/api/v1/patient-memory**", json({ items: [], limit: 50, offset: 0, total: 0 }));
   await page.route("**/api/v1/worklist**", json({ items: [] }));
   await page.route("**/api/v1/clinic/members", json({ items: [] }));
+}
+
+/**
+ * Mocks the Pro doctor Q&A inbox (`/patient-qa/*`) with one needs-approval conversation, so the
+ * inbox renders its full chrome: scope tabs, routing toggle, status badges, the AI-draft reply box,
+ * and Send / Dismiss / Re-route actions. Patient name + message bodies are DATA (verbatim, marked
+ * `data-content` in the component) so the no-leak chrome scan excludes them. Navigate to the inbox
+ * with `#qa-inbox` after a Pro + fa `installAppMocks`. Call AFTER installAppMocks so these win.
+ */
+export async function installQaMocks(page: Page) {
+  const json = (data: unknown) => async (route: import("@playwright/test").Route) =>
+    route.fulfill({ contentType: "application/json", json: data as object });
+
+  const inbox = {
+    scope: "mine",
+    total: 1,
+    items: [
+      {
+        threadId: "thread-1",
+        patientId: "patient-1",
+        patientName: "Sara Karimi",
+        assignedDoctor: { userId: "user-1", name: "Dr. E2E" },
+        routingSource: "treating",
+        treatingDoctorCount: 1,
+        needsApproval: true,
+        pendingQuestion: {
+          messageId: "msg-1",
+          body: "Is the swelling normal after the filler?",
+          askedAt: "2026-06-20T10:00:00Z",
+        },
+        messages: [
+          { id: "msg-1", role: "patient", body: "Is the swelling normal after the filler?", status: "pending", inReplyToId: null, createdAt: "2026-06-20T10:00:00Z" },
+        ],
+        visits: [{ sessionId: "sess-1", title: "Lip filler", date: "2026-06-18T09:00:00Z" }],
+        lastActivityAt: "2026-06-20T10:00:00Z",
+      },
+    ],
+  };
+
+  await page.route("**/api/v1/patient-qa/inbox**", json(inbox));
+  await page.route("**/api/v1/patient-qa/settings", json({ routingMode: "ai_default" }));
+  await page.route("**/api/v1/patient-qa/messages/*/draft", json({ draftStatus: "ready", draft: "", draftMode: "revise" }));
 }

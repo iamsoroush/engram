@@ -1,0 +1,10 @@
+{
+  "_note": "Recorded «نگار معمری» — a near-miss of the EXISTING patient «نگار محمدی». Load-bearing safety property: the transcript must NOT snap the surname to «محمدی» (auto-correcting a near-miss to a known patient is what causes an unsafe silent auto-assign). FINDINGS (3 runs each): gemini-3.1-flash-lite is UNRELIABLE — returned «محمدی» twice and «معمری» once; gemini-3.5-flash also returned «محمدی»; gemini-3.1-pro-preview preserved a distinct name («معماری»). Marked knownGap because the default model fails it intermittently.",
+  "said": "بیمار نگار معمری.",
+  "expect": {
+    "nameAbsent": ["محمدی"],
+    "basisNot": "explicit",
+    "noLatinInName": true
+  },
+  "knownGap": "near-miss surname intermittently auto-corrected to the existing patient «محمدی» on flash models; a pro model (gemini-3.1-pro-preview) is more faithful"
+}

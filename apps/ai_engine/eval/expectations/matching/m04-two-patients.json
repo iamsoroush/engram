@@ -1,0 +1,9 @@
+{
+  "_note": "Two patients named in one breath; THIS session's patient is the second («نوبت خانم محمدیه»). Keystone: an ambiguous two-name clip must never be silently auto-assigned → basisNot=explicit.",
+  "said": "بعد از خانم احمدی، نوبت خانم محمدیه.",
+  "expect": {
+    "nameContains": ["محمدی"],
+    "basisNot": "explicit",
+    "noLatinInName": true
+  }
+}

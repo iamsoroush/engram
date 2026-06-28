@@ -1,0 +1,13 @@
+{
+  "seen": "نمای نزدیک از محل تزریق.",
+  "expect": {
+    "isProductLabel": false,
+    "noDiagnosis": true,
+    "notOutOfContext": true,
+    "noLatinWords": true
+  },
+  "judge": {
+    "dimensions": ["objectiveNotDiagnostic", "nativeScript"],
+    "minScore": 0.7
+  }
+}

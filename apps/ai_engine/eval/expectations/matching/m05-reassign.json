@@ -1,0 +1,10 @@
+{
+  "_note": "An EXPLICIT reassignment instruction → basis explicit, present. This is the one path the backend may auto-apply (on an exact match) — so the model must reserve 'explicit' for genuine change/correct instructions.",
+  "said": "بیمار رو عوض کن به نگار محمدی.",
+  "expect": {
+    "nameContains": ["نگار", "محمدی"],
+    "assignmentPresent": true,
+    "basis": "explicit",
+    "noLatinInName": true
+  }
+}

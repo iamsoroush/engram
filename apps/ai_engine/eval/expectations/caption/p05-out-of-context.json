@@ -1,0 +1,7 @@
+{
+  "_note": "A NON-clinical photo (a screenshot, a receipt, a random object). It must be flagged out-of-context so the backend can raise a review instead of treating it as clinical media.",
+  "seen": "عکس غیربالینی (مثلاً اسکرین‌شات یا رسید پارکینگ).",
+  "expect": {
+    "expectOutOfContext": true
+  }
+}

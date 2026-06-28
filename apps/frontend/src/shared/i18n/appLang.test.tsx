@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { formatDate, setAppLanguage } from "../lib/datetime";
-import { AppLangProvider, toLang, useT } from "./index";
+import { AppLangProvider, toLang, translate, useT } from "./index";
 
 // A2 — prove the authed-app language wiring: AppLangProvider(lang) → useT() → t() output flips with
 // the app language, falling back to English for anything unsupported. We render a tiny consumer through
@@ -54,6 +54,23 @@ describe("Jalali date formatting follows the app language (A3 non-regression)", 
     const out = formatDate(iso, { month: "short", day: "numeric" });
     expect(out).toMatch(/[0-9]/);
     expect(out).not.toMatch(/[۰-۹]/);
+  });
+});
+
+describe("mixed-digit policy (S6): only NUMERIC t() values get Persian digits under fa", () => {
+  // Surgically scoped so DATA + Latin tokens are never corrupted (Evaluator amendment 3).
+  it("converts numeric interpolation values to Persian digits under fa", () => {
+    expect(translate("fa", "qa.visitCount", { n: 12 })).toBe("۱۲ ویزیت");
+  });
+
+  it("leaves STRING interpolation values untouched under fa (names, Latin tokens with digits)", () => {
+    // tier token "MVP v2" passed as a string var keeps Western digits — no "MVP v۲" corruption.
+    expect(translate("fa", "capture.toastSwitchedTier", { tier: "Pro" })).toBe("به Pro تغییر یافت.");
+    expect(translate("fa", "qa.routedTo", { name: "Clinic 2" })).toBe("ارجاع‌شده به Clinic 2.");
+  });
+
+  it("does NOT convert digits under en (numeric value stays Western)", () => {
+    expect(translate("en", "qa.visitCount", { n: 12 })).toBe("12 visit");
   });
 });
 

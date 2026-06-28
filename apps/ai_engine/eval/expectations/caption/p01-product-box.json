@@ -1,0 +1,13 @@
+{
+  "_todo": "After photographing, set  \"lot\": \"<exact lot/batch on the box>\"  and, if a brand is legible,  \"brandsVerbatim\": [\"<brand>\"]  in expect. Add  \"allowLatin\": [\"<lot>\", \"<latin brand>\"]  if they are Latin. Then delete this _todo.",
+  "seen": "جعبه محصول (فیلر/بوتاکس) با شماره لات روی آن.",
+  "expect": {
+    "isProductLabel": true,
+    "noDiagnosis": true,
+    "notOutOfContext": true
+  },
+  "judge": {
+    "dimensions": ["objectiveNotDiagnostic", "lotBrandFidelity", "nativeScript"],
+    "minScore": 0.7
+  }
+}

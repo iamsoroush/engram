@@ -3,6 +3,7 @@ import "./qaInbox.css";
 import type { ApiFetch } from "../../domain/appTypes";
 import { Alert, Badge, Button, Card, Skeleton, Textarea } from "../../shared/ui/primitives";
 import { formatDate } from "../../shared/lib/datetime";
+import { useT } from "../../shared/i18n";
 import {
   dismissQaQuestion,
   fetchQaInbox,
@@ -37,6 +38,7 @@ export function DoctorQaInbox({
   onToast?: (message: string) => void;
   onChanged?: () => void;
 }) {
+  const t = useT();
   const [scope, setScope] = React.useState<"mine" | "all">("mine");
   const [items, setItems] = React.useState<QaInboxItem[]>([]);
   const [loaded, setLoaded] = React.useState(false);
@@ -69,20 +71,20 @@ export function DoctorQaInbox({
       })
       .catch(() => {
         if (cancelled) return;
-        setError("Couldn’t load the Q&A inbox.");
+        setError(t("qa.loadError"));
         setLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [apiFetch, scope, refresh, onChanged]);
+  }, [apiFetch, scope, refresh, onChanged, t]);
 
   const handleRoutingMode = async (mode: "ai_default" | "manual") => {
     try {
       setSettings(await setQaRoutingMode(apiFetch, mode));
-      onToast?.(mode === "manual" ? "New questions now wait for manual routing." : "New questions now auto-route to the treating doctor.");
+      onToast?.(mode === "manual" ? t("qa.routingNowManual") : t("qa.routingNowAuto"));
     } catch {
-      onToast?.("Couldn’t update routing.");
+      onToast?.(t("qa.routingUpdateError"));
     }
   };
 
@@ -90,64 +92,64 @@ export function DoctorQaInbox({
     const messageId = item.pendingQuestion?.messageId;
     const text = reply.trim();
     if (!messageId || !text) {
-      onToast?.("Add a reply before sending.");
+      onToast?.(t("qa.addReplyBeforeSend"));
       return;
     }
-    if (!window.confirm(`Send this reply to ${item.patientName}? They will see it on their private link.`)) return;
+    if (!window.confirm(t("qa.confirmSend", { name: item.patientName }))) return;
     try {
       await sendQaReply(apiFetch, messageId, text);
-      onToast?.("Reply sent and captured into the patient’s memory.");
+      onToast?.(t("qa.replySent"));
       reload();
     } catch {
-      onToast?.("Couldn’t send the reply.");
+      onToast?.(t("qa.sendError"));
     }
   };
 
   const handleDismiss = async (item: QaInboxItem) => {
     const messageId = item.pendingQuestion?.messageId;
     if (!messageId) return;
-    if (!window.confirm(`Dismiss ${item.patientName}’s question without replying?`)) return;
+    if (!window.confirm(t("qa.confirmDismiss", { name: item.patientName }))) return;
     try {
       await dismissQaQuestion(apiFetch, messageId);
-      onToast?.("Question dismissed.");
+      onToast?.(t("qa.questionDismissed"));
       reload();
     } catch {
-      onToast?.("Couldn’t dismiss the question.");
+      onToast?.(t("qa.dismissError"));
     }
   };
 
   const handleReroute = async (item: QaInboxItem, doctorUserId: string) => {
     try {
       await routeQaThread(apiFetch, item.threadId, doctorUserId);
-      onToast?.("Conversation re-routed.");
+      onToast?.(t("qa.conversationRerouted"));
       reload();
     } catch {
-      onToast?.("Couldn’t re-route this conversation.");
+      onToast?.(t("qa.rerouteError"));
     }
   };
 
   return (
-    <div className="qa-inbox">
+    <div className="qa-inbox" data-testid="qa-inbox">
       <div className="qa-inbox-head">
-        <h1>Q&amp;A inbox</h1>
+        <h1>{t("qa.inboxTitle")}</h1>
         <div className="qa-inbox-controls">
-          <div className="qa-scope" role="tablist" aria-label="Inbox scope">
+          <div className="qa-scope" role="tablist" aria-label={t("qa.scopeAria")}>
             <button className={scope === "mine" ? "active" : ""} onClick={() => setScope("mine")} type="button">
-              Mine
+              {t("qa.scopeMine")}
             </button>
             <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-              Clinic
+              {t("qa.scopeClinic")}
             </button>
           </div>
           {settings ? (
             <label className="qa-routing">
-              Routing
+              {t("qa.routingLabel")}
               <select
                 value={settings.routingMode === "manual" ? "manual" : "ai_default"}
                 onChange={(event) => void handleRoutingMode(event.target.value as "ai_default" | "manual")}
               >
-                <option value="ai_default">Auto · treating doctor</option>
-                <option value="manual">Manual</option>
+                <option value="ai_default">{t("qa.routingAuto")}</option>
+                <option value="manual">{t("qa.routingManual")}</option>
               </select>
             </label>
           ) : null}
@@ -162,7 +164,7 @@ export function DoctorQaInbox({
           <Skeleton className="h-12" />
         </Card>
       ) : items.length === 0 ? (
-        <p className="qa-empty">No conversations yet{scope === "mine" ? " routed to you" : ""}.</p>
+        <p className="qa-empty">{scope === "mine" ? t("qa.emptyMine") : t("qa.emptyClinic")}</p>
       ) : (
         items.map((item) => (
           <QaThreadCard
@@ -210,6 +212,7 @@ function QaThreadCard({
   onDismiss: (item: QaInboxItem) => void;
   onReroute: (item: QaInboxItem, doctorUserId: string) => void;
 }) {
+  const t = useT();
   const pending = item.pendingQuestion;
   const [reply, setReply] = React.useState(pending?.suggestedReply || "");
   const [doctors, setDoctors] = React.useState<QaTreatingDoctor[] | null>(null);
@@ -233,6 +236,7 @@ function QaThreadCard({
       setVoiceMode(mode);
     },
     onError: setVoiceError,
+    t,
   });
   const startVoice = () => {
     preVoiceRef.current = reply;
@@ -277,17 +281,18 @@ function QaThreadCard({
   return (
     <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""}`}>
       <div className="qa-card-head">
-        <span className="qa-patient" dir="auto">
+        <span className="qa-patient" dir="auto" data-content>
           {item.patientName}
         </span>
         <span className="qa-head-right">
-          {item.needsApproval ? <Badge tone="amber">needs reply</Badge> : null}
+          {item.needsApproval ? <Badge tone="amber">{t("qa.badgeNeedsReply")}</Badge> : null}
           {item.assignedDoctor ? (
             <Badge tone="blue">
-              {item.routingSource === "manual" ? "re-routed" : "treating"} · {item.assignedDoctor.name}
+              {item.routingSource === "manual" ? t("qa.badgeRerouted") : t("qa.badgeTreating")} ·{" "}
+              <span data-content>{item.assignedDoctor.name}</span>
             </Badge>
           ) : (
-            <Badge tone="amber">unrouted</Badge>
+            <Badge tone="amber">{t("qa.badgeUnrouted")}</Badge>
           )}
         </span>
       </div>
@@ -297,8 +302,10 @@ function QaThreadCard({
           {timeline.map((entry, index) =>
             entry.kind === "visit" ? (
               <div className="qa-visit" key={`v-${entry.visit.sessionId}-${index}`}>
-                <span dir="auto">🗓 Visit · {entry.visit.title}</span>
-                <span className="qa-visit-date">{formatDateTime(entry.visit.date)}</span>
+                <span dir="auto">
+                  🗓 {t("qa.visit")} · <span data-content>{entry.visit.title}</span>
+                </span>
+                <span className="qa-visit-date" data-content>{formatDateTime(entry.visit.date)}</span>
               </div>
             ) : (
               <div
@@ -308,11 +315,11 @@ function QaThreadCard({
                 }`}
               >
                 <div className="qa-msg-meta">
-                  {entry.message.role === "doctor" ? "Clinic" : item.patientName}
-                  <span className="qa-msg-time"> · {formatDateTime(entry.message.createdAt)}</span>
-                  {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · dismissed</span> : null}
+                  {entry.message.role === "doctor" ? t("qa.clinic") : <span data-content>{item.patientName}</span>}
+                  <span className="qa-msg-time" data-content> · {formatDateTime(entry.message.createdAt)}</span>
+                  {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · {t("qa.dismissed")}</span> : null}
                 </div>
-                <div dir="auto">{entry.message.body}</div>
+                <div dir="auto" data-content>{entry.message.body}</div>
               </div>
             ),
           )}
@@ -321,19 +328,21 @@ function QaThreadCard({
         // Collapsed open conversation: just the question awaiting a reply.
         <div className="qa-msg patient awaiting qa-msg-flush">
           <div className="qa-msg-meta">
-            {item.patientName}
-            <span className="qa-msg-time"> · {formatDateTime(pending.askedAt)}</span>
+            <span data-content>{item.patientName}</span>
+            <span className="qa-msg-time" data-content> · {formatDateTime(pending.askedAt)}</span>
           </div>
-          <div dir="auto">{pending.question}</div>
+          <div dir="auto" data-content>{pending.question}</div>
         </div>
       ) : (
         // Collapsed resolved conversation: one-line preview of the latest message.
         <div className="qa-preview">
-          <span className="qa-preview-role">{lastMessage?.role === "doctor" ? "Clinic" : item.patientName}:</span>{" "}
-          <span className="qa-preview-text" dir="auto">
+          <span className="qa-preview-role" data-content>
+            {lastMessage?.role === "doctor" ? t("qa.clinic") : item.patientName}:
+          </span>{" "}
+          <span className="qa-preview-text" dir="auto" data-content>
             {lastMessage?.body}
           </span>
-          <span className="qa-msg-time"> · {formatDateTime(item.lastActivityAt)}</span>
+          <span className="qa-msg-time" data-content> · {formatDateTime(item.lastActivityAt)}</span>
         </div>
       )}
 
@@ -341,27 +350,27 @@ function QaThreadCard({
       {hiddenCount > 0 ? (
         <button className="qa-expand-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
           <Chevron open={expanded} />
-          {expanded ? "Hide full conversation" : `View full conversation · ${item.messages.length} messages`}
+          {expanded ? t("qa.hideConversation") : t("qa.viewConversation", { n: item.messages.length })}
         </button>
       ) : null}
 
       {item.needsApproval ? (
         <div className="qa-approve">
           <div className="qa-draft-label">
-            Suggested reply
+            {t("qa.suggestedReply")}
             {draftReady ? (
-              <Badge tone="green">AI draft · verify before send</Badge>
+              <Badge tone="green">{t("qa.aiDraftVerify")}</Badge>
             ) : draftPending ? (
-              <span className="qa-draft-hint">drafting a suggestion…</span>
+              <span className="qa-draft-hint">{t("qa.draftingHint")}</span>
             ) : (
-              <span className="qa-draft-hint">no draft — type a reply</span>
+              <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>
             )}
           </div>
           {voiceMode ? (
             <div className="qa-voice-note">
-              ✨ {voiceMode === "replace" ? "Rewrote" : "Revised"} from your voice note ·{" "}
+              ✨ {voiceMode === "replace" ? t("qa.voiceRewrote") : t("qa.voiceRevised")} ·{" "}
               <button type="button" className="qa-voice-undo" onClick={undoVoice}>
-                Undo
+                {t("qa.undo")}
               </button>
             </div>
           ) : null}
@@ -370,24 +379,24 @@ function QaThreadCard({
               className={`qa-reply-input ${voice.state === "applying" ? "is-applying" : ""}`}
               dir="auto"
               value={reply}
-              placeholder={draftPending ? "Drafting… you can type a reply now too." : "Type your reply…"}
+              placeholder={draftPending ? t("qa.replyPlaceholderDrafting") : t("qa.replyPlaceholder")}
               onChange={(event) => setReply(event.target.value)}
               disabled={voice.state === "applying"}
-              aria-label={`Reply to ${item.patientName}`}
+              aria-label={t("qa.replyToAria", { name: item.patientName })}
             />
             {voice.state === "applying" ? (
               <div className="qa-reply-overlay">
-                <span className="qa-voice-spinner" aria-hidden="true" /> Applying your voice note…
+                <span className="qa-voice-spinner" aria-hidden="true" /> {t("qa.applyingVoice")}
               </div>
             ) : null}
           </div>
           {voiceError ? <div className="qa-voice-error">{voiceError}</div> : null}
           <div className="qa-card-actions">
             <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim() || voice.state !== "idle"}>
-              Send
+              {t("qa.send")}
             </Button>
             <Button variant="ghost" onClick={() => onDismiss(item)} disabled={voice.state === "applying"}>
-              Dismiss
+              {t("qa.dismiss")}
             </Button>
             <VoiceControl voice={voice} onStart={startVoice} />
             {canReroute ? (
@@ -400,7 +409,7 @@ function QaThreadCard({
         </div>
       ) : expanded && canReroute ? (
         <div className="qa-card-actions">
-          <span className="qa-resolved">Replied — re-route future questions if needed.</span>
+          <span className="qa-resolved">{t("qa.repliedReroute")}</span>
           <span className="qa-spacer" />
           <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
         </div>
@@ -430,24 +439,25 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 function VoiceControl({ voice, onStart }: { voice: ReturnType<typeof useVoiceEdit>; onStart: () => void }) {
+  const t = useT();
   if (voice.state === "recording") {
     return (
       <span className="qa-voice-live">
         <span className="qa-voice-dot" aria-hidden="true" />
-        {formatSeconds(voice.seconds)}
+        <span data-content>{formatSeconds(voice.seconds)}</span>
         <button type="button" className="qa-voice-stop" onClick={voice.stop}>
-          Stop
+          {t("qa.stop")}
         </button>
         <button type="button" className="qa-voice-cancel" onClick={voice.cancel}>
-          Cancel
+          {t("qa.cancel")}
         </button>
       </span>
     );
   }
   if (voice.state === "applying") return null; // the textarea overlay shows the applying state
   return (
-    <button type="button" className="qa-voice-btn" onClick={onStart} title="Edit this reply by voice">
-      <MicIcon /> Voice edit
+    <button type="button" className="qa-voice-btn" onClick={onStart} title={t("qa.voiceEditTitle")}>
+      <MicIcon /> {t("qa.voiceEdit")}
     </button>
   );
 }
@@ -478,21 +488,22 @@ function Rerouter({
   onOpen: () => void;
   onReroute: (item: QaInboxItem, doctorUserId: string) => void;
 }) {
+  const t = useT();
   return (
     <details className="qa-reroute" onToggle={(event) => (event.currentTarget as HTMLDetailsElement).open && onOpen()}>
-      <summary>Re-route</summary>
+      <summary>{t("qa.reroute")}</summary>
       <div className="qa-reroute-list">
         {doctors === null ? (
-          <span className="qa-current">Loading…</span>
+          <span className="qa-current">{t("qa.loading")}</span>
         ) : doctors.length === 0 ? (
-          <span className="qa-current">No treating doctors on record yet.</span>
+          <span className="qa-current">{t("qa.noTreatingDoctors")}</span>
         ) : (
           doctors.map((doctor) => {
             const isCurrent = item.assignedDoctor?.userId === doctor.userId;
             return (
               <button key={doctor.userId} type="button" disabled={isCurrent} onClick={() => onReroute(item, doctor.userId)}>
-                {doctor.name} · {doctor.sessionCount} visit{doctor.sessionCount === 1 ? "" : "s"}
-                {isCurrent ? " (current)" : ""}
+                <span data-content>{doctor.name}</span> · {t("qa.visitCount", { n: doctor.sessionCount })}
+                {isCurrent ? ` ${t("qa.current")}` : ""}
               </button>
             );
           })

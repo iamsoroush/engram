@@ -1,0 +1,13 @@
+{
+  "said": "یک و نیم سی‌سی ژل توی لب.",
+  "expect": {
+    "containsAny": [["یک و نیم", "۱.۵", "1.5", "نیم"]],
+    "containsFa": ["ژل"],
+    "noLatinWords": true,
+    "language": "fa"
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "doseFidelity"],
+    "minScore": 0.7
+  }
+}

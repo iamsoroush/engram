@@ -1,103 +1,29 @@
 {
   "src/features/account/AccountScreens.tsx": [
-    "AI models",
-    "Back",
-    "Clear local capture cache",
-    "Debug",
-    "How aggressively AI auto-assigns a close (fuzzy) name match.",
-    "Include brands in patient shares",
-    "Languages",
-    "Logout",
-    "Patient matching",
-    "Patient sharing",
-    "Plan",
-    "Profile",
-    "Promise",
-    "Role permissions",
-    "Saved",
-    "Settings",
-    "The app's interface + dates, how Engram transcribes audio, and how it writes the report.",
-    "What a curated patient share may include. Doses, lots, and the treatment table are always withheld.",
-    "Worker default"
-  ],
-  "src/features/account/PlanScreen.tsx": [
-    "Back",
-    "Current plan",
-    "Plan",
-    "Your current plan"
+    "Promise"
   ],
   "src/features/account/SwitchClinicScreen.tsx": [
-    "Back",
-    "Current",
-    "Promise",
-    "Switch clinic",
-    "You're a member of more than one clinic. Choose which one to work in."
+    "Promise"
   ],
   "src/features/account/TeamScreen.tsx": [
     ") : listError ? (",
-    ") : member.isSelf ? (",
-    "Add a member",
-    "Back",
-    "Create a teammate's account and share the temporary password with them. They sign in with their email.",
-    "Disabled",
-    "Email",
-    "For a new person (≥ 8 chars), to share with them. Leave blank if they already have a Engram account.",
-    "Full name",
-    "Loading…",
-    "Members",
-    "Owner",
-    "Role",
-    "Team",
-    "Temporary password"
+    ") : member.isSelf ? ("
   ],
   "src/features/aesthetics/AftercareTemplatesSettings.tsx": [
-    "Add template",
-    "Aftercare templates",
-    "Avoid lying down for 4 hours.",
-    "Botox aftercare",
-    "Cancel",
-    "Delete",
-    "Edit",
-    "Instructions",
-    "Loading templates…",
-    "Name",
-    "No aftercare templates yet. Add one so it can be attached to a shared report.",
-    "Per-procedure instructions the patient sees on a shared report. Pick and edit one per send.",
-    "Procedure type",
     "Promise",
-    "botox",
-    "void | Promise",
-    "· optional"
+    "void | Promise"
   ],
   "src/features/aesthetics/LastVisitStrip.tsx": [
-    "Last visit",
-    "Last visit photo",
-    "Last visit photos",
-    "Promise",
-    "Same as last time",
-    "View visit",
-    "compare by eye"
+    "Promise"
   ],
   "src/features/aesthetics/MediaOverlay.tsx": [
-    "Close",
-    "Next photo",
-    "Photo viewer",
-    "Previous photo",
     "Promise"
   ],
   "src/features/aesthetics/PatientPhotoGallery.tsx": [
-    "Open visit",
-    "Patient photo",
-    "Photo gallery",
-    "Pro",
-    "Promise",
-    "by visit"
+    "Promise"
   ],
   "src/features/aesthetics/RegisterPatientForm.tsx": [
-    "Possible duplicate patient",
-    "Promise",
-    "This looks like an existing patient",
-    "Use this"
+    "Promise"
   ],
   "src/features/aesthetics/SessionContextCard.tsx": [
     ") : visit ? (",
@@ -106,39 +32,11 @@
   ],
   "src/features/aesthetics/SharePatientSheet.tsx": [
     ") : created ? (",
-    "A short summary for the patient",
-    "Aftercare instructions",
-    "Aftercare template",
-    "Always withheld: raw audio, internal notes, lot numbers, national ID, other visits.",
-    "Assessment",
-    "Before / after photos",
-    "Caption (optional)",
-    "Close",
-    "Done",
-    "No photos on file for this patient yet — capture some on a visit to share before/after.",
-    "Patient link",
-    "Preparing the share…",
     "Promise",
-    "Revoke access",
-    "Share with patient",
-    "Shared photo",
-    "Title",
-    "Visit summary",
-    "What the patient sees",
-    "What we did",
-    "Your visit",
-    "[] as Array",
-    "auto-written from the report — editable"
-  ],
-  "src/features/aesthetics/TryProTeaser.tsx": [
-    "Close",
-    "Got it",
-    "This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it.",
-    "Try Pro"
+    "[] as Array"
   ],
   "src/features/aesthetics/VoiceMemoPlayer.tsx": [
-    "Promise",
-    "Seek"
+    "Promise"
   ],
   "src/features/auth/AuthGates.tsx": [
     "Development personas",
@@ -161,8 +59,7 @@
   "src/features/capture/components/CaptureBadges.tsx": [
     ") ) : onSave ? (",
     ") : hasText ? ( // Tap the text itself to edit it inline — no separate Edit button. onSave ? (",
-    "Promise",
-    "Tap to edit"
+    "Promise"
   ],
   "src/features/capture/components/CaptureDialogs.tsx": [
     "Promise"
@@ -197,155 +94,23 @@
   "src/features/landing/LandingPage.tsx": [
     "Engram"
   ],
-  "src/features/memory/components/CaptureDestinationPanel.tsx": [
-    "Cancel",
-    "Capture destination",
-    "Choose where this capture should be saved.",
-    "New session"
-  ],
   "src/features/memory/components/MemoryCards.tsx": [
     ") : showUpdatedTodayStatus ? (",
-    "At a glance",
-    "Capture types",
-    "Decision context",
-    "Flags to remember",
-    "Line-up recap",
-    "Needs input since:",
-    "Patient history",
-    "Patient memory status",
-    "Patient:",
-    "Possible patients",
-    "Promise",
-    "Recent visits",
-    "Session:",
-    "Updated:",
-    "Visit details"
+    "Promise"
   ],
   "src/features/memory/components/MemorySheets.tsx": [
     ") : !detailLoading ? (",
-    "Additional patient options",
-    "Assign",
-    "Assign patient",
-    "Captures:",
-    "Choose patient",
-    "Close",
-    "Close assign patient",
-    "Close choose patient",
-    "Confirm patient",
-    "Confirm summary",
-    "Create new patient",
-    "Decision context",
-    "Device storage",
-    "Done",
-    "Edit patient details",
-    "Edit summary",
-    "Editing",
-    "Free device storage before capturing offline. Captures already saved remain available, but new offline captures may soon need more room. Export queued captures first to keep them safe.",
-    "Keep unassigned",
-    "Manual options",
-    "No prior photos yet — this looks like a first visit.",
-    "Offline safety warning",
-    "Open full timeline",
-    "Open visit",
-    "Patient assignment",
-    "Patient decisions",
-    "Patient match",
-    "Patient memory",
-    "Patient:",
-    "Promise",
-    "Review storage",
-    "Review summary",
-    "Review the decisions needed to keep this memory accurate.",
-    "Search another patient",
-    "Search patient",
-    "Searching...",
-    "Session:",
-    "Source captures",
-    "Sources",
-    "Start visit",
-    "Storage getting full",
-    "Suggested patient",
-    "Suggested patients",
-    "Summary",
-    "This visit may belong to more than one patient. Choose the correct patient.",
-    "Unassigned visit",
-    "Up next",
-    "View patient history",
-    "Visit being assigned",
-    "Visit being resolved",
-    "Visit context",
-    "deterministic"
+    "Promise"
   ],
   "src/features/memory/components/PatientTimeline.tsx": [
-    "Back to this visit",
-    "By:",
-    "Edit details",
-    "No visits yet.",
-    "Patient metadata",
-    "Patients",
-    "Promise",
-    "Session:",
-    "Share with patient",
-    "Showing memory saved on this device.",
-    "Updated:",
-    "Visit timeline",
-    "Visit times"
+    "Promise"
   ],
   "src/features/memory/components/PatientsHome.tsx": [
     "0 && remaining",
-    "A few things need your judgment to keep memory accurate and useful.",
-    "Active session",
-    "All caught up.",
-    "Clinical Memory",
-    "Clinical Memory sections",
-    "Create a new patient",
-    "Mine vs Clinic",
-    "Needs your input",
-    "New patient",
-    "No active visit.",
-    "No matching patients found.",
-    "No visits updated today.",
-    "Offline · Captures are saved on this device",
-    "Patient filters",
-    "Patient memory is showing saved items from this device.",
-    "Promise",
-    "Search patients",
-    "Search patients by name, phone, or ID...",
-    "Updated today",
-    "You're offline. Patient search may be limited.",
-    "Your calm, intelligent assistant for capturing and organizing what matters most."
-  ],
-  "src/features/memory/components/SearchHome.tsx": [
-    "Enter a term to search the currently loaded clinical memory.",
-    "Find clinical memory",
-    "Matches include local session and capture text already loaded in the app.",
-    "No matching loaded memory.",
-    "Results",
-    "Search",
-    "Search loaded patients, sessions, and captures from this device session.",
-    "Search patients, sessions, captures",
-    "You're offline. Patient search may be limited."
+    "Promise"
   ],
   "src/features/memory/components/WorklistSection.tsx": [
-    "+ Line up a patient for a doctor",
-    "About the worklist",
-    "Cancel",
-    "Change",
-    "Doctor",
-    "Done",
-    "Find a patient",
-    "Find a patient…",
-    "For Dr.",
-    "Loading…",
-    "No doctors in this clinic",
-    "Note (optional)",
-    "Promise",
-    "Recap ›",
-    "Remove",
-    "Remove from worklist",
-    "Start visit",
-    "Up next",
-    "Worklist scope"
+    "Promise"
   ],
   "src/features/patient-surface/PatientQaPage.tsx": [
     "Ask a question",
@@ -379,56 +144,13 @@
     "What we did",
     "Your photos"
   ],
-  "src/features/patient/PatientForm.tsx": [
-    "Cancel",
-    "Date of birth",
-    "Female",
-    "Full name",
-    "Loading current details…",
-    "Male",
-    "National ID",
-    "Notes",
-    "Optional",
-    "Other",
-    "Patient name",
-    "Phone",
-    "Sex",
-    "Unspecified"
-  ],
   "src/features/qa/DoctorQaInbox.tsx": [
     ") : ( // Collapsed resolved conversation: one-line preview of the latest message.",
     ") : draftPending ? (",
     ") : expanded && canReroute ? (",
-    ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply.",
-    "AI draft · verify before send",
-    "Applying your voice note…",
-    "Auto · treating doctor",
-    "Cancel",
-    "Clinic",
-    "Dismiss",
-    "Edit this reply by voice",
-    "Inbox scope",
-    "Loading…",
-    "Manual",
-    "Mine",
-    "No treating doctors on record yet.",
-    "Re-route",
-    "Replied — re-route future questions if needed.",
-    "Routing",
-    "Send",
-    "Stop",
-    "Undo",
-    "Voice edit",
-    "drafting a suggestion…",
-    "needs reply",
-    "no draft — type a reply",
-    "unrouted",
-    "· dismissed"
+    ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply."
   ],
   "src/features/qa/QaChannelButton.tsx": [
-    "Close",
-    "Patient Q&A channel",
-    "Patient Q&A link",
     "Promise"
   ],
   "src/features/therapy/TherapyApp.tsx": [

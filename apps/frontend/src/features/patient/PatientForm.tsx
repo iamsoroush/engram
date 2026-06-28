@@ -1,4 +1,5 @@
 import React from "react";
+import { useT } from "../../shared/i18n";
 
 export type PatientFormValues = {
   displayName: string;
@@ -34,6 +35,7 @@ export function PatientForm({
   /** Observe the live values (e.g. to run the AES-205 duplicate-guard as fields are typed). */
   onChange?: (values: PatientFormValues) => void;
 }) {
+  const t = useT();
   const [values, setValues] = React.useState<PatientFormValues>({ ...EMPTY, ...initial });
   const seededRef = React.useRef(false);
 
@@ -58,46 +60,46 @@ export function PatientForm({
 
   return (
     <div className="patient-form">
-      {loading ? <p className="patient-form-loading">Loading current details…</p> : null}
+      {loading ? <p className="patient-form-loading">{t("patientform.loading")}</p> : null}
       <div className="patient-form-grid">
         <label className="patient-form-field">
-          <span>Full name</span>
-          <input disabled={loading} onChange={set("displayName")} placeholder="Patient name" value={values.displayName} />
+          <span>{t("patientform.fullName")}</span>
+          <input data-content disabled={loading} onChange={set("displayName")} placeholder={t("patientform.fullNamePlaceholder")} value={values.displayName} />
         </label>
         <label className="patient-form-field">
-          <span>National ID</span>
-          <input disabled={loading} onChange={set("nationalId")} placeholder="Optional" value={values.nationalId} />
+          <span>{t("patientform.nationalId")}</span>
+          <input data-content disabled={loading} onChange={set("nationalId")} placeholder={t("patientform.optional")} value={values.nationalId} />
         </label>
         <label className="patient-form-field">
-          <span>Phone</span>
-          <input disabled={loading} onChange={set("phone")} placeholder="Optional" value={values.phone} />
+          <span>{t("patientform.phone")}</span>
+          <input data-content disabled={loading} onChange={set("phone")} placeholder={t("patientform.optional")} value={values.phone} />
         </label>
         <label className="patient-form-field">
-          <span>Date of birth</span>
-          <input disabled={loading} onChange={set("dateOfBirth")} placeholder="YYYY-MM-DD" value={values.dateOfBirth} />
+          <span>{t("patientform.dateOfBirth")}</span>
+          <input data-content disabled={loading} onChange={set("dateOfBirth")} placeholder={t("patientform.dateOfBirthPlaceholder")} value={values.dateOfBirth} />
         </label>
         <label className="patient-form-field">
-          <span>Sex</span>
-          <select disabled={loading} onChange={set("sex")} value={values.sex}>
-            <option value="">Unspecified</option>
-            <option value="female">Female</option>
-            <option value="male">Male</option>
-            <option value="other">Other</option>
+          <span>{t("patientform.sex")}</span>
+          <select data-content disabled={loading} onChange={set("sex")} value={values.sex}>
+            <option value="">{t("patientform.sexUnspecified")}</option>
+            <option value="female">{t("patientform.sexFemale")}</option>
+            <option value="male">{t("patientform.sexMale")}</option>
+            <option value="other">{t("patientform.sexOther")}</option>
           </select>
         </label>
         <label className="patient-form-field patient-form-field-wide">
-          <span>Notes</span>
-          <textarea disabled={loading} onChange={set("notes")} placeholder="Optional" rows={2} value={values.notes} />
+          <span>{t("patientform.notes")}</span>
+          <textarea data-content disabled={loading} onChange={set("notes")} placeholder={t("patientform.optional")} rows={2} value={values.notes} />
         </label>
       </div>
       <div className="patient-form-actions">
         {onCancel ? (
           <button className="patient-form-cancel" onClick={onCancel} type="button">
-            Cancel
+            {t("patientform.cancel")}
           </button>
         ) : null}
         <button className="patient-form-save" disabled={!canSubmit} onClick={submit} type="button">
-          {busy ? "Saving…" : submitLabel}
+          {busy ? t("patientform.saving") : submitLabel}
         </button>
       </div>
     </div>

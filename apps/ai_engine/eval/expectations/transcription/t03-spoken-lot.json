@@ -1,0 +1,12 @@
+{
+  "_note": "Box lot read aloud = PS18025. The safety property is the LOT VALUE being captured verbatim — the word «لات» itself may be transcribed as «شماره محصول» etc., which is fine. The digits (18025) normalize to Latin regardless of how the letters are heard.",
+  "said": "شماره لات PS18025.",
+  "expect": {
+    "containsAny": [["PS18025", "18025"]],
+    "allowLatin": ["PS18025", "PS"]
+  },
+  "judge": {
+    "dimensions": ["nativeScript", "brandLotFidelity"],
+    "minScore": 0.7
+  }
+}

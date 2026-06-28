@@ -6625,7 +6625,7 @@ small {
 @media (min-width: 720px) {
   .phone-shell {
     padding-right: 28px;
-    padding-left: 28px;
+    padding-inline-start: 28px;
   }
 
   .session-workspace {
@@ -7576,14 +7576,14 @@ small {
   position: relative;
   display: grid;
   gap: 18px;
-  padding-left: 28px;
+  padding-inline-start: 28px;
 }
 
 .patient-timeline::before {
   position: absolute;
   top: 10px;
   bottom: 10px;
-  left: 8px;
+  inset-inline-start: 8px;
   width: 2px;
   background: #dbe5f2;
   content: "";
@@ -7598,7 +7598,7 @@ small {
 .patient-timeline-marker {
   position: absolute;
   top: 3px;
-  left: -27px;
+  inset-inline-start: -27px;
   width: 18px;
   height: 18px;
   border: 4px solid #eff5ff;
@@ -8499,15 +8499,15 @@ small {
   }
 
   .patient-timeline {
-    padding-left: 22px;
+    padding-inline-start: 22px;
   }
 
   .patient-timeline::before {
-    left: 7px;
+    inset-inline-start: 7px;
   }
 
   .patient-timeline-marker {
-    left: -23px;
+    inset-inline-start: -23px;
   }
 
   .patient-timeline-card {
@@ -10048,7 +10048,7 @@ small {
   width: 100%;
   margin-top: 9px;
   padding: 9px 11px;
-  text-align: left;
+  text-align: start;
   border: 1px solid var(--violet-border);
   background: var(--violet-soft);
   border-radius: var(--radius-md);
@@ -10098,7 +10098,7 @@ small {
   color: var(--violet);
 }
 .try-pro-go {
-  margin-left: auto;
+  margin-inline-start: auto;
   flex: 0 0 auto;
   align-self: center;
   color: var(--violet);
@@ -10167,7 +10167,7 @@ small {
   cursor: pointer;
   padding: 0;
 }
-.last-visit-link { margin-left: 6px; }
+.last-visit-link { margin-inline-start: 6px; }
 .last-visit-use {
   flex: 0 0 auto;
   align-self: center;
@@ -10295,7 +10295,7 @@ small {
 }
 .media-overlay-inner { position: relative; width: min(100%, 920px); max-height: 92vh; display: flex; flex-direction: column; }
 .media-overlay-close {
-  position: absolute; top: -6px; right: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
+  position: absolute; top: -6px; inset-inline-end: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
   border: 0; background: #fff; color: #111; font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .media-overlay-single { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -10319,6 +10319,10 @@ small {
   .media-overlay-compare { gap: 6px; }
   .media-overlay-vs { font-size: 1rem; }
 }
+/* RTL: the photo-nav row + compare row reverse via flow direction; mirror the directional glyphs
+   (‹ › prev/next and the before→after arrow) so they point the right way. */
+[dir="rtl"] .media-overlay-nav button,
+[dir="rtl"] .media-overlay-vs { transform: scaleX(-1); }
 
 /* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
 .lineup-card {
@@ -10455,7 +10459,7 @@ small {
   margin-bottom: 10px;
 }
 .patient-gallery-head h2 { margin: 0; font-size: 0.95rem; font-weight: 800; }
-.patient-gallery-meta { margin-left: auto; font-size: 0.72rem; color: var(--color-muted); }
+.patient-gallery-meta { margin-inline-start: auto; font-size: 0.72rem; color: var(--color-muted); }
 .patient-gallery-visit { margin-bottom: 11px; }
 .patient-gallery-visit-head {
   font-size: 0.72rem;
@@ -10487,7 +10491,7 @@ small {
   border-radius: var(--radius-sm);
   background: linear-gradient(90deg, #eef2f9, #f8fbff, #eef2f9);
 }
-.patient-detail-share { margin-left: auto; align-self: flex-start; }
+.patient-detail-share { margin-inline-start: auto; align-self: flex-start; }
 
 /* --- Smart search (AES-204) --- */
 .smart-search-note {
@@ -10667,7 +10671,7 @@ small {
 .share-incl-copy { display: flex; flex-direction: column; min-width: 0; }
 .share-incl-copy b { font-size: 0.84rem; }
 .share-incl-copy span { font-size: 0.7rem; color: var(--color-muted); }
-.share-aftercare-select { width: auto; margin-left: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
+.share-aftercare-select { width: auto; margin-inline-start: auto; flex: 0 0 auto; padding: 6px 9px; font-size: 0.78rem; }
 .share-toggle {
   flex: 0 0 auto;
   width: 36px;
@@ -10682,16 +10686,16 @@ small {
 .share-toggle span {
   position: absolute;
   top: 2px;
-  left: 2px;
+  inset-inline-start: 2px;
   width: 17px;
   height: 17px;
   border-radius: 50%;
   background: #fff;
-  transition: left 140ms ease;
+  transition: inset-inline-start 140ms ease;
 }
 .share-toggle.on { background: var(--color-primary); }
-.share-toggle.on span { left: 17px; }
-.share-note-input { margin-left: 46px; }
+.share-toggle.on span { inset-inline-start: 17px; }
+.share-note-input { margin-inline-start: 46px; }
 .share-photo-thumb {
   flex: 0 0 auto;
   width: 46px;
@@ -10730,7 +10734,7 @@ small {
 .share-preview-photo img { width: 100%; height: 96px; object-fit: cover; border-radius: var(--radius-md); border: 1px solid var(--color-border); display: block; }
 .share-preview-photo figcaption { font-size: 0.68rem; color: var(--color-muted); margin-top: 3px; }
 .share-preview-note { margin: 0 0 9px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
-.share-preview-treatments { margin: 0 0 9px; padding-left: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
+.share-preview-treatments { margin: 0 0 9px; padding-inline-start: 18px; font-size: 0.84rem; line-height: 1.5; color: var(--color-text-soft); }
 .share-preview-aftercare h4 { margin: 0 0 3px; font-size: 0.8rem; }
 .share-preview-aftercare p { margin: 0; font-size: 0.82rem; color: var(--color-text-soft); line-height: 1.5; }
 .share-actions { display: flex; gap: 9px; margin-top: 14px; }
@@ -11053,7 +11057,7 @@ small {
 .try-pro-info-x {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: inline-flex;
   width: 30px;
   height: 30px;
@@ -11095,7 +11099,7 @@ small {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  text-align: left;
+  text-align: start;
   display: flex;
   flex-direction: column;
   gap: 9px;

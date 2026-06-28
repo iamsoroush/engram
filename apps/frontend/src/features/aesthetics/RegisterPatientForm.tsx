@@ -1,6 +1,7 @@
 import React from "react";
 import type { DuplicateCandidate, DuplicateCheckResponse } from "../../domain/appTypes";
 import { PatientForm, type PatientFormValues } from "../patient/PatientForm";
+import { useT } from "../../shared/i18n";
 
 /**
  * AES-601 + AES-205 — register a patient (name required, rest fill-later) with the deterministic,
@@ -23,6 +24,7 @@ export function RegisterPatientForm({
   onUseExisting?: (candidate: DuplicateCandidate) => void;
   onCancel?: () => void;
 }) {
+  const t = useT();
   const [values, setValues] = React.useState<PatientFormValues | null>(null);
   const [result, setResult] = React.useState<DuplicateCheckResponse | null>(null);
   const [checking, setChecking] = React.useState(false);
@@ -62,26 +64,25 @@ export function RegisterPatientForm({
   return (
     <div className="register-patient">
       {flagged ? (
-        <section className="dup-guard" aria-label="Possible duplicate patient">
+        <section className="dup-guard" aria-label={t("patientform.dupGuardAria")}>
           <div className="dup-guard-head">
             <WarnIcon />
-            This looks like an existing patient
+            {t("patientform.dupGuardHead")}
           </div>
           <p className="dup-guard-sub">
-            {candidates.length} close match{candidates.length === 1 ? "" : "es"} — Persian-orthography aware. Use an existing record instead of
-            splitting the history.
+            {candidates.length === 1 ? t("patientform.dupGuardSubOne", { n: candidates.length }) : t("patientform.dupGuardSubMany", { n: candidates.length })}
           </p>
           <div className="dup-guard-matches">
             {candidates.map((candidate) => (
               <div className="dup-guard-match" key={candidate.patientId}>
                 <span className="dup-guard-avatar" aria-hidden="true">{initials(candidate.displayName)}</span>
                 <div className="dup-guard-copy">
-                  <strong dir={textDir(candidate.displayName)}>{candidate.displayName}</strong>
-                  <span>{candidate.reason}</span>
+                  <strong data-content dir={textDir(candidate.displayName)}>{candidate.displayName}</strong>
+                  <span data-content>{candidate.reason}</span>
                 </div>
                 {onUseExisting ? (
                   <button className="dup-guard-use" onClick={() => onUseExisting(candidate)} type="button">
-                    Use this
+                    {t("patientform.dupGuardUse")}
                   </button>
                 ) : null}
               </div>
@@ -95,7 +96,7 @@ export function RegisterPatientForm({
         onCancel={onCancel}
         onChange={setValues}
         onSubmit={onSubmit}
-        submitLabel={flagged ? "Create anyway" : checking ? "Checking…" : "Create patient"}
+        submitLabel={flagged ? t("patientform.createAnyway") : checking ? t("patientform.checking") : t("patientform.createPatient")}
       />
     </div>
   );
