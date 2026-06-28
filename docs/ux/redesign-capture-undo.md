@@ -10,6 +10,8 @@
 
 Companion: [capture.md](screens/capture.md), [redesign-capture-surface.md](redesign-capture-surface.md),
 [redesign-session-context.md](redesign-session-context.md), `docs/ai_engine/capture-intelligence-design.md`.
+**Foundation:** [pipeline-versioning.md](../architecture/pipeline-versioning.md) — undo is its first
+consumer; the versioned `report_version` + user-state overlay defined there is the backbone for this doc.
 
 ## Current state (the gap)
 
@@ -74,10 +76,12 @@ produced (treatments, safety flags, aftercare, summary, report-model id), each t
   contribution" is computable: an artifact whose `sourceCaptureIds` ⊆ {undone capture} is removed; one
   shared with surviving captures is kept (or recomputed — see below).
 
-> Decision needed (Q1): store the ledger in `extracted_metadata.capture_effects` (JSONB, simplest,
-> rides the existing snapshot machinery) **or** a dedicated `session_capture_versions` table (cleaner
-> queries, provenance, no metadata bloat). Recommendation: a **table**, given this is auditable
-> version history and metadata is already heavy.
+> **Resolved (2026-06-28):** this ledger is the **`report_version`** of the
+> [pipeline-versioning foundation](../architecture/pipeline-versioning.md), keyed by the **ordered
+> in-context capture-version set** (model/prompt deliberately NOT in the key — D1). The immutable AI
+> artifact is split from a mutable **user-state overlay** (confirmations / aftercare opt-outs /
+> safety-flag rejections) so a restore never disturbs user decisions (D2). Undo builds on that store
+> rather than defining its own; see the foundation for storage shape (D6) + retention/GC (D5).
 
 ### Undo strategy — restore vs recompute
 
@@ -108,9 +112,9 @@ If C's effect set includes a **patient action** (`patient_assignment_timeline` e
   the timeline), don't touch the patient.
 - Always pop the timeline event so the assignment chip/state reflects the revert.
 
-> Decision needed (Q2): deleting an AI-created patient is destructive. Recommendation: **soft-delete /
-> deactivate** (reversible) when safe, never hard-delete; if the patient has acquired other
-> captures/sessions since, only unassign this session and warn.
+> **Resolved (2026-06-28):** **soft-delete / deactivate** (reversible) the spurious AI-created patient
+> when it has no other dependents; **never hard-delete**. If it has since acquired other
+> captures/sessions, only **unassign this session** and warn.
 
 ## UX
 
@@ -118,10 +122,13 @@ If C's effect set includes a **patient action** (`patient_assignment_timeline` e
 
 - **Just-captured Undo:** when a capture lands, a transient **"Capture added · Undo"** toast (a few
   seconds) that removes it — the fast path for "that transcription was wrong."
-- **Per-capture Undo:** an inline **Undo/✕** on the capture chip (Sources drawer *and* a compact chip row
-  surfaced above the report so it's reachable without opening Sources).
+- **Per-capture remove ("Delete"):** the per-capture menu action — the **same operation** as Undo,
+  applied to any capture. Undo and Delete are **one removal operation with identical effect**; "Undo" is
+  just the accessible one-tap entry point for the **last** capture. (This means today's Delete is
+  **upgraded** to de-effect properly — closing the original "deleted the capture but the patient stayed"
+  bug.) Internally: last capture = cache-hit restore, middle capture = recompute — invisible to the user.
 - Distinct copy from the safety-flag ✕ (that *rejects a flag*; this *removes a capture*). Confirm only the
-  genuinely destructive branch (deleting an AI-created patient).
+  genuinely destructive branch (soft-deleting an AI-created patient).
 
 ### Gating (Goal 5)
 
@@ -139,24 +146,52 @@ While disabled, show why ("Finishing up this capture…"). This guarantees the r
   emit an `ai_feedback_events` row (a mis-transcription that created a patient is a **transcription**
   failure signal — eval-epic §1b — `kind=correction`, `ai_output_type=transcript`, before=garbled,
   after=removed).
-- **Endpoint:** `POST /sessions/{id}/captures/{captureId}/undo` (distinct from plain delete, which stays).
-- **Preserve user state across the recompute path** (the bug class we keep hitting): carry forward
-  `confirmed_carried_forward`, `dismissed_aftercare`, `rejected_safety_flags` exactly as the safety/
-  aftercare work does.
+- **One removal op, two entry points:** the existing capture-delete endpoint becomes the de-effecting
+  `undo_capture` operation; "Undo" (one-tap, last capture) and "Delete" (menu, any capture) both call it.
+- **Owner-only policy point:** gate removal at a single resolver — undo v1 default **owner-only**
+  (`session.created_by_user_id == principal.user_id`), bypassing the normal role ladder (even admin).
+  The tenant 3-mode edit policy (strict/standard/open) + non-owner-edit attribution markers are a
+  fast-follow ([pipeline-versioning](../architecture/pipeline-versioning.md) §Permissions).
+- **Preserve user state** (the recurring bug class): the user-state overlay (carried-forward
+  confirmations, aftercare opt-outs, safety-flag rejections) is applied on top of the restored/recomputed
+  version, never baked into it.
+- **Patient projections recompute-from-source** (D4): after a removal, re-derive `Patient.safety_flags`
+  (and mark patient memory stale) from the union of the patient's sessions' current kept flags — live +
+  consistent, no drift.
 
 ## Phased plan
 
-1. **Ledger + restore (latest-capture undo), no patient revert** — formalize versioned artifacts; undo
-   the last capture by restoring the prior version (deterministic). Gating in place.
-2. **Patient-action revert** — revert AI create/assign on undo (soft-delete spurious patient when safe).
-   This closes the motivating case.
-3. **Middle-capture recompute path** + the quick UX affordances (toast + chip undo outside Sources).
-4. **Feedback harvest** — log mis-transcription-that-created-a-patient as a transcription eval case.
+Built on the [pipeline-versioning foundation](../architecture/pipeline-versioning.md) (its phase 1 = the
+version+identity layer + user-state overlay). Undo proper:
 
-## Open questions (for the owner)
+1. **Restore (last-capture undo)** — cache-hit restore of the prior `report_version` (deterministic) +
+   gating (Goal 5).
+2. **Patient-action revert** — soft-delete a spurious AI-created patient when safe / else unassign;
+   owner-only policy point. Closes the motivating case.
+3. **Middle-capture recompute** + patient-projection recompute-from-source (D4) + patient-memory
+   staleness propagation (D3) + the quick UX (one-tap last-capture Undo + upgraded per-capture Delete,
+   reachable without opening Sources).
+4. **Feedback harvest** — a mis-transcription that created a patient is a **transcription** eval case
+   (`kind=correction`, `ai_output_type=transcript`). Plus, per the eval-gating rule, the synthesis
+   caching/restore must keep `apps/ai_engine/eval/run_all.py` green (+ targeted determinism cases).
 
-1. **Ledger storage:** dedicated table vs `extracted_metadata.capture_effects`? (rec: table)
-2. **Spurious AI patient on undo:** soft-delete when safe vs always-just-unassign? (rec: soft-delete when no other dependents)
-3. **Middle-capture undo:** recompute silently, or require an explicit "re-organize" confirm (since it's a non-deterministic LLM pass)?
-4. **Undo window:** undo any processed capture anytime (while gating holds), or only the most-recent N / within a time window?
-5. **Relationship to plain delete:** does "Delete" stay as a separate (non-reverting) action, or does undo replace it entirely?
+## Decisions (resolved 2026-06-28)
+
+1. **Storage:** the [`report_version`](../architecture/pipeline-versioning.md) store — keyed by the
+   ordered in-context capture-version set; **not** a parallel ledger, **not** model/prompt-keyed (manual
+   re-run is the escape hatch for model changes). Immutable AI artifact + separate user-state overlay.
+2. **Spurious AI patient on undo:** soft-delete when no other dependents; else unassign + warn. Never
+   hard-delete.
+3. **Middle-capture undo:** **recompute** (one LLM pass), shown as a non-blocking "re-organizing…" state
+   — safe because the clinical records are versioned, not regenerated from nothing.
+4. **Undo window:** **any processed capture**, anytime (while gating holds). Removal is **owner-only**
+   (even admin can't) via a single policy point; the tenant 3-mode policy (strict/standard/open) + its
+   UI + non-owner-edit attribution are a fast-follow.
+5. **Undo = Delete:** one removal operation with **identical effect**; "Undo" is the one-tap shortcut for
+   the last capture. Today's Delete is upgraded to de-effect properly.
+
+## Remaining open questions
+
+- `report_version` home — table vs normalized `processed_versions` extension (see foundation §Open
+  questions); settle once the overlay shape is fixed.
+- Capture-version retention depth (every transcription edit vs current+last) — affects GC ring sizing.
