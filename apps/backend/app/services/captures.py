@@ -13,8 +13,9 @@ from app.schemas.api import AssignPatientRequest, CaptureUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
 from app.services.feedback import record_capture_text_correction, record_feedback_event
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
-from app.services.patient_safety import drop_session_safety_flags
+from app.services.patient_safety import drop_session_safety_flags, sync_patient_safety_flags
 from app.services.patients import AI_CREATED_PATIENT_NOTE
+from app.services.report_versions import find_report_version_for_current_set, restore_report_version
 from app.services.sessions import parse_uuid
 
 
@@ -276,6 +277,16 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
         former_patient = db.get(Patient, former_patient_id)
         if former_patient is not None:
             drop_session_safety_flags(former_patient, session)
+    # Cache-hit restore (pipeline-versioning): if removing this capture returns the session to a
+    # previously-synthesized capture set, restore that exact report_version deterministically — no
+    # re-synthesis, no "wrong entries". Otherwise fall through to a recompute (below).
+    cached_version = find_report_version_for_current_set(db, session)
+    if cached_version is not None:
+        restore_report_version(session, cached_version)
+        if session.patient_id is not None and isinstance(session.extracted_metadata.get("safety_flags"), list):
+            restored_patient = db.get(Patient, session.patient_id)
+            if restored_patient is not None:
+                sync_patient_safety_flags(restored_patient, session)
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -287,18 +298,19 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     )
     db.commit()
     db.refresh(session)
-    # Removing a capture changes what the report should contain, so regenerate the live report
-    # from the remaining captures (no-op while the capture chain is still processing).
-    from app.services.ai_jobs import regenerate_session_report_if_idle
+    if cached_version is None:
+        # Never-seen capture set → recompute the live report from the remaining captures (no-op while
+        # the capture chain is still processing). A cache-hit above already restored it deterministically.
+        from app.services.ai_jobs import regenerate_session_report_if_idle
 
-    regenerate_session_report_if_idle(
-        db,
-        tenant_id=principal.tenant_id,
-        session_id=session.id,
-        created_by_user_id=principal.user_id,
-        force=True,
-    )
-    db.refresh(session)
+        regenerate_session_report_if_idle(
+            db,
+            tenant_id=principal.tenant_id,
+            session_id=session.id,
+            created_by_user_id=principal.user_id,
+            force=True,
+        )
+        db.refresh(session)
     return {"session": session_payload(session, db)}
 
 

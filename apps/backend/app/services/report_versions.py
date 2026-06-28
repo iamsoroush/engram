@@ -165,6 +165,19 @@ def restore_report_version(session: Session, version: SessionReportVersion) -> N
     for key in _ARTIFACT_METADATA_KEYS:
         if key in artifacts:
             metadata[key] = artifacts.get(key)
+    now_iso = datetime.now(timezone.utc).isoformat()
     metadata["generated_output_stale"] = False
-    metadata["restored_from_version_at"] = datetime.now(timezone.utc).isoformat()
+    metadata["restored_from_version_at"] = now_iso
+    # Refresh the transient draft/stale markers the delete path (mark_session_draft_after_capture_delete)
+    # left behind, so the restored report reads as COMPLETE/current rather than queued/partial — the
+    # restored report_model is the source of truth for the Pro synthesized report.
+    metadata["processing_status"] = {
+        "state": "complete",
+        "label": "Complete",
+        "stage": "complete",
+        "source": "restore",
+        "updated_at": now_iso,
+    }
+    for transient in ("progressive_report", "summaries", "stale_reason", "stale_at"):
+        metadata.pop(transient, None)
     session.extracted_metadata = metadata  # overlay keys untouched (never in _ARTIFACT_METADATA_KEYS)
