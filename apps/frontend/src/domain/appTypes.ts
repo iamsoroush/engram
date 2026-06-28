@@ -247,6 +247,77 @@ export type PatientMemoryDetailResponse = {
   safetyFlags?: SafetyFlag[];
 };
 
+// --- Smart lists + lot/product recall (Pro; AES-501 / AES-502) ---
+// Deterministic lenses over the data the Pro synthesis already extracts. Shapes mirror the backend
+// (camelCase; see docs/ux/redesign-smart-lists-recall.md §4).
+
+export type SmartListKey = "seen-this-week" | "due-to-return" | "missing-after-photo";
+
+export type SmartListIdentifyingContext = { dateOfBirth?: string | null; sex?: string | null; phone?: string | null } | null;
+
+export type SmartListCounts = {
+  counts: Record<SmartListKey, number>;
+  /** The "due to return" recency threshold, in weeks (the AES-705 seam value). */
+  dueToReturnWeeks: number;
+};
+
+/** One smart-list row. `sessionId` is set for visit-grained lists (tap → visit); `detail` is the
+ *  verbatim treatment phrase (clinical content), composed into a localized label by the client. */
+export type SmartListRow = {
+  patientId: string;
+  displayName: string;
+  identifyingContext?: SmartListIdentifyingContext;
+  sessionId?: string | null;
+  visitAt?: string | null;
+  detail?: string | null;
+};
+
+export type SmartListResponse = {
+  key: SmartListKey;
+  rows: SmartListRow[];
+  limit: number;
+  offset: number;
+  total: number;
+  dueToReturnWeeks: number;
+};
+
+export type LotLedgerEntry = { lot: string; product?: string | null; brand?: string | null; patientCount: number; visitCount: number };
+export type ProductLedgerEntry = { name: string; kind: "brand" | "product" | string; patientCount: number; visitCount: number };
+export type LotLedger = { lots: LotLedgerEntry[]; products: ProductLedgerEntry[] };
+
+export type RecallTreatment = {
+  area?: string | null;
+  product?: string | null;
+  brand?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  quantityText?: string | null;
+  lot?: string | null;
+  evidence?: string | null;
+  /** A short verbatim "Dysport 20u, forehead" composed server-side (clinical content). */
+  phrase?: string | null;
+};
+export type RecallVisit = { sessionId: string; visitAt?: string | null; treatments: RecallTreatment[] };
+export type RecallCohortPatient = {
+  patientId: string;
+  displayName: string;
+  identifyingContext?: SmartListIdentifyingContext;
+  visits: RecallVisit[];
+};
+export type SimilarLot = { lot: string; patientCount: number; visitCount: number };
+
+/** The recall cohort for a lot (exact match) or product. `similar` carries same-core lots that were
+ *  NOT folded into `affected` (the trustworthy-match rule). */
+export type LotRecallResult = {
+  kind: "lot" | "product" | string;
+  value: string;
+  normalized: string;
+  patientCount: number;
+  visitCount: number;
+  affected: RecallCohortPatient[];
+  similar: SimilarLot[];
+};
+
 // --- Aesthetics-Basic deterministic services (docs/backend/aes-basic-api.md) ---
 
 /** AES-204 — one ranked, match-annotated smart-search result (all patient fields + metadata). */

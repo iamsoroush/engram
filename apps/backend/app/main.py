@@ -1142,6 +1142,11 @@ from app.qa_api import qa_api, qa_internal_api  # noqa: E402
 app.include_router(qa_api)
 app.include_router(qa_internal_api)
 
+# Smart lists + lot/product recall (Pro; AES-501 / AES-502). Self-contained router.
+from app.smart_lists_api import smart_lists_api  # noqa: E402
+
+app.include_router(smart_lists_api)
+
 # AI-quality feedback harvester (eval golden-set; eval-epic §1b). Self-contained router.
 from app.feedback_api import feedback_api  # noqa: E402
 

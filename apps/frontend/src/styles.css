@@ -11968,3 +11968,368 @@ small {
 .plan-card-pro .plan-features li:first-child::before {
   content: "";
 }
+
+/* --- Smart lists + lot/product recall (Pro; AES-501 / AES-502) ------------------------------------ */
+.smart-lists {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.smart-list-heading {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-md);
+  font-weight: 850;
+  color: var(--color-text);
+}
+.smart-list-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+.smart-list-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  text-align: start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.05s;
+}
+.smart-list-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 2px 10px rgba(7, 94, 255, 0.08);
+}
+.smart-list-card:active {
+  transform: translateY(1px);
+}
+.smart-list-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.smart-list-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.smart-list-count {
+  font-size: 1.5rem;
+  font-weight: 850;
+  color: var(--color-text);
+  line-height: 1;
+}
+.smart-list-card-title {
+  font-size: var(--text-md);
+  font-weight: 850;
+  color: var(--color-text);
+}
+.smart-list-card-defn {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: 1.35;
+}
+
+.smart-list-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  padding: 0;
+}
+.smart-list-back-chevron {
+  display: inline-flex;
+  transform: rotate(180deg);
+}
+[dir="rtl"] .smart-list-back-chevron {
+  transform: rotate(0deg);
+}
+.smart-list-detail-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 850;
+}
+.smart-list-detail-head p {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.smart-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: start;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.smart-list-row:hover {
+  border-color: var(--color-border-strong);
+}
+.smart-list-row-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.smart-list-row-name {
+  font-size: var(--text-md);
+  font-weight: 850;
+  color: var(--color-text);
+}
+.smart-list-row-label {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.smart-list-row-detail {
+  font-size: var(--text-sm);
+  color: var(--color-text-soft);
+}
+.smart-list-row-phone {
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
+}
+.smart-list-row-go {
+  color: var(--color-muted-2);
+  flex-shrink: 0;
+}
+[dir="rtl"] .smart-list-row-go,
+[dir="rtl"] .recall-visit-go {
+  transform: scaleX(-1);
+}
+
+/* Lot / product lookup + recall */
+.lot-lookup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+}
+.lot-lookup-intro {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: 1.4;
+}
+.lot-lookup-form {
+  margin: var(--space-1) 0;
+}
+.lot-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.lot-suggestions-label {
+  width: 100%;
+  font-size: var(--text-xs);
+  font-weight: 800;
+  color: var(--color-muted-2);
+}
+.lot-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.lot-chip:hover {
+  border-color: var(--color-primary);
+}
+.lot-chip-lot .lot-chip-value {
+  font-weight: 850;
+  color: var(--color-text);
+}
+.lot-chip-product .lot-chip-value {
+  font-weight: 800;
+  color: var(--color-info);
+}
+.lot-chip-sub {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+}
+.lot-chip-count {
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
+}
+.lot-chip-similar {
+  border-style: dashed;
+}
+.lot-lookup-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+.recall-cohort {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-soft);
+}
+.recall-cohort-lot {
+  border-color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+.recall-cohort-head h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 850;
+  color: var(--color-text);
+}
+.recall-warn {
+  display: inline-flex;
+  color: var(--color-warning);
+}
+.recall-cohort-summary {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--color-text-soft);
+}
+.recall-cohort-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.recall-copy-button {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-weight: 800;
+  font-size: var(--text-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.recall-cohort-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.recall-patient {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.recall-patient-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.recall-patient-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: start;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+}
+.recall-patient-name > span:first-child {
+  font-size: var(--text-md);
+  font-weight: 850;
+  color: var(--color-text);
+}
+.recall-patient-phone {
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
+}
+.recall-visit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.recall-visit-open {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: start;
+  border: none;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  cursor: pointer;
+  font: inherit;
+}
+.recall-visit-date {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  color: var(--color-muted-2);
+  flex-shrink: 0;
+}
+.recall-visit-treatments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-soft);
+}
+.recall-visit-go {
+  color: var(--color-muted-2);
+  flex-shrink: 0;
+}
+.recall-similar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border-strong);
+}
+.recall-similar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 850;
+  color: var(--color-warning);
+}
+.recall-similar-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: 1.4;
+}

@@ -1,7 +1,7 @@
 // Clinical Memory home screen (Today / Patients / Needs input tabs).
 // Extracted verbatim from MemoryScreens.tsx (no behavior change).
 import React from "react";
-import type { AftercareTemplate, AssignmentSuggestionResponse, AuthSession, ClinicMember, CreatePatientShareInput, DuplicateCheckResponse, LastVisitInfo, PatientAssignmentDraft, PatientMemoryDetailResponse, PatientMemoryFilter, PatientMemoryListResponse, PatientMemoryRow as ApiPatientMemoryRow, PatientShare, PatientSummary, SmartPatientMatch, SmartPatientSearchResponse, SyncHealth, WorklistEntry, WorklistResponse } from "../../../domain/appTypes";
+import type { AftercareTemplate, AssignmentSuggestionResponse, AuthSession, ClinicMember, CreatePatientShareInput, DuplicateCheckResponse, LastVisitInfo, LotLedger, LotRecallResult, PatientAssignmentDraft, PatientMemoryDetailResponse, PatientMemoryFilter, PatientMemoryListResponse, PatientMemoryRow as ApiPatientMemoryRow, PatientShare, PatientSummary, SmartListCounts, SmartListKey, SmartListResponse, SmartPatientMatch, SmartPatientSearchResponse, SyncHealth, WorklistEntry, WorklistResponse } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Input } from "../../../shared/ui/primitives";
@@ -17,6 +17,7 @@ import { SearchIcon, FilterIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, Spa
 import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading, NeedsInputDecisionCard } from "./MemoryCards";
 import { PatientDecisionListSheet, SummaryReviewSheet, StorageReviewSheet, PatientRecapSheet, ChoosePatientResolver, AssignPatientResolver } from "./MemorySheets";
 import { PatientTimelineDetail } from "./PatientTimeline";
+import { SmartListsTab } from "./SmartListsTab";
 
 export const PATIENT_PAGE_SIZE = 25;
 export function PatientsHome({
@@ -50,6 +51,10 @@ export function PatientsHome({
   onCreateShare,
   onRevokeShare,
   onOpenQaChannel,
+  onFetchSmartListCounts,
+  onFetchSmartList,
+  onFetchLotLedger,
+  onFetchLotRecall,
   onToast,
   onLoadAssignmentSuggestion,
   onListWorklist,
@@ -110,6 +115,11 @@ export function PatientsHome({
   onRevokeShare?: (id: string) => Promise<PatientShare>;
   // Pro: open (or reuse) the patient's Q&A channel and return its tokenized public link (AES-402).
   onOpenQaChannel?: (patientId: string) => Promise<QaThreadSummary>;
+  // Pro smart lists + lot/product recall (AES-501 / AES-502). Present only for Pro (the Lists tab).
+  onFetchSmartListCounts?: () => Promise<SmartListCounts>;
+  onFetchSmartList?: (key: SmartListKey) => Promise<SmartListResponse>;
+  onFetchLotLedger?: () => Promise<LotLedger>;
+  onFetchLotRecall?: (query: { lot?: string; product?: string }) => Promise<LotRecallResult>;
   onToast?: (message: string) => void;
   onLoadAssignmentSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
@@ -614,7 +624,7 @@ export function PatientsHome({
       </label>
 
       <div className="clinical-tabs" role="tablist" aria-label={t("patients.sectionsAriaLabel")}>
-        {clinicalTabs.map((tab) => (
+        {(isPro ? clinicalTabs : clinicalTabs.filter((tab) => tab.value !== "lists")).map((tab) => (
           <button
             aria-selected={activeTab === tab.value}
             className={activeTab === tab.value ? "active" : ""}
@@ -855,6 +865,23 @@ export function PatientsHome({
         </div>
       ) : null}
 
+      {activeTab === "lists" && isPro && onFetchSmartListCounts && onFetchSmartList && onFetchLotLedger && onFetchLotRecall ? (
+        <SmartListsTab
+          onFetchCounts={onFetchSmartListCounts}
+          onFetchList={onFetchSmartList}
+          onFetchLedger={onFetchLotLedger}
+          onFetchRecall={onFetchLotRecall}
+          onOpenPatient={(patientId, name) => {
+            if (name) setPendingPatientStub({ id: patientId, name });
+            setSelectedPatientId(patientId);
+          }}
+          onOpenSession={(sessionId) => onOpenSession(sessionId, { tab: "lists" })}
+          onOpenQaChannel={onOpenQaChannel}
+          onToast={onToast}
+          refreshSignal={memoryRefreshSignal}
+        />
+      ) : null}
+
       {activeTab === "needs-input" ? (
         <div className="clinical-tab-panel" role="tabpanel">
           <p className="clinical-helper">{t("patients.needsInputHelper")}</p>
@@ -883,8 +910,19 @@ export function PatientsHome({
 export const clinicalTabs: Array<{ value: ClinicalMemoryTab; label: string; icon: React.ReactNode }> = [
   { value: "today", label: "Today", icon: <CalendarIcon /> },
   { value: "patients", label: "Patients", icon: <PatientsIcon /> },
+  // Lists is Pro-only (AES-501/502); PatientsHome filters it out for Basic.
+  { value: "lists", label: "Lists", icon: <ListsTabIcon /> },
   { value: "needs-input", label: "Needs input", icon: <NeedsInputIcon /> },
 ];
+
+function ListsTabIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M9 6.5h10M9 12h10M9 17.5h10" />
+      <path d="M5 6.5h.01M5 12h.01M5 17.5h.01" />
+    </svg>
+  );
+}
 
 export const patientFilters: Array<{ value: PatientFilter; label: string }> = [
   { value: "recent", label: "Recent" },

@@ -29,6 +29,11 @@ import type {
   SafetyFlagKind,
   SessionContext,
   SmartPatientSearchResponse,
+  SmartListCounts,
+  SmartListKey,
+  SmartListResponse,
+  LotLedger,
+  LotRecallResult,
   WorklistEntry,
   WorklistResponse,
 } from "../../domain/appTypes";
@@ -566,6 +571,59 @@ export async function fetchPatientMemory(
     limit: numberValue(payload.limit, limit),
     offset: numberValue(payload.offset, offset),
     total: numberValue(payload.total, items.length),
+  };
+}
+
+// --- Smart lists + lot/product recall (Pro; AES-501 / AES-502) ----------------------------------
+// Thin wrappers over the deterministic, Pro-gated endpoints. The backend returns clean camelCase, so
+// these stay light; the server is the source of truth for the (trustworthy) lot-matching rules.
+
+export async function fetchSmartListCounts(apiFetch: ApiFetch): Promise<SmartListCounts> {
+  const response = await apiFetch(`${API_BASE}/smart-lists`);
+  if (!response.ok) throw new Error("Could not load smart lists");
+  const payload = (await response.json()) as Partial<SmartListCounts> & { counts?: Record<string, number> };
+  const counts: Record<string, number> = payload.counts ?? {};
+  return {
+    counts: {
+      "seen-this-week": numberValue(counts["seen-this-week"], 0),
+      "due-to-return": numberValue(counts["due-to-return"], 0),
+      "missing-after-photo": numberValue(counts["missing-after-photo"], 0),
+    },
+    dueToReturnWeeks: numberValue(payload.dueToReturnWeeks, 12),
+  };
+}
+
+export async function fetchSmartList(apiFetch: ApiFetch, key: SmartListKey, { limit = 100, offset = 0 }: { limit?: number; offset?: number } = {}): Promise<SmartListResponse> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const response = await apiFetch(`${API_BASE}/smart-lists/${encodeURIComponent(key)}?${params.toString()}`);
+  if (!response.ok) throw new Error("Could not load this list");
+  const payload = (await response.json()) as Partial<SmartListResponse> & { rows?: unknown };
+  const rows = Array.isArray(payload.rows) ? (payload.rows as SmartListResponse["rows"]) : [];
+  return { key, rows, limit: numberValue(payload.limit, limit), offset: numberValue(payload.offset, offset), total: numberValue(payload.total, rows.length), dueToReturnWeeks: numberValue(payload.dueToReturnWeeks, 12) };
+}
+
+export async function fetchLotLedger(apiFetch: ApiFetch): Promise<LotLedger> {
+  const response = await apiFetch(`${API_BASE}/lot-ledger`);
+  if (!response.ok) throw new Error("Could not load the lot ledger");
+  const payload = (await response.json()) as Partial<LotLedger>;
+  return { lots: Array.isArray(payload.lots) ? payload.lots : [], products: Array.isArray(payload.products) ? payload.products : [] };
+}
+
+export async function fetchLotRecall(apiFetch: ApiFetch, query: { lot?: string; product?: string }): Promise<LotRecallResult> {
+  const params = new URLSearchParams();
+  if (query.lot?.trim()) params.set("lot", query.lot.trim());
+  if (query.product?.trim()) params.set("product", query.product.trim());
+  const response = await apiFetch(`${API_BASE}/lot-recall?${params.toString()}`);
+  if (!response.ok) throw new Error("Could not run the recall lookup");
+  const payload = (await response.json()) as Partial<LotRecallResult>;
+  return {
+    kind: payload.kind ?? (query.lot ? "lot" : "product"),
+    value: payload.value ?? (query.lot || query.product || ""),
+    normalized: payload.normalized ?? "",
+    patientCount: numberValue(payload.patientCount, 0),
+    visitCount: numberValue(payload.visitCount, 0),
+    affected: Array.isArray(payload.affected) ? payload.affected : [],
+    similar: Array.isArray(payload.similar) ? payload.similar : [],
   };
 }
 

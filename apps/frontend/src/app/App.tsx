@@ -15,6 +15,7 @@ import type {
   Persona,
   RolePermissions,
   SessionContext,
+  SmartListKey,
   SyncHealth,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
@@ -54,6 +55,10 @@ import {
   updateAftercareTemplate,
   fetchPatientMemory,
   fetchPatientMemoryDetail,
+  fetchSmartListCounts,
+  fetchSmartList,
+  fetchLotLedger,
+  fetchLotRecall,
   fetchSession,
   fetchSessionCaptures,
   fetchSessions,
@@ -1668,6 +1673,13 @@ export function App() {
     [apiFetch],
   );
 
+  // Smart lists + lot/product recall (Pro; AES-501 / AES-502). Pro-gated server-side; wired only for
+  // Pro below so Basic never renders the Lists tab.
+  const fetchSmartListCountsCb = React.useCallback(() => fetchSmartListCounts(apiFetch), [apiFetch]);
+  const fetchSmartListCb = React.useCallback((key: SmartListKey) => fetchSmartList(apiFetch, key), [apiFetch]);
+  const fetchLotLedgerCb = React.useCallback(() => fetchLotLedger(apiFetch), [apiFetch]);
+  const fetchLotRecallCb = React.useCallback((query: { lot?: string; product?: string }) => fetchLotRecall(apiFetch, query), [apiFetch]);
+
   // E9 multi-seat (AES-903): the soft worklist + clinic directory.
   const listWorklist = React.useCallback(
     (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) =>
@@ -2257,6 +2269,10 @@ export function App() {
         onCreateShare={createShare}
         onRevokeShare={revokeShare}
         onOpenQaChannel={auth && auth.tenant.tier !== "basic" ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
+        onFetchSmartListCounts={auth && auth.tenant.tier !== "basic" ? fetchSmartListCountsCb : undefined}
+        onFetchSmartList={auth && auth.tenant.tier !== "basic" ? fetchSmartListCb : undefined}
+        onFetchLotLedger={auth && auth.tenant.tier !== "basic" ? fetchLotLedgerCb : undefined}
+        onFetchLotRecall={auth && auth.tenant.tier !== "basic" ? fetchLotRecallCb : undefined}
         onToast={setToast}
         onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
