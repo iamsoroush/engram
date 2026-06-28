@@ -29,6 +29,7 @@ EVALS = [
     "treatments_eval.py",
     "aftercare_conflict_eval.py",
     "safety_flags_eval.py",
+    "safety_reconcile_eval.py",
     "report_sections_eval.py",
     "patient_memory_eval.py",
     "patient_matching_eval.py",
