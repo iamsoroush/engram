@@ -23,8 +23,7 @@ A product-direction simplification of the intelligence layer:
   (`AI_ENGINE_{TRANSCRIPTION,CAPTION,NOTE_DECORATION}_MODEL`, optional `*_BASE_URL`/`*_API_KEY`;
   blank = fall back to the transcription gateway).
 
-See [intelligence-layer.md](intelligence-layer.md) (contract), [ai_engine/processing.md](ai_engine/processing.md),
-and the "Simplification pass" entry in [intelligence-layer-stories.md](intelligence-layer-stories.md).
+See [intelligence-layer.md](intelligence-layer.md) (contract) and [ai_engine/processing.md](ai_engine/processing.md).
 
 ## UX Docs Are The Current User-Facing Behavior Map
 

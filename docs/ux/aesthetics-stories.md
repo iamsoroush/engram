@@ -1,8 +1,7 @@
 # Aesthetics — User-Story Inventory (build hand-off)
 
 > Deliverable 3 of the aesthetics design track ([foundation §6](redesign-foundation.md)). The hand-off
-> to build. Companion docs: research [aesthetics-research-brief.md](archive/aesthetics-research-brief.md),
-> journeys [aesthetics-journeys.md](archive/aesthetics-journeys.md), spec
+> to build, and the `AES-###` story-ID registry the spec cites. Companion: spec
 > [redesign-aesthetics.md](redesign-aesthetics.md). North-star: [redesign-foundation.md](redesign-foundation.md).
 >
 > Every story is `As a <persona>, I want <goal>, so that <value>` + **acceptance** notes, tagged:
@@ -139,9 +138,8 @@ answerable **without structured data entry**.
 As a **receptionist**, I want **deterministic, Persian-orthography-aware, multi-field** search (name /
 phone / national ID) that is **instant at scale**, so that I find the right record fast and don't create
 a duplicate.
-- **Acceptance:** folds Persian confusables/Arabic variants (reuse existing normalization,
-  [intelligence-layer-stories H1](../intelligence-layer-stories.md)); multi-field; fast on large lists;
-  **zero AI**.
+- **Acceptance:** folds Persian confusables/Arabic variants (reuse the existing patient-name
+  normalization); multi-field; fast on large lists; **zero AI**.
 
 ### AES-205 — Duplicate-patient guard 〔Basic · Rc/As · new〕
 As a **receptionist**, I want a warning when I'm about to create a patient who **looks like an existing
@@ -263,8 +261,7 @@ Today/arrivals lens, not a scheduler ([design-principles §2](../design-principl
 ### AES-601 — Register a patient (one shared form) 〔Basic · Rc/As · modify〕
 As a **receptionist**, I want to register a patient with **name required, rest fill-later**, so that
 intake is fast and never blocks the room.
-- **Acceptance:** reuses the shared `PatientForm` ([intelligence-layer-stories Epic F](../intelligence-layer-stories.md));
-  name-only valid; duplicate guard (AES-205) on submit.
+- **Acceptance:** reuses the shared `PatientForm`; name-only valid; duplicate guard (AES-205) on submit.
 
 ### AES-602 — Today / arrivals board 〔Basic · Rc · modify〕
 As a **receptionist**, I want a **Today** view of arrivals / active visits, so that I can see who's in and

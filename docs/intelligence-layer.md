@@ -1,17 +1,13 @@
 # Intelligence Layer — v1 Design Contract
 
-Status: **design + largely implemented** (assignment/reassignment, out-of-context, near-match,
-tiering, and the Pro live report have shipped — see the DONE markers in
-[intelligence-layer-stories.md](intelligence-layer-stories.md)). This is the single source of
+Status: **shipped** (assignment/reassignment, out-of-context, near-match, tiering, and the Pro
+live report are all built). This is the single source of
 truth for how the AI engine, backend, and frontend agree on capture *intelligence*: what the
 model emits, how the backend applies it, and how the frontend renders the effect. It replaces today's
 implicit coupling, where the AI emitted extracted identity and the backend silently chose
 whether to apply it (the root of the "audio said reassign but nothing changed" bug — see
 [ai_engine/processing.md](ai_engine/processing.md) "If a session already has a DB-owned
 patient assignment, generated identity is skipped … and cannot override it").
-
-Implementation is sliced into vertical, demoable stories in
-[intelligence-layer-stories.md](intelligence-layer-stories.md).
 
 ## 1. Scope
 

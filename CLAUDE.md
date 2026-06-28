@@ -100,10 +100,7 @@ Read:
   Non-negotiable product and UX principles.
 
 - `docs/intelligence-layer.md`  
-  Capture→intent intelligence-layer redesign: rationale, entity model, and phased plan.
-
-- `docs/intelligence-layer-stories.md`  
-  Build-facing user stories for the intelligence-layer work.
+  Capture→intent **apply-semantics contract**: entity model, assignment timeline, out-of-context handling, and tiering. Other docs defer to it for "§5 apply semantics / §3 out-of-context / §2 entity model".
 
 - `docs/ux/overview.md`  
   Compact entry point for current UX. Start here for user-facing tasks.
@@ -125,9 +122,6 @@ Read:
 
 - `docs/ux/redesign-pro-report.md`  
   Story-C design: polished synthesized-report rendering (clinical + curated patient share) + the recorded share/dose decisions.
-
-- `docs/ux/archive/`, `docs/dev/archive/`  
-  Superseded one-time planning inputs (research briefs, journey maps, build notes), kept for history.
 
 - `docs/architecture.md`  
   System architecture, modules, data flow, and boundaries.
