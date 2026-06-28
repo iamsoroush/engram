@@ -78,6 +78,25 @@ def create_session(db: DbSession, principal: CurrentPrincipal, request: SessionC
         created_by_user_id=principal.user_id,
         captured_at=parse_datetime(request.captured_at),
     )
+    # Record a session-level assignment event when a session is started FOR a patient (e.g. the
+    # worklist "Start visit"). It carries no captureId, so it stays valid through capture deletes —
+    # apply_active_patient_assignment recomputes the patient from the timeline, and without this event
+    # deleting any capture would wrongly unassign the visit. Capture-based assignments still tie their
+    # event to a captureId (so removing that capture correctly reverts).
+    if patient_id is not None:
+        patient = db.get(Patient, patient_id)
+        session.extracted_metadata = append_patient_assignment_event(
+            session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {},
+            patient_assignment_event(
+                source="staff",
+                action="manually_assigned",
+                patient_id=patient_id,
+                display_name=patient.display_name if patient is not None else None,
+                reason=None,
+                capture_id=None,
+                actor_user_id=principal.user_id,
+            ),
+        )
     db.add(session)
     db.flush()
     audit(
