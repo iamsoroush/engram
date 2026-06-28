@@ -10048,7 +10048,7 @@ small {
   width: 100%;
   margin-top: 9px;
   padding: 9px 11px;
-  text-align: left;
+  text-align: start;
   border: 1px solid var(--violet-border);
   background: var(--violet-soft);
   border-radius: var(--radius-md);
@@ -10098,7 +10098,7 @@ small {
   color: var(--violet);
 }
 .try-pro-go {
-  margin-left: auto;
+  margin-inline-start: auto;
   flex: 0 0 auto;
   align-self: center;
   color: var(--violet);
@@ -10295,7 +10295,7 @@ small {
 }
 .media-overlay-inner { position: relative; width: min(100%, 920px); max-height: 92vh; display: flex; flex-direction: column; }
 .media-overlay-close {
-  position: absolute; top: -6px; right: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
+  position: absolute; top: -6px; inset-inline-end: -6px; z-index: 1; width: 34px; height: 34px; border-radius: 999px;
   border: 0; background: #fff; color: #111; font-size: 1rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
 }
 .media-overlay-single { display: flex; flex-direction: column; align-items: center; gap: 10px; }
@@ -10319,6 +10319,10 @@ small {
   .media-overlay-compare { gap: 6px; }
   .media-overlay-vs { font-size: 1rem; }
 }
+/* RTL: the photo-nav row + compare row reverse via flow direction; mirror the directional glyphs
+   (‹ › prev/next and the before→after arrow) so they point the right way. */
+[dir="rtl"] .media-overlay-nav button,
+[dir="rtl"] .media-overlay-vs { transform: scaleX(-1); }
 
 /* --- Line-up card (Pro): glanceable worklist recap (hero + ≤2 paragraphs + delta + flags) --- */
 .lineup-card {
@@ -11053,7 +11057,7 @@ small {
 .try-pro-info-x {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   display: inline-flex;
   width: 30px;
   height: 30px;
@@ -11095,7 +11099,7 @@ small {
   list-style: none;
   margin: 12px 0 0;
   padding: 0;
-  text-align: left;
+  text-align: start;
   display: flex;
   flex-direction: column;
   gap: 9px;

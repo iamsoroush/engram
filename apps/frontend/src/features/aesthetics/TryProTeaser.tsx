@@ -1,5 +1,6 @@
 import React from "react";
 import { createPortal } from "react-dom";
+import { useT } from "../../shared/i18n";
 
 /**
  * The ✨ Try Pro upsell line (AES-801–804). Lightweight AI appears in Basic ONLY as a clearly
@@ -14,7 +15,7 @@ export function TryProTeaser({
   title,
   subtitle,
   features,
-  cta = "Try Pro →",
+  cta,
   className,
   compact = false,
 }: {
@@ -26,21 +27,23 @@ export function TryProTeaser({
   className?: string;
   compact?: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
+  const ctaLabel = cta ?? t("trypro.ctaGo");
 
   const trigger = compact ? (
-    <button className={`try-pro-badge${className ? ` ${className}` : ""}`} onClick={() => setOpen(true)} type="button" aria-label={`Try Pro — ${title}`}>
+    <button className={`try-pro-badge${className ? ` ${className}` : ""}`} onClick={() => setOpen(true)} type="button" aria-label={t("trypro.tryProFor", { title })}>
       <span className="try-pro-badge-spark" aria-hidden="true"><TrySparkIcon /></span>
-      Try Pro
+      {t("trypro.tryPro")}
     </button>
   ) : (
-    <button className={`try-pro-teaser${className ? ` ${className}` : ""}`} onClick={() => setOpen(true)} type="button" aria-label={`Try Pro — ${title}`}>
+    <button className={`try-pro-teaser${className ? ` ${className}` : ""}`} onClick={() => setOpen(true)} type="button" aria-label={t("trypro.tryProFor", { title })}>
       <span className="try-pro-spark" aria-hidden="true"><TrySparkIcon /></span>
       <span className="try-pro-copy">
         <span className="try-pro-title">{title}</span>
         {subtitle ? <span className="try-pro-subtitle">{subtitle}</span> : null}
       </span>
-      <span className="try-pro-go" aria-hidden="true">{cta}</span>
+      <span className="try-pro-go" aria-hidden="true">{ctaLabel}</span>
     </button>
   );
 
@@ -53,6 +56,7 @@ export function TryProTeaser({
 }
 
 function TryProInfo({ title, subtitle, features, onClose }: { title: string; subtitle?: string; features?: string[]; onClose: () => void }) {
+  const t = useT();
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -63,12 +67,12 @@ function TryProInfo({ title, subtitle, features, onClose }: { title: string; sub
 
   const node = (
     <div className="try-pro-info-backdrop" role="presentation" onClick={onClose}>
-      <div className="try-pro-info" role="dialog" aria-modal="true" aria-label="Try Pro" onClick={(event) => event.stopPropagation()}>
-        <button className="try-pro-info-x" onClick={onClose} type="button" aria-label="Close">
+      <div className="try-pro-info" role="dialog" aria-modal="true" aria-label={t("trypro.tryPro")} onClick={(event) => event.stopPropagation()}>
+        <button className="try-pro-info-x" onClick={onClose} type="button" aria-label={t("trypro.close")}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
         </button>
         <span className="try-pro-info-spark" aria-hidden="true"><TrySparkIcon /></span>
-        <span className="try-pro-info-eyebrow">{features && features.length ? "Upgrade to Pro" : "Pro feature"}</span>
+        <span className="try-pro-info-eyebrow">{features && features.length ? t("trypro.upgradeEyebrow") : t("trypro.featureEyebrow")}</span>
         <h3 className="try-pro-info-title">{title}</h3>
         {subtitle ? <p className="try-pro-info-sub">{subtitle}</p> : null}
         {features && features.length ? (
@@ -81,9 +85,9 @@ function TryProInfo({ title, subtitle, features, onClose }: { title: string; sub
             ))}
           </ul>
         ) : null}
-        <p className="try-pro-info-note">This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it.</p>
+        <p className="try-pro-info-note">{t("trypro.note")}</p>
         <div className="try-pro-info-actions">
-          <button className="try-pro-info-close" onClick={onClose} type="button">Got it</button>
+          <button className="try-pro-info-close" onClick={onClose} type="button">{t("trypro.gotIt")}</button>
         </div>
       </div>
     </div>

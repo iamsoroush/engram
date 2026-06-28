@@ -463,7 +463,7 @@ export function CaptureGeneratedText({
       ) : hasText ? (
         // Tap the text itself to edit it inline — no separate Edit button.
         onSave ? (
-          <button className="live-draft-preview live-draft-preview-edit" dir={dir} onClick={start} type="button" title="Tap to edit">
+          <button className="live-draft-preview live-draft-preview-edit" dir={dir} onClick={start} type="button" title={t("capture.tapToEdit")}>
             {display && display !== text ? renderMarkdownBold(display) : text}
           </button>
         ) : (

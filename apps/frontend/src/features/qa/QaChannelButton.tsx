@@ -1,5 +1,6 @@
 import React from "react";
 import { Button, Dialog } from "../../shared/ui/primitives";
+import { useT } from "../../shared/i18n";
 import type { QaThreadSummary } from "./qaClient";
 
 /**
@@ -16,6 +17,7 @@ export function QaChannelButton({
   onOpen: () => Promise<QaThreadSummary>;
   onToast?: (message: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = React.useState(false);
   const [thread, setThread] = React.useState<QaThreadSummary | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -31,7 +33,7 @@ export function QaChannelButton({
       setCopied(false);
       setOpen(true);
     } catch {
-      onToast?.("Couldn’t open the Q&A channel.");
+      onToast?.(t("qa.openChannelError"));
     } finally {
       setBusy(false);
     }
@@ -42,41 +44,45 @@ export function QaChannelButton({
     try {
       await navigator.clipboard.writeText(link);
       setCopied(true);
-      onToast?.("Q&A link copied.");
+      onToast?.(t("qa.linkCopied"));
     } catch {
       // Clipboard can be blocked (e.g. insecure context) — the field is selectable as a fallback.
-      onToast?.("Copy failed — select the link and copy manually.");
+      onToast?.(t("qa.copyFailed"));
     }
   };
 
   return (
     <>
       <button className="patient-detail-action" onClick={handleClick} type="button" disabled={busy}>
-        <QaChannelIcon /> {busy ? "Opening…" : "Open Q&A channel"}
+        <QaChannelIcon /> {busy ? t("qa.opening") : t("qa.openChannel")}
       </button>
       <Dialog
         open={open}
-        title="Patient Q&A channel"
+        title={t("qa.channelTitle")}
         onClose={() => setOpen(false)}
         footer={
           <>
             <Button variant="ghost" onClick={() => setOpen(false)}>
-              Close
+              {t("qa.close")}
             </Button>
             <Button variant="default" onClick={copy}>
-              {copied ? "Copied ✓" : "Copy link"}
+              {copied ? t("qa.copied") : t("qa.copyLink")}
             </Button>
           </>
         }
       >
         <p style={{ marginTop: 0, color: "var(--color-muted, #5b6472)", fontSize: 14, lineHeight: 1.5 }}>
-          Send this private link to {patientName}. They can ask questions between visits with no login; you’ll
-          review and approve every reply in the Q&A inbox. {thread?.assignedDoctor ? `Routed to ${thread.assignedDoctor.name}.` : "Awaiting routing."}
+          {t("qa.channelIntro", { name: patientName })}{" "}
+          {thread?.assignedDoctor ? (
+            <span data-content>{t("qa.routedTo", { name: thread.assignedDoctor.name })}</span>
+          ) : (
+            t("qa.awaitingRouting")
+          )}
         </p>
         <input
           readOnly
           value={link}
-          aria-label="Patient Q&A link"
+          aria-label={t("qa.linkAria")}
           onFocus={(event) => event.currentTarget.select()}
           style={{
             width: "100%",

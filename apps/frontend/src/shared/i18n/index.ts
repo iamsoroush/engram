@@ -53,11 +53,30 @@ export function resetDocumentToAppDefault(): void {
   document.documentElement.dir = "ltr";
 }
 
-/** Translate a key in a language, filling `{var}` placeholders. Falls back to English, then the key. */
+const PERSIAN_DIGITS = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+
+/** Western→Persian digits. Used only on numeric `t()` values under fa (CHROME quantities). */
+function toPersianDigits(value: string): string {
+  return value.replace(/[0-9]/g, (d) => PERSIAN_DIGITS[Number(d)]);
+}
+
+/**
+ * Translate a key in a language, filling `{var}` placeholders. Falls back to English, then the key.
+ *
+ * Mixed-digit policy (fa): only **numeric** interpolation values (counts/percent/ordinals passed as
+ * `number`) are rendered with Persian digits — so "1 ثبت" → "۱ ثبت". Template literals and string
+ * values (names, Jalali-formatted dates, file sizes, IDs, Latin tokens like "MVP v2") are left as-is,
+ * so data and intentional Latin tokens are never corrupted.
+ */
 export function translate(lang: Lang, key: string, vars?: Record<string, string | number>): string {
   const template = MESSAGES[lang]?.[key] ?? MESSAGES.en[key] ?? key;
   if (!vars) return template;
-  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name] ?? `{${name}}`));
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => {
+    const raw = vars[name];
+    if (raw == null) return `{${name}}`;
+    if (lang === "fa" && typeof raw === "number") return toPersianDigits(String(raw));
+    return String(raw);
+  });
 }
 
 export type Translator = (key: string, vars?: Record<string, string | number>) => string;

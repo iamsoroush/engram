@@ -14,19 +14,9 @@
     "void | Promise"
   ],
   "src/features/aesthetics/LastVisitStrip.tsx": [
-    "Last visit",
-    "Last visit photo",
-    "Last visit photos",
-    "Promise",
-    "Same as last time",
-    "View visit",
-    "compare by eye"
+    "Promise"
   ],
   "src/features/aesthetics/MediaOverlay.tsx": [
-    "Close",
-    "Next photo",
-    "Photo viewer",
-    "Previous photo",
     "Promise"
   ],
   "src/features/aesthetics/PatientPhotoGallery.tsx": [
@@ -43,18 +33,10 @@
   "src/features/aesthetics/SharePatientSheet.tsx": [
     ") : created ? (",
     "Promise",
-    "What the patient sees",
     "[] as Array"
   ],
-  "src/features/aesthetics/TryProTeaser.tsx": [
-    "Close",
-    "Got it",
-    "This is part of the Pro plan — Basic stays AI-free. Upgrade to enable it.",
-    "Try Pro"
-  ],
   "src/features/aesthetics/VoiceMemoPlayer.tsx": [
-    "Promise",
-    "Seek"
+    "Promise"
   ],
   "src/features/auth/AuthGates.tsx": [
     "Development personas",
@@ -77,8 +59,7 @@
   "src/features/capture/components/CaptureBadges.tsx": [
     ") ) : onSave ? (",
     ") : hasText ? ( // Tap the text itself to edit it inline — no separate Edit button. onSave ? (",
-    "Promise",
-    "Tap to edit"
+    "Promise"
   ],
   "src/features/capture/components/CaptureDialogs.tsx": [
     "Promise"
@@ -167,36 +148,9 @@
     ") : ( // Collapsed resolved conversation: one-line preview of the latest message.",
     ") : draftPending ? (",
     ") : expanded && canReroute ? (",
-    ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply.",
-    "AI draft · verify before send",
-    "Applying your voice note…",
-    "Auto · treating doctor",
-    "Cancel",
-    "Clinic",
-    "Dismiss",
-    "Edit this reply by voice",
-    "Inbox scope",
-    "Loading…",
-    "Manual",
-    "Mine",
-    "No treating doctors on record yet.",
-    "Re-route",
-    "Replied — re-route future questions if needed.",
-    "Routing",
-    "Send",
-    "Stop",
-    "Undo",
-    "Voice edit",
-    "drafting a suggestion…",
-    "needs reply",
-    "no draft — type a reply",
-    "unrouted",
-    "· dismissed"
+    ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply."
   ],
   "src/features/qa/QaChannelButton.tsx": [
-    "Close",
-    "Patient Q&A channel",
-    "Patient Q&A link",
     "Promise"
   ],
   "src/features/therapy/TherapyApp.tsx": [

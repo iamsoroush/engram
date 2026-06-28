@@ -397,8 +397,9 @@ function SharePreviewPane({
   onResolveFile: (endpoint: string) => Promise<string>;
   aftercare: AftercareTemplate | null;
 }) {
+  const t = useT();
   return (
-    <div className="share-preview" data-content data-testid="share-preview" aria-label="What the patient sees">
+    <div className="share-preview" data-content data-testid="share-preview" aria-label={t("share.previewAria")}>
       <div className="share-preview-head">
         <strong data-content>{title || "Your visit"}</strong>
         <span data-content>For {patientName}</span>
