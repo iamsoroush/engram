@@ -1,3 +1,4 @@
+import uuid
 from typing import Any
 from datetime import datetime, timezone
 
@@ -7,11 +8,13 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import Artifact, CaptureStatus, CaptureType, Patient, Session, SessionStatus
+from app.models import Artifact, Capture, CaptureStatus, CaptureType, Patient, PatientStatus, Session, SessionStatus
 from app.schemas.api import AssignPatientRequest, CaptureUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
-from app.services.feedback import record_capture_text_correction
+from app.services.feedback import record_capture_text_correction, record_feedback_event
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
+from app.services.patient_safety import drop_session_safety_flags
+from app.services.patients import AI_CREATED_PATIENT_NOTE
 from app.services.sessions import parse_uuid
 
 
@@ -146,12 +149,107 @@ def mark_session_stale_after_source_text_update(
         session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
 
 
+def can_remove_capture(session: Session, principal: CurrentPrincipal) -> bool:
+    """Single policy point for capture removal (undo / delete).
+
+    v1 = OWNER-ONLY: only the clinician who owns the session may remove a capture (a destructive,
+    de-effecting action), even an admin cannot touch another clinician's visit. The tenant-configurable
+    strict / standard / open edit policy + non-owner-edit attribution are a fast-follow; they slot in
+    here without changing call sites.
+    """
+    return session.created_by_user_id == principal.user_id
+
+
+def _patient_created_by_capture(session: Session, capture_id: uuid.UUID) -> uuid.UUID | None:
+    """The patient an AI 'create patient from spoken identity' action created from THIS capture, if any.
+
+    Reads the assignment timeline for a `created` event sourced by this capture — so removing the capture
+    can clean up the patient it spuriously created (the motivating case: a mis-transcribed name).
+    """
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    timeline = metadata.get("patient_assignment_timeline")
+    for event in timeline if isinstance(timeline, list) else []:
+        if not isinstance(event, dict):
+            continue
+        if event.get("created") is True and str(event.get("captureId")) == str(capture_id) and event.get("patientId"):
+            try:
+                return uuid.UUID(str(event["patientId"]))
+            except ValueError:
+                return None
+    return None
+
+
+def _archive_orphaned_ai_patient(db: DbSession, principal: CurrentPrincipal, patient_id: uuid.UUID | None) -> bool:
+    """Soft-delete (archive) an AI-created patient that a capture removal just orphaned.
+
+    Reversible (``status=archived``; the row is kept and accessible). Guarded to be safe: only an
+    **unverified AI-created** patient (its note is the AI-creation breadcrumb) with **no remaining
+    dependents** (no assigned session, no live capture) is ever archived — never a real/verified patient.
+    Returns whether it archived. The wrong AI patient action is harvested as a feedback signal.
+    """
+    if patient_id is None:
+        return False
+    patient = db.get(Patient, patient_id)
+    if patient is None or patient.tenant_id != principal.tenant_id or patient.status != PatientStatus.active:
+        return False
+    if (patient.notes or "").strip() != AI_CREATED_PATIENT_NOTE:
+        return False  # only the unverified AI-created breadcrumb patient is eligible
+    has_session = db.execute(
+        select(Session.id).where(Session.tenant_id == principal.tenant_id, Session.patient_id == patient.id).limit(1)
+    ).scalar_one_or_none()
+    has_capture = db.execute(
+        select(Capture.id).where(
+            Capture.tenant_id == principal.tenant_id,
+            Capture.patient_id == patient.id,
+            Capture.status != CaptureStatus.deleted,
+        ).limit(1)
+    ).scalar_one_or_none()
+    if has_session is not None or has_capture is not None:
+        return False
+    patient.status = PatientStatus.archived
+    audit(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        action="patient.archive_orphaned_ai",
+        target_type="patient",
+        target_id=patient.id,
+    )
+    # The spurious patient came from a wrong AI patient action (typically a mis-transcribed identity).
+    # Harvest it as a candidate eval case (eval-epic §1b).
+    record_feedback_event(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        kind="correction",
+        ai_output_type="patient_match",
+        patient_id=patient.id,
+        context={"action": "undo_orphaned_ai_patient"},
+    )
+    return True
+
+
 def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
-    """Soft-delete a capture and recompute patient assignment from the timeline."""
+    """Remove a capture and **de-effect** it: revert the patient assignment it drove, soft-delete a
+    patient it spuriously created (when orphaned), and keep the patient's safety flags consistent.
+
+    One removal operation; "Undo" (one-tap, last capture) and per-capture "Delete" both land here.
+    Owner-only (see :func:`can_remove_capture`).
+    """
     capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
     session = db.get(Session, capture.session_id)
     if session is None or session.tenant_id != principal.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if not can_remove_capture(session, principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the clinician who owns this session can remove its captures.",
+        )
+
+    # Capture the pre-removal assignment state so we can de-effect: which patient this capture CREATED
+    # (to clean up if orphaned) and which patient the session was on (to keep safety flags consistent).
+    former_patient_id = session.patient_id
+    created_patient_id = _patient_created_by_capture(session, capture.id)
 
     now = datetime.now(timezone.utc)
     capture.status = CaptureStatus.deleted
@@ -169,6 +267,15 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     # Patient assignment is recomputed from the timeline (cheap; no AI job): the deleted
     # capture's assignment event is dropped and the active assignment recomputed.
     apply_active_patient_assignment(db, session)
+    # De-effect the removal: if this capture spuriously CREATED a patient that is now orphaned, soft-
+    # delete it (the motivating bug — a mis-transcribed name spawned a patient that lingered); and if the
+    # removal changed the session's patient, drop this visit's safety-flag contribution from the former
+    # patient so the cross-visit safety set stays consistent.
+    _archive_orphaned_ai_patient(db, principal, created_patient_id)
+    if former_patient_id is not None and session.patient_id != former_patient_id:
+        former_patient = db.get(Patient, former_patient_id)
+        if former_patient is not None:
+            drop_session_safety_flags(former_patient, session)
     audit(
         db,
         tenant_id=principal.tenant_id,
