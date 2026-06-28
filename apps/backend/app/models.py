@@ -705,3 +705,37 @@ class AuthRefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+class SessionReportVersion(Base):
+    """An immutable, content-addressed snapshot of a session's synthesized report + structured
+    artifacts — the ``report_version`` of the pipeline-versioning design.
+
+    Keyed by ``capture_set_hash`` (a hash of the ordered in-context capture-versions) so an undo that
+    returns the session to a previously-seen capture set is a deterministic CACHE-HIT restore — no LLM,
+    no "wrong entries". The user-state overlay (safety-flag rejections / dose confirmations / aftercare
+    opt-outs) is NOT stored here; it lives in ``session.extracted_metadata`` and is applied on top at
+    restore/render time. See docs/architecture/pipeline-versioning.md.
+    """
+
+    __tablename__ = "session_report_versions"
+    __table_args__ = (
+        Index("ix_session_report_versions_session_created", "tenant_id", "session_id", "created_at"),
+        Index("ix_session_report_versions_session_hash", "tenant_id", "session_id", "capture_set_hash"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
+    # Content address: sha256 of the ordered in-context capture-versions (id + content hash).
+    capture_set_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The ordered capture-versions this report was computed from: [{captureId, contentHash}].
+    captured_capture_version_ids: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    # Immutable AI artifact bundle: summary, report prose/model, treatments, safety_flags,
+    # aftercare_selections, source_capture_ids, … — enough to restore the report deterministically.
+    artifacts: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    generated_by: Mapped[str | None] = mapped_column(String(40))
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Pinned versions (e.g. referenced by a verified report) are never GC'd.
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
