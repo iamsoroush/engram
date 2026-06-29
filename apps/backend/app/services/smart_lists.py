@@ -76,7 +76,10 @@ def _now() -> datetime:
 
 
 def _sort_date(session: Session) -> datetime | None:
-    return session.captured_at or session.updated_at or session.created_at
+    # Anchor recency on the visit's clinical date (captured_at), falling back to the immutable
+    # created_at — never the mutable updated_at, which any later edit would bump (a recall/"due to
+    # return" must reflect when the visit happened, not when its record was last touched).
+    return session.captured_at or session.created_at
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -139,7 +142,15 @@ def _identifying_context(patient: Patient) -> dict[str, Any] | None:
 
 # --- Data loading ----------------------------------------------------------------------------------
 def _patient_sessions(db: DbSession, tenant_id: uuid.UUID) -> list[tuple[Session, Patient]]:
-    """All assigned, non-archived (Session, Patient) pairs for the tenant, newest visit first."""
+    """Real, assigned (Session, Patient) pairs for the tenant, newest visit first.
+
+    A "visit" is a session with at least one non-deleted capture — empty draft shells are excluded so
+    they never count as a visit in any list (mirrors ``last_visit.py``'s real-visit definition).
+    """
+    sessions_with_captures = select(Capture.session_id).where(
+        Capture.tenant_id == tenant_id,
+        Capture.status != CaptureStatus.deleted,
+    )
     rows = db.execute(
         select(Session, Patient)
         .join(Patient, Patient.id == Session.patient_id)
@@ -147,8 +158,9 @@ def _patient_sessions(db: DbSession, tenant_id: uuid.UUID) -> list[tuple[Session
             Session.tenant_id == tenant_id,
             Patient.tenant_id == tenant_id,
             Patient.status == PatientStatus.active,
+            Session.id.in_(sessions_with_captures),
         )
-        .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
+        .order_by(func.coalesce(Session.captured_at, Session.created_at).desc())
     ).all()
     return [(row[0], row[1]) for row in rows]
 
@@ -163,9 +175,17 @@ def _group_by_patient(pairs: list[tuple[Session, Patient]]) -> dict[uuid.UUID, d
 
 
 def _iter_treatments(pairs: list[tuple[Session, Patient]]) -> Iterator[tuple[Session, Patient, dict[str, Any]]]:
-    """The single aggregation point over extracted treatments (the AES-705 enrichment seam)."""
+    """Yield the *administered* extracted treatments (the single aggregation point; AES-705 seam).
+
+    Skips ``carriedForward`` items: a carried-forward treatment is a "same as last time" copy of a
+    prior visit's dose, so its lot/product was not necessarily used again this visit — counting it
+    would over-count the recall cohort and ledger (the original visit already carries the real,
+    source-cited row staff verify against). Recall/ledger therefore see real administrations only.
+    """
     for session, patient in pairs:
         for treatment in _session_treatments(session):
+            if treatment.get("carriedForward") is True:
+                continue
             yield session, patient, treatment
 
 
@@ -388,7 +408,9 @@ def _recall_from_pairs(pairs: list[tuple[Session, Patient]], *, lot: str | None,
                 bucket = affected.setdefault(patient.id, {"patient": patient, "visits": {}})
                 visit = bucket["visits"].setdefault(session.id, {"session": session, "treatments": []})
                 visit["treatments"].append(_treatment_public(treatment))
-            elif _lot_core(value) == query_core:
+            # Only group as "similar" on a non-empty shared core, so a separators-only query (e.g. "-")
+            # never collides every separators-only lot into the similar list.
+            elif query_core and _lot_core(value) == query_core:
                 entry = similar.setdefault(normalize_lot(value), {"lot": value.strip(), "patients": set(), "sessions": set()})
                 entry["patients"].add(patient.id)
                 entry["sessions"].add(session.id)

@@ -38,7 +38,6 @@ export function SmartListsTab({
   onToast?: (message: string) => void;
   refreshSignal?: number;
 }) {
-  const t = useT();
   const [view, setView] = React.useState<View>({ kind: "home" });
   const [counts, setCounts] = React.useState<SmartListCounts | null>(null);
   const [ledger, setLedger] = React.useState<LotLedger | null>(null);
@@ -151,7 +150,6 @@ function SmartListView({
               key={`${row.patientId}:${row.sessionId ?? ""}`}
               listKey={listKey}
               row={row}
-              dueToReturnWeeks={dueToReturnWeeks}
               onOpen={() => (row.sessionId ? onOpenSession(row.sessionId) : onOpenPatient(row.patientId, row.displayName))}
             />
           ))}
@@ -170,9 +168,20 @@ function weeksSince(iso?: string | null): number | null {
   return Math.max(0, Math.floor((Date.now() - then) / (7 * 24 * 60 * 60 * 1000)));
 }
 
-function smartListRowLabel(listKey: SmartListKey, row: SmartListResponse["rows"][number], t: ReturnType<typeof useT>): string {
+type Translate = ReturnType<typeof useT>;
+
+/** Singular/plural label selector: `${base}.one` for n === 1, else `${base}.other`. The fa values are
+ *  identical (Persian keeps the singular noun after a number), so this only matters for English. */
+function plural(t: Translate, base: string, n: number): string {
+  return t(n === 1 ? `${base}.one` : `${base}.other`, { n });
+}
+
+function smartListRowLabel(listKey: SmartListKey, row: SmartListResponse["rows"][number], t: Translate): string {
   if (listKey === "seen-this-week") return t("smartlists.row.visited", { date: formatDate(row.visitAt) || "—" });
-  if (listKey === "due-to-return") return t("smartlists.row.lastSeen", { weeks: weeksSince(row.visitAt) ?? "—" });
+  if (listKey === "due-to-return") {
+    const weeks = weeksSince(row.visitAt);
+    return t(weeks === 1 ? "smartlists.row.lastSeen.one" : "smartlists.row.lastSeen.other", { weeks: weeks ?? "—" });
+  }
   return t("smartlists.row.missingAfter");
 }
 
@@ -183,7 +192,6 @@ function SmartListRowCard({
 }: {
   listKey: SmartListKey;
   row: SmartListResponse["rows"][number];
-  dueToReturnWeeks: number;
   onOpen: () => void;
 }) {
   const t = useT();
@@ -299,7 +307,7 @@ function LotLookup({
             >
               <span className="lot-chip-value" data-content>{s.value}</span>
               {s.sub ? <span className="lot-chip-sub" data-content>{s.sub}</span> : null}
-              <span className="lot-chip-count">{t("recall.chipCount", { n: s.patientCount })}</span>
+              <span className="lot-chip-count">{plural(t, "recall.chip", s.patientCount)}</span>
             </button>
           ))}
         </div>
@@ -330,13 +338,17 @@ function RecallCohort({
   const t = useT();
   const isLot = result.kind === "lot";
   const title = isLot ? t("recall.lotTitle", { lot: result.value }) : t("recall.productTitle", { product: result.value });
+  const summaryText = t("recall.summary", {
+    patients: plural(t, "recall.patients", result.patientCount),
+    visits: plural(t, "recall.visits", result.visitCount),
+  });
 
   const copyList = async () => {
     const lines = result.affected.map((p) => {
       const phone = p.identifyingContext?.phone ? ` · ${p.identifyingContext.phone}` : "";
       return `${p.displayName}${phone}`;
     });
-    const header = isLot ? `${t("recall.lotTitle", { lot: result.value })} — ${t("recall.summary", { patients: result.patientCount, visits: result.visitCount })}` : title;
+    const header = isLot ? `${t("recall.lotTitle", { lot: result.value })} — ${summaryText}` : title;
     try {
       await navigator.clipboard.writeText([header, ...lines].join("\n"));
       onToast?.(t("recall.copied"));
@@ -352,7 +364,7 @@ function RecallCohort({
           {isLot ? <span className="recall-warn" aria-hidden="true"><WarnIcon /></span> : null}
           {title}
         </h3>
-        <p className="recall-cohort-summary">{t("recall.summary", { patients: result.patientCount, visits: result.visitCount })}</p>
+        <p className="recall-cohort-summary">{summaryText}</p>
       </header>
       {result.patientCount === 0 ? (
         <EmptyClinicalState title={t("recall.empty.title")} copy={t("recall.empty.copy")} />
@@ -401,7 +413,7 @@ function RecallCohort({
             {result.similar.map((s) => (
               <button className="lot-chip lot-chip-lot lot-chip-similar" key={s.lot} type="button" onClick={() => onRecallSimilar(s.lot)}>
                 <span className="lot-chip-value" data-content>{s.lot}</span>
-                <span className="lot-chip-count">{t("recall.chipCount", { n: s.patientCount })}</span>
+                <span className="lot-chip-count">{plural(t, "recall.chip", s.patientCount)}</span>
               </button>
             ))}
           </div>

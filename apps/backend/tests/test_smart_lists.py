@@ -17,6 +17,7 @@ from app.services.smart_lists import (
     _ledger_from_pairs,
     _recall_from_pairs,
     _seen_this_week_rows,
+    _sort_date,
     capture_is_unpaired_before,
     normalize_lot,
 )
@@ -182,6 +183,56 @@ class RecallTests(unittest.TestCase):
     def test_empty_query_is_rejected(self):
         with self.assertRaises(Exception):
             _recall_from_pairs([], lot=None, product=None)
+
+    def test_separators_only_query_does_not_collide_all_lots_as_similar(self):
+        # A separators-only query has an empty core; it must NOT group every real lot as "similar".
+        a, b = _patient("A"), _patient("B")
+        pairs = [
+            (_session(treatments=[_treatment(lot="D-4471")]), a),
+            (_session(treatments=[_treatment(lot="X-1")]), b),
+        ]
+        result = _recall_from_pairs(pairs, lot="-", product=None)
+        self.assertEqual(result["patientCount"], 0)
+        self.assertEqual(result["similar"], [])
+
+
+class CarriedForwardTests(unittest.TestCase):
+    """A `carriedForward` treatment is a 'same as last time' copy of a prior dose — it must not
+    over-count the recall cohort or the ledger (the real prior visit carries the cited row)."""
+
+    def test_recall_excludes_carried_forward_visit_but_keeps_the_patient(self):
+        sara = _patient("Sara M.")
+        pairs = [
+            # The real administration (older) + a later "same as last time" carry-forward of the lot.
+            (_session(days_ago=40, treatments=[_treatment(lot="D-4471")]), sara),
+            (_session(days_ago=5, treatments=[_treatment(lot="D-4471", carriedForward=True)]), sara),
+        ]
+        result = _recall_from_pairs(pairs, lot="D-4471", product=None)
+        self.assertEqual(result["patientCount"], 1)  # patient still in the cohort…
+        self.assertEqual(result["visitCount"], 1)  # …but only the real administration is counted
+
+    def test_ledger_excludes_carried_forward(self):
+        a, b = _patient("A"), _patient("B")
+        pairs = [
+            (_session(treatments=[_treatment(lot="D-4471")]), a),
+            (_session(treatments=[_treatment(lot="D-4471", carriedForward=True)]), b),
+        ]
+        by_lot = {row["lot"]: row for row in _ledger_from_pairs(pairs)["lots"]}
+        self.assertEqual(by_lot["D-4471"]["patientCount"], 1)
+        self.assertEqual(by_lot["D-4471"]["visitCount"], 1)
+
+
+class SortDateTests(unittest.TestCase):
+    def test_anchors_on_captured_at_not_mutable_updated_at(self):
+        old = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        recent = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        # A visit captured in January but whose record was edited (updated_at) in June stays a January
+        # visit for recency — recall/"due to return" reflect when it happened, not when it was touched.
+        session = SimpleNamespace(captured_at=old, updated_at=recent, created_at=old)
+        self.assertEqual(_sort_date(session), old)
+        # Falls back to the immutable created_at (never updated_at) when captured_at is absent.
+        no_capture = SimpleNamespace(captured_at=None, updated_at=recent, created_at=old)
+        self.assertEqual(_sort_date(no_capture), old)
 
 
 class CapabilityGateTests(unittest.TestCase):

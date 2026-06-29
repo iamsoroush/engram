@@ -97,7 +97,7 @@ test.describe("Smart lists + lot recall (Pro; AES-501/502)", () => {
     // A "recent in your data" chip runs the recall.
     await page.getByRole("button", { name: /D-4471/ }).first().click();
     await expect(page.getByText("Lot recall · D-4471")).toBeVisible();
-    await expect(page.getByText("1 patients · 1 visits")).toBeVisible();
+    await expect(page.getByText("1 patient · 1 visit")).toBeVisible(); // singular forms, not "1 patients"
     await expect(page.getByText("Sara").first()).toBeVisible();
     // The outreach handoff to the existing patient channel (AES-402).
     await expect(page.getByRole("button", { name: /Open Q&A channel/ })).toBeVisible();
