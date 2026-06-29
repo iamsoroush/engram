@@ -108,13 +108,27 @@ Top-to-bottom per section. Mark **Result**: ✅ / ❌ + note. Screenshot failure
 | B8.2 | Dr | With a **Persian** report, scan the report. | Section **titles are Persian**; the clinician's **dictated content** stays in the language it was produced in (content is **not** auto-translated). | |
 | B8.3 | Dr | Switch app language back to **English**. | UI flips to **LTR English** cleanly (no stale RTL, no Gregorian/Jalali date mix-up). | |
 
+## B9 · Smart lists + lot recall (Pro) ⭐
+
+> A Pro **Lists** tab in Clinical Memory: deterministic named lenses (no AI) + an exact-match lot/product
+> recall. Counts must be **trustworthy** — only real visits, the exact lot, no over-matching.
+| ID | Persona | Steps | Expected | Result |
+|----|----|----|----|----|
+| B9.1 ⭐ | Dr (Pro) | Open Clinical Memory. | A **Lists** tab is present (Pro only). | |
+| B9.2 | Dr (Pro) | Open the **Lists** tab. | Smart-list lenses with live counts — **Seen this week**, **Due to return** (last visit ≥12 weeks), **Missing after-photo** — each with a one-line definition. | |
+| B9.3 | Dr (Pro) | Tap a smart list (e.g. Seen this week). | Opens the matching patients/visits; tapping a row goes to the patient (or the visit, for missing-after-photo). | |
+| B9.4 ⭐ | As (Pro) | In the lot/product lookup, search a **lot** you dictated (try odd spacing/case, e.g. `d 4471`). | Returns **every patient who received that exact lot**, each row citing the visit + verbatim treatment. Different spellings (`D-4471` vs `D4471`) appear under **"Similar lots (not included)"**, never folded into the affected list. | |
+| B9.5 ⭐ | As (Pro) | Check a lot that was **carried forward** ("same as last time") to a later visit. | The carried-forward visit is **not** counted as a separate administration — the count reflects real administrations only (the patient still appears via their original visit). | |
+| B9.6 | Dr (Pro) | On a recall cohort, use **Open channel** on a patient. | Opens/reuses that patient's Q&A thread to send a message (per-patient, explicit — no bulk blast). **Copy affected list** is also available. | |
+| B9.7 | Dr (Basic) | Log in as a **Basic** tenant, open Clinical Memory. | **No Lists tab** (the feature is Pro-gated; the API also returns 403 for Basic). | |
+
 ---
 
 ## 4 · 15-minute must-pass set
 **B1.1** (audio transcribes) · **B2.1** (structured report builds with treatment specifics) ·
 **B3.1 / B3.2** (Q&A: ask → inbox → draft → send) · **B5.2 / B5.3** (report doesn't blank on add; verify
 bar counts blockers) · **B6.1** (safety flag surfaces, non-blocking) · **B7.1** (undo reverts a spurious
-patient).
+patient) · **B9.4 / B9.5** (lot recall is exact + excludes carried-forward).
 
 ## 5 · Sign-off
 | Field | Value |
