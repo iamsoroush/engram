@@ -123,6 +123,9 @@ Read:
 - `docs/ux/redesign-pro-report.md`  
   Story-C design: polished synthesized-report rendering (clinical + curated patient share) + the recorded share/dose decisions.
 
+- `docs/ux/redesign-smart-lists-recall.md`  
+  Design + as-built for the Pro **smart lists** (AES-501) + **lot/product recall** (AES-502): the deterministic Lists tab in Clinical Memory, the trustworthy exact-match recall cohort + Q&A outreach handoff, and the AES-705 registry seam.
+
 - `docs/architecture.md`  
   System architecture, modules, data flow, and boundaries.
 

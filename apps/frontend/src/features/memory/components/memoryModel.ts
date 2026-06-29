@@ -11,7 +11,7 @@ export type PatientBadgeKind = "needs-input" | "complete" | "neutral";
 /** A patient-card badge: localized text + a stable kind the UI branches on for styling. */
 export type PatientBadge = { label: string; kind: PatientBadgeKind };
 
-export type ClinicalMemoryTab = "today" | "patients" | "needs-input";
+export type ClinicalMemoryTab = "today" | "patients" | "lists" | "needs-input";
 export type PatientFilter = "recent" | "active" | "all";
 export type ClinicalTone = "blue" | "green" | "amber";
 

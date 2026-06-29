@@ -185,8 +185,10 @@ from the structured report; Basic curates from the chronological one.
   it sells the *synthesis*, not the data (the gallery + log are already there).
 - **Smart lists (Pro, AES-501)** + **Lot recall (Pro, AES-502)** live in Clinical Memory: filters over
   the structured data, and a recall lookup that returns every patient on a recalled lot and hands off to
-  the patient channel ("Message all"). A real safety capability only structure can provide
-  (e.g. FDA counterfeit-Botox recalls).
+  the patient channel. A real safety capability only structure can provide (e.g. FDA counterfeit-Botox
+  recalls). **Built** as a Pro **Lists** tab — design + as-built (incl. the exact-match recall rules and
+  the per-patient Q&A outreach handoff; "Message all" is deferred with bulk SMS/WhatsApp, AES-404) in
+  [redesign-smart-lists-recall.md](redesign-smart-lists-recall.md).
 
 ## 6 · Patient surface — the shared contract
 *Prototype: [`aesthetics-patient-surface.html`](../../apps/frontend/design-prototypes/aesthetics-patient-surface.html).

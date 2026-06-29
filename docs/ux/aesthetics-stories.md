@@ -20,10 +20,13 @@
 > (AES-402/403), safety flags (AES-604/701), the unified report + verify surface, capture undo, and
 > multi-seat E9. As-built notes + manual test scripts: [redesign-aesthetics.md](redesign-aesthetics.md)
 > header, [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md), and
-> [`../qa/aes-pro-smoke.md`](../qa/aes-pro-smoke.md). **Remaining committed scope:** the Pro **smart-lists +
-> lot-recall** cluster — **AES-501**, **AES-502**, and **AES-705** (products/lots registry, currently only
-> implicit via extraction). Candidate extensions (⊕) and the §10 deferrals below remain proposals, not
-> committed scope; **AES-703 was dropped** (see Decisions).
+> [`../qa/aes-pro-smoke.md`](../qa/aes-pro-smoke.md). **AES-501 (smart lists) + AES-502 (lot/product
+> recall) are now built** — the Pro **Lists** tab in Clinical Memory (deterministic lenses + an
+> exact-match lot recall cohort with the Q&A outreach handoff); design + as-built in
+> [redesign-smart-lists-recall.md](redesign-smart-lists-recall.md). **Remaining committed scope:**
+> **AES-705** (products/lots registry — still only implicit via extraction; 501/502 read raw extracted
+> lots, with a clean seam for the registry to layer on). Candidate extensions (⊕) and the §10 deferrals
+> below remain proposals, not committed scope; **AES-703 was dropped** (see Decisions).
 
 Legend in each story line: **`〔Tier · Persona · Build〕`**.
 
