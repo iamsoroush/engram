@@ -40,3 +40,8 @@ notebooks/
 # Assets
 design/
 apps/frontend/tsconfig.tsbuildinfo
+
+# Build-loop scratch workspace (ephemeral per-run artifacts: stories, DoD
+# contracts, evaluator verdicts, decision log). Durable outcomes get reconciled
+# into docs/ at close-out; the scaffolding itself stays untracked.
+.loop/
