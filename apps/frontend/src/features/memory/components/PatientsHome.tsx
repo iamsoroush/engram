@@ -166,6 +166,8 @@ export function PatientsHome({
   const [needsInputRowsLoaded, setNeedsInputRowsLoaded] = React.useState(false);
   // Pro tenants get AI-maintained memory artifacts (the ✨ surfaces); Basic gets deterministic text.
   const isPro = tier !== "basic";
+  // The Lists tab is Pro-only; the count drives the tab-bar grid (3 → 1 row, 4 → a tidy 2×2).
+  const visibleTabs = React.useMemo(() => (isPro ? clinicalTabs : clinicalTabs.filter((tab) => tab.value !== "lists")), [isPro]);
   const today = React.useMemo(
     () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds, t }),
     [activeSession, resolvedDecisionIds, sessions, syncHealth, t],
@@ -623,8 +625,8 @@ export function PatientsHome({
         </span>
       </label>
 
-      <div className="clinical-tabs" role="tablist" aria-label={t("patients.sectionsAriaLabel")}>
-        {(isPro ? clinicalTabs : clinicalTabs.filter((tab) => tab.value !== "lists")).map((tab) => (
+      <div className={`clinical-tabs tabs-count-${visibleTabs.length}`} role="tablist" aria-label={t("patients.sectionsAriaLabel")}>
+        {visibleTabs.map((tab) => (
           <button
             aria-selected={activeTab === tab.value}
             className={activeTab === tab.value ? "active" : ""}

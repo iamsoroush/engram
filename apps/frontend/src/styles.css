@@ -12333,3 +12333,19 @@ small {
   color: var(--color-muted);
   line-height: 1.4;
 }
+
+/* Clinical Memory tab bar stays a single row whatever the tab count: the base grid is locked to 3
+   columns, so the 4th (Pro) tab — Lists — wrapped to its own row. Track the count so 4 tabs lay out
+   as one row of 4 equal segments, not a 3 + 1 wrap. Only the column count differs by tier — the
+   per-segment layout (inline label → stacked under 680px) follows the shared rules below, so Basic's
+   3-tab row and Pro's 4-tab row look consistent at every width. A hair smaller at 4 so the longest
+   label ("Needs input") never crowds. */
+.clinical-tabs.tabs-count-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+/* Four segments are narrower, so shrink the label (and keep it to one line) — otherwise the longest
+   label, "Needs input", wraps to two lines in a stacked segment on a phone. */
+.clinical-tabs.tabs-count-4 button {
+  font-size: 0.64rem;
+  white-space: nowrap;
+}

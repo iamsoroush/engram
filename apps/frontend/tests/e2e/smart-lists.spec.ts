@@ -106,6 +106,22 @@ test.describe("Smart lists + lot recall (Pro; AES-501/502)", () => {
     await expect(page.getByRole("button", { name: /D 4471/ })).toBeVisible();
   });
 
+  test("Pro: lookup is live (separator-insensitive) and re-focusing the search dismisses the result", async ({ page }) => {
+    await installSmartListMocks(page, payload("en"));
+    await openMemory(page);
+    await page.getByRole("tab", { name: "Lists" }).click();
+    const search = page.locator(".lot-lookup-search input");
+    // Live, similar-match search: "d4471" (no hyphen) still surfaces the "D-4471" lot.
+    await search.fill("d4471");
+    await expect(page.getByRole("button", { name: /D-4471/ }).first()).toBeVisible();
+    // Run a recall, then return to the search → the stale cohort card must clear (not linger).
+    await search.fill("");
+    await page.getByRole("button", { name: /D-4471/ }).first().click();
+    await expect(page.locator(".recall-cohort")).toHaveCount(1);
+    await search.click();
+    await expect(page.locator(".recall-cohort")).toHaveCount(0);
+  });
+
   test("Basic: no Lists tab (Pro-gated, legible upgrade)", async ({ page }) => {
     await installSmartListMocks(page, payload("en", "basic"));
     await openMemory(page);

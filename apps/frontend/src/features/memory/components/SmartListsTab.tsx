@@ -238,16 +238,28 @@ function LotLookup({
   );
 
   const needle = query.trim().toLowerCase();
+  // Separator-insensitive core so live search finds SIMILAR matches: "d4471" / "d 4471" → "D-4471".
+  const core = needle.replace(/[^a-z0-9]/g, "");
+  const matches = React.useCallback(
+    (...fields: Array<string | null | undefined>) => {
+      if (!needle) return true;
+      return fields.some((field) => {
+        const value = (field || "").toLowerCase();
+        return value.includes(needle) || (core.length >= 2 && value.replace(/[^a-z0-9]/g, "").includes(core));
+      });
+    },
+    [needle, core],
+  );
   const suggestions: Suggestion[] = React.useMemo(() => {
     if (!ledger) return [];
     const lots: Suggestion[] = ledger.lots
-      .filter((entry) => !needle || entry.lot.toLowerCase().includes(needle) || (entry.brand || "").toLowerCase().includes(needle) || (entry.product || "").toLowerCase().includes(needle))
+      .filter((entry) => matches(entry.lot, entry.brand, entry.product))
       .map((entry) => ({ kind: "lot", value: entry.lot, sub: entry.brand || entry.product || null, patientCount: entry.patientCount }));
     const products: Suggestion[] = ledger.products
-      .filter((entry) => !needle || entry.name.toLowerCase().includes(needle))
+      .filter((entry) => matches(entry.name))
       .map((entry) => ({ kind: "product", value: entry.name, sub: null, patientCount: entry.patientCount }));
     return [...lots, ...products].slice(0, needle ? 8 : 5);
-  }, [ledger, needle]);
+  }, [ledger, needle, matches]);
 
   return (
     <section className="lot-lookup" aria-label={t("recall.heading")}>
@@ -262,7 +274,17 @@ function LotLookup({
       >
         <label className="clinical-search lot-lookup-search">
           <SearchIcon />
-          <Input aria-label={t("recall.searchAria")} placeholder={t("recall.searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} />
+          <Input
+            aria-label={t("recall.searchAria")}
+            placeholder={t("recall.searchPlaceholder")}
+            value={query}
+            // Returning to the search dismisses a previous recall result and resumes live suggestions.
+            onFocus={() => setResult(null)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setResult(null);
+            }}
+          />
         </label>
       </form>
       {suggestions.length ? (
