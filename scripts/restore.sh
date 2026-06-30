@@ -5,8 +5,10 @@
 #   scripts/restore.sh /var/backups/engram/pg-YYYYMMDD-HHMMSS.sql.gz
 #
 # Rehearse this on a NON-prod database periodically — an untested backup is not a backup.
-# Cleanest restore is into a freshly-created empty database; restoring over a live DB can
-# fail on existing objects unless the dump was taken with --clean.
+# It resets the 'public' schema before loading, so it restores cleanly over a fresh OR an
+# already-migrated database. After restoring an older dump, bring the backend back up (it runs
+# `alembic upgrade head` on start) to re-apply any newer migrations — scripts/bootstrap.sh
+# RESTORE_FROM=... orchestrates the whole stop → restore → restart sequence for you.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -20,6 +22,12 @@ DB="${POSTGRES_DB:-engram}"; USER="${POSTGRES_USER:-engram}"
 
 read -r -p "This OVERWRITES database '$DB' from $DUMP. Type 'yes' to proceed: " confirm
 [ "$confirm" = "yes" ] || { echo "aborted."; exit 1; }
+
+# Reset to an empty schema first so a plain pg_dump (no --clean) loads cleanly whether the DB is
+# fresh or already migrated. Safe: the confirmation above already authorized overwriting the DB.
+echo "[restore] resetting schema 'public' in '$DB'"
+$COMPOSE exec -T postgres psql -v ON_ERROR_STOP=1 -U "$USER" -d "$DB" \
+  -c 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;'
 
 echo "[restore] loading $DUMP -> $DB"
 # `.enc` dumps (from backup.sh with BACKUP_ENCRYPTION_KEY) are decrypted first; plain `.gz` load directly.

@@ -153,7 +153,23 @@ Development can use `BACKEND_AUTH_MODE=dev` and `POST /api/v1/auth/dev-login` wi
 ## Deployment Commands
 
 Production (TLS) — full first-time setup + the go-live checklist live in
-[production-readiness.md](production-readiness.md). In short:
+[production-readiness.md](production-readiness.md).
+
+**One-command bring-up (recommended).** On a fresh server with Docker installed, after pointing DNS at
+it (A-record, DNS-only) and opening 80/443:
+
+```sh
+git clone git@github.com:iamsoroush/engram.git /srv/engram && cd /srv/engram
+GATEWAY_API_KEY=gw_xxx scripts/bootstrap.sh        # or run without it and you'll be prompted
+```
+
+`scripts/bootstrap.sh` is idempotent and safe: it checks prerequisites, ensures swap on small boxes,
+**generates `.env.prod` with fresh secrets** (only if missing — it never overwrites/rotates an existing
+one), runs `scripts/deploy.sh`, **schedules nightly encrypted backups** via cron, and can **restore** a
+dump (`RESTORE_FROM=/path/pg-*.sql.gz.enc scripts/bootstrap.sh`). Moving a server while keeping data =
+`scp` the old `.env.prod` over first (same `BACKUP_ENCRYPTION_KEY`), then run with `RESTORE_FROM=…`.
+
+Or step by step:
 
 1. `cp .env.prod.example .env.prod` and fill it; generate the secrets with `scripts/gen-secrets.sh`.
 2. DNS → ArvanCloud CDN; set the CDN origin to `https://$CADDY_SITE_ADDRESS` (a direct, **unproxied**
