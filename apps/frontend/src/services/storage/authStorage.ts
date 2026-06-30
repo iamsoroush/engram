@@ -1,8 +1,13 @@
 import type { AuthSession, StoredAuthProfile } from "../../domain/appTypes";
-import { DEV_AUTH_STORAGE_KEY, IS_DEV } from "../../shared/lib/config";
+import { DEV_AUTH_STORAGE_KEY } from "../../shared/lib/config";
 
+// Persist the refresh token + profile so a full page refresh can re-establish the session
+// (App bootstrap reads this and re-issues an access token via /auth/refresh). This runs in ALL
+// envs — without it, production users are logged out on every refresh (access token is in-memory).
+//
+// Alpha trade-off: the refresh token lives in localStorage, which is an XSS exposure. The hardening
+// path is a Secure HTTP-only cookie (see docs/frontend/auth-login.md, docs/production-alpha-tradeoffs.md).
 export function persistAuthProfile(auth: AuthSession) {
-  if (!IS_DEV) return;
   const profile: StoredAuthProfile = {
     refreshToken: auth.refreshToken,
     user: auth.user,
@@ -13,7 +18,6 @@ export function persistAuthProfile(auth: AuthSession) {
 }
 
 export function loadStoredAuthProfile() {
-  if (!IS_DEV) return null;
   try {
     const raw = window.localStorage.getItem(DEV_AUTH_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as StoredAuthProfile) : null;

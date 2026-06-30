@@ -49,15 +49,16 @@ overlay over the live capture screen; see [onboarding screen](../ux/screens/onbo
 
 Frontend behavior:
 
-- Keep access token in memory where practical.
-- Prefer refresh token in a secure HTTP-only cookie.
+- Access token is kept in memory; the **refresh token + profile are persisted to `localStorage`**
+  (`persistAuthProfile`), so a full page refresh rehydrates the session by re-issuing an access token
+  via `/auth/refresh`. Without this, prod users are logged out on every refresh.
 - Attach `Authorization: Bearer <token>` to API requests.
 - On `401`, attempt one refresh and retry once.
 - If refresh fails, clear auth state and return to login.
 
-Dev-only fallback:
-
-- Temporary browser storage for refresh tokens is acceptable only if clearly marked as development-only.
+> **Alpha trade-off:** the refresh token in `localStorage` is an XSS exposure. The hardening path is a
+> Secure **HTTP-only cookie** for the refresh token (backend sets it; frontend stops storing it). Tracked
+> in [production-alpha-tradeoffs.md](../production-alpha-tradeoffs.md).
 
 ## Tenant Context
 
