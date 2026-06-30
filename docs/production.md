@@ -155,13 +155,19 @@ Development can use `BACKEND_AUTH_MODE=dev` and `POST /api/v1/auth/dev-login` wi
 Production (TLS) — full first-time setup + the go-live checklist live in
 [production-readiness.md](production-readiness.md).
 
-**One-command bring-up (recommended).** On a fresh server with Docker installed, after pointing DNS at
-it (A-record, DNS-only) and opening 80/443:
+**Scripted bring-up (recommended).** On a fresh VPS, after pointing DNS at it (A-record, DNS-only) —
+clone, prep the OS, then bring up the stack:
 
 ```sh
 git clone git@github.com:iamsoroush/engram.git /srv/engram && cd /srv/engram
+sudo scripts/prepare-server.sh                     # Docker + firewall(22/80/443) + auto-updates + fail2ban
 GATEWAY_API_KEY=gw_xxx scripts/bootstrap.sh        # or run without it and you'll be prompted
 ```
+
+`scripts/prepare-server.sh` (Ubuntu/Debian) is the one-time OS prep: it installs Docker + the compose
+plugin, configures the **ufw firewall** (allows SSH + 80 + 443 *before* enabling, so no lockout), enables
+unattended security updates, and installs fail2ban. `HARDEN_SSH=1` additionally disables root/password
+SSH login (only when an SSH key is present). Skip it and harden the OS yourself if not on apt.
 
 `scripts/bootstrap.sh` is idempotent and safe: it checks prerequisites, ensures swap on small boxes,
 **generates `.env.prod` with fresh secrets** (only if missing — it never overwrites/rotates an existing
