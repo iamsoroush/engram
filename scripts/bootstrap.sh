@@ -27,7 +27,7 @@
 #
 # Tunables (env vars; all have sane defaults except the API key):
 #   DOMAIN           default engram.ir              GATEWAY_MODEL    default gemini-3.1-flash-lite
-#   GATEWAY_URL      default https://gw.engram.ir/v1 SYNTHESIS_MODEL default gpt-5.4-mini
+#   GATEWAY_URL      default https://gw.engram.ir/v1 SYNTHESIS_MODEL default gpt-5.4-nano
 #   GATEWAY_API_KEY  required when creating a fresh .env.prod (prompted if unset)
 #   SETUP_SWAP       default auto (set 0 to skip)    RESTORE_FROM     path to a dump to restore (optional)
 #   BACKUP_AT        cron time for nightly backup (default "0 2 * * *");  SETUP_BACKUP_CRON=0 to skip
@@ -40,7 +40,7 @@ ENV_FILE="$REPO_ROOT/.env.prod"
 DOMAIN="${DOMAIN:-engram.ir}"
 GATEWAY_URL="${GATEWAY_URL:-https://gw.engram.ir/v1}"
 GATEWAY_MODEL="${GATEWAY_MODEL:-gemini-3.1-flash-lite}"
-SYNTHESIS_MODEL="${SYNTHESIS_MODEL:-gpt-5.4-mini}"
+SYNTHESIS_MODEL="${SYNTHESIS_MODEL:-gpt-5.4-nano}"
 
 SUDO=""; [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null && SUDO="sudo"
 log()  { printf '\n\033[1;36m[bootstrap]\033[0m %s\n' "$*"; }
