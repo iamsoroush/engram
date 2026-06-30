@@ -164,6 +164,9 @@ Read:
 - `docs/production-readiness.md`  
   Production gap list, ArvanCloud-tailored decisions, prioritized tasks, and the go-live checklist.
 
+- `docs/production-alpha-tradeoffs.md`  
+  The deliberate simplifications made for alpha testing (small single VPS, no monitoring) and how to undo each when scaling up — the migration checklist.
+
 - `docs/monitoring.md`  
   Self-hosted observability overlay (Prometheus/Grafana/exporters + Uptime Kuma + GlitchTip) and what to watch.
 

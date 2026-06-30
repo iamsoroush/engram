@@ -4,6 +4,9 @@
 > clinical data". Companion to [production.md](production.md) (current prod shape + ops concerns) and
 > [architecture.md](architecture.md). **First deployment target:** ArvanCloud (Iran region); AI gateway in
 > Europe, reachable from Iran.
+>
+> For the deliberate simplifications made for **alpha testing** (small single VPS, no monitoring) and how
+> to undo each when scaling up, see [production-alpha-tradeoffs.md](production-alpha-tradeoffs.md).
 
 ## Current state — solid foundation (not starting from zero)
 
