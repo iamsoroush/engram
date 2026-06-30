@@ -155,19 +155,24 @@ Development can use `BACKEND_AUTH_MODE=dev` and `POST /api/v1/auth/dev-login` wi
 Production (TLS) — full first-time setup + the go-live checklist live in
 [production-readiness.md](production-readiness.md).
 
-**Scripted bring-up (recommended).** On a fresh VPS, after pointing DNS at it (A-record, DNS-only) —
-clone, prep the OS, then bring up the stack:
+**Scripted bring-up (recommended).** After pointing DNS at the VPS (A-record, DNS-only):
+
+1. **Install Docker** (Engine + compose plugin) — your Ansible base playbook, or any method.
+2. **Prep the OS** (firewall + auto-updates + fail2ban) via either — they're twins, pick one:
+   - Ansible from your control machine: `ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/prepare-server.yml` (see [deploy/ansible/](../deploy/ansible/README.md)); or
+   - on the host: `sudo scripts/prepare-server.sh`
+3. **Bring up the stack** on the host:
 
 ```sh
 git clone git@github.com:iamsoroush/engram.git /srv/engram && cd /srv/engram
-sudo scripts/prepare-server.sh                     # Docker + firewall(22/80/443) + auto-updates + fail2ban
 GATEWAY_API_KEY=gw_xxx scripts/bootstrap.sh        # or run without it and you'll be prompted
 ```
 
-`scripts/prepare-server.sh` (Ubuntu/Debian) is the one-time OS prep: it installs Docker + the compose
-plugin, configures the **ufw firewall** (allows SSH + 80 + 443 *before* enabling, so no lockout), enables
-unattended security updates, and installs fail2ban. `HARDEN_SSH=1` additionally disables root/password
-SSH login (only when an SSH key is present). Skip it and harden the OS yourself if not on apt.
+`prepare-server.sh` and `deploy/ansible/prepare-server.yml` (Ubuntu/Debian) both **assume Docker is
+installed** and add the prod hardening: **ufw firewall** (SSH + 80 + 443, allowed *before* enabling so no
+lockout), unattended security updates, fail2ban, an optional Docker registry mirror
+(`DOCKER_REGISTRY_MIRROR` / `-e docker_registry_mirror=…` — Iran image-pull workaround), and optional SSH
+lockdown (`HARDEN_SSH=1` / `-e harden_ssh=true`, applied only when an SSH key is present).
 
 `scripts/bootstrap.sh` is idempotent and safe: it checks prerequisites, ensures swap on small boxes,
 **generates `.env.prod` with fresh secrets** (only if missing — it never overwrites/rotates an existing

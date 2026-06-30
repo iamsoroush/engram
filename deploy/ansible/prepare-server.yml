@@ -1,0 +1,118 @@
+---
+# deploy/ansible/prepare-server.yml — production OS prep for an Engram host (Ubuntu/Debian).
+#
+# Assumes Docker Engine + the compose plugin are ALREADY installed (e.g. by your base playbook).
+# Adds the production-specific hardening the app needs: firewall, unattended security updates,
+# fail2ban, an optional Docker registry mirror (Iran image-pull workaround), and optional SSH
+# lockdown. This is the declarative twin of scripts/prepare-server.sh — same actions.
+#
+# Usage (from your control machine, with the repo cloned):
+#   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/prepare-server.yml
+#   # also lock down SSH (ONLY once key-based login works):
+#   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/prepare-server.yml -e harden_ssh=true
+#   # set a Docker registry mirror (if image pulls are blocked from Iran):
+#   ansible-playbook ... -e docker_registry_mirror=https://<mirror>
+#
+# Then on the host:  cd /srv/engram && GATEWAY_API_KEY=gw_… scripts/bootstrap.sh
+- name: Engram production server prep
+  hosts: engram
+  become: true
+  vars:
+    ssh_port: 22
+    harden_ssh: false
+    docker_registry_mirror: ""   # e.g. an ArvanCloud Docker Hub mirror; empty = skip (or use Shecan DNS)
+
+  tasks:
+    - name: Assert Docker is installed (install it with your base playbook if this fails)
+      ansible.builtin.command: docker --version
+      changed_when: false
+
+    - name: Install firewall + security packages
+      ansible.builtin.apt:
+        name: [ufw, fail2ban, unattended-upgrades]
+        state: present
+        update_cache: true
+
+    # ufw allow is idempotent; allow SSH BEFORE enabling so the playbook can't lock you out.
+    - name: Allow SSH + HTTP/HTTPS through the firewall
+      ansible.builtin.command: "ufw allow {{ item }}"
+      changed_when: false
+      loop:
+        - "{{ ssh_port }}/tcp"
+        - "22/tcp"      # belt-and-suspenders if ssh_port was wrong
+        - "80/tcp"      # Caddy ACME + HTTP->HTTPS
+        - "443/tcp"     # Caddy HTTPS
+        - "443/udp"     # Caddy HTTP/3
+
+    - name: Default-deny inbound, allow outbound
+      ansible.builtin.command: "ufw default {{ item }}"
+      changed_when: false
+      loop:
+        - "deny incoming"
+        - "allow outgoing"
+
+    - name: Enable ufw
+      ansible.builtin.command: ufw --force enable
+      changed_when: false
+
+    - name: Enable unattended security updates
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+
+    - name: Enable + start fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        enabled: true
+        state: started
+
+    - name: Configure Docker registry mirror (Iran image-pull workaround)
+      when: docker_registry_mirror | length > 0
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "registry-mirrors": ["{{ docker_registry_mirror }}"]
+          }
+      notify: Restart Docker
+
+    # --- optional SSH hardening (guarded) ---
+    - name: Safety — find an authorized_keys before SSH hardening
+      when: harden_ssh | bool
+      ansible.builtin.find:
+        paths:
+          - /root/.ssh
+          - "/home/{{ ansible_user | default('') }}/.ssh"
+        patterns: authorized_keys
+      register: ak_found
+
+    - name: Abort hardening if no SSH key is present (would lock you out)
+      when: harden_ssh | bool and ak_found.matched == 0
+      ansible.builtin.fail:
+        msg: "harden_ssh=true but no authorized_keys found — add your SSH key first."
+
+    - name: Harden SSH (disable root + password login)
+      when: harden_ssh | bool
+      ansible.builtin.copy:
+        dest: /etc/ssh/sshd_config.d/99-engram.conf
+        mode: "0644"
+        content: |
+          PermitRootLogin prohibit-password
+          PasswordAuthentication no
+          ChallengeResponseAuthentication no
+      notify: Reload SSH
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+
+    - name: Reload SSH
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
