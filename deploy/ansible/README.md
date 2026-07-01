@@ -1,41 +1,33 @@
 # Ansible — production server prep
 
-Declarative OS prep for an Engram production host (Ubuntu/Debian). The twin of
-`scripts/prepare-server.sh` — same actions, run from your control machine instead of on the box.
+Prep an Engram production host (Ubuntu 24.04) from your control machine. Iran-aware: **no
+`download.docker.com`, no GitHub** — Docker installs from Ubuntu's repo via the ArvanCloud mirror,
+and images pull through the ArvanCloud registry mirror.
 
-**Assumes Docker Engine + the compose plugin are already installed** (e.g. by your base playbook).
-It does *not* install Docker; it adds the production-specific hardening:
+## `setup-production.yml` — the one you want (bare box → ready)
 
-- firewall (ufw): SSH + 80 + 443 (+443/udp) allowed, all other inbound denied;
-- unattended security updates;
-- fail2ban;
-- optional Docker registry mirror (Iran image-pull workaround);
-- optional SSH lockdown (disable root + password login).
-
-## Use
+Self-contained minimal setup: ArvanCloud apt mirror, Docker (`docker.io` + compose + buildx),
+ArvanCloud Docker registry mirror, `ubuntu` in the docker group, ufw firewall (22/80/443), and a 4 GB
+swapfile. Assumes the box already has a working DNS resolver.
 
 ```sh
-cp inventory.ini my-inventory.ini   # then set ansible_host / ansible_user
-ansible-playbook -i my-inventory.ini prepare-server.yml
-
-# with options:
-ansible-playbook -i my-inventory.ini prepare-server.yml \
-  -e docker_registry_mirror=https://<mirror> \
-  -e harden_ssh=true            # only once key-based login works
+ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/setup-production.yml
 ```
 
-Then bring up the app on the host:
+Then **reconnect** (so the `docker` group applies) and bring the app up:
 
 ```sh
-cd /srv/engram && GATEWAY_API_KEY=gw_… scripts/bootstrap.sh
+cd <repo> && GATEWAY_API_KEY=gw_... scripts/bootstrap.sh
 ```
 
-Only `ansible.builtin` modules are used, so no extra Galaxy collections are required.
+Targets host `engram` (your `~/.ssh/config` alias) as user `ubuntu` — see `inventory.ini`. Uses only
+`ansible.builtin` modules (no Galaxy collections). Passwordless `sudo` on the box is assumed; if not,
+add `--ask-become-pass`.
 
-## Full workflow
+## The others (`prepare-server.yml` / `scripts/prepare-server.sh`)
 
-1. (bare server) install Docker — your base playbook, or any method.
-2. `ansible-playbook -i … prepare-server.yml` — firewall + hardening.
-3. on the host: `scripts/bootstrap.sh` — `.env.prod` + deploy + nightly backups (+ optional restore).
+Older variants that **assume Docker is already installed** and only add hardening (firewall,
+unattended-upgrades, fail2ban, optional SSH lockdown). Use `setup-production.yml` for a bare box; reach
+for these only when Docker was already provisioned by another playbook.
 
-See [../../docs/production.md](../../docs/production.md) for the full picture.
+See [../../docs/production.md](../../docs/production.md) for the full deployment picture.

@@ -1,0 +1,112 @@
+---
+# deploy/ansible/setup-production.yml
+# Minimal, Iran-aware production prep for the Engram host (Ubuntu 24.04, user `ubuntu`).
+#
+# Installs Docker from UBUNTU'S repo via the ArvanCloud mirror — no download.docker.com, no GitHub,
+# so it works from inside Iran. After this, bring the app up with scripts/bootstrap.sh.
+#
+#   ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/setup-production.yml
+#   # then, on the host (reconnect first so the docker group applies):
+#   cd <repo> && GATEWAY_API_KEY=gw_... scripts/bootstrap.sh
+#
+# Prereq: the box already has a working DNS resolver (so mirror.arvancloud.ir resolves).
+- name: Engram production server prep (minimal)
+  hosts: engram
+  become: true
+
+  tasks:
+    # --- apt: ArvanCloud mirror (reachable + fast from Iran) ---
+    - name: Point apt at the ArvanCloud mirror (Ubuntu 24.04 deb822)
+      ansible.builtin.replace:
+        path: /etc/apt/sources.list.d/ubuntu.sources
+        regexp: 'https?://(archive|security)\.ubuntu\.com/ubuntu'
+        replace: 'http://mirror.arvancloud.ir/ubuntu'
+      failed_when: false
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    # --- Docker from Ubuntu's repo (NOT download.docker.com) ---
+    - name: Install Docker Engine + compose + buildx
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+          - docker-buildx
+        state: present
+
+    - name: Add 'ubuntu' to the docker group
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    - name: Configure Docker registry mirror (ArvanCloud) + log rotation
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: "0644"
+        content: |
+          {
+            "registry-mirrors": ["https://docker.arvancloud.ir"],
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "10m", "max-file": "3" }
+          }
+      notify: Restart docker
+
+    - name: Enable + start Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    # --- Firewall: only SSH + HTTP/HTTPS ---
+    - name: Install ufw
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Allow SSH + HTTP/HTTPS (before enabling — no lockout)
+      ansible.builtin.command: "ufw allow {{ item }}"
+      changed_when: false
+      loop: ["22/tcp", "80/tcp", "443/tcp", "443/udp"]
+
+    - name: Default-deny inbound, allow outbound
+      ansible.builtin.command: "ufw default {{ item }}"
+      changed_when: false
+      loop: ["deny incoming", "allow outgoing"]
+
+    - name: Enable ufw
+      ansible.builtin.command: ufw --force enable
+      changed_when: false
+
+    # --- Swap (the frontend build is the RAM spike on a 2 GB box) ---
+    - name: Check for an existing swapfile
+      ansible.builtin.stat:
+        path: /swapfile
+      register: swapfile
+
+    - name: Create + enable a 4G swapfile
+      when: not swapfile.stat.exists
+      block:
+        - name: Allocate swapfile
+          ansible.builtin.command: fallocate -l 4G /swapfile
+        - name: Secure swapfile
+          ansible.builtin.file:
+            path: /swapfile
+            mode: "0600"
+        - name: Format swapfile
+          ansible.builtin.command: mkswap /swapfile
+        - name: Persist in fstab
+          ansible.builtin.lineinfile:
+            path: /etc/fstab
+            line: "/swapfile none swap sw 0 0"
+            regexp: '^/swapfile '
+        - name: Turn swap on
+          ansible.builtin.command: swapon /swapfile
+
+  handlers:
+    - name: Restart docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
