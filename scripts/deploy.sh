@@ -15,8 +15,14 @@ cd "$(dirname "$0")/.."
 FILES="-f docker-compose.prod.yml -f docker-compose.prod.tls.yml"
 COMPOSE="docker compose $FILES --env-file .env.prod"
 
-echo "[deploy] git pull --ff-only"
-git pull --ff-only
+# SKIP_GIT_PULL=1 when the code was delivered by rsync (e.g. GitHub is unreachable from the host,
+# as in Iran) — the working tree is already the source of truth, so don't try to pull.
+if [ "${SKIP_GIT_PULL:-0}" = "1" ]; then
+  echo "[deploy] SKIP_GIT_PULL=1 — using the working tree as-is (no git pull)"
+else
+  echo "[deploy] git pull --ff-only"
+  git pull --ff-only
+fi
 
 echo "[deploy] build + up (migrations run on backend start)"
 $COMPOSE up -d --build
