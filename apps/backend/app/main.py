@@ -1151,3 +1151,8 @@ app.include_router(smart_lists_api)
 from app.feedback_api import feedback_api  # noqa: E402
 
 app.include_router(feedback_api)
+
+# Clinic insights (owner/admin analytics; treatments payload Pro-gated). Self-contained router.
+from app.insights_api import insights_api  # noqa: E402
+
+app.include_router(insights_api)

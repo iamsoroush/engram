@@ -43,7 +43,7 @@ export function Shell({
   const multiClinic = new Set(auth.memberships.map((membership) => membership.tenantId)).size > 1;
   // Account / utility pages have no capture context — the capture bar would overlap their content.
   const isAccountScreen =
-    screen === "settings" || screen === "profile" || screen === "team" || screen === "plan" || screen === "switch-clinic";
+    screen === "settings" || screen === "profile" || screen === "team" || screen === "insights" || screen === "plan" || screen === "switch-clinic";
   const isOffline = !syncHealth.online;
   const closeMenu = () => menuRef.current?.removeAttribute("open");
   const goTo = (target: Screen) => {
@@ -142,6 +142,12 @@ export function Shell({
                 {t("menu.settings")}
               </button>
               {canManageTeam ? (
+                <button className="user-menu-item" onClick={() => goTo("insights")} type="button">
+                  <InsightsMenuIcon />
+                  {t("menu.insights")}
+                </button>
+              ) : null}
+              {canManageTeam ? (
                 <button className="user-menu-item" onClick={() => goTo("team")} type="button">
                   <TeamMenuIcon />
                   {t("menu.team")}
@@ -204,6 +210,15 @@ function SettingsMenuIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <circle cx="12" cy="12" r="3" />
       <path d="M12 3.5v2M12 18.5v2M4.7 7.5l1.7 1M17.6 15.5l1.7 1M4.7 16.5l1.7-1M17.6 8.5l1.7-1" />
+    </svg>
+  );
+}
+
+function InsightsMenuIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M4 20V4M4 20h16" />
+      <path d="M8 16v-4M12 16V8M16 16v-6" />
     </svg>
   );
 }

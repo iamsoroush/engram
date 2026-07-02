@@ -6,6 +6,7 @@ export type Screen =
   | "settings"
   | "profile"
   | "team"
+  | "insights"
   | "plan"
   | "switch-clinic";
 
