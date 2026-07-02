@@ -117,6 +117,27 @@ export type PatientSummary = {
 
 export type PatientMemoryFilter = "recent" | "active" | "all" | "needs-input";
 
+// Fair-use monthly AI usage/limit (GET /ai-usage). `hasAi=false` (Basic / zero-AI) means there are no
+// limits at all — the UI renders nothing. `status` drives the calm→amber tone; `paused` (== over the
+// limit) means background AI enrichment is paused while captures still save normally.
+export type AiUsageStatus = "ok" | "approaching" | "over";
+export type AiUsageState = {
+  plan: string;
+  hasAi: boolean;
+  status: AiUsageStatus;
+  seats: number;
+  periodKey: string;
+  resetAt: string;
+  // NOTE: raw dollar budget/spend are INTERNAL economics — the backend does not send them to the
+  // client and the UI must never display them. Only the percentage + status are user-facing.
+  percentUsed: number;
+  paused: boolean;
+  aiCaptures: number;
+  audioMinutes: number;
+  synthesisRuns: number;
+  sessionSoftCapCaptures: number;
+};
+
 // Live per-task AI model selection (Settings → AI models). Blank model = worker env default.
 export type AiModelTask = { task: string; label: string; model: string };
 export type AiModelConfig = { tasks: AiModelTask[] };

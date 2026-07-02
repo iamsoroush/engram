@@ -5,6 +5,7 @@ import type {
   DevTier,
   PatientAssignmentDraft,
   AiModelConfig,
+  AiUsageState,
   AftercareTemplate,
   AftercareTemplateDraft,
   AssignmentSuggestionResponse,
@@ -721,6 +722,42 @@ export async function createPatient(apiFetch: ApiFetch, draft: PatientAssignment
   });
   if (!response.ok) throw new Error("Could not create patient");
   return normalizePatientSummary((await response.json()) as Record<string, unknown>);
+}
+
+function normalizeAiUsage(raw: Record<string, unknown>): AiUsageState {
+  const status = raw.status === "approaching" || raw.status === "over" ? raw.status : "ok";
+  return {
+    plan: String(raw.plan || ""),
+    hasAi: Boolean(raw.hasAi),
+    status,
+    seats: numberValue(raw.seats, 0),
+    periodKey: String(raw.periodKey || ""),
+    resetAt: String(raw.resetAt || ""),
+    percentUsed: numberValue(raw.percentUsed, 0),
+    paused: Boolean(raw.paused),
+    aiCaptures: numberValue(raw.aiCaptures, 0),
+    audioMinutes: numberValue(raw.audioMinutes, 0),
+    synthesisRuns: numberValue(raw.synthesisRuns, 0),
+    sessionSoftCapCaptures: numberValue(raw.sessionSoftCapCaptures, 0),
+  };
+}
+
+/** Fair-use monthly AI usage/limit for the current clinic (both tiers; Basic returns `hasAi=false`). */
+export async function fetchAiUsage(apiFetch: ApiFetch): Promise<AiUsageState> {
+  const response = await apiFetch(`${API_BASE}/ai-usage`);
+  if (!response.ok) throw new Error("Could not load AI usage");
+  return normalizeAiUsage((await response.json()) as Record<string, unknown>);
+}
+
+/** Dev-only: jump the AI usage state to a given percent, to demo the feature without hundreds of captures. */
+export async function setAiUsageDev(apiFetch: ApiFetch, percent: number): Promise<AiUsageState> {
+  const response = await apiFetch(`${API_BASE}/ai-usage/dev/set`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ percent }),
+  });
+  if (!response.ok) throw new Error("Could not set AI usage");
+  return normalizeAiUsage((await response.json()) as Record<string, unknown>);
 }
 
 function mapAiModelConfig(payload: Record<string, unknown>): AiModelConfig {

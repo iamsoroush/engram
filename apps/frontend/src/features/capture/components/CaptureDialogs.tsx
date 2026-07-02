@@ -344,6 +344,10 @@ function PhotoSecurityIcon() {
   );
 }
 
+// Fair-use safety cap on a single recording: a mic accidentally left open can't run for hours and
+// burn a month of transcription budget in one clip. At this length the recording auto-stops + saves.
+const MAX_RECORDING_SECONDS = 20 * 60;
+
 /**
  * Owns microphone capture lifecycle and falls back to file attachment when the
  * browser cannot produce a supported recording stream.
@@ -479,6 +483,15 @@ export function AudioDialog({
     recorder.stop();
   };
 
+  // Fair-use safety: auto-stop + save a runaway recording (e.g. mic left open) at the cap, so a
+  // single accidental clip can't burn a month of transcription budget. The clip so far is kept.
+  React.useEffect(() => {
+    if (recordingState === "recording" && seconds >= MAX_RECORDING_SECONDS) {
+      stopAndSaveRecording();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seconds, recordingState]);
+
   const pauseRecording = () => {
     if (recorder?.state !== "recording") return;
     recorder.pause();
@@ -569,6 +582,10 @@ export function AudioDialog({
             ))}
           </div>
         </div>
+
+        {isRecording || isPaused ? (
+          <p className="recording-autostop-hint">{t("dialog.recordingAutoStopHint", { mins: Math.round(MAX_RECORDING_SECONDS / 60) })}</p>
+        ) : null}
 
         <p className="recording-trust">
           <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">

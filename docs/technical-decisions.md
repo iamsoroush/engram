@@ -131,3 +131,17 @@ future agents know what was added and why.
 - **Dev-only `.env` MinIO credential alignment** (not committed — gitignored). *Why:* the shared
   infra MinIO root creds drift/recreate (the documented flaky cred-mismatch), which 500s capture
   uploads; aligning the worktree's object-storage creds to the running MinIO unblocks verification.
+- **AI model selection is NOT a user setting.** Models are chosen and optimized *centrally* by us
+  (per-task, via `services/ai_model_config.py` live overrides + worker env defaults) — the whole cost
+  model assumes specific models (cheap transcription + report model). The old user-facing "AI models"
+  picker in Settings was removed; do **not** re-add a model picker to any user surface. *Why:* model
+  choice is a cost/quality decision that must stay under our control, not the clinic's. The backend
+  override API remains for our internal/admin use only. See
+  [business/ai-usage-limits.md](business/ai-usage-limits.md).
+- **Single-recording safety cap** (`MAX_RECORDING_SECONDS`, frontend `AudioDialog`): a live recording
+  auto-stops + saves at 20 min so a mic left open can't burn a month of transcription budget in one
+  clip. *Why:* the per-session capture-count cap and the monthly $ budget don't stop one runaway clip
+  in the moment; auto-stop prevents the accident at the source. The clip captured so far is kept.
+- **Fair-use $ budget is internal.** The per-seat AI budget (dollars) is never sent to the client or
+  shown in the UI — only a percentage + status. `clinic_usage_state_dict` strips the dollar fields.
+  *Why:* pricing/margin is internal economics, not something to surface to clinics.

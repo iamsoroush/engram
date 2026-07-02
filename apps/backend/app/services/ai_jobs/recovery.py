@@ -1,4 +1,5 @@
 """Durable retry-state primitives and the queued/failed job recovery loops."""
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -11,6 +12,8 @@ from app.models import AiJob, AiJobStatus, Capture, CaptureStatus, Session, Sess
 from app.services.sessions import parse_uuid
 
 from app.services.ai_jobs.base import ai_job_payload, utc_now
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ai_job_retryable",
@@ -267,7 +270,17 @@ def recover_all_ai_jobs(db: DbSession, limit: int = 100) -> dict[str, Any]:
         elif job.patient_id:
             dispatch_patient_memory_job(db, job)
 
-    return {"recovered": recovered, "skipped": skipped}
+    # Trailing driver of the quiet-period synthesis debounce: fire the single coalesced synthesis for
+    # visits that have gone quiet. Best-effort — never let it break job recovery.
+    synthesized = 0
+    try:
+        from app.services.ai_jobs.reports import sweep_debounced_session_synthesis
+
+        synthesized = sweep_debounced_session_synthesis(db)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Debounced synthesis sweep failed")
+
+    return {"recovered": recovered, "skipped": skipped, "synthesized": synthesized}
 
 
 # recover_ai_jobs / recover_all_ai_jobs re-dispatch through the orchestration layer, which in turn

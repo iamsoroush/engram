@@ -62,6 +62,7 @@ export function CaptureScreen({
   nextLinedUpPatient = null,
   onAssignActiveToNext,
   onStartNextVisit,
+  usageNotice = null,
 }: {
   activeSession: CaptureSession | null;
   /** Deprecated: the live report regenerates automatically (Epic E); kept for the retry path. */
@@ -131,6 +132,8 @@ export function CaptureScreen({
   nextLinedUpPatient?: { patientName: string } | null;
   onAssignActiveToNext?: () => void;
   onStartNextVisit?: () => void;
+  /** Calm, non-blocking fair-use AI notice (approaching / limit reached). Informational only. */
+  usageNotice?: React.ReactNode;
 }) {
   const t = useT();
   const isPro = tier !== "basic";
@@ -410,6 +413,7 @@ export function CaptureScreen({
           </span>
         </div>
       ) : null}
+      {!isHistorical && usageNotice ? usageNotice : null}
       {useUnifiedLayout && !isHistorical ? (
         <SessionVerifyBar count={verifyCount} onReview={scrollToVerify} />
       ) : null}
