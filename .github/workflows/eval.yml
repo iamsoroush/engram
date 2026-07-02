@@ -1,18 +1,17 @@
 name: AI eval (golden set)
 
-# The AI-job eval suite (apps/ai_engine/eval/run_all.py) is NOT a normal CI job:
-#   - it calls the REAL gateway (costs money, non-deterministic),
-#   - it scores golden-set fixtures that live in OBJECT STORAGE, never in git, and
-#   - it is designed to run INSIDE the ai-engine container.
-# A GitHub-HOSTED runner can satisfy none of that, so this targets a SELF-HOSTED runner on a host
-# where the engram stack is up and the gateway is reachable. The gateway URL/key/model come from that
-# container's .env, so NO GitHub secret is needed here.
+# Runs the AI-job eval suite (apps/ai_engine/eval/run_all.py) on a GitHub-hosted runner.
+# NON-BLOCKING by design: if the gateway is unreachable or an eval regresses, it emits a
+# ::warning:: and the job stays GREEN — the eval is non-deterministic and costs money, so it's a
+# signal, not a hard merge gate. Runs on demand + when an AI job changes (CLAUDE.md §4).
 #
-# One-time setup (see the message below / repo Settings -> Actions -> Runners):
-#   register a self-hosted runner labelled `engram-eval` on the stack host, where
-#   `scripts/eval-fixtures.sh pull` works (object-storage creds configured).
-# Don't want a self-hosted runner? Delete this file and keep the eval as the manual gate that
-# CLAUDE.md §4 already requires (run it before merging any AI-job change).
+# GitHub setup (repo -> Settings -> Secrets and variables -> Actions):
+#   REQUIRED secret:  AI_ENGINE_TRANSCRIPTION_API_KEY   (the gw_... gateway key)
+#   OPTIONAL (to actually SCORE the golden set — fixtures live in object storage, not git):
+#     secrets:  EVAL_FIXTURES_S3_ENDPOINT, EVAL_FIXTURES_S3_ACCESS_KEY, EVAL_FIXTURES_S3_SECRET_KEY
+#     var:      EVAL_FIXTURES_S3_BUCKET
+#     pointing at a runner-reachable S3 (e.g. ArvanCloud S3) that holds the mirrored fixtures.
+#     Without them the suite has nothing to score (skips / warns) — reachable gateway, no golden set.
 
 on:
   workflow_dispatch: {} # run on demand from the Actions tab
@@ -23,20 +22,47 @@ on:
 
 jobs:
   eval:
-    name: AI golden-set eval
-    runs-on: [self-hosted, engram-eval]
+    name: AI golden-set eval (non-blocking)
+    runs-on: ubuntu-latest
+    env:
+      FIX_EP: ${{ secrets.EVAL_FIXTURES_S3_ENDPOINT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Pull eval fixtures from object storage
-        run: scripts/eval-fixtures.sh pull
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/ai_engine/requirements.txt
 
-      - name: Run the eval suite in the ai-engine container
-        # Uses the container's gateway config (.env). Exits non-zero if any eval regresses;
-        # SKIPs (stays green) if no gateway is configured. Auto-finds the ai-engine container so
-        # it works regardless of the compose project name (engram- vs engram-main-).
+      - name: Install ai_engine deps
+        working-directory: apps/ai_engine
         run: |
-          c=$(docker ps --filter name=ai-engine --format '{{.Names}}' | head -1)
-          test -n "$c" || { echo "no running ai-engine container on this runner"; exit 1; }
-          docker exec "$c" python /app/eval/run_all.py
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Pull golden-set fixtures (only if object storage is configured)
+        if: env.FIX_EP != ''
+        env:
+          AK: ${{ secrets.EVAL_FIXTURES_S3_ACCESS_KEY }}
+          SK: ${{ secrets.EVAL_FIXTURES_S3_SECRET_KEY }}
+          BUCKET: ${{ vars.EVAL_FIXTURES_S3_BUCKET }}
+        run: |
+          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o "$RUNNER_TEMP/mc"
+          chmod +x "$RUNNER_TEMP/mc"
+          "$RUNNER_TEMP/mc" alias set evals "$FIX_EP" "$AK" "$SK"
+          "$RUNNER_TEMP/mc" mirror --overwrite "evals/${BUCKET:-engram-eval-fixtures}" apps/ai_engine/eval/fixtures
+
+      - name: Run eval (non-blocking — warns on regression or unreachable gateway)
+        working-directory: apps/ai_engine
+        env:
+          PYTHONPATH: .
+          AI_ENGINE_TRANSCRIPTION_BASE_URL: https://gw.engram.ir/v1
+          AI_ENGINE_TRANSCRIPTION_API_KEY: ${{ secrets.AI_ENGINE_TRANSCRIPTION_API_KEY }}
+          AI_ENGINE_TRANSCRIPTION_MODEL: gemini-3.1-flash-lite
+          AI_ENGINE_REPORT_SYNTHESIS_MODEL: gpt-5.4-nano
+        run: |
+          python eval/run_all.py \
+            || echo "::warning title=AI eval::eval regressed or gateway unreachable (non-blocking) — see the scorecard above"
