@@ -1,4 +1,4 @@
-# Memara — Customer Discovery & Validation Interview Kit
+# Engram — Customer Discovery & Validation Interview Kit
 
 > **Purpose:** one kit the interviewer uses end-to-end to (1) learn how clinics work today, (2) find and
 > size the pains aes-Basic/Pro and therapy are meant to solve, (3) validate that those pains are real and
@@ -31,7 +31,7 @@
 ## Part 1 — Interview plan
 
 ### 1.1 Objectives of this round
-- Map the **current workflow + tools** for the jobs Memara targets (capture, patient memory, photos,
+- Map the **current workflow + tools** for the jobs Engram targets (capture, patient memory, photos,
   search, reports, patient questions).
 - Identify and **rank pains** by *frequency × severity × what they already spend* on them.
 - **Validate / kill** our core hypotheses (Part 5).
