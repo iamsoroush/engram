@@ -1,0 +1,42 @@
+name: AI eval (golden set)
+
+# The AI-job eval suite (apps/ai_engine/eval/run_all.py) is NOT a normal CI job:
+#   - it calls the REAL gateway (costs money, non-deterministic),
+#   - it scores golden-set fixtures that live in OBJECT STORAGE, never in git, and
+#   - it is designed to run INSIDE the ai-engine container.
+# A GitHub-HOSTED runner can satisfy none of that, so this targets a SELF-HOSTED runner on a host
+# where the engram stack is up and the gateway is reachable. The gateway URL/key/model come from that
+# container's .env, so NO GitHub secret is needed here.
+#
+# One-time setup (see the message below / repo Settings -> Actions -> Runners):
+#   register a self-hosted runner labelled `engram-eval` on the stack host, where
+#   `scripts/eval-fixtures.sh pull` works (object-storage creds configured).
+# Don't want a self-hosted runner? Delete this file and keep the eval as the manual gate that
+# CLAUDE.md §4 already requires (run it before merging any AI-job change).
+
+on:
+  workflow_dispatch: {} # run on demand from the Actions tab
+  push:
+    branches: [main]
+    paths:
+      - "apps/ai_engine/**" # eval-gate: only when an AI job actually changes (CLAUDE.md §4)
+
+jobs:
+  eval:
+    name: AI golden-set eval
+    runs-on: [self-hosted, engram-eval]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull eval fixtures from object storage
+        run: scripts/eval-fixtures.sh pull
+
+      - name: Run the eval suite in the ai-engine container
+        # Uses the container's gateway config (.env). Exits non-zero if any eval regresses;
+        # SKIPs (stays green) if no gateway is configured. Auto-finds the ai-engine container so
+        # it works regardless of the compose project name (engram- vs engram-main-).
+        run: |
+          c=$(docker ps --filter name=ai-engine --format '{{.Names}}' | head -1)
+          test -n "$c" || { echo "no running ai-engine container on this runner"; exit 1; }
+          docker exec "$c" python /app/eval/run_all.py
