@@ -8,6 +8,7 @@ const SCREEN_HASHES: Screen[] = [
   "settings",
   "profile",
   "team",
+  "insights",
   "plan",
   "switch-clinic",
 ];

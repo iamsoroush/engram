@@ -99,6 +99,7 @@ import {
 } from "../features/capture/captureModel";
 import { ProfileScreen, SettingsScreen } from "../features/account/AccountScreens";
 import { TeamScreen } from "../features/account/TeamScreen";
+import { InsightsScreen } from "../features/insights/InsightsScreen";
 import { PlanScreen } from "../features/account/PlanScreen";
 import { SwitchClinicScreen } from "../features/account/SwitchClinicScreen";
 import { SharePatientSheet } from "../features/aesthetics/SharePatientSheet";
@@ -2058,7 +2059,7 @@ export function App() {
   const handleShellNavigate = (nextScreen: Screen) => {
     // Settings/Profile are utility pages reached from the account menu; remember where we came
     // from so Back returns there (don't record an account page as its own return target).
-    const accountScreens: Screen[] = ["settings", "profile", "team", "plan", "switch-clinic"];
+    const accountScreens: Screen[] = ["settings", "profile", "team", "insights", "plan", "switch-clinic"];
     if (accountScreens.includes(nextScreen) && !accountScreens.includes(screen)) {
       accountReturnRef.current = screen;
     }
@@ -2116,6 +2117,9 @@ export function App() {
     }
     if (screen === "team" && auth) {
       return <TeamScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
+    }
+    if (screen === "insights" && auth) {
+      return <InsightsScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
     }
     if (screen === "plan" && auth) {
       return (

@@ -91,6 +91,9 @@
   "src/features/capture/components/StorageGuardDialog.tsx": [
     "Promise"
   ],
+  "src/features/insights/tabs.tsx": [
+    "Promise"
+  ],
   "src/features/landing/LandingPage.tsx": [
     "Engram"
   ],
