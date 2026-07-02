@@ -1,9 +1,10 @@
 import React from "react";
-import type { AftercareTemplate, AftercareTemplateDraft, AiModelConfig, AuthSession, RolePermissions } from "../../domain/appTypes";
+import type { AftercareTemplate, AftercareTemplateDraft, AiUsageState, ApiFetch, AuthSession, RolePermissions } from "../../domain/appTypes";
 import { Button, Card } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { isAdmin as isAdminViewer } from "../../shared/lib/multiseat";
 import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
+import { AiUsageCard } from "../aiUsage/AiUsageCard";
 import { useT } from "../../shared/i18n";
 
 type TenantSettingsUpdate = {
@@ -94,96 +95,30 @@ function SettingRow({ label, hint, children }: { label: React.ReactNode; hint?: 
   );
 }
 
-function AiModelsSettings({
-  onListAiModels,
-  onUpdateAiModels,
-}: {
-  onListAiModels: () => Promise<AiModelConfig>;
-  onUpdateAiModels: (models: Record<string, string>) => Promise<AiModelConfig>;
-}) {
-  const t = useT();
-  const [tasks, setTasks] = React.useState<AiModelConfig["tasks"]>([]);
-  const [drafts, setDrafts] = React.useState<Record<string, string>>({});
-  const [loaded, setLoaded] = React.useState(false);
-  const [saving, setSaving] = React.useState(false);
-  const [savedAt, setSavedAt] = React.useState(0);
-  React.useEffect(() => {
-    let cancelled = false;
-    void onListAiModels()
-      .then((config) => {
-        if (cancelled) return;
-        setTasks(config.tasks);
-        setDrafts(Object.fromEntries(config.tasks.map((task) => [task.task, task.model])));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onListAiModels]);
-  const dirty = tasks.some((task) => (drafts[task.task] || "") !== (task.model || ""));
-  const save = () => {
-    setSaving(true);
-    void onUpdateAiModels(drafts)
-      .then((config) => {
-        setTasks(config.tasks);
-        setDrafts(Object.fromEntries(config.tasks.map((task) => [task.task, task.model])));
-        setSavedAt(Date.now());
-      })
-      .catch(() => undefined)
-      .finally(() => setSaving(false));
-  };
-  return (
-    <Card className="settings-group">
-      <div className="settings-group-head">
-        <h2>{t("settings.aiModelsTitle")}</h2>
-        <p>{t("settings.aiModelsHint")}</p>
-      </div>
-      {tasks.map((task) => (
-        <SettingRow key={task.task} label={<span data-content>{task.label}</span>}>
-          <input
-            aria-label={t("settings.aiModelInputAria", { task: task.label })}
-            className="setting-text-input"
-            disabled={saving || !loaded}
-            onChange={(event) => setDrafts((current) => ({ ...current, [task.task]: event.target.value }))}
-            placeholder={t("settings.aiModelPlaceholder")}
-            spellCheck={false}
-            value={drafts[task.task] ?? ""}
-          />
-        </SettingRow>
-      ))}
-      <div className="settings-group-actions">
-        <Button disabled={!dirty || saving} onClick={save} size="sm" type="button">
-          {saving ? t("settings.aiModelsSaving") : t("settings.aiModelsSave")}
-        </Button>
-        {savedAt && !dirty ? <span className="setting-saved-note">{t("settings.savedNote")}</span> : null}
-      </div>
-    </Card>
-  );
-}
-
 export function SettingsScreen({
   auth,
   onBack,
   onUpdateSettings,
-  onListAiModels,
-  onUpdateAiModels,
   onListAftercareTemplates,
   onCreateAftercareTemplate,
   onUpdateAftercareTemplate,
   onDeleteAftercareTemplate,
+  apiFetch,
+  aiUsage = null,
+  onRefreshAiUsage,
 }: {
   auth: AuthSession;
   onBack: () => void;
   onUpdateSettings: (settings: TenantSettingsUpdate) => Promise<void> | void;
-  onListAiModels?: () => Promise<AiModelConfig>;
-  onUpdateAiModels?: (models: Record<string, string>) => Promise<AiModelConfig>;
   onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
   onCreateAftercareTemplate?: (draft: AftercareTemplateDraft) => Promise<AftercareTemplate>;
   onUpdateAftercareTemplate?: (id: string, draft: Partial<AftercareTemplateDraft>) => Promise<AftercareTemplate>;
   onDeleteAftercareTemplate?: (id: string) => Promise<void>;
+  /** Authed fetch — used only by the AI-usage card's dev control. */
+  apiFetch: ApiFetch;
+  /** Fair-use monthly AI usage (null while loading, on failure, or for Basic/no-AI). */
+  aiUsage?: AiUsageState | null;
+  onRefreshAiUsage?: () => void;
 }) {
   const t = useT();
   // Localize the vertical name (aesthetics/therapy/…); fall back to the capitalized raw value if unkeyed.
@@ -294,6 +229,8 @@ export function SettingsScreen({
         </SettingRow>
       </Card>
 
+      <AiUsageCard state={aiUsage} apiFetch={apiFetch} onRefresh={() => onRefreshAiUsage?.()} />
+
       {isAdminViewer(auth) ? <RolePermissionsSettings auth={auth} saving={saving} onSave={save} /> : null}
 
       {onListAftercareTemplates && onCreateAftercareTemplate && onUpdateAftercareTemplate && onDeleteAftercareTemplate ? (
@@ -304,10 +241,9 @@ export function SettingsScreen({
           onDelete={onDeleteAftercareTemplate}
         />
       ) : null}
-
-      {onListAiModels && onUpdateAiModels ? (
-        <AiModelsSettings onListAiModels={onListAiModels} onUpdateAiModels={onUpdateAiModels} />
-      ) : null}
+      {/* NOTE: AI model selection is intentionally NOT user-facing. Models are chosen and optimized
+          centrally (see docs/technical-decisions.md "AI model selection is not a user setting" and
+          docs/business/ai-usage-limits.md). Do not add a model picker to Settings. */}
     </div>
   );
 }

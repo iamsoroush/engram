@@ -434,6 +434,43 @@ class AiJob(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AiUsageCounter(Base):
+    """Accumulated REAL AI spend + volume per clinic (and per seat) per billing period.
+
+    The fair-use meter's source of truth. One row per (tenant, user, period_key); the clinic total is
+    the SUM over its seats. Written when a gateway-billed AI job completes (real `usage` from the
+    gateway → cost via the pricing table). `period_key` is a calendar month "YYYY-MM" (UTC). Cost is
+    stored in micro-dollars (int) to avoid float drift. `user_id` is the capturing seat (nullable for
+    clinic-scoped jobs with no attributable seat).
+    """
+
+    __tablename__ = "ai_usage_counters"
+    __table_args__ = (
+        # NULLS NOT DISTINCT so clinic-scoped rows (user_id NULL, e.g. patient-memory sweeps or the
+        # dev usage control) collapse to ONE row and increment atomically via ON CONFLICT (Postgres
+        # treats NULLs as distinct by default, which would create duplicate rows). Requires PG >= 15.
+        UniqueConstraint(
+            "tenant_id", "user_id", "period_key",
+            name="uq_ai_usage_tenant_user_period", postgresql_nulls_not_distinct=True,
+        ),
+        Index("ix_ai_usage_counters_tenant_period", "tenant_id", "period_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    period_key: Mapped[str] = mapped_column(String(7), nullable=False)  # "YYYY-MM" (UTC calendar month)
+    cost_micros: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    ai_captures: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
+    audio_seconds: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default=text("0"))
+    synthesis_runs: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
+    ai_jobs: Mapped[int] = mapped_column(nullable=False, default=0, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+
+
 class Artifact(Base):
     __tablename__ = "artifacts"
     __table_args__ = (

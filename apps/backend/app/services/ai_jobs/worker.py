@@ -1,10 +1,13 @@
 """Worker job lifecycle: payload assembly, start/progress/complete/retry/fail, and AI assignment."""
+import logging
 import uuid
 from typing import Any
 
 from fastapi import Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
+
+logger = logging.getLogger(__name__)
 
 # ``match_patient_from_patient_information`` is resolved through the package namespace (see
 # intents.py) so package-level monkeypatching keeps working on the worker path too.
@@ -433,9 +436,24 @@ def complete_worker_job(
     job_id: str,
     output_key: str,
     output: dict[str, Any],
+    usage: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist successful AI engine output."""
     job = get_job_for_worker(db, job_id)
+    # Fair-use metering: record this job's REAL gateway spend against the clinic/seat period counter.
+    # Best-effort — a metering hiccup must never fail job completion.
+    try:
+        from app.services.ai_usage import record_job_usage
+
+        record_job_usage(
+            db,
+            tenant_id=job.tenant_id,
+            user_id=job.created_by_user_id,
+            job_type=job.job_type,
+            usage_records=usage,
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.exception("Failed to record AI usage", extra={"job_id": job_id})
     if job.job_type == AiJobType.patient_memory:
         return complete_patient_memory_worker_job(db, job=job, output=output)
     if job.job_type == AiJobType.qa_draft:

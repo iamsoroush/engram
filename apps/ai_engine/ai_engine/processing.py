@@ -1,5 +1,7 @@
 import base64
+import contextvars
 import json
+import logging
 import re
 import subprocess
 from datetime import datetime, timezone
@@ -17,6 +19,8 @@ except ImportError:  # pragma: no cover - exercised only in a Pillow-less enviro
     ImageOps = None
 
 from ai_engine.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class DetectedPatientOutput(TypedDict):
@@ -412,6 +416,20 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
     return base64.b64encode(result.stdout).decode("ascii")
 
 
+def audio_duration_seconds(content: bytes) -> float | None:
+    """Best-effort audio duration (seconds) via ffprobe, for per-minute transcription pricing."""
+    cmd = [
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=nokey=1:noprint_wrappers=1", "pipe:0",
+    ]
+    try:
+        result = subprocess.run(cmd, input=content, capture_output=True, check=True)
+        value = result.stdout.decode("utf-8", errors="replace").strip()
+        return float(value) if value else None
+    except Exception:
+        return None
+
+
 def transcribe_audio_content(
     content: bytes,
     transcription_context: dict[str, Any] | None = None,
@@ -420,6 +438,9 @@ def transcribe_audio_content(
 ) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
+    # Duration drives per-minute transcription cost in the backend meter (set before the call so the
+    # metered client attaches it to this transcription's usage record).
+    set_pending_audio_seconds(audio_duration_seconds(content))
     client = gateway_client("transcription")
     response = client.chat.completions.create(
         model=model or gateway_settings_for("transcription")[2],
@@ -583,10 +604,100 @@ def gateway_settings_for(task: str) -> tuple[str, str, str]:
     return base_url, api_key, model
 
 
-def gateway_client(task: str) -> OpenAI:
-    """Return an OpenAI-compatible client for an AI task's resolved gateway."""
+# --- Real AI-usage metering ---------------------------------------------------
+#
+# Every gateway call returns an OpenAI-style `usage` block; the worker used to discard it. We now
+# capture it per job so the backend can meter REAL spend (never lose money on a plan). A ContextVar
+# sink is armed for the duration of one job (see tasks.run_task_with_retries); the metered client
+# below appends one record per gateway call, and BackendClient.complete_job ships the records with
+# the completion callback. `report_synthesis`/`transcription` etc. are the task labels the backend's
+# pricing table keys on. Audio is priced per-minute, so transcription records also carry audioSeconds.
+_usage_sink: "contextvars.ContextVar[list[dict[str, Any]] | None]" = contextvars.ContextVar(
+    "engram_ai_usage_sink", default=None
+)
+_pending_audio_seconds: "contextvars.ContextVar[float | None]" = contextvars.ContextVar(
+    "engram_ai_audio_seconds", default=None
+)
+
+
+def arm_usage_sink() -> "contextvars.Token":
+    """Start collecting per-call gateway usage for the current job. Returns a reset token."""
+    return _usage_sink.set([])
+
+
+def drain_usage_sink() -> list[dict[str, Any]]:
+    """Return the usage records collected since the sink was armed (empty if none)."""
+    sink = _usage_sink.get()
+    return list(sink) if sink else []
+
+
+def set_pending_audio_seconds(seconds: float | None) -> None:
+    """Record the audio duration for the NEXT transcription call (priced per-minute)."""
+    _pending_audio_seconds.set(seconds)
+
+
+def _record_gateway_usage(task: str, model: str | None, response: Any) -> None:
+    sink = _usage_sink.get()
+    if sink is None:
+        return
+    usage = getattr(response, "usage", None)
+    record: dict[str, Any] = {
+        "task": task,
+        "model": model,
+        "promptTokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+        "completionTokens": int(getattr(usage, "completion_tokens", 0) or 0),
+    }
+    audio_seconds = _pending_audio_seconds.get()
+    if audio_seconds is not None:
+        record["audioSeconds"] = float(audio_seconds)
+        _pending_audio_seconds.set(None)
+    sink.append(record)
+
+
+class _MeteredCompletions:
+    def __init__(self, inner: Any, task: str) -> None:
+        self._inner = inner
+        self._task = task
+
+    def create(self, *args: Any, **kwargs: Any) -> Any:
+        response = self._inner.create(*args, **kwargs)
+        try:
+            _record_gateway_usage(self._task, kwargs.get("model"), response)
+        except Exception:  # metering must never break a job
+            logger.debug("Failed to record gateway usage", exc_info=True)
+        return response
+
+
+class _MeteredChat:
+    def __init__(self, inner: Any, task: str) -> None:
+        self._inner = inner
+        self._task = task
+
+    @property
+    def completions(self) -> _MeteredCompletions:
+        return _MeteredCompletions(self._inner.completions, self._task)
+
+
+class _MeteredClient:
+    """Thin proxy over the OpenAI client that records `usage` for every chat completion."""
+
+    def __init__(self, inner: OpenAI, task: str) -> None:
+        self._inner = inner
+        self._task = task
+
+    @property
+    def chat(self) -> _MeteredChat:
+        return _MeteredChat(self._inner.chat, self._task)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def gateway_client(task: str) -> Any:
+    """Return a usage-metering OpenAI-compatible client for an AI task's resolved gateway."""
     base_url, api_key, _ = gateway_settings_for(task)
-    return OpenAI(base_url=base_url, api_key=api_key, timeout=settings.transcription_timeout_seconds)
+    inner = OpenAI(base_url=base_url, api_key=api_key, timeout=settings.transcription_timeout_seconds)
+    return _MeteredClient(inner, task)
 
 
 def resolve_model(task: str, ai_models: dict[str, Any] | None, *, override: str | None = None) -> str:
@@ -1398,10 +1509,10 @@ class BackendClient:
         )
 
     def complete_job(self, job_id: str, *, output_key: str, output: dict[str, Any]) -> dict[str, Any]:
-        """Submit successful job output to the backend."""
+        """Submit successful job output to the backend, with the real gateway usage for this job."""
         return self.post(
             f"/internal/ai/jobs/{job_id}/complete",
-            {"output_key": output_key, "output": output},
+            {"output_key": output_key, "output": output, "usage": drain_usage_sink()},
         )
 
     def progress_job(self, job_id: str, *, output_key: str, output: dict[str, Any], stage: str) -> dict[str, Any]:

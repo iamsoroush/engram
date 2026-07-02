@@ -49,6 +49,8 @@ __all__ = [
     "regenerate_session_report",
     "regenerate_session_report_if_idle",
     "maybe_dispatch_session_synthesis",
+    "session_synthesis_within_debounce",
+    "sweep_debounced_session_synthesis",
 ]
 
 
@@ -186,6 +188,36 @@ def session_has_reportable_capture(db: DbSession, *, tenant_id: uuid.UUID, sessi
 def reportable_session_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:
     """Public accessor for a session's reportable captures (processed, in-context)."""
     return _reportable_captures(db, tenant_id=tenant_id, session_id=session_id)
+
+
+def session_newest_capture_at(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID):
+    """Timestamp of the session's most recent (non-deleted) capture, or None."""
+    from sqlalchemy import func
+
+    return db.execute(
+        select(func.max(Capture.created_at)).where(
+            Capture.tenant_id == tenant_id,
+            Capture.session_id == session_id,
+            Capture.status != CaptureStatus.deleted,
+        )
+    ).scalar_one_or_none()
+
+
+def session_synthesis_within_debounce(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+    """Whether the session is still inside the quiet-period debounce window (newest capture too recent).
+
+    The per-capture report synthesis is coalesced into ~one run per visit: while captures are still
+    arriving (newest capture younger than ``synthesis_debounce_seconds``), synthesis is held back —
+    the deterministic baseline is already current, so there is no UX loss. The trailing Celery-beat
+    sweep dispatches the single synthesis once the visit goes quiet. Disabled when the setting is 0.
+    """
+    window = int(settings.synthesis_debounce_seconds or 0)
+    if window <= 0:
+        return False
+    newest = session_newest_capture_at(db, tenant_id=tenant_id, session_id=session_id)
+    if newest is None:
+        return False
+    return (utc_now() - newest).total_seconds() < window
 
 
 def session_has_uncontributed_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
@@ -376,6 +408,12 @@ def maybe_dispatch_session_synthesis(
         return
     if not force and not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
         return
+    # Quiet-period debounce: while a visit is still actively capturing, hold synthesis back so a whole
+    # visit's captures coalesce into ~one run (the deterministic baseline stays current meanwhile). The
+    # trailing Celery-beat sweep (`sweep_debounced_session_synthesis`) dispatches once the visit is
+    # quiet. `force` (manual "Generate report" / content edits) bypasses the debounce.
+    if not force and session_synthesis_within_debounce(db, tenant_id=tenant_id, session_id=session_id):
+        return
     session = db.execute(
         select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
     ).scalar_one_or_none()
@@ -392,3 +430,41 @@ def maybe_dispatch_session_synthesis(
     db.commit()
     db.refresh(job)
     dispatch_session_processing_job(db, job)
+
+
+def sweep_debounced_session_synthesis(db: DbSession, *, limit: int = 100) -> int:
+    """Trailing driver of the quiet-period synthesis debounce (runs on the Celery-beat recovery loop).
+
+    Dispatches the single coalesced synthesis for sessions that have gone quiet (newest capture older
+    than ``synthesis_debounce_seconds``) but still carry an uncontributed capture. ``maybe_dispatch``
+    re-checks every guard (enabled / no pending capture jobs / no active report job / uncontributed /
+    now past the debounce window), so this only fires the one run per settled visit. Returns the count
+    of sessions for which a synthesis was dispatched. No-op when debounce is disabled.
+    """
+    from datetime import timedelta
+
+    window = int(settings.synthesis_debounce_seconds or 0)
+    if window <= 0:
+        return 0
+    lookback = utc_now() - timedelta(seconds=max(window * 40, 3600))
+    sessions = list(
+        db.execute(
+            select(Session)
+            .where(Session.updated_at >= lookback)
+            .order_by(Session.updated_at.desc())
+            .limit(min(limit, 500))
+        ).scalars()
+    )
+    dispatched = 0
+    for session in sessions:
+        if session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id):
+            continue
+        if not session_has_uncontributed_capture(db, tenant_id=session.tenant_id, session_id=session.id):
+            continue
+        if session_synthesis_within_debounce(db, tenant_id=session.tenant_id, session_id=session.id):
+            continue  # still actively capturing — leave it for a later sweep
+        before = session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id)
+        maybe_dispatch_session_synthesis(db, tenant_id=session.tenant_id, session_id=session.id)
+        if not before and session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id):
+            dispatched += 1
+    return dispatched

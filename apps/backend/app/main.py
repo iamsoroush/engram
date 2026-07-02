@@ -24,6 +24,7 @@ from app.schemas.api import (
     AftercareTemplatePatch,
     AftercareTemplateWrite,
     AiJobCompleteRequest,
+    AiUsageDevSetRequest,
     AiJobErrorRequest,
     AiJobProgressRequest,
     AiJobStartRequest,
@@ -252,7 +253,9 @@ def internal_ai_job_complete(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Persist successful AI processing output from the worker."""
-    result = complete_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output)
+    result = complete_worker_job(
+        db, job_id=job_id, output_key=request.output_key, output=request.output, usage=request.usage
+    )
     # AI-job outcome metric (engram_ai_jobs_total): completion is always a terminal success.
     record_ai_job("succeeded")
     return result
@@ -383,6 +386,34 @@ def auth_logout(
 def get_me(principal: CurrentPrincipal = Depends(get_current_principal), db: Session = Depends(get_db)) -> Any:
     """Return the authenticated user, tenant, and membership context."""
     return me_response(db, principal.user, principal.tenant)
+
+
+@api_v1.get("/ai-usage")
+def get_ai_usage_route(
+    principal: CurrentPrincipal = Depends(get_current_principal),
+    db: Session = Depends(get_db),
+) -> Any:
+    """Return the clinic's current-period fair-use AI usage state (for the usage/limit UI)."""
+    from app.services.ai_usage import clinic_usage_state_dict
+
+    return clinic_usage_state_dict(db, principal.tenant_id)
+
+
+@api_v1.post("/ai-usage/dev/set")
+def set_ai_usage_dev_route(
+    request: AiUsageDevSetRequest,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> Any:
+    """DEV/TEST ONLY: jump the clinic to a target % of its monthly AI budget (fast path to limit states).
+
+    Guarded to dev auth mode so it can never move real spend in production.
+    """
+    if settings.auth_mode != "dev":
+        raise HTTPException(status_code=404, detail="Not found")
+    from app.services.ai_usage import set_dev_usage_percent
+
+    return set_dev_usage_percent(db, principal.tenant_id, request.percent)
 
 
 @api_v1.patch("/tenant/settings")

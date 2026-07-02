@@ -1,5 +1,5 @@
 import React from "react";
-import type { ApiFetch, AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
+import type { AiUsageState, ApiFetch, AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
 import type { Screen } from "../../domain/types";
 import { Badge, Button, Card, Skeleton } from "../../shared/ui/primitives";
 import { Shell } from "../shell/Shell";
@@ -8,6 +8,8 @@ import { standardizeCaptureDraft } from "../capture/audio";
 import { RegisterPatientForm } from "../aesthetics/RegisterPatientForm";
 import { checkDuplicatePatient, createPatient } from "../../services/api/client";
 import { TherapyCaptureScreen } from "./components/TherapyCaptureScreen";
+import { AiUsageCard } from "../aiUsage/AiUsageCard";
+import { AiUsageNotice } from "../aiUsage/AiUsageNotice";
 import {
   getTherapyClient,
   getTherapySession,
@@ -57,7 +59,7 @@ function relativeVisit(value: string | null): string | null {
  * capture dialogs + patient form, and mirrors the clinical-memory / patient-detail / capture-screen
  * markup, so therapy shares the aesthetics design system rather than a parallel one.
  */
-export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; apiFetch: ApiFetch; onLogout: () => void }) {
+export function TherapyApp({ auth, apiFetch, onLogout, aiUsage, onRefreshAiUsage }: { auth: AuthSession; apiFetch: ApiFetch; onLogout: () => void; aiUsage?: AiUsageState | null; onRefreshAiUsage?: () => void }) {
   const [view, setView] = React.useState<View>("clients");
   const [clients, setClients] = React.useState<TherapyClient[] | null>(null);
   const [clientDetail, setClientDetail] = React.useState<TherapyClientDetail | null>(null);
@@ -232,6 +234,10 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
       <div className="therapy-page">
         {error ? <div className="alert alert-red">{error}</div> : null}
 
+        {/* Fair-use notice: calm, non-blocking; capture is never gated. Not on settings/profile —
+            the settings usage card already conveys it there. */}
+        {view !== "settings" && view !== "profile" ? <AiUsageNotice state={aiUsage ?? null} /> : null}
+
         {view === "clients" ? (
           <section className="clinical-memory" aria-label="Clients">
             <div className="clinical-memory-hero">
@@ -374,11 +380,16 @@ export function TherapyApp({ auth, apiFetch, onLogout }: { auth: AuthSession; ap
         ) : null}
 
         {view === "settings" || view === "profile" ? (
-          <Card className="stack">
-            <h1>{view === "settings" ? "Settings" : "Profile"}</h1>
-            <p className="muted">{auth.user.displayName || auth.user.email} · {auth.tenant.name} (therapy)</p>
-            <Button variant="secondary" onClick={() => setView("clients")} type="button">Back to clients</Button>
-          </Card>
+          <>
+            <Card className="stack">
+              <h1>{view === "settings" ? "Settings" : "Profile"}</h1>
+              <p className="muted">{auth.user.displayName || auth.user.email} · {auth.tenant.name} (therapy)</p>
+              <Button variant="secondary" onClick={() => setView("clients")} type="button">Back to clients</Button>
+            </Card>
+            {view === "settings" ? (
+              <AiUsageCard state={aiUsage ?? null} apiFetch={apiFetch} onRefresh={() => onRefreshAiUsage?.()} />
+            ) : null}
+          </>
         ) : null}
       </div>
 

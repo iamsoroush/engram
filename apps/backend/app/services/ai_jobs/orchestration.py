@@ -292,6 +292,26 @@ def create_session_processing_job(db: DbSession, *, principal: CurrentPrincipal,
     )
 
 
+def _defer_if_over_budget(db: DbSession, job: AiJob) -> bool:
+    """Fair-use gate for background AI enrichment (capture-first: the capture is already saved).
+
+    When the clinic is over its monthly AI budget (or a single session exceeds its soft cap), the job
+    is PARKED (kept queued, not sent to Celery) instead of dispatched; recovery resumes it once the
+    budget frees. Returns True when the job was deferred (caller must not dispatch).
+    """
+    from app.services.ai_usage import mark_job_deferred, should_defer_dispatch
+
+    reason = should_defer_dispatch(db, job)
+    if reason is None:
+        return False
+    logger.info(
+        "Deferring AI job for fair-use limit",
+        extra={"job_id": str(job.id), "job_type": job.job_type.value, "reason": reason},
+    )
+    mark_job_deferred(db, job, reason)
+    return True
+
+
 def dispatch_capture_processing_job(db: DbSession, job: AiJob) -> None:
     """Send a committed capture processing job to Celery, marking broker failures."""
     from app.celery_app import celery_app
@@ -299,6 +319,9 @@ def dispatch_capture_processing_job(db: DbSession, job: AiJob) -> None:
     task_name = TASK_NAME_BY_JOB_TYPE.get(job.job_type)
     if task_name is None:
         raise ValueError(f"Unsupported capture processing job type: {job.job_type.value}")
+
+    if _defer_if_over_budget(db, job):
+        return
 
     now = utc_now()
     job.last_dispatched_at = now
@@ -347,6 +370,9 @@ def dispatch_session_processing_job(db: DbSession, job: AiJob) -> None:
     if task_name is None:
         raise ValueError(f"Unsupported session processing job type: {job.job_type.value}")
 
+    if _defer_if_over_budget(db, job):
+        return
+
     now = utc_now()
     job.last_dispatched_at = now
     job.result_metadata = {
@@ -393,6 +419,8 @@ def dispatch_patient_memory_job(db: DbSession, job: AiJob) -> None:
     task_name = TASK_NAME_BY_JOB_TYPE.get(job.job_type)
     if task_name is None:
         raise ValueError(f"Unsupported patient memory job type: {job.job_type.value}")
+    if _defer_if_over_budget(db, job):
+        return
     now = utc_now()
     job.last_dispatched_at = now
     job.result_metadata = {

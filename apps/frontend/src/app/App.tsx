@@ -37,7 +37,6 @@ import {
   createPatientShare,
   deleteAftercareTemplate,
   deleteCapture,
-  fetchAiModels,
   fetchAssignmentSuggestion,
   cancelWorklistEntry,
   createSession,
@@ -80,7 +79,6 @@ import {
   updateCaptureTranscript,
   updatePatient,
   type PatientEditDraft,
-  updateAiModels,
   updateSessionTitle,
   updateTenantSettings,
   uploadCapture,
@@ -112,6 +110,8 @@ import { clearOnboardingPending, isOnboardingPending, markOnboardingPending } fr
 import { TherapyApp } from "../features/therapy/TherapyApp";
 import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
+import { useAiUsage } from "../features/aiUsage/useAiUsage";
+import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
@@ -596,6 +596,10 @@ export function App() {
       window.setTimeout(() => setMemoryRefreshSignal((value) => value + 1), delay);
     });
   }, []);
+
+  // Fair-use monthly AI usage/limit. Fetched on login and re-fetched over the same signal that fires
+  // after captures/processing, so the calm usage surfaces (Settings card + capture notice) stay current.
+  const { state: aiUsage, refresh: refreshAiUsage } = useAiUsage(apiFetch, `${auth?.tenant.id ?? ""}:${memoryRefreshSignal}`);
 
   React.useEffect(() => {
     if (!activeSession?.id || isLocalSessionId(activeSession.id) || !sessionNeedsProcessingRefresh(activeSession)) return;
@@ -2090,12 +2094,13 @@ export function App() {
           auth={auth}
           onBack={() => navigateScreen(accountReturnRef.current)}
           onUpdateSettings={handleUpdateTenantSettings}
-          onListAiModels={() => fetchAiModels(apiFetch)}
-          onUpdateAiModels={(models) => updateAiModels(apiFetch, models)}
           onListAftercareTemplates={listAftercare}
           onCreateAftercareTemplate={createAftercare}
           onUpdateAftercareTemplate={updateAftercare}
           onDeleteAftercareTemplate={deleteAftercare}
+          apiFetch={apiFetch}
+          aiUsage={aiUsage}
+          onRefreshAiUsage={refreshAiUsage}
         />
       );
     }
@@ -2222,6 +2227,7 @@ export function App() {
           nextLinedUpPatient={nextLinedUpPatient ? { patientName: nextLinedUpPatient.patientName } : null}
           onAssignActiveToNext={assignActiveVisitToNext}
           onStartNextVisit={startNextLinedUpVisit}
+          usageNotice={<AiUsageNotice state={aiUsage} />}
         />
       );
     }
@@ -2319,7 +2325,7 @@ export function App() {
   if (auth.tenant.vertical === "therapy") {
     return (
       <AppLangProvider lang={toLang(auth.tenant.appLanguage)}>
-        <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} />
+        <TherapyApp auth={auth} apiFetch={apiFetch} onLogout={handleLogout} aiUsage={aiUsage} onRefreshAiUsage={refreshAiUsage} />
       </AppLangProvider>
     );
   }

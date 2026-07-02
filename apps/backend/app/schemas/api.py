@@ -365,6 +365,15 @@ class AiJobStartRequest(BaseModel):
 class AiJobCompleteRequest(BaseModel):
     output_key: str
     output: dict[str, Any]
+    # Real per-call gateway usage for this job (fair-use metering). One record per gateway call:
+    # {task, model, promptTokens, completionTokens, audioSeconds?}. Absent for pre-metering workers.
+    usage: list[dict[str, Any]] | None = None
+
+
+class AiUsageDevSetRequest(BaseModel):
+    """DEV/TEST ONLY: jump the clinic to this percent of its monthly AI budget."""
+
+    percent: float = 0.0
 
 
 class AiJobProgressRequest(BaseModel):

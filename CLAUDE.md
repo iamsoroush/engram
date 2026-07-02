@@ -135,6 +135,11 @@ Read:
 - `docs/technical-decisions.md`  
   Important decisions future agents/developers need to know.
 
+- `docs/business/ai-usage-limits.md`  
+  Fair-use AI usage-limit system: measured per-job cost model, derived per-plan caps (monthly $ budget
+  per seat + per-session soft cap), the metering/enforcement approach (`services/ai_usage/`), and the
+  synthesis quiet-period debounce. Read before touching AI metering, limits, or the synthesis dispatch.
+
 - `docs/ai_engine/README.md`  
   AI engine worker boundary, processing jobs, placeholder processors, and replacement path.
 

@@ -8,6 +8,7 @@ from ai_engine.celery_app import celery_app
 from ai_engine.config import settings
 from ai_engine.processing import (
     BackendClient,
+    arm_usage_sink,
     run_capture_processing_job,
     run_patient_memory_job,
     run_qa_draft_job,
@@ -57,6 +58,9 @@ def retry_reason_for_exception(exc: Exception) -> str:
 
 def run_task_with_retries(task, job_id: str, runner, label: str) -> None:
     """Run queued processing with retry-aware status updates."""
+    # Arm the per-job usage sink so every gateway call this job makes is metered and shipped with
+    # the completion callback (real spend, not estimates).
+    arm_usage_sink()
     try:
         runner(job_id, celery_task_id=task.request.id, retry_count=task.request.retries)
     except Exception as exc:
