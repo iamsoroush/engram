@@ -14,11 +14,12 @@ name: AI eval (golden set)
 #     Without them the suite has nothing to score (skips / warns) — reachable gateway, no golden set.
 
 on:
-  workflow_dispatch: {} # run on demand from the Actions tab
-  push:
-    branches: [main]
-    paths:
-      - "apps/ai_engine/**" # eval-gate: only when an AI job actually changes (CLAUDE.md §4)
+  workflow_dispatch: {} # MANUAL ONLY for now — run on demand from the Actions tab
+  # To auto-run when an AI job changes (CLAUDE.md §4 eval-gate), uncomment this block:
+  # push:
+  #   branches: [main]
+  #   paths:
+  #     - "apps/ai_engine/**"
 
 jobs:
   eval:
