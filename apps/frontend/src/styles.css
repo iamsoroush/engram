@@ -1601,6 +1601,44 @@ small {
   font-weight: 700;
 }
 
+/* Offline return receipt — a calm, transient "your queued captures landed" confirmation, centered
+   at the top so it reads as an arrival (distinct from the bottom-corner action toast). Auto-dismisses. */
+.offline-return-receipt {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 31;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(92vw, 460px);
+  border: 1px solid #b7e0c4;
+  border-radius: 999px;
+  background: #f2fbf5;
+  color: #1c6b3a;
+  padding: 9px 16px;
+  box-shadow: 0 14px 36px -14px rgb(20 100 50 / 45%);
+  font-size: 0.82rem;
+  font-weight: 700;
+  animation: offline-receipt-in 0.28s ease-out;
+}
+.offline-return-receipt-icon {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #1c6b3a;
+  color: #fff;
+  font-size: 0.7rem;
+}
+@keyframes offline-receipt-in {
+  from { opacity: 0; transform: translate(-50%, -8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
 @media (max-width: 640px) {
   .section-heading {
     grid-template-columns: 1fr;
@@ -1891,6 +1929,17 @@ small {
   color: var(--color-text);
   cursor: pointer;
   text-align: start;
+}
+/* "Clinic" grouping label above the owner/admin clinic-management actions (Insights/Team/Plan). */
+.user-menu-section-label {
+  margin: 8px 8px 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border, #e2e7ef);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted, #7a8494);
 }
 .user-menu-item:hover {
   background: #f3f6fb;
@@ -6069,6 +6118,22 @@ small {
   cursor: pointer;
 }
 .session-verify-bar-action:hover { background: #a57314; }
+/* Quiet "checks pending · organizing" variant — no action, calm blue (not amber), so it reads as
+   "analysis is still running" rather than "you have blockers". */
+.session-verify-bar-pending {
+  border-color: #cfe0fb;
+  background: linear-gradient(180deg, #f4f8ff, #eaf1fd);
+  box-shadow: 0 6px 18px -14px rgba(30, 70, 160, 0.4);
+}
+.session-verify-bar-pending .session-verify-bar-copy { color: #2f4a78; font-weight: 700; }
+.session-verify-bar-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #2456d6;
+  animation: capture-status-pulse 1.45s ease-out infinite;
+}
 /* The verify-bar "Review →" affordance: the arrow is split out (so the label goes through t()).
    It points toward the content; mirror it under RTL so it points to the inline-start edge. */
 .verify-arrow { display: inline-block; margin-inline-start: 4px; }
@@ -6882,6 +6947,26 @@ small {
   font-weight: 900;
   white-space: nowrap;
 }
+
+/* "See N more in Needs input" overflow affordance under the (max 3) Today needs-input preview cards. */
+.needs-input-overflow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 12px;
+  border: 1px solid #f4c56d;
+  border-radius: 999px;
+  background: #fffaf0;
+  color: #995c00;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.needs-input-overflow:hover { background: #fff3dc; }
+.needs-input-overflow svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+[dir="rtl"] .needs-input-overflow svg { transform: scaleX(-1); }
 
 .needs-input-pill svg,
 .assistant-status-pill svg,
@@ -10331,6 +10416,29 @@ small {
   gap: 8px;
 }
 .session-context-ordinal { font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--color-muted); }
+/* Collapsed one-line variant (auto-collapses once the report has content; a tap re-expands it). */
+.session-context-card-collapsed {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+  text-align: start;
+  font: inherit;
+}
+.session-context-card-collapsed:hover { border-color: var(--color-primary); }
+.session-context-collapsed-chev { flex: 0 0 auto; color: var(--color-muted); font-size: 0.7rem; }
+.session-context-collapsed-safety {
+  flex: 0 0 auto; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.02em;
+  padding: 2px 8px; border-radius: var(--radius-pill); color: #a1462f;
+  background: #fdeae6; border: 1px solid #f1b7ad;
+}
+.session-context-collapsed-hint { margin-inline-start: auto; color: var(--color-primary); font-size: 0.72rem; font-weight: 700; }
+.session-context-collapse {
+  flex: 0 0 auto; border: 0; background: transparent; color: var(--color-muted);
+  cursor: pointer; padding: 0 2px; font-size: 0.7rem; line-height: 1;
+}
+.session-context-collapse:hover { color: var(--color-primary); }
 .session-context-tier {
   flex: 0 0 auto; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em;
   padding: 2px 8px; border-radius: var(--radius-pill); color: var(--color-primary);
@@ -12315,6 +12423,7 @@ small {
 }
 .recall-cohort-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 .recall-copy-button {
@@ -12327,6 +12436,13 @@ small {
   padding: 6px 12px;
   cursor: pointer;
 }
+/* The link-minting roster button carries the primary accent (it produces send-ready patient links). */
+.recall-roster-button {
+  border-color: color-mix(in srgb, var(--color-primary) 40%, #fff);
+  background: color-mix(in srgb, var(--color-primary) 10%, #fff);
+  color: var(--color-primary);
+}
+.recall-roster-button:disabled { opacity: 0.6; cursor: progress; }
 .recall-cohort-list {
   display: flex;
   flex-direction: column;

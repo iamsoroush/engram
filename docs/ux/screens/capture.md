@@ -9,8 +9,14 @@
 
 The primary working screen: build and review a visit from audio, photo, and text captures.
 Capture-first — nothing requires picking a patient or waiting for AI; captures save locally first
-and everything else catches up. The same workspace structure renders historical session review
+and everything else catches up. The same workspace structure renders historical visit review
 opened from Clinical Memory or Search (read-only, with a Back action to where it came from).
+
+**Vocabulary.** The aesthetics chrome noun for the clinical encounter is **visit** everywhere the
+clinician reads it — the primary nav label, the `+ New visit` button, visit titles, and the `Visit:`
+time label — even though the underlying data object (and code) is a `session`. Therapy keeps
+`session`; the primary-nav label is chosen per vertical. Only chrome changes; clinical CONTENT is
+untouched.
 
 ## Surface by tier
 
@@ -40,8 +46,8 @@ opened from Clinical Memory or Search (read-only, with a Back action to where it
 - **Write note** opens a note sheet.
 - Every capture is written to IndexedDB first and appears immediately; upload, processing, and
   report updates follow. See the [capture-session workflow](../workflows/capture-session.md).
-- Session header: a meaningful title (the patient's Nth session, or date/time), status chip,
-  capture count, and `+ New session` (shown once the active session has captures). A session
+- Visit header: a meaningful title (the patient's Nth visit, or date/time), status chip,
+  capture count, and `+ New visit` (shown once the active visit has captures). A visit
   started by another staff member opens **read-only** with a banner naming who started it.
 - A calm, non-blocking **AI usage notice** (`AiUsageNotice`) renders above the workspace when the
   clinic is approaching or at its monthly AI budget — captures are always still saved. See
@@ -114,6 +120,10 @@ the patient is removed or reassigned.
 - **Timeline round-trip:** `View full history` opens the patient timeline, which shows a
   persistent **`Back to this visit`** that restores the in-progress session exactly — the
   clinician can glance at history mid-capture and return in one tap.
+- **Auto-collapse:** the card is a *pre-capture* glance aid, so once the report has content it
+  **auto-collapses** to a single tappable line (visit ordinal + a `Show visit context` nudge; a
+  safety chip stays if flags are on record). A tap re-expands it and a chevron re-collapses it;
+  undoing every capture re-expands it. It is fully open before any captures exist.
 - Backend: `GET /api/v1/patients/{id}/session-context`.
 
 ## Pro report surface
@@ -122,8 +132,10 @@ the patient is removed or reassigned.
 
 - A sticky **"N to confirm"** verify bar counts **blockers only** — unconfirmed carried-forward
   doses and AI-created-patient identity (plus patient conflicts). `Review` jumps to the first
-  inline confirm. It renders nothing when there is nothing to confirm; soft warnings never feed it
-  ("warnings over blocking").
+  inline confirm. Soft warnings never feed it ("warnings over blocking"). While synthesis is still
+  in flight with no blockers yet it shows a quiet `Checks pending · organizing` state (calm blue,
+  no action); it renders **nothing** only once the report has settled clean — so an empty bar means
+  the checks ran, never "not yet checked".
 - The **verify region** above the report holds the patient-conflict resolver panels and the
   AI-created-patient verification panel. Everything else confirms **inline where the data is**: a
   carried-forward dose shows `Confirm dose` directly on its treatment row and flips to
@@ -242,7 +254,7 @@ Shared rules: [states](../states.md).
 
 ## Known Gaps
 
-- `+ New session` resets the active context locally; the remote session is created when the first
+- `+ New visit` resets the active context locally; the remote session is created when the first
   capture syncs (a pre-assigned patient is attached then).
 - Historical review shares the report workspace but does not expose the full patient assignment
   panel.

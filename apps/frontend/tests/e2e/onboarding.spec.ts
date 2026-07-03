@@ -33,7 +33,7 @@ test.describe("First-run onboarding", () => {
     await page.locator('input[type="password"]').fill("longenough");
     await page.getByRole("button", { name: "Sign in" }).click();
     // The app shell loads; no first-run overlay for a returning user.
-    await expect(page.getByRole("button", { name: /New session/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /New visit/ })).toBeVisible();
     await expect(page.getByText(/Welcome to Engram/)).toHaveCount(0);
   });
 });

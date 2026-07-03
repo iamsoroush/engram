@@ -139,6 +139,7 @@ import { exportPendingCaptures } from "../services/storage/exportCaptures";
 import { estimateStorageStatus, OK_STORAGE_STATUS, type StorageStatus } from "../services/storage/storageStatus";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
 import { replaceScreenLocation, screenFromLocation } from "./navigation";
+import { useBackLevel, resetBackLevels } from "../shared/lib/backStack";
 import {
   makeEmptyLocalSession,
   markReportStaleForCaptureChange,
@@ -216,6 +217,11 @@ export function App() {
   const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   const [toast, setToast] = React.useState("");
+  // Offline return receipt: how many captures were queued during an offline stretch, surfaced once
+  // as a single transient confirmation after reconnect drains them — so the sync isn't silent.
+  const [offlineReceipt, setOfflineReceipt] = React.useState(0);
+  const offlineBacklogRef = React.useRef(0);
+  const hadOfflineBacklogRef = React.useRef(false);
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
   // Round-trip: the in-progress capture visit stashed when the clinician jumps to the patient
   // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
@@ -236,6 +242,9 @@ export function App() {
   }, [sessions]);
 
   const navigateScreen = React.useCallback((nextScreen: Screen) => {
+    // A hard screen switch replaceState()s the current entry (possibly a sub-level's synthetic one)
+    // and unmounts any open in-screen level, so drop the back-stack first (see backStack.ts).
+    resetBackLevels();
     setScreen(nextScreen);
     replaceScreenLocation(nextScreen);
     if (nextScreen === "active-session") setSelectedSessionId("");
@@ -1979,6 +1988,32 @@ export function App() {
   const offline = !online || backendReachable === false;
   const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
+  // A historical visit review (opened over Clinical Memory) gets its own history entry so Back
+  // returns to the memory list instead of exiting the area (item: in-screen history levels).
+  useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
+
+  // Offline return receipt (declared after `offline`/`pendingCount` to avoid a TDZ in the deps):
+  // remember the PEAK captures queued while offline, then confirm them once — after reconnect drains
+  // the backlog to zero — with a single transient banner, instead of the sync landing silently.
+  React.useEffect(() => {
+    if (offline && pendingCount > 0) {
+      offlineBacklogRef.current = Math.max(offlineBacklogRef.current, pendingCount);
+      hadOfflineBacklogRef.current = true;
+    }
+  }, [offline, pendingCount]);
+  React.useEffect(() => {
+    if (!offline && hadOfflineBacklogRef.current && !syncing && pendingCount === 0) {
+      setOfflineReceipt(offlineBacklogRef.current);
+      offlineBacklogRef.current = 0;
+      hadOfflineBacklogRef.current = false;
+    }
+  }, [offline, syncing, pendingCount]);
+  React.useEffect(() => {
+    if (!offlineReceipt) return;
+    const timer = window.setTimeout(() => setOfflineReceipt(0), 5200);
+    return () => window.clearTimeout(timer);
+  }, [offlineReceipt]);
+
   const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
     setClinicalMemoryReturnContext(returnContext || null);
     const session = sessions.find((candidate) => candidate.id === sessionId);
@@ -2446,6 +2481,12 @@ export function App() {
           pendingCount={pendingCount}
           storage={storage}
         />
+      ) : null}
+      {offlineReceipt > 0 ? (
+        <div className="offline-return-receipt" role="status" aria-live="polite">
+          <span className="offline-return-receipt-icon" aria-hidden="true">✓</span>
+          <span>{appT("sync.returnReceipt", { count: offlineReceipt })}</span>
+        </div>
       ) : null}
       <Toast message={toast} />
       </>

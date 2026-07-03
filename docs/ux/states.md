@@ -79,6 +79,13 @@ attention, at their source:
 - **No patient yet** → the patient card takes a **soft amber** attention state (never a red error —
   capture-first / assign-when-ready stays non-blocking) with the primary `Assign` action.
 
+The Pro session **verify bar** follows the same surface-by-exception rule but must not read as
+"all good" prematurely: while synthesis is still in flight and nothing yet needs confirming, it shows
+a quiet, non-actionable `Checks pending · organizing` state (calm blue, not amber). It renders
+**nothing** only once the report has settled with no blockers — so an empty verify bar means the
+checks actually ran, never "not yet checked". Any real blocker (unconfirmed carried-forward dose,
+AI-created patient to verify, patient conflict) replaces it with the amber count + `Review`.
+
 Examples:
 
 - `Saved.`
@@ -132,6 +139,12 @@ User-facing copy examples:
 - `Storage is getting full. New offline captures may not be safely saved soon.`
 
 Do not show normal UI actions for manual sync retry, upload retry, queue management, or backend recovery. Clear-cache or local reset tooling belongs behind debug/admin settings, not in the normal clinician UI. The system should sync when connectivity returns.
+
+**Return receipt.** When connectivity returns and the captures queued during the offline stretch
+finish syncing (the pending backlog drains to zero), show **one** transient confirmation — e.g.
+`3 capture(s) from earlier are now synced to your clinic memory` — a calm top-center banner that
+auto-dismisses, so the sync is acknowledged instead of landing silently. It fires once per
+offline→drain cycle, counts the peak offline backlog, and never appears for ordinary online captures.
 
 AI-unavailable mode should be mostly invisible:
 
@@ -207,17 +220,17 @@ Resolver routing:
 
 ## Time Labels
 
-Timestamp labels must make the timestamp type explicit whenever session time, update time, and needs-input time can coexist.
+Timestamp labels must make the timestamp type explicit whenever visit time, update time, and needs-input time can coexist. The aesthetics chrome noun for the clinical encounter is **visit** everywhere (see the vocabulary note in `screens/capture.md`), so the visit-time label reads `Visit:`.
 
 Use:
 
-- `Session: Today · 4:23 PM`
+- `Visit: Today · 4:23 PM`
 - `Updated: 4:31 PM`
-- `Session: Apr 18 · 11:30 AM`
+- `Visit: Apr 18 · 11:30 AM`
 - `Updated today · Patient assigned`
 - `Needs input since: 2:20 PM`
 
-Avoid ambiguous labels such as `Today · 4:23 PM` or `Updated today` when the UI does not clarify whether it is session time, update time, or needs-input time.
+Avoid ambiguous labels such as `Today · 4:23 PM` or `Updated today` when the UI does not clarify whether it is visit time, update time, or needs-input time.
 
 ## Unsaved Data
 

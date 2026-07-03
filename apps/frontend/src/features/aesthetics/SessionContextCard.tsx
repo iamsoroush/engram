@@ -22,6 +22,7 @@ export function SessionContextCard({
   onOpenVisit,
   onUseAsNote,
   onResolveFile,
+  collapsed = false,
 }: {
   context: SessionContext | null;
   isPro?: boolean;
@@ -29,14 +30,52 @@ export function SessionContextCard({
   onOpenVisit?: (sessionId: string) => void;
   onUseAsNote?: (text: string) => void;
   onResolveFile: (endpoint: string) => Promise<string>;
+  /** The report now has content, so this pre-capture aid should auto-collapse to a one-line,
+   *  expandable header (it's a glance-before-you-start card, not a during-visit surface). */
+  collapsed?: boolean;
 }) {
   const t = useT();
   const [overlay, setOverlay] = React.useState<MediaOverlayState | null>(null);
+  // Follow the auto-collapse signal on its transitions (expand pre-capture → collapse once the report
+  // fills in → re-expand if all captures are undone), while a manual toggle in between still sticks.
+  const [expanded, setExpanded] = React.useState(!collapsed);
+  const prevCollapsed = React.useRef(collapsed);
+  React.useEffect(() => {
+    if (collapsed !== prevCollapsed.current) {
+      prevCollapsed.current = collapsed;
+      setExpanded(!collapsed);
+    }
+  }, [collapsed]);
   if (!context) return null;
   const { lastVisit, recentVisits, visitOrdinal, totalPriorVisits, keyFacts, safetyFlags } = context;
   const visit = lastVisit.hasPriorVisit ? lastVisit.visit : null;
   // Nothing worth a card for a brand-new patient with no prior content, pinned facts, or safety flags.
   if (!visit && !keyFacts && !safetyFlags.length && !(isPro && lineupCard)) return null;
+
+  const ordinalLine = `${t("context.ordinalVisit", { ordinal: ordinalText(visitOrdinal, t) })}${
+    totalPriorVisits > 0 ? ` · ${t("context.priorCount", { n: totalPriorVisits })}` : ` · ${t("context.newPatient")}`
+  }`;
+
+  // Collapsed: a single tappable line (the visit ordinal + a nudge to expand). Keeps the pre-capture
+  // context one keystroke away without occupying the workspace once the report is being written.
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        className="session-context-card session-context-card-collapsed"
+        aria-expanded={false}
+        onClick={() => setExpanded(true)}
+        title={t("context.expand")}
+      >
+        <span className="session-context-collapsed-chev" aria-hidden="true">▸</span>
+        <span className="session-context-ordinal">{ordinalLine}</span>
+        {safetyFlags.length ? (
+          <span className="session-context-collapsed-safety">{t("context.safety.label")}</span>
+        ) : null}
+        <span className="session-context-collapsed-hint">{t("context.expand")}</span>
+      </button>
+    );
+  }
 
   // Tapping a progress thumb compares that visit against the most recent OTHER one (before/after),
   // oldest on the left so progress reads left → right.
@@ -75,10 +114,18 @@ export function SessionContextCard({
   return (
     <section className="session-context-card" aria-label={t("context.patientContext")}>
       <header className="session-context-head">
-        <span className="session-context-ordinal">
-          {t("context.ordinalVisit", { ordinal: ordinalText(visitOrdinal, t) })}
-          {totalPriorVisits > 0 ? ` · ${t("context.priorCount", { n: totalPriorVisits })}` : ` · ${t("context.newPatient")}`}
-        </span>
+        <span className="session-context-ordinal">{ordinalLine}</span>
+        {collapsed ? (
+          <button
+            type="button"
+            className="session-context-collapse"
+            aria-expanded={true}
+            onClick={() => setExpanded(false)}
+            title={t("context.collapse")}
+          >
+            <span aria-hidden="true">▾</span>
+          </button>
+        ) : null}
       </header>
 
       {/* Cross-visit clinical safety flags (allergy/contraindication/consent) — highest priority, so

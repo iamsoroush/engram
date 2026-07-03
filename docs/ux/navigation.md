@@ -38,12 +38,22 @@
 - Clinical Memory or Search to Active Session: compact top-left navigator in the mobile-first header; selected historical review closes when returning to Active Session.
 - Active Session to capture dialogs: sticky bottom actions `Audio`, `Take photo`, `Write note`; Audio shows `Tap to record`.
 - Clinical Memory/Search to capture destination choice: sticky bottom actions first show a compact destination chooser with current/recent sessions or a new session.
-- Active Session screen to a fresh draft context: `+ New session`, shown only when the active session has captures.
+- Active Session screen to a fresh draft context: `+ New visit`, shown only when the active visit has captures. (In aesthetics chrome the encounter reads "visit"; see the vocabulary note in [capture](screens/capture.md).)
 - Clinical Memory Patients tab to patient detail/timeline: select a patient row.
 - Clinical Memory session cards to Active Session: select a Today, Needs input, or patient timeline session card. Active Session shows a `Back` action that returns to the originating Clinical Memory tab or patient timeline.
 - Clinical Memory Needs input tab to focused decision surface: primary actions open resolvers such as assign patient, choose patient, review summary, or review storage. They do not primarily redirect to the active session page.
 - Search to session review: select a session row; the review opens inline using the Active Session Workspace structure.
-- Any screen to account pages: the **account menu** (top-right avatar) offers **Profile**, **Settings**, **Insights** + **Team** + **Plan** (owner/admin only), **Switch clinic** (multi-clinic users only), **Replay guide** (re-opens the first-run tour), and **Logout**. Each page has a **Back** action returning to the previous staff screen. Account/utility pages (Settings, Profile, Insights, Team, Plan, Switch clinic) **hide the capture bar** — there's no capture context there.
+- Any screen to account pages: the **account menu** (top-right avatar) opens with an identity header, then the personal actions **Profile** and **Settings**, then a labelled **Clinic** section grouping the owner/admin clinic-management pages **Insights** + **Team** + **Plan** (the section and its items are hidden for other roles), then **Switch clinic** (multi-clinic users only), **Replay guide** (re-opens the first-run tour), and **Logout**. Each page has a **Back** action returning to the previous staff screen. Account/utility pages (Settings, Profile, Insights, Team, Plan, Switch clinic) **hide the capture bar** — there's no capture context there.
+
+### Back navigation (in-screen levels)
+
+The app is a single hash-routed page: top-level screen switches use `history.replaceState`, so they
+deliberately do **not** stack in history. In-screen levels opened *over* a screen — an open **patient
+file** (Clinical Memory), a **smart-list drill-in** (Lists tab), and a **historical visit review** —
+each push their own history entry, so a hardware/browser **Back** steps back one level (to the list)
+instead of exiting the whole area; their in-screen back controls behave identically. The shared
+controller (`shared/lib/backStack.ts`) batches this so opening one level while another closes in the
+same render nets to no history churn.
 
 ## Protected Behavior
 

@@ -35,7 +35,9 @@ It shows:
 
 - the `Today / up next` worklist (below), when relevant
 - session/visit cards for active or recent work
-- a compact `Needs your input` preview when human judgment is required
+- a compact `Needs your input` preview — **up to three** cards (preferring visits other than the
+  current one); when more need input, a `See N more in Needs input` overflow pill opens the
+  [Needs input tab](#needs-input-tab)
 - calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
 
 ### Today / up next (worklist)
@@ -57,7 +59,7 @@ Today includes only sessions created, captured, or updated on the user's current
 
 The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Selecting a Today card opens that visit in Active Session, where `Back` returns to Today. Use a visible action only for the focused next task, such as `Continue visit`, `Assign patient`, or `Review summary`; do not show a separate `Open visit` action.
 
-Every Today card must clarify why it appears in Today with section or badge language such as `Active session`, `Needs your input`, `Updated today`, `Recently captured`, or `Saved on this device`. Session time and update/attention time must be labeled separately.
+Every Today card must clarify why it appears in Today with section or badge language such as `Active visit`, `Needs your input`, `Updated today`, `Recently captured`, or `Saved on this device`. Visit time and update/attention time must be labeled separately.
 
 Choosing `Assign patient` from Today opens the same patient assignment form in Clinical Memory without navigating away from the tab. Suggested matches come from patient search data; do not use mock patient suggestions in production UI.
 
@@ -65,7 +67,7 @@ Example active session card:
 
 - Title: `Follow-up visit`
 - Patient: `Soroush`
-- Session: `Today · 4:23 PM`
+- Visit: `Today · 4:23 PM`
 - Updated: `4:31 PM`
 - Summary: `4 captures saved: 3 photos and 1 audio note. I'm preparing the visit summary.`
 - Capture chips: `3 photos`, `1 audio`, `1 note`
@@ -75,7 +77,7 @@ Example active session card:
 Example needs-input preview card:
 
 - Title: `Unassigned visit`
-- Session: `Today · 2:15 PM`
+- Visit: `Today · 2:15 PM`
 - Needs input since: `2:20 PM`
 - Summary: `3 captures saved. I could not confidently attach this visit to a patient.`
 - Primary action: `Assign patient`
@@ -85,7 +87,7 @@ Example updated-today card:
 
 - Title: `Initial consultation`
 - Patient: `Sara`
-- Session: `Apr 18 · 11:30 AM`
+- Visit: `Apr 18 · 11:30 AM`
 - Status: `Updated today · Patient assigned`
 - Summary: `2 photos and 1 note were attached to this visit today.`
 - Card selection: opens the visit in Active Session
@@ -128,7 +130,7 @@ confirmation). A processed, assigned visit with a current report needs no input.
 
 Patient rows must not contain nested session cards, vague attention labels, upload states, AI job states, or sync controls.
 
-When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Session:` time, reason, and a focused primary action such as `Choose patient` or `Verify patient`. `View patient history` may be offered as a secondary action.
+When one patient has multiple needs-input decisions, the patient row primary action is `Review items`. This opens a patient-scoped drawer rather than the Active Session page. The drawer title is `{Patient name} needs your input`, the subtitle is `Review the decisions needed to keep this memory accurate.`, and the list includes only that patient's decision items. Each item shows the decision type, `Visit:` time, reason, and a focused primary action such as `Choose patient` or `Verify patient`. `View patient history` may be offered as a secondary action.
 
 Example patient memory sentences:
 
@@ -140,7 +142,7 @@ Example patient memory card:
 
 - Patient: `Sara M.`
 - Memory: `Last visit focused on cheek volume and follow-up photos are saved.`
-- Latest visit: `Session: Apr 18 · 11:30 AM`
+- Latest visit: `Visit: Apr 18 · 11:30 AM`
 - Attention: `Needs input: verify patient`
 - Row action: select row to view patient history
 - Focused task action: `Verify patient`, when relevant
@@ -182,9 +184,12 @@ memory. Recalling a lot returns every patient who received it. Safety-grade rule
 - **A clear count summary** up top (`3 patients · 4 visits`); amber attention treatment, calm copy —
   a marker, never a blocker.
 - **Outreach handoff** — per affected patient, **Open channel** opens (or reuses) their tokenized
-  Q&A thread ([Q&A inbox](qa-inbox.md)) and yields a link to send; **Copy affected list** supports
-  the clinic's own workflow. There is no bulk "Message all" (automated SMS/WhatsApp delivery is
-  deferred, AES-404).
+  Q&A thread ([Q&A inbox](qa-inbox.md)) and yields a link to send. Two cohort-level copy actions sit
+  above the list: **Copy affected list** (name · phone, no minting) and **Prepare links · copy
+  roster**, which mints/reuses *every* affected patient's Q&A channel at once and copies the whole
+  cohort as `name · phone · link` lines — so link-minting is batched, not serial per patient.
+  **Sending stays human and per-patient**; there is no bulk "Message all" (automated SMS/WhatsApp
+  delivery is deferred, AES-404).
 
 Backend: read-only, tenant-scoped, Pro-gated (`live_report_synthesis` capability → 403 on Basic) —
 `GET /api/v1/smart-lists`, `GET /api/v1/smart-lists/{key}`, `GET /api/v1/lot-ledger`,
@@ -209,23 +214,23 @@ The primary action must open a focused resolver, not simply redirect to the acti
 Example copy:
 
 - Decision: `Unassigned visit`
-  Session: `Session: Today · 4:23 PM`
+  Visit: `Visit: Today · 4:23 PM`
   Patient: `Unknown`
   Why: `This visit is saved, but I do not know which patient it belongs to.`
   Primary action: `Assign patient`
   Card selection: opens the visit in Active Session
 - Decision: `Patient match uncertain`
-  Session: `Session: Apr 18 · 11:30 AM`
+  Visit: `Visit: Apr 18 · 11:30 AM`
   Patient: `Possible matches: Sara M., Sarah Mahmoud`
   Why: `I found two possible matches before updating memory.`
   Primary action: `Choose patient`
 - Decision: `Patient match found`
-  Session: `Session: Today · 4:23 PM`
+  Visit: `Visit: Today · 4:23 PM`
   Patient: `Likely match: Sara Nazari`
   Why: `The visit mentions identity details that match an existing patient. Confirm before I update memory.`
   Primary action: `Choose patient`
 - Decision: `Verify AI-created patient`
-  Session: `Session: Today · 4:23 PM`
+  Visit: `Visit: Today · 4:23 PM`
   Patient: `Soroush`
   Why: `I created this patient from the visit. Confirm the details before it enters memory.`
   Primary action: `Verify patient` (opens the visit in Active Session, where the verify panel lives)
@@ -244,7 +249,7 @@ Action routing:
 Assign-patient resolver:
 
 - Title: `Assign patient`.
-- Show compact visit context: `Unassigned visit`, `Session: ...`, capture counts, and a short summary when available.
+- Show compact visit context: `Unassigned visit`, `Visit: ...`, capture counts, and a short summary when available.
 - Show suggested patient rows when patient search data is available, with avatar/initials, name, hint, and selection state.
 - Include `Search patient`, `Create new patient`, `Keep unassigned`, and secondary `Open visit`.
 - Selecting a patient reveals a clear confirmation action such as `Assign to Soroush`.
@@ -289,7 +294,7 @@ It includes:
 - one primary action per session, such as `Open visit`
 - persistent capture context, such as `Capturing for: Soroush · Today's visit`, so the user understands where new captures will go
 
-Timeline cards label times explicitly. The session time is primary, for example `Session: Today · 4:23 PM`. Updated time appears only when it adds useful context, for example `Updated: 4:31 PM` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
+Timeline cards label times explicitly. The session time is primary, for example `Visit: Today · 4:23 PM`. Updated time appears only when it adds useful context, for example `Updated: 4:31 PM` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
 
 ## Patient Memory: Summary and History
 

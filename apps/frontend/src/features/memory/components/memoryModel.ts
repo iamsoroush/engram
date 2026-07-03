@@ -31,7 +31,8 @@ export type TodayCardModel = {
 export type TodayModel = {
   currentVisit?: TodayCardModel;
   isOffline: boolean;
-  needsInputPreview?: TodayCardModel;
+  /** Up to 3 needs-input visits previewed inline on Today; the rest overflow to the Needs input tab. */
+  needsInputPreviews: TodayCardModel[];
   needsInputSessions: CaptureSession[];
   recentMemory: TodayCardModel[];
   recentMemoryBadge: string;
@@ -258,10 +259,14 @@ export function buildTodayModel({
     (activeSession && sessionTouchedToday(activeSession) ? activeSession : null) ||
     todaySessions.find((session) => session.status === "current" || session.status === "draft" || session.status === "reopened");
   const needsInputSessions = todaySessions.filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session))).filter(needsHumanInput);
-  const needsInputPreview = needsInputSessions.find((session) => session.id !== currentSession?.id) || needsInputSessions[0];
+  // Preview up to 3 needs-input visits inline (preferring ones other than the current visit); any
+  // beyond that overflow to the Needs input tab via the section's "see all" pill.
+  const preferredPreviews = needsInputSessions.filter((session) => session.id !== currentSession?.id);
+  const previewSessions = (preferredPreviews.length ? preferredPreviews : needsInputSessions).slice(0, 3);
+  const previewIds = new Set(previewSessions.map((session) => session.id));
   const recentMemory = todaySessions
     .filter((session) => session.id !== currentSession?.id)
-    .filter((session) => session.id !== needsInputPreview?.id)
+    .filter((session) => !previewIds.has(session.id))
     .filter((session) => session.patientName || session.patientId)
     .slice(0, 3)
     .map((session) => ({
@@ -283,15 +288,13 @@ export function buildTodayModel({
         }
       : undefined,
     isOffline,
-    needsInputPreview: needsInputPreview
-      ? {
-          session: needsInputPreview,
-          statusLabel: t("memmodel.status.needsYourInput"),
-          title: needsInputTitle(needsInputPreview, t),
-          summary: needsInputSummary(needsInputPreview, t),
-          tone: "amber",
-        }
-      : undefined,
+    needsInputPreviews: previewSessions.map((session) => ({
+      session,
+      statusLabel: t("memmodel.status.needsYourInput"),
+      title: needsInputTitle(session, t),
+      summary: needsInputSummary(session, t),
+      tone: "amber" as const,
+    })),
     needsInputSessions,
     recentMemory,
     recentMemoryBadge: isOffline ? t("memmodel.badge.savedOnDevice", { n: recentMemory.length }) : t("memmodel.badge.updatedToday", { n: recentMemory.length }),

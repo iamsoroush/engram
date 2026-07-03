@@ -415,7 +415,7 @@ export function CaptureScreen({
       ) : null}
       {!isHistorical && usageNotice ? usageNotice : null}
       {useUnifiedLayout && !isHistorical ? (
-        <SessionVerifyBar count={verifyCount} onReview={scrollToVerify} />
+        <SessionVerifyBar count={verifyCount} onReview={scrollToVerify} pending={isUpdatingReport} />
       ) : null}
       <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
         <span className="patient-context-avatar" aria-hidden="true">
@@ -521,6 +521,7 @@ export function CaptureScreen({
           onOpenVisit={onOpenVisit}
           onUseAsNote={onUseAsNote}
           onResolveFile={onResolveFile}
+          collapsed={reportHasContent}
         />
       ) : null}
       {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (

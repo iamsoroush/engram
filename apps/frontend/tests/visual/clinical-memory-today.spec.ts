@@ -126,11 +126,11 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await page.goto("/#patients");
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Active session" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Active visit" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
   await expect(page.getByText("Patient:").first()).toBeVisible();
   await expect(page.getByText("Soroush").first()).toBeVisible();
-  await expect(page.getByText("Session:").first()).toBeVisible();
+  await expect(page.getByText("Visit:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`).first()).toBeVisible();
   await expect(page.getByText(/Updated:/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue visit", exact: true })).toBeVisible();
@@ -165,8 +165,8 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
   // The card badge reads the exact needs-input reason (here, an AI-created patient to verify).
   await expect(page.getByText("Needs input: verify patient")).toBeVisible();
   await expect(page.getByRole("button", { name: "Verify patient", exact: true })).toBeVisible();
-  // "Active session" is no longer shown on patient cards — live work lives in the Today tab.
-  await expect(page.getByText(/active session/i)).toHaveCount(0);
+  // The active-visit surface is no longer shown on patient cards — live work lives in the Today tab.
+  await expect(page.getByText(/active (session|visit)/i)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sara" })).toBeVisible();
   await expect(page.getByText(new RegExp(`Latest visit: ${previousVisitDateLabel} ·`))).toBeVisible();
   await expect(page.getByRole("button", { name: /Open memory|View history/ })).toHaveCount(0);
@@ -182,7 +182,7 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
 
   await expect(page.getByText("A few things need your judgment to keep memory accurate and useful.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
-  await expect(page.getByText("Session:").first()).toBeVisible();
+  await expect(page.getByText("Visit:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
   await expect(page.getByText("Needs input since:").first()).toBeVisible();
   await expect(page.getByText("2 photos")).toBeVisible();

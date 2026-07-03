@@ -11,7 +11,7 @@ import { authPayload, installAppMocks, installQaMocks } from "./_setup";
 const ENGLISH_CHROME = [
   "Settings", "Profile", "Logout", "Cancel", "Delete", "Clinical report", "Sources", "Copy link",
   "Confirm dose", "Review", "Loading", "Searching", "All caught up", "No patients yet", "Needs input",
-  "Add capture", "New session", "Add template", "Aftercare templates", "Capturing for", "Dose confirmed",
+  "Add capture", "New visit", "Add template", "Aftercare templates", "Capturing for", "Dose confirmed",
   "Fix at source", "Generating structured report", "Clinical Memory", "Patient history", "Send", "Dismiss",
   "Re-route", "Search patients", "Switch clinic", "Replay guide",
 ];

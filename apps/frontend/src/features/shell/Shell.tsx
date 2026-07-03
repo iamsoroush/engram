@@ -59,8 +59,11 @@ export function Shell({
   // The primary navigator stays the two workspaces (Session, Memory). Q&A is a triage *inbox*, not a
   // workspace — it lives as an icon + pending badge beside Search (Pro only), so the pill never crowds.
   const isPro = auth.tenant.tier !== "basic";
+  // The clinical encounter is a "visit" everywhere in aesthetics chrome; therapy keeps "session".
+  // Pick the primary-nav label by vertical so it matches the rest of the surface's vocabulary.
+  const encounterNavKey = auth.tenant.vertical === "therapy" ? "nav.activeSession" : "nav.activeVisit";
   const navigationItems: Array<{ screen: Screen; label: string; shortLabel: string; icon: React.ReactNode }> = [
-    { screen: "active-session", label: t("nav.activeSession"), shortLabel: t("nav.activeSession.short"), icon: <ActiveSessionNavIcon /> },
+    { screen: "active-session", label: t(encounterNavKey), shortLabel: t(`${encounterNavKey}.short`), icon: <ActiveSessionNavIcon /> },
     { screen: "patients", label: t("nav.memory"), shortLabel: t("nav.memory.short"), icon: <ClinicalMemoryNavIcon /> },
   ];
 
@@ -141,6 +144,11 @@ export function Shell({
                 <SettingsMenuIcon />
                 {t("menu.settings")}
               </button>
+              {/* Owner/admin clinic-management actions grouped under a labelled "Clinic" section, so
+                  they read as clinic-level tools distinct from the personal identity actions above. */}
+              {canManageTeam ? (
+                <div className="user-menu-section-label" role="presentation">{t("menu.clinicSection")}</div>
+              ) : null}
               {canManageTeam ? (
                 <button className="user-menu-item" onClick={() => goTo("insights")} type="button">
                   <InsightsMenuIcon />

@@ -16,7 +16,8 @@ type Lang = "fa" | "en";
 
 // Catalog oracle (exact values, messages.ts @ S2).
 const FA = {
-  navSession: "جلسه", navMemory: "حافظه",
+  // Aesthetics primary-nav encounter label is "visit" (ویزیت); therapy would keep "session".
+  navVisit: "ویزیت", navMemory: "حافظه",
   profile: "نمایه", settings: "تنظیمات", team: "تیم", plan: "پلن", logout: "خروج",
   roleOwner: "مالک",
 };
@@ -63,7 +64,7 @@ test.describe("S2 shell — fa is Persian + RTL (no leak), en unchanged, nav wor
     await installAppMocks(page, payloadWithAppLang("fa"));
     await login(page);
     // nav short-labels are Persian
-    await expect(page.locator(".app-navigator")).toContainText(FA.navSession);
+    await expect(page.locator(".app-navigator")).toContainText(FA.navVisit);
     await expect(page.locator(".app-navigator")).toContainText(FA.navMemory);
     // role label localized in the summary (owner ⇒ مالک)
     await expect(page.locator(".user-menu summary")).toContainText(FA.roleOwner);
@@ -86,7 +87,7 @@ test.describe("S2 shell — fa is Persian + RTL (no leak), en unchanged, nav wor
   test("en: shell chrome is English (unregressed) and logout glyph not mirrored", async ({ page }) => {
     await installAppMocks(page, payloadWithAppLang("en"));
     await login(page);
-    await expect(page.locator(".app-navigator")).toContainText("Session");
+    await expect(page.locator(".app-navigator")).toContainText("Visit");
     await page.locator(".user-menu summary").first().click();
     for (const w of ["Profile", "Settings", "Team", "Plan", "Logout"]) {
       await expect(page.locator(".user-menu-item", { hasText: w })).toBeVisible();

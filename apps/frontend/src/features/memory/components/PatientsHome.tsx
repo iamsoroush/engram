@@ -6,6 +6,7 @@ import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Input } from "../../../shared/ui/primitives";
 import { useT } from "../../../shared/i18n";
+import { useBackLevel } from "../../../shared/lib/backStack";
 import { WorklistSection } from "./WorklistSection";
 import { PatientForm } from "../../patient/PatientForm";
 import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
@@ -312,6 +313,8 @@ export function PatientsHome({
   );
   const needsInputSessions = today.needsInputSessions;
   const needsInputCount = needsInputItems.length;
+  // How many needs-input visits are beyond the (max 3) previewed on Today — surfaced as the overflow pill.
+  const needsInputOverflowCount = needsInputSessions.length - today.needsInputPreviews.length;
   const normalizedQuery = query.trim().toLowerCase();
   const backendRowsActive = backendPatientRows.length > 0 && !patientRowsError;
   const filteredPatients = backendRowsActive
@@ -351,6 +354,13 @@ export function PatientsHome({
     onViewingPatientChange?.(viewedPatientId ? { id: viewedPatientId, name: viewedPatientName || t("patients.fallbackName") } : null);
   }, [viewedPatientId, viewedPatientName, onViewingPatientChange]);
   React.useEffect(() => () => onViewingPatientChange?.(null), [onViewingPatientChange]);
+
+  // Give the open patient file its own history entry so hardware/browser Back returns to the list
+  // instead of exiting Clinical Memory (item: in-screen history levels).
+  useBackLevel(Boolean(selectedPatientId), () => {
+    setSelectedPatientId("");
+    setPendingPatientStub(null);
+  });
 
   // Fetch on open and re-fetch whenever a refresh signal fires (post-capture, so memory flips
   // updating→ready). Cached content keeps showing during a background re-fetch (no skeleton flash);
@@ -689,29 +699,35 @@ export function PatientsHome({
           </ClinicalSection>
           {!today.isOffline ? (
             <ClinicalSection title={t("patients.section.needsYourInput")} badge={needsInputSessions.length ? visitCountLabel(needsInputSessions.length, t) : undefined} badgeTone="amber">
-              {today.needsInputPreview ? (
-                <VisitCard
-                  primaryActionLabel={todayNeedsInputActionLabel(today.needsInputPreview.session, t)}
-                  summary={today.needsInputPreview.summary}
-                  session={today.needsInputPreview.session}
-                  statusLabel={today.needsInputPreview.statusLabel}
-                  title={today.needsInputPreview.title}
-                  tone="amber"
-                  onSelect={() => {
-                    const preview = today.needsInputPreview;
-                    if (preview) onOpenSession(preview.session.id, { tab: "today" });
-                  }}
-                  onPrimaryAction={() => {
-                    const preview = today.needsInputPreview;
-                    if (!preview) return;
-                    const action = decisionActionForSession(preview.session);
-                    if (action === "assign-patient" || action === "choose-patient") {
-                      setAssignmentSessionId(preview.session.id);
-                      return;
-                    }
-                    setSummaryReviewSessionId(preview.session.id);
-                  }}
-                />
+              {today.needsInputPreviews.length ? (
+                <div className="clinical-list">
+                  {today.needsInputPreviews.map((preview) => (
+                    <VisitCard
+                      key={preview.session.id}
+                      primaryActionLabel={todayNeedsInputActionLabel(preview.session, t)}
+                      summary={preview.summary}
+                      session={preview.session}
+                      statusLabel={preview.statusLabel}
+                      title={preview.title}
+                      tone="amber"
+                      onSelect={() => onOpenSession(preview.session.id, { tab: "today" })}
+                      onPrimaryAction={() => {
+                        const action = decisionActionForSession(preview.session);
+                        if (action === "assign-patient" || action === "choose-patient") {
+                          setAssignmentSessionId(preview.session.id);
+                          return;
+                        }
+                        setSummaryReviewSessionId(preview.session.id);
+                      }}
+                    />
+                  ))}
+                  {needsInputOverflowCount > 0 ? (
+                    <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("needs-input")}>
+                      {t("patients.needsInputSeeAll", { n: needsInputOverflowCount })}
+                      <ChevronIcon />
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copyToday")} />
               )}

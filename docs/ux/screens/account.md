@@ -8,12 +8,15 @@ their content). Each page has a **Back** action returning to the previous staff 
 ## Account menu (the dropdown)
 
 - Header: avatar + signed-in name + role · clinic name, with a `Pro`/`Basic` tier pill.
-- Items, in order — the first six *navigate* to pages (no inline controls in the dropdown):
+- Items, in order — the navigating items open pages (no inline controls in the dropdown). Personal
+  identity actions come first; the owner/admin clinic-management pages are grouped under a labelled
+  **Clinic** section (the label and its items are omitted for other roles):
   - **Profile** → `/#profile`
   - **Settings** → `/#settings`
-  - **Insights** → `/#insights` — owner/admin only ([insights.md](insights.md))
-  - **Team** → `/#team` — owner/admin only ([team.md](team.md))
-  - **Plan** → `/#plan` — owner/admin only ([plan.md](plan.md))
+  - *Clinic* (section label — owner/admin only)
+    - **Insights** → `/#insights` ([insights.md](insights.md))
+    - **Team** → `/#team` ([team.md](team.md))
+    - **Plan** → `/#plan` ([plan.md](plan.md))
   - **Switch clinic** → `/#switch-clinic` — only for users belonging to more than one clinic
   - **Replay guide** — re-runs the onboarding guide (shown when available)
   - **Logout**

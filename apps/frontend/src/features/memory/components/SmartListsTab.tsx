@@ -7,6 +7,7 @@ import React from "react";
 import type { LotLedger, LotRecallResult, SmartListCounts, SmartListKey, SmartListResponse } from "../../../domain/appTypes";
 import type { QaThreadSummary } from "../../qa/qaClient";
 import { useT } from "../../../shared/i18n";
+import { useBackLevel } from "../../../shared/lib/backStack";
 import { formatDate } from "../../../shared/lib/datetime";
 import { Input } from "../../../shared/ui/primitives";
 import { QaChannelButton } from "../../qa/QaChannelButton";
@@ -41,6 +42,10 @@ export function SmartListsTab({
   const [view, setView] = React.useState<View>({ kind: "home" });
   const [counts, setCounts] = React.useState<SmartListCounts | null>(null);
   const [ledger, setLedger] = React.useState<LotLedger | null>(null);
+
+  // A drill-in (one smart list's rows) gets its own history entry, so Back returns to the Lists home
+  // instead of exiting the area (item: in-screen history levels).
+  useBackLevel(view.kind !== "home", () => setView({ kind: "home" }));
 
   // Rail counts + the lot ledger load on open and refresh after captures land.
   React.useEffect(() => {
@@ -336,12 +341,14 @@ function RecallCohort({
   onRecallSimilar: (lot: string) => void;
 }) {
   const t = useT();
+  const [preparingRoster, setPreparingRoster] = React.useState(false);
   const isLot = result.kind === "lot";
   const title = isLot ? t("recall.lotTitle", { lot: result.value }) : t("recall.productTitle", { product: result.value });
   const summaryText = t("recall.summary", {
     patients: plural(t, "recall.patients", result.patientCount),
     visits: plural(t, "recall.visits", result.visitCount),
   });
+  const rosterHeader = isLot ? `${t("recall.lotTitle", { lot: result.value })} — ${summaryText}` : `${title} — ${summaryText}`;
 
   const copyList = async () => {
     const lines = result.affected.map((p) => {
@@ -354,6 +361,35 @@ function RecallCohort({
       onToast?.(t("recall.copied"));
     } catch {
       onToast?.(t("recall.copyFailed"));
+    }
+  };
+
+  // Batch link-minting: open (or reuse) every affected patient's Q&A channel at once and copy the
+  // whole cohort as `name · phone · link` lines — so the doctor mints one roster instead of minting
+  // each link serially per patient. Sending stays human + per-patient (this only prepares the roster).
+  const prepareRoster = async () => {
+    if (!onOpenQaChannel) return;
+    setPreparingRoster(true);
+    try {
+      const lines = await Promise.all(
+        result.affected.map(async (p) => {
+          const phone = p.identifyingContext?.phone ? ` · ${p.identifyingContext.phone}` : "";
+          let link = "";
+          try {
+            const summary = await onOpenQaChannel(p.patientId);
+            if (summary.publicPath) link = ` · ${window.location.origin}${summary.publicPath}`;
+          } catch {
+            // A patient whose channel can't be minted still appears (name · phone), just without a link.
+          }
+          return `${p.displayName}${phone}${link}`;
+        }),
+      );
+      await navigator.clipboard.writeText([rosterHeader, ...lines].join("\n"));
+      onToast?.(t("recall.rosterCopied"));
+    } catch {
+      onToast?.(t("recall.copyFailed"));
+    } finally {
+      setPreparingRoster(false);
     }
   };
 
@@ -372,6 +408,11 @@ function RecallCohort({
         <>
           <div className="recall-cohort-actions">
             <button className="recall-copy-button" type="button" onClick={copyList}>{t("recall.copyList")}</button>
+            {onOpenQaChannel ? (
+              <button className="recall-copy-button recall-roster-button" type="button" onClick={prepareRoster} disabled={preparingRoster}>
+                {preparingRoster ? t("recall.preparingRoster") : t("recall.copyRoster")}
+              </button>
+            ) : null}
           </div>
           <div className="recall-cohort-list">
             {result.affected.map((patient) => (
