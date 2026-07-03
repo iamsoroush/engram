@@ -50,7 +50,13 @@ BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
 BACKEND_OBJECT_STORAGE_SECRET_KEY=...
 BACKEND_OBJECT_STORAGE_SECURE=true
 BACKEND_OBJECT_STORAGE_PRESIGNED_URL_TTL_SECONDS=300
+BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT=https://minio.example.com
 ```
+
+`BACKEND_OBJECT_STORAGE_PUBLIC_ENDPOINT` (optional, default unset) rewrites the scheme/host of
+presigned GET URLs to a browser-reachable address when the backend signs against an internal
+MinIO endpoint (e.g. `http://minio:9000` inside the Docker network). Unset, presigned URLs use
+the internal endpoint as-is.
 
 ## Object Keys
 

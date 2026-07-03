@@ -5,7 +5,36 @@
 > entries"), (2) **LLM tokens are saved** by reusing a stored output whenever its exact input set
 > recurs, and (3) **everything stays consistent** — the rendered report, its structured entities
 > (treatments, safety flags, aftercare), and the cross-visit patient projections are always a function
-> of the current inputs. [Capture undo](../ux/redesign-capture-undo.md) is the first consumer.
+> of the current inputs. Capture undo (the Sources drawer's "Undo last capture" / per-capture
+> Delete — [ux/screens/capture.md](../ux/screens/capture.md)) is the first consumer.
+
+## Status (built vs pending)
+
+**Built:**
+
+- The `SessionReportVersion` store (`session_report_versions`): immutable, content-addressed
+  snapshots keyed by `capture_set_hash` (the ordered in-context capture-version set), with
+  `pinned` rows exempt from future GC (`services/report_versions.py`).
+- Undo/delete **cache-hit restore**: returning to a previously-seen capture set restores the
+  stored version deterministically (no LLM) and re-syncs the patient's safety flags
+  (`services/captures.py`).
+- **D7 safety-reconcile** end-to-end (reconcile pass in synthesis → `apply_safety_reconciliation`
+  on the patient projection), with its eval suite wired into `run_all.py`.
+- **D3 staleness read-trigger** for patient memory (`maybe_refresh_stale_patient_memory` on
+  patient-open/line-up) plus the background quiescence sweep.
+
+**Pending:**
+
+- **D5 GC / bounded ring** — no prune code exists yet; versions accumulate (pins are recorded but
+  nothing is collected).
+- **`patient_history_version` keyed cache** — no such model; patient memory recomputes without a
+  content-addressed cache.
+
+**Divergence from D2 as written:** the user-state overlay is not a separate keyed table — it lives
+in `session.extracted_metadata` (keys `rejected_safety_flags`, `confirmed_carried_forward`,
+`dismissed_aftercare`) and is applied at restore/render time. The invariant holds (a restore never
+overwrites user decisions: `restore_report_version` excludes the overlay keys); only the storage
+shape differs.
 
 ## The version DAG
 
@@ -116,7 +145,8 @@ reference; ship undo on it. **Normalize** entities (treatments/flags → version
 afterward. The A↔B contract stays JSON over the wire; only persistence evolves.
 
 ## Undo as the first consumer
-One **removal operation** that fully de-effects (see [redesign-capture-undo.md](../ux/redesign-capture-undo.md)):
+One **removal operation** that fully de-effects (UX: the Sources drawer in
+[ux/screens/capture.md](../ux/screens/capture.md)):
 - **Last capture** → input set returns to a previously-seen set → **cache-hit restore** of the prior
   `report_version` (deterministic, no LLM) + re-derive patient projections.
 - **Middle capture** → no prior version equals "all-except-C" → **recompute** (one LLM pass), with the
@@ -146,7 +176,8 @@ cases proving "undo restores the exact prior structured artifacts" (consult the 
    setting + UI** (fast-follow).
 
 ## Open questions
-1. `report_versions` home — dedicated table vs a normalized extension of today's `processed_versions`
-   ring? (Leaning table for queryability + pins; revisit once the overlay shape is fixed.)
+1. ~~`report_versions` home — dedicated table vs a normalized extension of today's
+   `processed_versions` ring?~~ **Answered:** a dedicated table, `session_report_versions`
+   (queryability + pins).
 2. Capture-level versioning depth — do we retain every transcription edit as a `capture_version`, or
    only the current + last (for capture-text undo)? (Affects D5 ring sizing.)

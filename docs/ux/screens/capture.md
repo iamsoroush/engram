@@ -2,147 +2,247 @@
 
 ## Route
 
-- `/`
+- `/` — default staff screen after login (owners/doctors land here)
 - `/#active-session`
 
 ## Purpose
 
-Primary working screen for building and reviewing a session from audio, photo, and text captures. The same workspace structure is reused for historical session review from Clinical Memory and Search.
+The primary working screen: build and review a visit from audio, photo, and text captures.
+Capture-first — nothing requires picking a patient or waiting for AI; captures save locally first
+and everything else catches up. The same workspace structure renders historical session review
+opened from Clinical Memory or Search (read-only, with a Back action to where it came from).
 
-> **Report surface redesigned (Epics C/E shipped; simplified 2026-06-07).** The tabs are now `Captures`/`Live report` with per-capture effect chips and a **template-driven live report that is rebuilt deterministically (no LLM, no AI job) as each capture lands — there is no Generate button** (Pro = grouped-by-type sections, Basic = chronological; out-of-context captures are excluded). There is **no manual "Verify report"** — a session shows an auto-derived **Complete** state instead. [redesign-capture-surface.md](../redesign-capture-surface.md) is **authoritative for the report surface**; the report-tab sections below (`Generate Structured Report`, the `Live draft`/`Structured report` tabs, the manual generate/draft-state flow, and any "verify" wording) are retained as historical context and superseded by that doc. The capture/photo/note, assignment, and source-preview behavior here remains current.
->
-> **Pro session unified into one living report (FB8, 2026-06-23).** For **Pro**, the `Captures`/`Live report` tabs are gone: the synthesized **report is the primary surface**, the raw captures are demoted to a collapsible **"Sources · N captures"** drawer beneath it (auto-expanded while the report is still empty; all capture edit/delete/reassign/open affordances unchanged), and a sticky **"N to confirm"** verify bar at the top drives verification. The bar counts **blockers only** — unconfirmed carried-forward doses + AI-created-patient identity — and "Review" jumps to the first inline confirm. Soft extraction gaps (low confidence, missing lot) render as quiet inline flags on the treatment row with a **"Fix at source"** deep-link that opens the Sources drawer (correct the originating capture; the AI re-extracts — no direct treatment-field edit). **Basic is unchanged** (keeps the `Captures`/`Live report` tabs — it has no synthesis to make primary). Components: `SessionVerifyBar`, the `sources-drawer`, and `TreatmentsList`'s inline confirm + `Fix at source`.
->
-> **Session safety flags (opt-out, 2026-06-27).** The Pro synthesis detects clinical **safety flags**
-> from the captures — **allergy / contraindication / consent** statements the clinician actually made —
-> and surfaces them as a calm red/amber **Safety panel** rendered **above** the verify region (safety is
-> highest priority). They are **opt-out**: every detected flag is shown and **kept by default**; the
-> clinician acts only to **Reject (×)** a wrong one. The panel is **not a verify-bar blocker** — it
-> requires no action and never gates the report ("warnings over blocking"). A rejection persists in
-> `extracted_metadata.rejected_safety_flags` (stable key), **survives re-synthesis**, and is logged as an
-> AI-feedback signal (eval-epic §1b). Non-rejected flags persist to the **patient** and surface
-> **cross-visit** in the [session-context card](../redesign-session-context.md) flags slot and the patient
-> timeline at every future visit. The flag **body is clinical content in the report language and is never
-> translated** — only the chrome routes through the shared i18n seam. Endpoint:
-> `POST /sessions/{id}/safety-flag-rejection`. Components: the `session-safety-panel` (CaptureScreen),
-> `sessionKeptSafetyFlags` (captureModel), and the `SessionContextCard` safety slot.
->
-> **Patient-conflict resolution lifted to the session level (2026-06-27).** A dictated different/
-> partial-match patient is a session blocker, not a feed detail — so the resolver (Keep match / Create
-> new / Choose another / Edit) now renders in the **verify region above the report** as a "Patient needs
-> your confirmation" panel and is **counted by the sticky verify bar**, not hidden in the Sources drawer.
-> The same `PatientConflictResolver` still renders per-capture in the drawer (it pinpoints which capture
-> said the other name). Shared via `captureConflictSuggestion` + `PatientConflictResolver` (CaptureBadges).
->
-> **Confirmations embedded in the report (2026-06-23).** The clinician's "Needs your confirmation" items no longer sit in a separate section above the report — they live **inline where the data is**. A carried-forward dose shows its **"Confirm dose"** action directly on its Treatment-performed row (matched by `area|product`); confirming flips it to **"✓ Dose confirmed"** in place. The synthesis's softer uncertainties (ambiguous notes) render as **calm gray footnotes** beneath the treatments list. The session verify-region above the report now holds only the **AI-created-patient identity** panel (a different concern — *who* the patient is, not report content). The `SessionConfirmations` component was removed.
->
-> **Live-report refinements (2026-06-23).** (a) Adding a capture no longer blanks the report: while the new synthesis organizes, the **prior synthesized report stays visible** with an "Updating · N captures…" line + a shimmer on the report card, instead of dropping to a "Preparing…"/deterministic-baseline view (the held model is swapped out only when a fresh synthesis arrives; guarded on the fixed synthesis section ids so Basic is untouched). (b) **Content-driven aftercare moved into the report card** as one-tap "+ {template}" add-buttons (e.g. `+ مراقبت بعد از بوتاکس`), replacing the separate bar above the report. (c) The **Sources drawer** shows a count badge + per-type chips (audio/photo/note). (d) **Report section titles follow the report language** (Persian titles for a Persian report) — fixed both at the source (`ai_engine` emits localized titles per `reportLanguage`) and at render (`LiveReport` maps section-id → localized title, so existing reports localize without re-synthesis).
+## Surface by tier
 
-## Primary Actions
+- **Basic** — the Clinical report card has a `Captures` / `Live report` tab switch. `Captures` is
+  the chronological capture feed; `Live report` is a deterministic chronological document (clinic
+  header + patient block from template/DB, transcripts and photos with honest timestamps) rebuilt
+  in place as captures land. No AI synthesis, no verify bar, no safety panel; the header is
+  lightweight (no `Complete` badge).
+- **Pro** — a unified, report-first surface with no tabs: the synthesized report is the primary
+  surface and the raw captures are demoted to a collapsible **Sources** drawer beneath it.
+  Top-to-bottom: AI usage notice → sticky verify bar → patient card → safety panel → session
+  context card → verify region → report card (with aftercare, feedback bar, and the Sources drawer
+  inside it).
 
-- Start audio capture.
-- Take photo opens the Add photo bottom sheet, where staff can take a new camera photo or choose from the device library before saving.
-- Write note.
-- Rename current session.
-- Assign or reassign patient, including before the first capture and after verification.
-- Generate Structured Report from the report header.
-- Verify structured report.
-- Start a new session.
-- Review a historical session inline from Clinical Memory or Search.
-- Add capture from historical review, which returns the same session to the active workspace.
-- Open a source preview.
+## Capture actions
 
-## Visible Data
+- Sticky bottom bar on every staff screen: `Audio` (`Tap to record`), `Take photo`, `Write note`.
+  From Clinical Memory or Search the bar first shows a compact **destination chooser**
+  (current/recent sessions or a new session).
+- **Audio** opens a bottom sheet with timer, animated levels, pause/resume, stop/save, discard,
+  background-continue, and a `Use audio file instead` fallback. A single recording **auto-stops
+  and saves at 20 minutes** (fair-use cap — a mic left open cannot burn the monthly AI budget in
+  one clip). A low-durable-storage warning guards before long recordings.
+- **Take photo** opens a bottom sheet with camera and device-library options, a large preview,
+  save actions disabled until a photo is selected, and security copy. Empty selections are
+  rejected before save/upload.
+- **Write note** opens a note sheet.
+- Every capture is written to IndexedDB first and appears immediately; upload, processing, and
+  report updates follow. See the [capture-session workflow](../workflows/capture-session.md).
+- Session header: a meaningful title (the patient's Nth session, or date/time), status chip,
+  capture count, and `+ New session` (shown once the active session has captures). A session
+  started by another staff member opens **read-only** with a banner naming who started it.
+- A calm, non-blocking **AI usage notice** (`AiUsageNotice`) renders above the workspace when the
+  clinic is approaching or at its monthly AI budget — captures are always still saved. See
+  [states](../states.md) and `docs/business/ai-usage-limits.md`.
 
-- Mobile-first app header with centered `Engram`, a left menu affordance, and a compact user/avatar area.
-- Session summary with `Current session`, verified chip, patient context, capture count, updated time, and compact New session action.
-- Separate patient context card with patient avatar, assignment source, and Edit patient action.
-- Single `Clinical report` card with `Live draft` and `Structured report` tabs.
-- Report header with `Clinical report`, compact status, and Generate action when generation is available.
-- Report toolbar with view selection inside the Clinical report card.
-- Report footer with a toggleable animated checkbox for verifying the structured report.
-- Assigned patient controls are visually actionable and show smaller assignment source text under the patient name only when a patient exists.
-- Patient assignment opens a mobile-first bottom sheet from Edit patient with current-session context, suggested matches, local/API-backed search, and inline patient creation.
-- Clinical report section that always exists, including before the first capture.
-- Recording audio opens as a mobile-first bottom sheet with timer, animated levels, pause/resume, stop/save, discard, background continue, and a styled `Use audio file instead` fallback.
-- Add photo opens as a mobile-first bottom sheet with camera and device-photo options, a large preview area, disabled save actions until a photo is selected, and security copy.
-- Live draft capture cards that update immediately when audio, photo, or text captures are added.
-- Audio captures render playback inline in the draft.
-- Audio transcript and photo caption text render fully inline in the draft so review does not require opening a detail card.
-- Audio transcript and photo caption headings show whether the text is still AI-generated or was edited by staff.
-- Captures that are the active patient action source show action badges such as `Patient assigned` and, when applicable, `Patient created`. Older AI source captures lose the active action badge when a later patient action supersedes them.
-- When AI creates and assigns a patient from audio identity, the patient context stays in the Active Session and shows an inline completion/verification panel for name, national ID, phone, and date of birth.
-- When AI deterministically matches an existing patient, the Active Session updates the patient context and notifies staff that the match was made by AI.
-- When AI lands on a **partial (fuzzy)** match (e.g. spoke `معاصد`, transcribed `معاضد`), the capture is **not silently assigned**: it shows the matched-vs-spoken identity and one-tap **Keep match / Create new instead / Choose another / Edit details** quick actions. A close match auto-applies (reversible) only under the `balanced`/`lenient` match-strictness setting. See [redesign-capture-surface.md](../redesign-capture-surface.md) "Partial-match resolution" (authoritative) and the [review-and-assign-patients workflow](../workflows/review-and-assign-patients.md).
-- Photo captures render inline in the draft with a compact thumbnail and full caption/analysis text beside it.
-- Note captures show full decorated text inline plus an expandable raw note section.
-- Capture item overflow controls open per-capture settings for rename and delete. Deleting a capture removes it from the draft feed and moves any generated structured report back to draft/stale state.
-- Structured reports render clinic information, patient information, and body as distinct sections. Clinic and patient information come from template/session context; the body is backend-owned markdown. Photos appear in the body with generated captions under the image and avoid repeating captions as body paragraphs.
-- Source captures are no longer duplicated in a separate expandable section outside the Clinical report card; the live draft cards are the source review surface.
-- During structured report generation, the report surface switches to `Structured report` immediately and uses assistant-style organizing feedback until the full body is available.
-- The live draft remains reviewable outside the locked generation moment; users can switch between `Live draft` and `Structured report`.
-- `Structured report` is disabled until at least one capture exists and explains that the user must create a capture first.
-- Progressive report states: `Draft`, `Structured`, and `Verified`. Adding a new capture or changing the patient after generation returns the state to `Draft` until the user generates again.
-- Subtle report progress indicators for `Draft`, `Structured`, and `Verified` in the report header; verified uses a green check treatment only when the report is verified.
-- Summary and extracted findings are not separate cards in the mobile-first Active Session shell.
-- Capture source previews. Audio and photo captures open mobile-first detail sheets from live draft items, showing the source preview, captured metadata, editable transcript/caption text, edit attribution, and an inline transcript copy control.
-- In-progress capture status chips use only `Syncing`, `Uploading`, or `Processing`; type-specific working copy such as `Transcribing audio` belongs inside the generated transcript/caption area. Completed captures do not show technical status in the card.
-- Expandable generated transcript/caption/decorated text.
-- Capture safety banner only when the user needs reassurance or local data safety is at risk.
+## Patient assignment
+
+- A **patient card** always renders: avatar, assigned patient name + assignment source
+  (`Matched by AI`, manual, voice-reassigned), or capture-first copy when unassigned (soft amber
+  attention state, never an error). Actions: `Assign`/`Change` (opens the assignment bottom sheet
+  with suggested matches, search, and inline patient creation) and `History` (patient timeline).
+- If audio transcription extracts a patient identity, a **deterministic** existing match assigns
+  the visit with AI provenance; if nothing matches and the identity is usable, the backend creates
+  and assigns an AI-origin patient. Assignment is stored as a timeline: the latest valid action
+  wins, deleted-capture actions are skipped, and later manual assignment blocks older AI actions.
+- An **AI-created patient** shows an inline completion/verification panel (name, national ID,
+  phone, date of birth) in the verify region — staff never leave the session to verify it.
+- A "next lined-up patient" hint offers `Assign this visit` / `Start their visit` when the session
+  is unassigned and a patient is waiting.
+
+### Partial-match resolution (the decision matrix)
+
+Apply semantics live in [intelligence-layer §5](../../intelligence-layer.md); this is the surface.
+The backbone is **basis** (explicit | implicit) × **match quality** (exact | partial | none) ×
+**visit state** (unassigned | already-assigned):
+
+| match quality | visit state | basis = explicit | basis = implicit |
+| --- | --- | --- | --- |
+| **exact** (deterministic) | unassigned | assign | assign (first-identity-wins) |
+| **exact** | assigned | reassign (override) | **Suggested: reassign** (not applied) |
+| **partial** (fuzzy) | unassigned | **Suggested** → quick actions; **auto-applies** only under `balanced`/`lenient` strictness + a single high-confidence candidate | **Suggested** (no auto-apply) |
+| **partial** | assigned | **Suggested** → quick actions; **auto-applies** only under `balanced`/`lenient` strictness + a single high-confidence candidate | **Suggested** (no auto-apply) |
+| **none** (usable identity) | unassigned | create + assign, flagged **verify** (editable) | create + assign, flagged **verify** |
+| **none** | assigned | create + assign (override), flagged **verify** | quiet (a bare mention; no chip unless a candidate surfaces) |
+
+Invariants at **every** strictness: a partial match is **never silently applied**; the national-ID
+**conflict guard** routes to review; multiple comparable candidates route to the choose-patient
+resolver, never auto-apply.
+
+On a partial match the resolver shows **what was matched vs what was spoken** ("Matched *معاصد* ·
+you said *معاضد*") with one-tap actions:
+
+- **Keep match** — assign the visit to the matched patient (attributed to this capture; reversible).
+- **Create new patient instead** — an inline new-patient form prefilled from the *spoken* identity,
+  editable → create + assign, flagged **verify**. This is also the edit surface; a matched
+  **existing** record is never silently renamed from a fuzzy capture.
+- **Choose another** — the assignment resolver (search / detected-in-session / create).
+
+A dictated different/partial-match patient is a **session-level blocker**: the resolver
+(`PatientConflictResolver`) renders in the verify region as a "Patient needs your confirmation"
+panel and is counted by the verify bar; the same resolver also renders on the originating capture
+in the Sources drawer. When strictness auto-applies a close match it is reversible: the capture
+shows the applied chip with a `· close match` note, the matched-vs-spoken line, and **Undo**. The
+per-tenant **match strictness** setting (Strict / Balanced / Lenient) lives on the
+[Settings page](account.md).
+
+## Session context card
+
+When the session's patient becomes known — manual assign or AI match — a deterministic
+**session context card** (`SessionContextCard`, both tiers, zero AI) renders between the safety
+panel and the verify region. It answers, glanceably: who this is (visit ordinal, pinned key
+facts), what happened last (the full **last-visit digest** — notes, photo thumbnails, playable
+voice memos, `Same as last time` pre-fill), and progress (a compact **cross-visit photo strip**;
+tapping a thumb opens a before/after compare overlay). The patient's kept **safety flags** surface
+here at every future visit. It hides for a brand-new patient with nothing to show, and clears when
+the patient is removed or reassigned.
+
+- **Pro** layers the AI patient-memory **lineup card** (story-so-far, since-last delta, hero
+  photo) on top of the deterministic base — so Pro is never blank when AI is unavailable.
+- **Timeline round-trip:** `View full history` opens the patient timeline, which shows a
+  persistent **`Back to this visit`** that restores the in-progress session exactly — the
+  clinician can glance at history mid-capture and return in one tap.
+- Backend: `GET /api/v1/patients/{id}/session-context`.
+
+## Pro report surface
+
+### Verify bar and verify region
+
+- A sticky **"N to confirm"** verify bar counts **blockers only** — unconfirmed carried-forward
+  doses and AI-created-patient identity (plus patient conflicts). `Review` jumps to the first
+  inline confirm. It renders nothing when there is nothing to confirm; soft warnings never feed it
+  ("warnings over blocking").
+- The **verify region** above the report holds the patient-conflict resolver panels and the
+  AI-created-patient verification panel. Everything else confirms **inline where the data is**: a
+  carried-forward dose shows `Confirm dose` directly on its treatment row and flips to
+  `✓ Dose confirmed` in place; softer uncertainties render as calm gray footnotes beneath the
+  treatments list.
+
+### Safety panel
+
+The synthesis detects clinical **safety flags** from the captures — allergy / contraindication /
+consent statements the clinician actually made — and surfaces them in a calm red/amber panel
+**above** the verify region (safety is highest priority). Flags are **opt-out**: every detected
+flag is shown and kept by default; the clinician acts only to reject (×) a wrong one. The panel is
+**not** a verify-bar blocker and never gates the report. A rejection persists (survives
+re-synthesis) and is logged as an AI-feedback signal. Non-rejected flags project onto the patient
+and resurface cross-visit in the session context card and the patient timeline. The flag body is
+clinical content in the report language and is never translated — only the chrome is bilingual.
+Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
+
+### Report card
+
+- Header: `Clinical report` with an **AI spark** provenance mark (it twinkles while a synthesis is
+  in flight), a quiet updating spinner, and a compact **Share** affordance (Pro, assigned visit
+  with captures) that opens the curate + preview clinic→patient share sheet — see
+  [session review](session-review.md).
+- The report is synthesized by a background AI job over a deterministic baseline; it is **never
+  blank while updating**. Adding a capture keeps the prior report visible with an explicit
+  freshness line — `✓ Reflects all N captures` when current, `Updating · N of M captures not yet
+  in this report` plus a shimmer while a synthesis runs. The held report is swapped only when a
+  fresh synthesis arrives. See [states — Organizing](../states.md).
+- Section titles follow the **report language** (Persian titles for a Persian report); body text
+  direction is per-line (RTL for Persian/Arabic content).
+- **Per-claim source citations:** report blocks and treatment rows carry a small `↗ source` tap
+  that opens the cited capture.
+- **Fix at source:** soft extraction gaps (low confidence, missing lot) render as quiet inline
+  flags on the treatment row with a `Fix at source` deep-link that opens the originating capture in
+  the Sources drawer — correct the capture text and the AI re-extracts. There is **no direct
+  treatment-field edit**.
+- **Aftercare:** content-driven aftercare templates are AI-matched and auto-included (opt-out) —
+  each shows with a remove (✕); dismissals persist across re-synthesis. When dictated aftercare
+  contradicts a protocol, the dictation wins and a conflict note is shown instead of the template.
+- A quiet **report feedback bar** (thumbs rating, eval golden-set harvester) ends the report.
+
+### Sources drawer and undo
+
+- The raw captures live in a collapsible **`Sources · N`** drawer beneath the report: count badge,
+  per-type chips (audio/photo/note), and a calm `Organizing…` pulse while captures are still being
+  processed (hidden once done). It auto-expands while the report is still empty. All capture
+  edit/delete/reassign/open affordances live here.
+- **Undo last capture** sits in the drawer header — one tap removes the most recent capture
+  without expanding the drawer. Undo and the per-capture **Delete** are the same **de-effecting
+  removal**: reverting a capture reverts *its effects* — the patient it created or assigned (a
+  spurious AI-created patient with no other dependents is soft-deleted; otherwise the visit is
+  unassigned), its treatments, its safety flags, and its report contribution. Removing the latest
+  capture **restores** the exact prior report version deterministically (no LLM, no new wrong
+  entries); removing a middle capture triggers a recompute shown as a calm re-organizing state.
+  Removal is **owner-only** (the staff member who started the session). Architecture:
+  [pipeline-versioning](../../architecture/pipeline-versioning.md).
+
+## Capture cards (feed / Sources drawer)
+
+- Audio renders inline playback; transcripts and photo captions render fully inline (no detail
+  card needed for review) and their headings show whether the text is **AI-generated or
+  staff-edited**. Notes show decorated text plus an expandable raw-note section.
+- In-progress chips use only `Syncing`, `Uploading`, or `Processing`; type-specific working copy
+  (`Transcribing audio`, `Reading image`) lives inside the generated-text area. Completed captures
+  show no technical status.
+- The active assignment-source capture shows `Patient assigned` / `Patient created` badges; older
+  AI source captures lose the badge when a later action supersedes them.
+- Per-capture overflow: rename, delete (the de-effecting removal above).
+- Tapping a capture opens a source preview sheet: media preview, metadata, editable
+  transcript/caption with edit attribution, and a copy control.
+
+## States
+
+Shared rules: [states](../states.md).
+
+- **Loading:** source previews use the local cache first, then protected backend file content.
+- **Empty:** no captures still shows the workspace with an empty report surface and
+  capture-first guidance.
+- **Offline:** calm reassurance (`Offline · Captures are saved on this device`); capture continues.
+- **Errors:** toasts for storage, audio conversion, save, and user-action failures; critical
+  local-save/storage issues warn because data safety is at risk.
+- **Success:** by exception — a clean visit shows no nag; completeness reads from the `Complete`
+  badge and the freshness line.
 
 ## Main Components
 
-- `Shell`
-- `CaptureActions`
-- `CaptureScreen`
-- `TextCaptureSheet`
-- `AddPhotoSheet`
-- `AudioDialog`
-- `SourcePreviewDialog`
-
-## Loading State
-
-- Source previews load cached blobs first, then protected backend file content.
-- When captures are saved locally but not available everywhere, staff see reassurance such as `Offline · Captures are saved on this device`.
-
-## Empty State
-
-- Active mode with no captures still shows the Active Session Workspace and an empty report surface.
-- Historical review with no loaded captures shows the empty live draft surface.
-
-## Error State
-
-- Toasts for storage, audio conversion, save, and user-action failures.
-- Empty photo selections are rejected before save/upload and prompt the user to open the camera or gallery again.
-- Critical local-save or storage issues warn the user because data safety is at risk.
-- Source preview unavailable placeholder or inline preview error.
-
-## Success State
-
-- Capture appears immediately after local save.
-- Toasts confirm local save, memory update, title update, assignment, AI patient match/creation, and structured report generation start.
+- `Shell`, `CaptureActions`, `CaptureScreen`
+- `SessionVerifyBar`, `PatientConflictResolver` + `AiCreatedPatientPanel` (CaptureBadges)
+- `SessionContextCard` (+ `LineupCard`), the `session-safety-panel`
+- `LiveReportView` + `TreatmentsList`, the `sources-drawer`, `ReportFeedbackBar`
+- `AiUsageNotice`
+- `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
+  `PatientAssignmentSheet`
 
 ## Related Workflows
 
 - [Capture a session](../workflows/capture-session.md)
-- [Generate structured session report](../workflows/save-session.md)
+- [Clinical Memory workflow](../workflows/review-and-assign-patients.md)
 
 ## Related APIs
 
-- `POST /api/v1/captures`
-- `POST /api/v1/sessions/{session_id}/save`
-- `POST /api/v1/sessions/{session_id}/assign-patient`
-- `POST /api/v1/sessions/{session_id}/safety-flag-rejection`
-- `POST /api/v1/sessions/{session_id}/verify`
-- `GET /api/v1/patients`
-- `POST /api/v1/patients`
-- `PATCH /api/v1/sessions/{session_id}`
-- `GET /api/v1/sessions/{session_id}/captures`
-- `GET /api/v1/captures/{capture_id}/file-content`
+- `POST /api/v1/captures` · `GET /api/v1/sessions/{id}/captures` ·
+  `GET /api/v1/captures/{id}/file-content`
+- `PATCH /api/v1/captures/{id}` (rename, edit transcript/caption) ·
+  `DELETE /api/v1/captures/{id}` (de-effecting removal / undo)
+- `POST /api/v1/sessions/{id}/save` (auto-invoked via the outbox as captures sync)
+- `POST /api/v1/sessions/{id}/assign-patient` · `GET /api/v1/sessions/{id}/assignment-suggestion` ·
+  `PATCH /api/v1/sessions/{id}` (rename, AI-created-patient verification)
+- `POST /api/v1/sessions/{id}/safety-flag-rejection` ·
+  `POST /api/v1/sessions/{id}/confirm-carried-forward` ·
+  `POST /api/v1/sessions/{id}/aftercare-dismissal`
+- `GET /api/v1/patients/{id}/session-context` · `GET /api/v1/patients/search` ·
+  `POST /api/v1/patients`
+- `GET /api/v1/ai-usage`
 
 ## Known Gaps
 
-- `+ New session` resets the active context but does not create an empty remote session until the first capture is available beyond the device; assigning a patient before the first capture creates a local empty workspace context that is attached later.
-- Report, summary, extracted findings, and assistant-state language use stable contracts plus local live draft output until final session artifacts are integrated.
-- Report layout keeps a stable body height during organizing states so captures remain visible below instead of being displaced by loading states.
-- Historical review currently shares the report workspace but does not yet expose the full patient assignment panel.
+- `+ New session` resets the active context locally; the remote session is created when the first
+  capture syncs (a pre-assigned patient is attached then).
+- Historical review shares the report workspace but does not expose the full patient assignment
+  panel.

@@ -27,7 +27,8 @@ The OpenAPI schema (`/api/v1/openapi.json`) is the machine source of truth. The 
 aesthetics-Basic surfaces (smart search, duplicate guard, assign-later suggestion, last-visit, aftercare
 templates) and the patient-facing surface (tokenized, revocable curated shares + the public read) have
 their stable request/response contracts documented for the frontend in
-[`docs/backend/aes-basic-api.md`](../../docs/backend/aes-basic-api.md).
+[`docs/backend/aes-basic-api.md`](../../docs/backend/aes-basic-api.md); the Pro patient Q&A contracts
+are in [`docs/backend/aes-pro-qa-api.md`](../../docs/backend/aes-pro-qa-api.md).
 
 ## Docker Development
 
@@ -126,13 +127,7 @@ The production service is private to the Docker network. Public traffic reaches 
 
 ## AI Job Producer
 
-Capture upload creates a queued AI processing job for the capture type:
-
-- `audio_capture_process`
-- `text_capture_process`
-- `image_capture_process`
-
-The backend only creates durable job rows and sends named Celery tasks through Redis. Worker execution lives in `apps/ai_engine`, which calls protected backend `/internal/ai/jobs/...` endpoints to start, complete, retry, or fail jobs.
+The backend only creates durable job rows and sends named Celery tasks through Redis; it never executes AI work itself. The job types (per-capture processing, report synthesis, patient memory, Q&A drafts) are defined by `AiJobType` in `app/models.py`, and each type's Celery task name lives in `TASK_NAME_BY_JOB_TYPE` in `app/services/ai_jobs/orchestration.py`. Worker execution lives in `apps/ai_engine`, which calls protected backend `/internal/ai/...` endpoints to start, complete, retry, or fail jobs. Orchestration details: [`docs/backend/processing.md`](../../docs/backend/processing.md).
 
 ```sh
 docker compose up --build backend ai-engine redis

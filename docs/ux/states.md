@@ -147,6 +147,20 @@ Acceptable copy:
 
 Do not put AI retry, transcription retry, or processing failure tasks in Needs input.
 
+## AI Usage Limits (Pro)
+
+Fair-use AI metering (semantics: `docs/business/ai-usage-limits.md`; UI: `features/aiUsage/`) is
+**capture-first and never blocking** — no modal, no disabled capture control:
+
+- **Approaching limit** — a calm amber inline notice near the capture flow when the clinic nears
+  its monthly AI budget.
+- **At limit** — background AI enrichment pauses (jobs are parked and resume next cycle / on
+  upgrade); the notice reassures that **captures are still saved**. Deterministic output (Basic-style
+  report baseline, context digest) keeps working, so the degradation reads like AI-unavailable mode.
+- A per-session soft cap similarly pauses enrichment for a single runaway session only; a single
+  recording auto-stops and saves at 20 minutes.
+- Settings shows the "AI usage" card (ring + % + reset date). Basic (zero-AI) renders none of this.
+
 ## Needs Input Rules
 
 Needs input contains only **critical** human-decision items, in three patient/AI categories plus one

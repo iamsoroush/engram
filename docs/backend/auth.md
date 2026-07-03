@@ -94,7 +94,8 @@ Request:
 
 ```json
 {
-  "persona": "doctor"
+  "persona": "doctor",
+  "tier": "pro"
 }
 ```
 
@@ -103,7 +104,12 @@ Supported personas:
 - `doctor`
 - `assistant`
 - `admin`
+- `therapist-b` (a second therapist, for demonstrating the therapy vertical's federated caseloads)
 - `patient-preview`
+
+`tier` (optional, default `pro`) selects which seeded dev tenant the session is issued for:
+`pro` / `basic` pick the aesthetics Pro/Basic demo clinics; `therapy` picks the single-plan
+therapy demo tenant (`vertical = therapy`).
 
 Response:
 

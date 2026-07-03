@@ -1,6 +1,6 @@
 # Engram
 
-Monorepo for **Engram** — capture-first clinical memory for aesthetics and therapy clinics (dermatology next).
+Monorepo for **Engram** — capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals).
 
 ## Apps
 
@@ -77,6 +77,7 @@ Services:
 - Frontend: `http://localhost:5183`
 - Backend API: `http://localhost:8010/api/v1`
 - Backend docs: `http://localhost:8010/api/v1/docs`
+- MinIO (object storage): `localhost:9010` (console `localhost:9011`)
 - Redis: `localhost:6389`
 
 Stop the development stack:
@@ -87,15 +88,11 @@ docker compose down
 
 ## Production
 
-Production uses `docker-compose.prod.yml`.
-
-The production stack includes:
-
-- `backend`: FastAPI served by uvicorn inside a private Docker network
-- `ai-engine`: background AI job worker
-- `frontend`: nginx serving the built Vite app and proxying `/api/v1` to the backend
-
-Only nginx is published to the host. The backend is reachable by other containers as `http://backend:8000`.
+Production uses `docker-compose.prod.yml` (plus the TLS overlay `docker-compose.prod.tls.yml` on the
+real deployment). The stack runs `backend`, `ai-engine`, `frontend` (nginx), `postgres`, `minio`, and
+`redis` on a private Docker network. The real deploy path is `scripts/bootstrap.sh` → `scripts/deploy.sh`
+— see [docs/production.md](docs/production.md) for the authoritative setup, env vars, backups, and
+operational notes; the commands below are for a local production-like run.
 
 ### Production Files
 
@@ -156,39 +153,6 @@ docker compose -f docker-compose.prod.yml down
 
 ## Project Structure
 
-```text
-.
-├── apps
-│   ├── backend
-│   │   ├── Dockerfile
-│   │   ├── Dockerfile.prod
-│   │   └── README.md
-│   ├── ai_engine
-│   │   ├── Dockerfile
-│   │   ├── README.md
-│   │   └── ai_engine
-│   └── frontend
-│       ├── Dockerfile
-│       ├── Dockerfile.prod
-│       ├── README.md
-│       └── nginx.conf
-├── docker-compose.yml
-├── docker-compose.prod.yml
-├── docs
-│   ├── ai_engine
-│   │   ├── README.md
-│   │   └── processing.md
-│   ├── backend
-│   │   ├── auth.md
-│   │   ├── storage.md
-│   │   ├── v1-current.md
-│   │   └── v2-design.md
-│   ├── frontend
-│   │   ├── auth-login.md
-│   │   ├── sync-outbox.md
-│   │   └── v1-current.md
-│   ├── architecture.md
-│   └── production.md
-├── .env.example
-└── README.md
-```
+Apps live under `apps/` (`backend`, `ai_engine`, `frontend` — each with its own README), deploy and
+dev tooling under `scripts/` and `deploy/`, and engineering docs under `docs/`. The documentation map
+in [CLAUDE.md](CLAUDE.md) §2 is the single index of all docs.

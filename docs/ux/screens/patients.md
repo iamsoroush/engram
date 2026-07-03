@@ -23,7 +23,8 @@ It must not show every session nested under every patient. Sessions belong in pa
 - Page title: `Clinical Memory`.
 - Assistant-style subtitle, for example `Your captures are saved. I will organize them into patient memory as details become clear.`
 - Search.
-- Tabs: `Today`, `Patients`, `Needs input`.
+- Tabs: `Today`, `Patients`, `Lists` (Pro only), `Needs input`. Basic shows three tabs — the Lists
+  tab is simply absent (a legible upgrade, no teaser).
 - Persistent bottom capture bar.
 
 ## Today Tab
@@ -32,9 +33,23 @@ Today is the default landing tab.
 
 It shows:
 
+- the `Today / up next` worklist (below), when relevant
 - session/visit cards for active or recent work
 - a compact `Needs your input` preview when human judgment is required
 - calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
+
+### Today / up next (worklist)
+
+A soft worklist card at the top of Today (AES-903; both tiers, deterministic). Reception
+(assistant/admin) **creates** line-ups *for a doctor* — patient search, a doctor picker (doctors
+only, never self), an optional note; a doctor **consumes** a read-only queue with a `Mine`/`Clinic`
+scope toggle. Tapping a queued patient opens a recap popup — the tier-aware patient history plus the
+prior visit's before/after — with **Start visit** (creates a session already assigned to that
+patient and marks the entry seen) and `Open full timeline`. `Done` clears an entry; reception can
+remove one. A pure consumer (doctor) with an empty queue sees no box at all, and the capture bar
+always still starts a fresh session — a convenience lane, never a gate. No time slots; not a
+scheduler. Backend: `worklist_entries` + `GET /api/v1/clinic/members`
+([aes-basic-api §E9](../../backend/aes-basic-api.md)).
 
 Today is session-first. A card may include patient context, but the primary object is the session or visit, not the patient. Do not show generic patient cards that hide the session identity.
 
@@ -131,6 +146,51 @@ Example patient memory card:
 - Focused task action: `Verify patient`, when relevant
 
 Avoid vague labels such as `Needs input` or `Review` when the card needs the user to act.
+
+## Lists Tab (Pro)
+
+One deterministic, zero-AI surface for two siblings built from the treatment data Pro synthesis
+already extracts (`Session.extracted_metadata.treatments[]` + `Capture.metadata.photo_pairing`):
+**smart lists** (AES-501, "who needs my attention?") and **lot/product recall** (AES-502, "who got
+this batch?"). A small fixed set of lenses plus one lookup — never a configurable analytics
+dashboard, and never a Basic teaser.
+
+### Smart lists
+
+A rail of named lenses with live counts. Each list is a deterministic predicate whose definition is
+shown in the UI, so the count is trustworthy:
+
+- **Seen this week** (patient-grained) — a visit in the last 7 days; newest first.
+- **Due to return** (patient-grained) — most-recent visit ≥ 12 weeks ago, longest-overdue first,
+  with the threshold shown (`Last seen 14 weeks ago`). There is no structured follow-up date in the
+  data — the list is recency-based by design and never parses prose or invents a date.
+- **Missing after-photo** (visit-grained) — a photo paired as `before` with no matching `after`
+  (from the deterministic `photo_pairing`); tap opens the visit.
+
+### Lot & product lookup + recall
+
+One search box, two grains: browse by **product** ("on product X") or recall an exact **lot**. The
+box is backed by the **lot ledger** — the distinct lots/products in the clinic's extracted data,
+each with patient/visit counts — so staff pick from what was actually used instead of typing from
+memory. Recalling a lot returns every patient who received it. Safety-grade rules:
+
+- **Exact match only.** Normalization is uppercase + trim + collapse spaces; hyphens/dots are kept
+  (`D-4471` ≠ `D4471`); never fuzzy. Near-misses surface in a separate **`Similar lots (not
+  included)`** group — deliberate action only, never silently merged into the cohort.
+- **Every row cites its source** — patient, visit date, the verbatim treatment line
+  (area · product · units), and the extracted evidence snippet, linking to the visit.
+- **A clear count summary** up top (`3 patients · 4 visits`); amber attention treatment, calm copy —
+  a marker, never a blocker.
+- **Outreach handoff** — per affected patient, **Open channel** opens (or reuses) their tokenized
+  Q&A thread ([Q&A inbox](qa-inbox.md)) and yields a link to send; **Copy affected list** supports
+  the clinic's own workflow. There is no bulk "Message all" (automated SMS/WhatsApp delivery is
+  deferred, AES-404).
+
+Backend: read-only, tenant-scoped, Pro-gated (`live_report_synthesis` capability → 403 on Basic) —
+`GET /api/v1/smart-lists`, `GET /api/v1/smart-lists/{key}`, `GET /api/v1/lot-ledger`,
+`GET /api/v1/lot-recall?lot=|?product=` (`app/services/smart_lists.py`). All lot/product reading is
+aggregated in one ledger builder so the postponed AES-705 products/lots registry can layer on
+(canonical lots, expiry, per-product due-to-return precision) without reshaping any response.
 
 ## Needs Input Tab
 
@@ -247,7 +307,7 @@ Backend source: `GET /api/v1/patients/{patientId}/memory` returns `history` (`mo
 
 Language: Pro AI copy is written in the tenant's report language (a future dedicated assistant-language axis is planned, separate from transcription/report). Names embedded in the copy are bidi-isolated so mixed-direction lines render cleanly; the UI also picks per-line direction so Persian/Arabic content reads RTL.
 
-> **Pro** runs a real combined AI job (`patient_memory`): one model call produces the summary *and* history together (cheaper, mutually consistent), fed the prior memory plus compact per-visit briefs (incremental — not raw transcripts). It runs **only once the session is complete** — captures processed, a patient assigned (manually or auto-matched), and the report up to date — and is coalesced per patient. The model for this task (and transcription/caption/note) is live-selectable in **Settings → AI models** (takes effect on the next request). If the gateway is unavailable, the job falls back to deterministic content so memory is never empty. **Basic** stays fully deterministic (no model call).
+> **Pro** runs a real combined AI job (`patient_memory`): one model call produces the summary *and* history together (cheaper, mutually consistent), fed the prior memory plus compact per-visit briefs (incremental — not raw transcripts). It runs **only once the session is complete** — captures processed, a patient assigned (manually or auto-matched), and the report up to date — and is coalesced per patient. Model choice for this job (like every AI task) is managed centrally, not a user setting. If the gateway is unavailable, the job falls back to deterministic content so memory is never empty. **Basic** stays fully deterministic (no model call).
 
 ### Updating → ready state
 

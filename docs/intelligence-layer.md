@@ -5,9 +5,8 @@ live report are all built). This is the single source of
 truth for how the AI engine, backend, and frontend agree on capture *intelligence*: what the
 model emits, how the backend applies it, and how the frontend renders the effect. It replaces today's
 implicit coupling, where the AI emitted extracted identity and the backend silently chose
-whether to apply it (the root of the "audio said reassign but nothing changed" bug — see
-[ai_engine/processing.md](ai_engine/processing.md) "If a session already has a DB-owned
-patient assignment, generated identity is skipped … and cannot override it").
+whether to apply it — the root of the historical "audio said reassign but nothing changed" bug,
+where a DB-owned assignment unconditionally suppressed extracted identity.
 
 ## 1. Scope
 
@@ -35,36 +34,36 @@ its captures) to a `Patient`*. Keep the physical name generic and localize the l
 ("Session"/"Study"/"Case") at the presentation edge. Do **not** hardcode new clinic-only
 assumptions into the apply layer.
 
-## 3. Tiers (MVP ships both)
+## 3. Tiers → capabilities
 
-A new tenant-level `tier` (`basic` | `pro`) gates the pipeline. The intent **schema is the
-same** for both tiers; tier controls which fields the model is asked to populate and which
-the backend applies.
+A tenant's `(vertical, tier)` resolves to a **capability set**; features gate on membership in that
+set, never on `tier` directly. The composition per vertical lives in [spines.md §3](spines.md), and
+the code truth is `apps/backend/app/services/capabilities.py`: aesthetics **Basic is zero-AI** (the
+deterministic floor — structured capture, manual assignment, search; no transcription, no matching,
+no out-of-context, no capture AI job at all — AES-101), aesthetics **Pro** gets the full set
+(`transcription`, `image_caption`, `patient_matching`, `out_of_context`, `cross_visit_synthesis`,
+`live_report_synthesis`, `post_session_qa`), and therapy is a single plan with the full set.
 
-| Capability | Basic | Pro |
-| --- | --- | --- |
-| Audio transcription | ✅ | ✅ |
-| Out-of-context flag | ✅ | ✅ |
-| Manual/assisted subject assignment | ✅ | ✅ |
-| **AI patient matching / auto-assignment / reassignment / create** | ✅ | ✅ |
-| Image captions, note decoration | ❌ | ✅ |
-| Live report (deterministic, no LLM) | chronological body | grouped-by-type sections |
+What §5 needs from this: the intent **schema is the same** wherever the pipeline runs, and the
+per-intent apply rules below are tier-independent — but each behavior exists **only when the
+tenant's capability set grants it** (`patient_matching` for assignment/reassignment/suggestions,
+`out_of_context` for the OOC effect, `image_caption` for captions, `live_report_synthesis` for the
+synthesized report). A capture for a tenant with no capture-AI capability is saved
+deterministically, with no AI job and no `processing` state.
 
-Intelligent **patient matching** runs for **both tiers** — it is the core memory-accuracy feature
-(match / suggest / reassign / create, all governed by §5 + the strictness gate). Tier now gates only
-**enrichment** (image captions + note decoration, Pro only) and the **report layout** (Basic
-chronological vs Pro grouped-by-type). `append` is the default chronological behavior in Basic.
+**The live report is deterministic-first, synthesis-refined.** Once the capture chain is idle the
+backend rebuilds a deterministic report synchronously, so a report is always present and current.
+Tenants with `live_report_synthesis` then get the single-pass synthesis job (`session_organize`)
+that overwrites it with the structured per-visit report + extracted `treatments[]`; without it (or
+without a gateway) the deterministic report stands. See
+[ai_engine/processing.md](ai_engine/processing.md) "Session synthesis".
 
-**Report generation is deterministic (no LLM, no async job).** The live report is rebuilt
-synchronously from the session's processed, in-context captures whenever the capture chain is idle —
-Basic = one chronological section; Pro = fixed by-type sections (Audio notes / Written notes /
-Photos). There is no `session_organize`/synthesis job and no "updating" churn; the report is always
-current for the latest capture. (See [ai_engine/processing.md](ai_engine/processing.md).)
-
-**Per-task models.** Each AI task can run on its own model, configured via env: transcription
-(`AI_ENGINE_TRANSCRIPTION_MODEL`) and photo caption (`AI_ENGINE_CAPTION_MODEL`), each with optional
-`*_BASE_URL` / `*_API_KEY` overrides (blank = fall back to the transcription gateway). Notes are a
-pure passthrough (no AI decoration), so there is no per-task note model.
+**Per-task models (live).** Each AI task (transcription, caption, report synthesis, patient memory,
+Q&A) can run on its own model. The selection is live: per-task overrides are stored in
+`app_config.ai_models` and edited via `GET`/`PUT /api/v1/ai-config/models` (takes effect on the next
+request; worker env is the fallback, gateway URL/key stay env-only). Notes are a pure passthrough
+(no AI), so there is no note model. See [ai_engine/processing.md](ai_engine/processing.md)
+"Per-task models".
 
 **Completion is auto-derived (no manual "verify").** A session is **complete** when its captures are
 processed, a patient is assigned, and the report is current (not stale) for the latest capture. This
@@ -145,7 +144,7 @@ capture was deleted** (this *is* undo). The fix is to stop suppressing the appen
    mention, a tie, or a national-ID conflict. Otherwise it surfaces as a partial-match
    **suggestion** on the capture card (the H4 quick-action surface: Keep match / Create new
    instead (editable form) / Choose another — see
-   [redesign-capture-surface.md](ux/redesign-capture-surface.md)). **Precedence (D1):** a staff
+   [ux/screens/capture.md](ux/screens/capture.md) "Partial-match resolution"). **Precedence (D1):** a staff
    assignment is overridden only by another staff action or an explicit-basis AI capture.
 
 Matching reuses the unchanged ladder (national_id → phone/email → exact alias → fuzzy →
@@ -160,15 +159,15 @@ undo.
 Basic: no-op (chronological default). Pro: the capture is folded into the Live-report
 refinement job; recorded as a `report_contribution` effect on the capture.
 
-### Captions & note decoration (Pro)
-Image captions (photo) and note decoration (note) are real Pro enrichment produced by the AI engine
-through the configured multimodal gateway, then written to the capture's `caption` / `decorated_text`
-metadata. The gate lives at the worker-payload boundary: the backend attaches an `enrichmentContext`
-to a photo/note job **only for Pro tenants** (reusing `tenant_tier`), so Basic — and any gateway-less
-or QA-fixture capture — keeps the deterministic placeholder/passthrough. Captions describe only what
-is clinically visible; decoration preserves every detail and adds nothing; both stay in the source
-language/native script (no romanization). See
-[ai_engine/processing.md](ai_engine/processing.md) "Pro enrichment gating".
+### Captions (Pro)
+Image captions (photo) are real Pro enrichment produced by the AI engine through the configured
+multimodal gateway, then written to the capture's `caption` metadata. The gate lives at the
+worker-payload boundary: the backend attaches an `enrichmentContext` to a photo job **only when the
+tenant has the `image_caption` capability**, so Basic — and any gateway-less or QA-fixture capture —
+keeps a blank/deterministic caption. Captions describe only what is clinically visible, in the
+source language/native script (no romanization). Notes carry **no enrichment**: `text_capture_process`
+is a pure passthrough (decoration removed — report synthesis reads the raw note text). See
+[ai_engine/processing.md](ai_engine/processing.md) "Photo — Pro caption + enrichment attributes".
 
 ### Out-of-context (both tiers)
 Store an `out_of_context` effect on the capture. The capture is **kept**, **excluded from
@@ -195,13 +194,13 @@ metadata; the frontend renders chips from it:
 
 ## 7. Frontend render model
 
-See [ux/redesign-capture-surface.md](ux/redesign-capture-surface.md) for the full surface
-spec; the contract-level points:
+See [ux/screens/capture.md](ux/screens/capture.md) for the full surface spec; the
+contract-level points:
 
 - Tabs renamed **Captures / Live report**, **centered in the Clinical report header**
   (desktop). The manual **Generate button is removed**; the Live report is always present.
 - Capture cards keep **type icons** and an inline **Edit** on each generated text block
-  (transcript/caption/decorated text) — editing the capture's text, distinct from the
+  (transcript/caption) — editing the capture's text, distinct from the
   deferred report-`edit` intent.
 - Each capture shows **effect chips** (a capture may carry several — e.g.
   `created_and_assigned`): "Patient (re)assigned → N · Undo", "New patient + assigned",
@@ -213,9 +212,10 @@ spec; the contract-level points:
   **not applied** — it shows a `Suggested: reassign to N · Apply / Dismiss` chip (and a
   Needs-input item) the user can act on in one tap.
 - **Live report is a document, both tiers:** a clinic + patient header from template/DB
-  (not AI). **Basic** = chronological captures + transcripts + images. **Pro** = a
-  **template-driven, grouped-by-type** report (Audio notes / Written notes / Photos, no per-line
-  timestamps), **rebuilt deterministically (no LLM, no async job) as each capture lands**. The
+  (not AI). **Basic** = chronological captures + transcripts + images. **Pro** = the synthesized
+  per-visit report: a deterministic baseline rebuilt as each capture lands, overwritten by the
+  `session_organize` synthesis job (fixed sections + extracted `treatments[]` — see
+  [ai_engine/processing.md](ai_engine/processing.md) "Session synthesis"). The
   report **template** is the fixed aesthetic default today and **user-uploadable later**
   (radiology/pathology); its name lives in the report meta strip, not the patient block.
 - **Undo** = remove the capture's contribution and recompute (assignment: drop its timeline

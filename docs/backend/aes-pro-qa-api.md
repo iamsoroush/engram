@@ -1,7 +1,7 @@
 # Aesthetics-Pro patient Q&A backend API (contracts)
 
 > Request/response contracts for the **Pro** post-session patient↔clinic Q&A (AES-402/403) — the
-> Pro payload of the shared patient surface ([foundation §4](../ux/redesign-foundation.md)). The
+> Pro payload of the shared patient surface ([foundation §4](../ux/foundation.md)). The
 > Basic payload (report + aftercare) is in [`aes-basic-api.md`](aes-basic-api.md). The backend
 > OpenAPI schema (`/api/v1/openapi.json`) remains the machine source of truth.
 
@@ -82,6 +82,8 @@ Staff thread payload:
 | `GET` | `/patient-qa/inbox` | staff_or_admin | **Thread-centric**: one entry per patient conversation; threads awaiting approval sort first, then by recent activity. Query `scope` = `mine` (default; routed to me **+** unrouted) \| `all` (whole clinic). `total` counts threads awaiting approval (the badge). Self-heals a missing/failed draft on read. |
 | `POST` | `/patient-qa/messages/{id}/send` | staff | Body `{ "reply"? }` — the approved text (the draft as-is, or an edit; omit to send the current draft). Creates the doctor reply, marks the question answered, and **captures the exchange into patient memory**. `409` if the question is no longer pending. Returns the staff thread payload. |
 | `POST` | `/patient-qa/messages/{id}/dismiss` | staff | Dismiss without replying. |
+| `POST` | `/patient-qa/messages/{id}/voice-edit` | staff | **Voice edit** of the reply: multipart `file` (the spoken note) + `draft` (the current editable text). Stores the audio transiently and enqueues an `AiJobType.qa_revise` job — the AI decides whether the note *revises* the draft or *replaces* it. `409` if the question is no longer pending. Returns `{ messageId, draftStatus: "revising", jobId }`. |
+| `GET` | `/patient-qa/messages/{id}/draft` | staff_or_admin | Poll the question's current draft while a voice edit / initial draft runs: `{ messageId, status, draft, draftStatus, draftSource, draftMode }` (`draftMode` = `revise` \| `replace` after a voice edit). |
 
 Inbox payload (thread-centric):
 ```jsonc
@@ -108,8 +110,15 @@ Inbox payload (thread-centric):
 }
 ```
 
-The reply-draft model is selectable like every other task via `PUT /ai-config/models` (task key
-`qa_draft`) — it shows in the same Settings model list as transcription/caption/patient_memory.
+The reply-draft/revise models are configured centrally per task (internal-only — model choice is
+not a user setting; see the AI-model decision in
+[technical-decisions.md](../technical-decisions.md)).
+
+### Internal (AI-engine worker; token-gated, not in OpenAPI)
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| `GET` | `/internal/qa/voice/{job_id}` | Streams a `qa_revise` job's stored voice note to the worker (`404` if the job/audio is unknown). |
 
 ---
 

@@ -2,9 +2,9 @@
 
 This repository is developed with AI coding agents.
 
-**Naming:** the platform and product share a single brand — **Engram** — used everywhere: repo, services, infra, API, and all customer-facing surfaces. Engram is capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals).
+**Naming:** the platform and product share a single brand — **Engram** — used everywhere: repo, services, infra, API, and all customer-facing surfaces. Engram is capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Production is live at `engram.ir`.
 
-Use this file as the starting guide. Do not read the whole repository blindly. Start from the relevant README/docs, then inspect only the files needed for the task.
+Use this file as the starting guide. Do not read the whole repository blindly. Start from the relevant README/docs, then inspect only the files needed for the task. **§2 below is the single documentation index** — other indexes (`docs/README.md`, app READMEs) defer to it.
 
 ---
 
@@ -14,8 +14,8 @@ Use this file as the starting guide. Do not read the whole repository blindly. S
 
 Read:
 
-- `README.md`
 - `apps/frontend/README.md`
+- `docs/frontend/README.md`
 
 If the task changes visible behavior, also read:
 
@@ -26,8 +26,8 @@ If the task changes visible behavior, also read:
 
 Read:
 
-- `README.md`
 - `apps/backend/README.md`
+- `docs/backend/README.md`
 
 If backend behavior affects users, also read:
 
@@ -38,9 +38,8 @@ If backend behavior affects users, also read:
 
 Read:
 
-- `README.md`
 - `apps/ai_engine/README.md`
-- `docs/ai_engine/README.md`
+- `docs/ai_engine/README.md` (indexes `processing.md` — the as-built jobs doc — and `evals.md`)
 
 If AI engine behavior affects user-visible processing, summaries, matching, or recovery, also read:
 
@@ -52,7 +51,6 @@ If AI engine behavior affects user-visible processing, summaries, matching, or r
 
 Read:
 
-- `README.md`
 - `apps/frontend/README.md`
 - `apps/backend/README.md`
 - `apps/ai_engine/README.md`
@@ -66,7 +64,9 @@ Read:
 
 - `docs/product.md`
 - `docs/design-principles.md`
+- `docs/ux/foundation.md` (tier/persona/boundary decisions — read before designing any surface)
 - `docs/ux/overview.md`
+- `docs/intelligence-layer.md` (if the work touches capture→intent/apply behavior)
 - relevant workflow/screen/state/navigation docs under `docs/ux/`
 
 ### Architecture
@@ -82,7 +82,7 @@ Read:
 Read:
 
 - `docs/production.md`
-- `docs/production-readiness.md`
+- `docs/production-alpha-tradeoffs.md`
 - `docker-compose.prod.yml`
 - `docs/architecture.md`
 
@@ -90,117 +90,166 @@ Read:
 
 ## 2. Documentation map
 
-- `docs/spines.md`  
-  **Multi-vertical strategy:** the three product spines, capability/tier matrix, sequencing, and per-spine next steps. Start here for product direction beyond today's aesthetics build.
+Product & strategy:
 
 - `docs/product.md`  
-  Product purpose, users, MVP scope, and accepted product behavior.
+  Top-of-funnel current-product doc: purpose, personas, verticals × tiers × surfaces, the core loop, accepted behaviors.
+
+- `docs/spines.md`  
+  **Multi-vertical strategy:** the three product spines, the capability/tier matrix (canonical for what each tier contains — `services/capabilities.py` implements it), sequencing, and per-spine frontier.
 
 - `docs/design-principles.md`  
-  Non-negotiable product and UX principles.
+  Non-negotiable product and UX principles (Spine-A scope).
 
 - `docs/intelligence-layer.md`  
-  Capture→intent **apply-semantics contract**: entity model, assignment timeline, out-of-context handling, and tiering. Other docs defer to it for "§5 apply semantics / §3 out-of-context / §2 entity model".
+  Capture→intent **apply-semantics contract**: entity model, assignment timeline, out-of-context handling. Other docs defer to it for "§5 apply semantics / §3 out-of-context / §2 entity model". Tier contents defer to `spines.md` §3.
+
+UX (system-state):
 
 - `docs/ux/overview.md`  
   Compact entry point for current UX. Start here for user-facing tasks.
+
+- `docs/ux/foundation.md`  
+  The tier/persona/boundary design-foundation record every surface design builds on.
 
 - `docs/ux/navigation.md`  
   Routes, screen hierarchy, entry points, and navigation paths.
 
 - `docs/ux/states.md`  
-  Shared loading, error, empty, success, offline, and permission states.
+  Shared loading, error, empty, success, offline, permission, and AI-usage-limit states.
 
 - `docs/ux/workflows/`  
   One compact file per major user workflow.
 
 - `docs/ux/screens/`  
-  One compact file per important screen.
+  One compact file per important screen (incl. `capture.md` — the primary surface, with the partial-match matrix and undo UX — `patients.md` with the Pro Lists tab + worklist, `qa-inbox.md`, `patient-surface.md` for the public `/share` + `/qa` pages, `insights.md`).
 
-- `docs/ux/redesign-session-context.md`  
-  Spec for patient-context at point-of-determination (tier-aware) + the session↔timeline round-trip; Pro context window + its AI jobs (Job-4 backed).
+- `docs/ux/aesthetics-stories.md`  
+  The AES-### story registry (IDs, status, decisions) that specs, QA scripts, and code comments cite.
 
-- `docs/ux/redesign-pro-report.md`  
-  Story-C design: polished synthesized-report rendering (clinical + curated patient share) + the recorded share/dose decisions.
-
-- `docs/ux/redesign-smart-lists-recall.md`  
-  Design + as-built for the Pro **smart lists** (AES-501) + **lot/product recall** (AES-502): the deterministic Lists tab in Clinical Memory, the trustworthy exact-match recall cohort + Q&A outreach handoff, and the AES-705 registry seam.
+Architecture & backend:
 
 - `docs/architecture.md`  
   System architecture, modules, data flow, and boundaries.
 
 - `docs/architecture/pipeline-versioning.md`  
-  Content-addressed `report_version` store + user-state overlay — the versioning foundation behind capture undo / de-effecting and safety-reconcile.
+  Content-addressed `report_version` store + user-state overlay — the versioning foundation behind capture undo / de-effecting and safety-reconcile (with built-vs-pending status).
 
 - `docs/technical-decisions.md`  
-  Important decisions future agents/developers need to know.
-
-- `docs/business/ai-usage-limits.md`  
-  Fair-use AI usage-limit system: measured per-job cost model, derived per-plan caps (monthly $ budget
-  per seat + per-session soft cap), the metering/enforcement approach (`services/ai_usage/`), and the
-  synthesis quiet-period debounce. Read before touching AI metering, limits, or the synthesis dispatch.
-
-- `docs/ai_engine/README.md`  
-  AI engine worker boundary, processing jobs, placeholder processors, and replacement path.
-
-- `docs/ai_engine/capture-intelligence-design.md`  
-  Approved build design for the Pro capture-intelligence wave (4 jobs, the synthesis+treatments A↔B contract, seams, decisions). Build keystone-first.
+  Dated decision log future agents/developers must respect (with superseding notes where reversed).
 
 - `docs/backend/`  
-  As-built backend: `README.md` (index), `design.md` (Postgres/MinIO/Celery/Alembic data + API design),
+  As-built backend: `README.md` (index), `data-model.md` (Postgres data model + state semantics),
+  `processing.md` (backend-side AI-job orchestration: dispatch, gating, debounce, recovery),
   `auth.md` (JWT auth, dev login, roles/tenants), `storage.md` (MinIO object storage),
-  `aes-basic-api.md` and `aes-pro-qa-api.md` (aesthetics Basic + Pro Q&A API contracts).
+  `aes-basic-api.md` and `aes-pro-qa-api.md` (aesthetics Basic + Pro Q&A API contracts),
+  `insights-feedback.md` (Insights + AI-feedback endpoints).
+
+AI engine:
+
+- `docs/ai_engine/README.md`  
+  Worker boundary, the vertical-agnostic prompt rule, and the index for the two docs below.
+
+- `docs/ai_engine/processing.md`  
+  THE as-built AI-jobs doc: all worker jobs (transcription+intents, caption, note passthrough, report synthesis incl. the A↔B contract + safety-reconcile, patient memory, Q&A draft/revise), fallbacks, recovery, live model config.
+
+- `docs/ai_engine/evals.md`  
+  How the eval system works: scoring tiers, expectations format, fixtures, harvest loop, coverage table, CI status.
+
+Frontend:
 
 - `docs/frontend/`  
-  Frontend: `README.md` (index), `overview.md` (capture-first app structure + mobile testing),
+  `README.md` (index), `overview.md` (capture-first app structure + mobile testing),
   `auth-login.md` (login/persona flow), `i18n.md` (fa/en + RTL, chrome-vs-content axis, deferred scopes),
   `sync-outbox.md` (local-first outbox + cache policy).
 
+Business:
+
+- `docs/business/ai-usage-limits.md`  
+  Fair-use AI usage-limit system: measured per-job cost model, derived per-plan caps, the metering/enforcement approach (`services/ai_usage/`), and the synthesis quiet-period debounce. Read before touching AI metering, limits, or the synthesis dispatch.
+
+- `docs/business/compute-cost-model.md`  
+  Infra COGS, storage compounding, and minimum-profitable-price methodology (its AI-COGS section is superseded by `ai-usage-limits.md` — see its banner).
+
+- `docs/business/pricing.md`  
+  The current price anchors and how they reconcile; canonical decision pending discovery.
+
+- `docs/business/interview-kit.md`  
+  Customer-discovery/WTP interview kit for the current Tehran wave (operational GTM artifact; prune after the wave's readout).
+
+QA & dev workflow:
+
 - `docs/qa/`  
-  Manual QA scripts: `aes-basic-smoke.md`, `aes-pro-smoke.md`, `aes-frontend-scenarios.md`,
-  `aes-patient-pages-scenarios.md`.
+  Manual QA scripts: `aes-basic-smoke.md` (incl. against-production variant), `aes-pro-smoke.md`, `aes-frontend-scenarios.md` (exhaustive Basic), `aes-patient-pages-scenarios.md` (public share pages).
 
 - `docs/dev/`  
   Dev workflow: `worktree-stacks.md` (isolated per-worktree dev stacks), `screenshots.md`.
 
-- `docs/production.md`  
-  Production setup and operational notes.
+Production & operations:
 
-- `docs/production-readiness.md`  
-  Production gap list, ArvanCloud-tailored decisions, prioritized tasks, and the go-live checklist.
+- `docs/production.md`  
+  Current live deployment (engram.ir), stack shape incl. Caddy/TLS, env vars, deploy/rollback paths (incl. rsync `SKIP_GIT_PULL`), backups/restore, CI overview.
 
 - `docs/production-alpha-tradeoffs.md`  
-  The deliberate simplifications made for alpha testing (small single VPS, no monitoring) and how to undo each when scaling up — the migration checklist.
+  The deliberate-debt register: alpha simplifications and how to undo each when scaling up.
 
 - `docs/monitoring.md`  
-  Self-hosted observability overlay (Prometheus/Grafana/exporters + Uptime Kuma + GlitchTip) and what to watch.
+  Self-hosted observability overlay (built, not yet deployed — the doc states how to enable) and what to watch.
+
+Process workspace:
+
+- `docs/work/`  
+  **Temporary process docs** (epics, stories, design explorations, plans) — see `docs/work/README.md` for the lifecycle. Everything else under `docs/` is system-state.
 
 The backend OpenAPI schema is the source of truth for exact API contracts. Do not create a large duplicate API contract document.
 
 ---
 
-## 3. Documentation update rules
+## 3. Documentation rules
+
+**Two classes of docs.** Everything under `docs/` except `docs/work/` is **system-state**: it
+describes what IS, in the present tense, and must match the code at all times. **Process docs**
+(epics, stories, design explorations, build plans, migration checklists) live in `docs/work/` and
+follow its lifecycle: create → build → fold durable essence into system-state docs → delete.
+
+- A system-state doc never contains "Status: not built", phased plans, or "superseded by…" banners.
+  If it goes stale, rewrite it — don't annotate it.
+- System-state docs never link into `docs/work/`. If one needs to, that content is durable — fold it
+  out first.
+- When an epic/story finishes, delete its process doc after folding; rewire every inbound link
+  (zero broken links).
+- **Volatile enumerations point at code**, not prose copies: feature lists → `src/features/`, job
+  types → `AiJobType` in `app/models.py`, env vars → the app's `config.py` / `.env.prod.example`.
+  Hand-maintained copies of these lists are how docs rot.
+- This file's §2 is the **only** doc index. Don't build parallel doc maps.
 
 Update docs only when your change affects future understanding.
 
-Update UX docs when changing:
+Update UX docs when changing: routes or navigation; screens or visible behavior; workflow steps;
+loading/error/empty/success states; offline or permission behavior; backend behavior that affects UX.
 
-- routes or navigation
-- screens or visible behavior
-- workflow steps
-- loading/error/empty/success states
-- offline or permission behavior
-- backend behavior that affects UX
+Update architecture/technical docs when changing: system boundaries; major modules; data flow;
+infrastructure assumptions; important technical decisions.
 
-Update architecture/technical docs when changing:
+Keep docs compact and modular. Do not duplicate details across files — every fact has exactly one
+home; link to it. Contracts (`intelligence-layer.md`, `spines.md` §3) are referenced, not restated.
 
-- system boundaries
-- major modules
-- data flow
-- infrastructure assumptions
-- important technical decisions
+**Close the loop — before you declare a task done**, walk this checklist (it is part of the task,
+not optional cleanup):
 
-Keep docs compact and modular. Do not duplicate details across files. Link to deeper docs when needed.
+1. **Behavior changed?** Routes/screens/states/workflows → update the matching `docs/ux/` doc.
+   Backend behavior that users can see counts.
+2. **Boundaries/data changed?** New module, data flow, table/enum, job type, infra assumption →
+   `docs/architecture.md`, `docs/backend/data-model.md` / `processing.md`, or the app doc that owns it.
+3. **Decision made or reversed?** Add a dated entry to `docs/technical-decisions.md`; if it reverses
+   an earlier entry, add a superseding note on the old one (never silently contradict it).
+4. **AI job touched?** Run the eval suite; new job → new eval + update `docs/ai_engine/evals.md`'s
+   coverage table (see §4).
+5. **New story/scope?** Register the AES-### (or vertical equivalent) in the story registry.
+6. **Doc added, moved, or deleted?** Update the §2 map above (the single index) and rewire every
+   inbound link. Epic/story finished → fold + delete its `docs/work/` doc.
+7. **Verify zero broken links:** run `python3 scripts/check-doc-links.py` (CI runs it too — it fails
+   on dangling links and on system-state docs linking into `docs/work/`).
 
 ---
 
@@ -214,10 +263,11 @@ Keep docs compact and modular. Do not duplicate details across files. Link to de
 - Keep code readable, typed, and maintainable.
 - Validate with the relevant tests, linting, or type checks when available.
 - **AI jobs are eval-gated.** Re-implementing or changing an existing AI job (transcription, image
-  caption, report synthesis = treatments+aftercare+sections, patient memory, patient matching) MUST run
-  the eval suite (`apps/ai_engine/eval/run_all.py`) and not regress it. A **new** AI job MUST ship its
-  own eval suite — and you must **consult the user on its golden-set scenarios first** (don't design the
-  eval set unilaterally). See `docs/ai_engine/eval-epic.md`.
+  caption, report synthesis = treatments+aftercare+sections+safety, patient memory, patient matching,
+  Q&A draft/revise) MUST run the eval suite (`apps/ai_engine/eval/run_all.py`) and not regress it. A
+  **new** AI job MUST ship its own eval suite — and you must **consult the user on its golden-set
+  scenarios first** (don't design the eval set unilaterally). Known debt: `qa_draft`/`qa_revise`
+  currently have no evals. See `docs/ai_engine/evals.md`.
 
 ---
 

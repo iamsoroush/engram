@@ -89,6 +89,19 @@ jobs:
         working-directory: apps/frontend
         run: npm run i18n:guard
 
+  doc-links:
+    name: Doc links (resolve + docs/work isolation)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Fails on dangling relative markdown links and on system-state docs
+      # linking into docs/work/ (the temporary process-doc workspace).
+      # See CLAUDE.md §3 "Close the loop".
+      - name: Check markdown links
+        run: python3 scripts/check-doc-links.py
+
   compose-validate:
     name: Validate prod compose
     runs-on: ubuntu-latest

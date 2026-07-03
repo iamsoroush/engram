@@ -22,7 +22,7 @@ S3_HOST="${EVAL_FIXTURES_S3_HOST:-minio:9000}"
 ACCESS_KEY="${EVAL_FIXTURES_S3_ACCESS_KEY:-notari-dev}"
 SECRET_KEY="${EVAL_FIXTURES_S3_SECRET_KEY:-notari-dev-secret}"
 MC_IMAGE="${EVAL_FIXTURES_MC_IMAGE:-minio/mc}"
-CONTAINER="${EVAL_FIXTURES_CONTAINER:-notari-main-ai-engine-1}"
+CONTAINER="${EVAL_FIXTURES_CONTAINER:-engram-main-ai-engine-1}"
 JOBS="transcription caption matching"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

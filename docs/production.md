@@ -1,166 +1,143 @@
 # Production
 
-## Current Production Shape
+## Current deployment
 
-Production uses:
+Engram is live at **`engram.ir`**, on a single ArvanCloud VPS (Iran region):
 
-```text
-docker-compose.prod.yml
+- **DNS:** Option A — a direct, unproxied A-record to the VPS; no CDN in the request path
+  (see [DNS & TLS](#arvancloud-dns--tls--pick-one-setup)).
+- **TLS:** Caddy on the box terminates HTTPS with Let's Encrypt certificates. Issuance and
+  **renewal are automatic** — no cert maintenance needed.
+- **AI gateway:** `gw.engram.ir` — the Europe-hosted, Iran-reachable gateway that serves all AI
+  jobs (transcription, image captions, report synthesis, patient memory/matching).
+- **Deploy path:** first bring-up via `scripts/bootstrap.sh`; routine deploys via
+  `scripts/deploy.sh`.
+
+This is deliberately a small single-box alpha deployment. The simplifications made for it —
+and how to undo each when scaling up — are the debt register in
+[production-alpha-tradeoffs.md](production-alpha-tradeoffs.md).
+
+## Stack
+
+Production runs the base compose plus the TLS overlay:
+
+```sh
+docker compose -f docker-compose.prod.yml -f docker-compose.prod.tls.yml --env-file .env.prod ...
 ```
 
 Services:
 
-- `frontend`: nginx serving the built Vite app and proxying `/api/v1` to backend.
-- `backend`: FastAPI/uvicorn service private to the Docker network.
-- `ai-engine`: background capture processing worker private to the Docker network.
-- `redis`: broker/result backend for Celery.
-- `postgres`: metadata store for backend v2.
-- `minio`: S3-compatible object storage for backend v2.
+- `caddy` (from `docker-compose.prod.tls.yml`): TLS termination; publishes host ports **80/443**
+  (+ 443/udp for HTTP/3) and proxies to `frontend:80` over the internal Docker network.
+- `frontend`: nginx serving the built Vite app and proxying `/api/v1` to the backend. Kept off
+  the public host — `bootstrap.sh` pins `PROD_FRONTEND_PORT=127.0.0.1:8080` so Caddy owns 80/443.
+- `backend`: FastAPI/uvicorn, private to the Docker network (`http://backend:8000`); runs
+  `alembic upgrade head` on start.
+- `ai-engine`: Celery worker executing the AI jobs against the configured gateway.
+- `redis`: Celery broker/result backend.
+- `postgres`: metadata store — tenants, users, patients, sessions, captures, artifacts, audit
+  events, processing-job rows.
+- `minio`: S3-compatible object storage for capture source files and generated artifacts; media
+  is served via short-lived presigned URLs. Do not switch production back to backend-local files.
+  (The `capture_data` volume is a legacy local-file mount; the storage of record is
+  MinIO + Postgres.)
 
-Only the frontend/nginx service is published to the host. The backend is reachable inside Docker as:
+**Caddy is the only public entry point** — everything else stays on the internal network or a
+localhost bind.
 
-```text
-http://backend:8000
-```
+## API routing
 
-## API Routing
+Leave `PROD_VITE_API_URL` empty for the default same-origin setup: the browser calls
+`/api/v1/...` and nginx proxies to the backend container. This avoids CORS issues and phone/LAN
+problems where `localhost` would refer to the client device.
 
-In production, leave `PROD_VITE_API_URL` empty for the default same-origin setup. The browser calls:
+HTTPS is required for the product to function, not just for transport security: microphone
+capture (`MediaRecorder`) and camera access need a secure context. (For local LAN testing over
+HTTP, audio capture may fall back to file input.)
 
-```text
-/api/v1/...
-```
-
-nginx proxies those requests to the backend container. This avoids CORS issues and avoids phone/LAN problems where `localhost` would refer to the client device.
-
-## Capture Storage
-
-Production Compose defines:
-
-```text
-capture_data:/data/captures
-```
-
-This is acceptable for prototype deployments but not enough for real clinical production. For production-grade durability, move source files to object storage and metadata to a database.
-
-Backend v2 target:
-
-- Postgres stores tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows.
-- MinIO stores source files and generated artifacts.
-- MinIO remains the production object storage target; do not switch production back to backend-local files.
-- Celery and Redis own background job execution. Current capture processors are placeholders until real AI logic is implemented.
-
-## Data Safety
+## Data safety
 
 The product promise is that captures are not lost because the network is slow.
 
-Current safety layers:
+Safety layers:
 
-- Browser IndexedDB pending outbox before upload.
-- Retry mechanism for failed uploads.
+- Browser IndexedDB pending outbox before upload, with retry for failed uploads.
 - Browser warning while unsynced captures exist.
-- Backend-mounted volume after upload succeeds.
-- Synced browser cache for fast preview, evictable after backend safety.
+- A capture is safely transferred only after the source object exists in MinIO **and** its
+  metadata is committed in Postgres; if either side fails, the API does not return a successful
+  upload. The browser outbox remains the safety copy until backend success.
+- Synced browser cache is only a convenience for fast preview and may be evicted; unsynced
+  outbox data must never be silently deleted.
 
-Backend v2 safety boundary:
+## Environment variables
 
-- A capture is safely transferred only after the source object exists in MinIO and its metadata is committed in Postgres.
-- If either side fails, the API must not return successful upload.
-- Browser pending outbox data remains the safety copy until backend success.
+**[`.env.prod.example`](../.env.prod.example) is the authoritative variable list** — copy it to
+`.env.prod` and generate the secrets with `scripts/gen-secrets.sh` (`bootstrap.sh` does both when
+`.env.prod` is missing). The groups it covers:
 
-Important distinction:
+- **Domain/TLS:** `CADDY_SITE_ADDRESS`, `PROD_FRONTEND_PORT` (keep `127.0.0.1:8080` under Caddy).
+- **Core secrets:** `POSTGRES_*`, `MINIO_ROOT_*`, `BACKEND_JWT_SECRET`, `AI_ENGINE_INTERNAL_TOKEN`.
+- **Auth:** `BACKEND_AUTH_MODE=production` — mandatory; disables dev-login.
+- **Object storage:** `BACKEND_OBJECT_STORAGE_*`, including `..._PUBLIC_ENDPOINT` (public base for
+  presigned URLs).
+- **AI:** `AI_ENGINE_TRANSCRIPTION_BASE_URL/_API_KEY/_MODEL` (the gateway),
+  `BACKEND_REPORT_SYNTHESIS_ENABLED` + `AI_ENGINE_REPORT_SYNTHESIS_MODEL/_REASONING_EFFORT`, and
+  optional `AI_ENGINE_CAPTION_MODEL` / `AI_ENGINE_PATIENT_MEMORY_MODEL` (blank = fall back to the
+  transcription model).
+- **Backups:** `BACKUP_DIR/_RETAIN_DAYS/_ENCRYPTION_KEY`, `OFFSITE_ALIAS`, `OFFSITE_BUCKET`.
+- **Monitoring overlay:** `GRAFANA_*` / `GLITCHTIP_*` / Sentry DSNs — see
+  [monitoring.md](monitoring.md).
 
-- Unsynced browser outbox data is the safety copy and must not be silently deleted.
-- Synced browser cache is only a convenience and may be evicted.
+## Operational posture
 
-## HTTPS Requirement
+In place and live:
 
-Real deployment should use HTTPS. This is especially important for:
+- TLS end-to-end with auto-renewed certs (Caddy).
+- Backend-managed JWT auth; dev-login disabled (`BACKEND_AUTH_MODE=production`); per-request
+  live-membership authorization; tenant/clinic isolation.
+- Nightly **encrypted** Postgres backups on cron (installed by `bootstrap.sh`) +
+  `scripts/restore.sh`; rehearse restores regularly.
+- nginx upload size limit, security headers, gzip; container log rotation.
+- OS hardening via server prep: ufw firewall (SSH/80/443 only), unattended security updates,
+  fail2ban.
+- Audit events recorded in Postgres.
 
-- microphone access through `MediaRecorder`;
-- camera access in some browser/device combinations;
-- protected clinical data in transit;
-- service worker/offline capabilities if added later.
+Open hardening items (each with its scale-up action in
+[production-alpha-tradeoffs.md](production-alpha-tradeoffs.md)):
 
-For local LAN testing over HTTP, audio capture may fall back to file input.
+- No per-service resource limits (`mem_limit`/`cpus`) in the prod compose.
+- The backend uses the **MinIO root key** — an app-scoped key (+ server-side encryption + bucket
+  versioning) is still pending.
+- Backups are **local-only unless `OFFSITE_ALIAS` is set** — they die with the box otherwise.
+- The monitoring overlay is built but **not deployed** — see [monitoring.md](monitoring.md).
 
-## Environment Variables
+## MinIO security (target posture)
 
-Backend:
-
-```sh
-BACKEND_APP_NAME=Engram API
-BACKEND_CORS_ORIGINS=["https://engram.example.com"]
-BACKEND_AUTH_MODE=production
-BACKEND_DATABASE_URL=postgresql+psycopg://...
-BACKEND_OBJECT_STORAGE_ENDPOINT=https://minio.internal:9000
-BACKEND_OBJECT_STORAGE_BUCKET=engram-captures
-BACKEND_OBJECT_STORAGE_ACCESS_KEY=...
-BACKEND_OBJECT_STORAGE_SECRET_KEY=...
-BACKEND_OBJECT_STORAGE_SECURE=true
-BACKEND_CELERY_BROKER_URL=redis://redis:6379/0
-BACKEND_CELERY_RESULT_BACKEND=redis://redis:6379/1
-BACKEND_AI_JOB_MAX_RETRIES=3
-BACKEND_AI_JOB_RETRY_DELAY_SECONDS=30
-AI_ENGINE_INTERNAL_TOKEN=...
-```
-
-Frontend production build:
-
-```sh
-PROD_FRONTEND_PORT=80
-PROD_VITE_API_URL=
-```
-
-Leave `PROD_VITE_API_URL` empty when nginx proxies `/api/v1` on the same origin.
-
-## Operational Concerns
-
-Before handling real clinical data, production needs:
-
-- TLS termination and secure headers;
-- authentication and role-based authorization;
-- tenant/clinic isolation;
-- encrypted Postgres and MinIO storage;
-- backups and restore drills;
-- audit logging;
-- file retention policy;
-- upload size limits;
-- monitoring for failed uploads, failed/retried Celery jobs, Redis health, Postgres capacity, and MinIO capacity;
-- structured logs and request IDs;
-- migration path from file-backed prototype data to database/object storage.
-
-## MinIO Security
-
-Production MinIO requirements:
-
-- Keep MinIO API and console on a private network.
-- Do not enable public bucket access.
-- Use separate backend app and operational admin credentials.
-- Limit backend credentials to required buckets and prefixes.
-- Enable server-side encryption.
-- Use bucket versioning where practical.
-- Document lifecycle and retention policy before real clinical use.
-- Serve previews through backend authorization or short-lived presigned URLs.
+- Keep MinIO API and console on a private network; no public bucket access.
+- Separate backend app credentials from operational admin credentials; limit backend credentials
+  to the required bucket. *(Current deviation: backend uses the root key — see above.)*
+- Enable server-side encryption and bucket versioning where practical.
+- Serve previews through backend authorization or short-lived presigned URLs (as built).
 - Back up MinIO object data together with Postgres metadata.
 
 ## Authentication
 
-Production authentication is backend-managed JWT auth. Nginx must not be the authorization boundary for `/api/v1`; it should proxy requests to the backend after handling TLS and security headers.
+Production authentication is backend-managed JWT auth (see [backend/auth.md](backend/auth.md)).
+Caddy/nginx are not the authorization boundary for `/api/v1` — they proxy to the backend after
+TLS and headers. Development can use `BACKEND_AUTH_MODE=dev` + `POST /api/v1/auth/dev-login`
+with seeded personas; production disables dev-login.
 
-Development can use `BACKEND_AUTH_MODE=dev` and `POST /api/v1/auth/dev-login` with seeded personas. Production must disable dev login.
+## Deployment
 
-## Deployment Commands
+### First-time server setup
 
-Production (TLS) — full first-time setup + the go-live checklist live in
-[production-readiness.md](production-readiness.md).
-
-**Scripted bring-up (recommended).** After pointing DNS at the VPS (A-record, DNS-only):
-
-1. **Install Docker** (Engine + compose plugin) — your Ansible base playbook, or any method.
-2. **Prep the OS** (firewall + auto-updates + fail2ban) via either — they're twins, pick one:
-   - Ansible from your control machine: `ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/prepare-server.yml` (see [deploy/ansible/](../deploy/ansible/README.md)); or
-   - on the host: `sudo scripts/prepare-server.sh`
+1. **Point DNS at the VPS** (A-record, DNS-only — Option A below).
+2. **Prep the box** from your control machine with
+   **`deploy/ansible/setup-production.yml`** — the one you want for a bare Ubuntu box: ArvanCloud
+   apt + Docker registry mirrors (Iran-aware, no GitHub needed), Docker, ufw, swap. See
+   [deploy/ansible/](../deploy/ansible/README.md). (`prepare-server.yml` /
+   `scripts/prepare-server.sh` are older variants that assume Docker is already installed and add
+   only the hardening: firewall, unattended-upgrades, fail2ban, optional SSH lockdown.)
 3. **Bring up the stack** on the host:
 
 ```sh
@@ -168,58 +145,61 @@ git clone git@github.com:iamsoroush/engram.git /srv/engram && cd /srv/engram
 GATEWAY_API_KEY=gw_xxx scripts/bootstrap.sh        # or run without it and you'll be prompted
 ```
 
-`prepare-server.sh` and `deploy/ansible/prepare-server.yml` (Ubuntu/Debian) both **assume Docker is
-installed** and add the prod hardening: **ufw firewall** (SSH + 80 + 443, allowed *before* enabling so no
-lockout), unattended security updates, fail2ban, an optional Docker registry mirror
-(`DOCKER_REGISTRY_MIRROR` / `-e docker_registry_mirror=…` — Iran image-pull workaround), and optional SSH
-lockdown (`HARDEN_SSH=1` / `-e harden_ssh=true`, applied only when an SSH key is present).
+`scripts/bootstrap.sh` is idempotent and safe: it checks prerequisites, ensures swap on small
+boxes, **generates `.env.prod` with fresh secrets** (only if missing — it never
+overwrites/rotates an existing one), runs `scripts/deploy.sh`, **schedules nightly encrypted
+backups** via cron, and can **restore** a dump
+(`RESTORE_FROM=/path/pg-*.sql.gz.enc scripts/bootstrap.sh`). Moving a server while keeping data =
+`scp` the old `.env.prod` over first (same `BACKUP_ENCRYPTION_KEY`), then run with
+`RESTORE_FROM=…`.
 
-`scripts/bootstrap.sh` is idempotent and safe: it checks prerequisites, ensures swap on small boxes,
-**generates `.env.prod` with fresh secrets** (only if missing — it never overwrites/rotates an existing
-one), runs `scripts/deploy.sh`, **schedules nightly encrypted backups** via cron, and can **restore** a
-dump (`RESTORE_FROM=/path/pg-*.sql.gz.enc scripts/bootstrap.sh`). Moving a server while keeping data =
-`scp` the old `.env.prod` over first (same `BACKUP_ENCRYPTION_KEY`), then run with `RESTORE_FROM=…`.
+### Routine deploys
 
-Or step by step:
+```sh
+scripts/deploy.sh
+```
 
-1. `cp .env.prod.example .env.prod` and fill it; generate the secrets with `scripts/gen-secrets.sh`.
-2. DNS → ArvanCloud CDN; set the CDN origin to `https://$CADDY_SITE_ADDRESS` (a direct, **unproxied**
-   A-record to the VPS so Caddy can obtain a Let's Encrypt cert); CDN SSL mode = full / origin-HTTPS.
-3. Deploy with `scripts/deploy.sh` (build + migrate + start the TLS stack + health-check), or manually:
+`deploy.sh` = `git pull --ff-only` → build → `up -d` with both compose files (migrations run on
+backend start) → wait for backend health, failing loudly if it doesn't come up.
+
+**Host can't reach GitHub** (common from Iran): deliver the code by rsync, then
+
+```sh
+SKIP_GIT_PULL=1 scripts/deploy.sh
+```
+
+— the working tree is used as-is, no pull attempted.
+
+**Rollback:** `git checkout <previous-good-sha> && scripts/deploy.sh` (with `SKIP_GIT_PULL=1` on
+rsync-fed hosts). The DB schema migrates **forward** on deploy — rolling code back past a
+migration needs a matching DB restore (`scripts/restore.sh`).
+
+Manual equivalent of a deploy:
 
 ```sh
 docker compose -f docker-compose.prod.yml -f docker-compose.prod.tls.yml --env-file .env.prod up -d --build
 ```
 
-Schedule `scripts/backup.sh` via cron and rehearse `scripts/restore.sh`. Set per-service `mem_limit`/`cpus`
-in `docker-compose.prod.yml` sized to your VPS (log rotation is already configured). Create an app-scoped
-MinIO key (not root) for the backend and enable MinIO encryption + versioning.
-
-Plain HTTP (dev/staging, no TLS — set `PROD_FRONTEND_PORT=80`):
+Plain HTTP (dev/staging only, no TLS — set `PROD_FRONTEND_PORT=80`):
 
 ```sh
 docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-Health:
+Health check: `curl https://engram.ir/api/v1/health` (externally) or
+`curl http://localhost:8080/api/v1/health` on the box.
 
-```sh
-curl http://localhost/api/v1/health
-```
+### CI
 
-Stop:
-
-```sh
-docker compose -f docker-compose.prod.yml down
-```
-
-If port 80 is unavailable:
-
-```sh
-PROD_FRONTEND_PORT=8080 docker compose -f docker-compose.prod.yml up --build -d
-```
+`.github/workflows/ci.yml` runs on every PR and on pushes to `main`: backend + ai-engine test
+suites, frontend typecheck + unit tests + i18n guard, hermetic Playwright e2e (mocked API), and
+prod-compose validation. `.github/workflows/eval.yml` is the **manual-only, non-blocking** AI
+golden-set eval (run from the Actions tab). Deploys are not CI-gated — the box builds whatever
+is checked out (tracked in [production-alpha-tradeoffs.md](production-alpha-tradeoffs.md)).
 
 ## ArvanCloud DNS & TLS — pick one setup
+
+> **Current production uses Option A** at `engram.ir`.
 
 **First, delegate DNS to ArvanCloud.** At your domain **registrar** (where the domain was bought), set the
 domain's **nameservers** to ArvanCloud's — the `*.ns.arvancdn.ir` hosts shown as `NS` records in your Arvan
@@ -231,7 +211,7 @@ hours). The `NS` records inside the panel are informational — leave them; the 
 **NS** = authoritative nameservers (Arvan's — leave); **TXT** = domain/email verification; **MX** = mail.
 In Arvan each record is **Proxied** (through the CDN) or **DNS-only** (resolves straight to the IP).
 
-### Option A — Direct-to-origin (recommended for clinical/PHI)
+### Option A — Direct-to-origin (recommended for clinical/PHI; in use)
 
 No CDN in the request path; Caddy terminates TLS directly, so PHI is seen only by the user and your server.
 
@@ -284,7 +264,7 @@ is set, optionally copies the dump **off-box** + mirrors MinIO media, and prunes
    ```
 3. In `.env.prod`: `OFFSITE_ALIAS=offsite` and `OFFSITE_BUCKET=engram-backups`.
 
-**Schedule** (cron, nightly):
+**Schedule** — `bootstrap.sh` installs the nightly cron automatically; the manual equivalent:
 
 ```sh
 0 2 * * *  cd /srv/engram && scripts/backup.sh >> /var/log/engram-backup.log 2>&1

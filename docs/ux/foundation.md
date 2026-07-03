@@ -1,9 +1,8 @@
-# Spine-A Redesign — Design Foundation (North Star)
+# Design Foundation (tiers · personas · boundaries)
 
-> Cross-cutting decisions every vertical/tier design track must share, so parallel tracks have
-> matching seams. **Read this before designing any aesthetics or therapy surface.** Strategy:
-> [../spines.md](../spines.md). Status: **pre-PMF — aesthetics is the alpha; therapy is a later
-> alpha**.
+> The durable, cross-cutting decision record every vertical/tier design shares, so parallel tracks
+> have matching seams. **Read this before designing any surface.** Strategy:
+> [../spines.md](../spines.md).
 >
 > **Every decision below carries its *why*. Don't reverse one without engaging its rationale** — most
 > of these look like they could be "simplified," and each was deliberate.
@@ -49,8 +48,9 @@
 > research, but must **not re-derive it from scratch or silently drop items.** (Therapy is greenfield,
 > so its features are research-led; see §5.)
 >
-> **Build status (planning estimate — confirm against the codebase at build time):**
-> `(exists)` built today · `(new)` not built · `(modify)` built but needs change for this model.
+> The `(exists)` / `(new)` / `(modify)` tags below are the original planning estimates, kept for the
+> record. Current build status per story lives in the `AES-###` registry
+> ([aesthetics-stories.md](aesthetics-stories.md)).
 
 Thesis: a clinic's data is *already structured* (patient → visit → treatment + before/after photos),
 but Apple Notes treats it as flat dumb text. **Basic** organizes that reality with deterministic
@@ -68,8 +68,9 @@ superpowers; **Pro** adds the AI understanding layer + the upsell.
    zero-AI gallery presentation is new. *Why:* aesthetics *is* photos; camera-roll/Notes chaos is the
    pain felt every visit. *(Amended 2026-06-12: per-photo **before/after pairing** moved to **Pro** — see
    Pro #1 — because tagging photos Before/After is organizing work, and Basic's value is presentation +
-   retrieval, not labeling. Basic keeps the well-presented gallery; the eye pairs. Spec:
-   [redesign-aesthetics.md §3.1](redesign-aesthetics.md).)*
+   retrieval, not labeling. Basic keeps the well-presented gallery; the eye pairs. As built: the
+   visit-grouped gallery in [screens/patients.md](screens/patients.md); the Pro pairs + slider in
+   [screens/session-review.md](screens/session-review.md).)*
 4. **Smart search**: deterministic, Persian-orthography-aware, multi-field, instant at scale
    `(modify)` — a basic patient list/search exists; the smart, fuzzy, Persian-aware, fast-at-scale
    version is an upgrade. *Why:* Notes' search is dumb and slow, worse for Persian names.
@@ -154,13 +155,16 @@ current product to iterate from).
 3. **User-story inventory** — `As a <persona>, I want <goal>, so that <value>` + acceptance notes,
    tagged **Basic/Pro**, **persona**, and **build status** (exists/new/modify). This is the hand-off
    to build.
-4. **Clickable prototype + spec** — match `redesign-capture-surface.md` +
-   `../../apps/frontend/design-prototypes/*.html`.
+4. **Clickable prototype + spec** — match the built screen docs (e.g.
+   [screens/capture.md](screens/capture.md)) + `../../apps/frontend/design-prototypes/*.html`.
 
-> **Aesthetics track — delivered (design, for review).** Spec: [redesign-aesthetics.md](redesign-aesthetics.md).
-> Stories (build hand-off, `AES-###` registry): [aesthetics-stories.md](aesthetics-stories.md). Prototypes:
+> **Aesthetics track — delivered and built.** Stories (`AES-###` registry + build status):
+> [aesthetics-stories.md](aesthetics-stories.md). The as-built surfaces are the system-state screen
+> docs: [screens/capture.md](screens/capture.md), [screens/patients.md](screens/patients.md),
+> [screens/session-review.md](screens/session-review.md),
+> [screens/qa-inbox.md](screens/qa-inbox.md), [screens/patient-surface.md](screens/patient-surface.md).
+> Prototypes:
 > `../../apps/frontend/design-prototypes/aesthetics-{capture,report,patient,patient-surface,frontdesk}.html`.
-> Proposed extensions for human review: [redesign-aesthetics.md §10](redesign-aesthetics.md).
 
 **Design Basic + Pro together (one aesthetics track), not as separate parallel agents.** *Why:* the
 Basic↔Pro boundary *is* the design (what's deterministic vs. AI, where the upsell sits) — design the
@@ -205,6 +209,5 @@ ship the thin slice, learn, then earn the rest.
   individual-only; reception sees schedule + identity, **not** clinical content. *Why:* confidentiality
   is the therapy non-negotiable.
 
-Stories: aesthetics **E9** in [aesthetics-stories.md](aesthetics-stories.md) (a later increment, not in
-the in-flight Basic build); therapy's caseload + privacy surfaces are detailed in
-[redesign-therapy.md](redesign-therapy.md) at build time.
+Stories: aesthetics **E9** in [aesthetics-stories.md](aesthetics-stories.md) (built); therapy's
+caseload + privacy surfaces are detailed by the therapy design track at build time.

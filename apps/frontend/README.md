@@ -79,21 +79,27 @@ Preview the production build locally:
 npm run preview
 ```
 
+Tests and guards:
+
+```sh
+npm run test:unit    # Vitest unit tests
+npm run test:e2e     # Playwright e2e (hermetic, mocked API)
+npm run i18n:guard   # fails on hardcoded chrome strings (see docs/frontend/i18n.md)
+```
+
 ## Source Layout
 
 - `src/app`: root app orchestration, navigation, and session state helpers.
 - `src/domain`: shared frontend types and UX status mapping.
-- `src/features`: auth, capture, memory, patient, account, shell, and `aesthetics` feature modules.
-  - `src/features/aesthetics`: the aesthetics-**Basic** surfaces (tier-gated, zero-AI) — the
-    last-visit / "same as last time" strip + ghost-overlay (AES-106/105), per-patient photo gallery
-    (AES-202), smart search (AES-204), duplicate-patient guard register form (AES-205/601),
-    deterministic assign-later suggestion (AES-301/603), curate-&-share sheet (AES-303/304/403),
-    aftercare-template settings (AES-702), the voice-memo player, and the consolidated "Try Pro"
-    teaser. These are presentational; API orchestration is threaded from `src/app`. See
-    [`../../docs/ux/redesign-aesthetics.md`](../../docs/ux/redesign-aesthetics.md) and the manual test
-    script [`../../docs/qa/aes-frontend-scenarios.md`](../../docs/qa/aes-frontend-scenarios.md).
+- `src/features`: one module per feature area — see the directory for the current list (auth,
+  capture, memory, aesthetics, qa, insights, therapy, …). Modules are presentational; API
+  orchestration is threaded from `src/app`.
+  - `src/features/aesthetics` holds the aesthetics-**Basic** surfaces (tier-gated, zero-AI). Story
+    IDs (AES-###) resolve via [`../../docs/ux/aesthetics-stories.md`](../../docs/ux/aesthetics-stories.md);
+    manual test script: [`../../docs/qa/aes-frontend-scenarios.md`](../../docs/qa/aes-frontend-scenarios.md).
 - `src/services`: API client/normalizers and browser storage adapters.
-- `src/shared`: reusable UI primitives and small environment helpers.
+- `src/shared`: reusable UI primitives, the `shared/i18n` chrome-translation seam, and small
+  environment helpers.
 
 ## Environment
 

@@ -1,44 +1,68 @@
-# Account — Settings & Profile
+# Account — Menu, Settings & Profile
 
-Two dedicated pages reached from the **account menu** (top-right avatar). The menu offers a clean,
-consistent list — **Profile**, **Settings**, **Logout** — and the first two *navigate* to pages
-(no inline controls in the dropdown). Replaces the old dropdown that crammed inline language
-`<select>`s next to Profile/Logout. See [navigation.md](../navigation.md) for routes.
+Utility pages reached from the **account menu** (top-right avatar). Account/utility screens have no
+capture context, so they are the one place the persistent capture bar is hidden (it would overlap
+their content). Each page has a **Back** action returning to the previous staff screen. Routes:
+[navigation.md](../navigation.md).
 
 ## Account menu (the dropdown)
 
-- Header: avatar + signed-in name + role.
-- Actions: **Profile** (→ `/#profile`), **Settings** (→ `/#settings`), **Logout**.
-- No inline preference controls; settings live on the Settings page.
+- Header: avatar + signed-in name + role · clinic name, with a `Pro`/`Basic` tier pill.
+- Items, in order — the first six *navigate* to pages (no inline controls in the dropdown):
+  - **Profile** → `/#profile`
+  - **Settings** → `/#settings`
+  - **Insights** → `/#insights` — owner/admin only ([insights.md](insights.md))
+  - **Team** → `/#team` — owner/admin only ([team.md](team.md))
+  - **Plan** → `/#plan` — owner/admin only ([plan.md](plan.md))
+  - **Switch clinic** → `/#switch-clinic` — only for users belonging to more than one clinic
+  - **Replay guide** — re-runs the onboarding guide (shown when available)
+  - **Logout**
 
 ## Settings (`/#settings`)
 
-Tenant-level preferences, grouped, each saved on change with a calm toast (reuses
-`PATCH /tenant/settings`). A **Back** action returns to the previous staff screen.
+Tenant-level preferences, grouped; each control saves on change with a calm toast
+(`PATCH /tenant/settings`).
 
 - **Languages**
-  - *Transcription* — `Auto (verbatim)` | Persian | English | Arabic. Auto = transcribe verbatim in
-    the spoken script (best for mixed-language clinics; avoids romanization that breaks matching).
-  - *Report* — `Report default` | Persian | English | Arabic (the synthesized report's language).
-- **Patient matching** (H3)
+  - *App language* — `English` | `فارسی` | `العربية` (autonyms, each in its own script; sets the UI
+    chrome language + RTL — clinical content follows the report language, per the
+    [i18n model](../../frontend/i18n.md)).
+  - *Transcription* — `Auto (verbatim)` | the three languages. Auto transcribes verbatim in the
+    spoken script (best for mixed-language clinics; avoids romanization that breaks matching).
+  - *Report* — `Report default` | the three languages (the synthesized report/content language).
+- **Patient matching**
   - *Auto-apply strictness* — `Strict (exact only)` | `Balanced (close match)` | `Lenient (looser)`.
-    Controls how aggressively AI auto-assigns a **fuzzy** name match: Strict = deterministic matches
-    only; Balanced/Lenient also auto-apply a single high-confidence close match on an explicit
-    instruction. The national-ID conflict guard and ambiguous routing apply at every level.
+    Governs whether a single high-confidence **fuzzy** match auto-applies; the national-ID conflict
+    guard and ambiguous-match routing hold at every level (decision matrix in
+    [capture.md](capture.md)).
+- **Patient sharing**
+  - *Include brands* — checkbox (`shareIncludeBrands`, default **off**): whether the shared
+    "what we did" lines may name brands; generic wording by default. The treatment table and lots
+    stay always-withheld regardless ([patient-surface.md](patient-surface.md)).
 - **Plan**
-  - *Tier* — read-only badge (`Pro` / `Basic`) + one line on what each includes.
+  - *Tier* — read-only `Pro`/`Basic` badge + a one-line description of what the tier includes.
+  - *Workspace* — read-only vertical (e.g. Aesthetics) + the encounter label it uses.
+- **AI usage** — the fair-use monthly AI-usage card: budget consumed, per-plan caps, and limit
+  states ([states.md](../states.md#ai-usage-limits-pro); system:
+  `docs/business/ai-usage-limits.md`).
+- **Role permissions** (admin only; AES-905) — per-role **presets** for assistants and doctors:
+  `contribute` · `+ reassign` · `full`. Permissive defaults (assistant = reassign, doctor =
+  contribute); deliberately not a granular matrix. Drives session ownership and the policy-aware
+  intent gate ([foundation §7](../foundation.md)).
+- **Aftercare templates** (AES-702) — create/edit/delete the deterministic per-procedure aftercare
+  templates the patient share uses.
+
+There is deliberately **no AI model picker** — models are chosen and optimized centrally
+(`docs/technical-decisions.md`: "AI model selection is NOT a user setting").
 
 ## Profile (`/#profile`)
 
 - Avatar + display name + email.
-- Read-only fields: **Role**, **Clinic** (tenant name).
+- Read-only fields: **Role**, **Clinic** (the active tenant).
 - Account actions: **Logout**.
-- **Debug** (admin only): clear local capture cache.
-- A **Back** action returns to the previous staff screen.
+- **Debug** (admin only): clear the local capture cache.
 
 ## States
 
-- Save feedback is a toast (`Language preferences updated.` / `Patient-matching preference updated.`);
-  failures show a calm error toast, no modal.
-- Both pages require an authenticated staff session; the persistent capture bar stays visible
-  (capture is never blocked).
+- Save feedback is a calm toast; failures show a calm error toast, no modal.
+- Both pages require an authenticated staff session.

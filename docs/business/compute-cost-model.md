@@ -1,5 +1,13 @@
 # Compute-Cost Model — per-plan COGS & minimum profitable price
 
+> **Superseded in part (2026-07).** The **AI-COGS** sections here (§3–§4, and the AI columns of
+> §0/§6–§7) predate the shipped LLM report synthesis and assumed a *deterministic* report. Measured
+> numbers live in [ai-usage-limits.md](ai-usage-limits.md): per-capture synthesis ≈ **$0.0203/visit**
+> (~18× the $0.00115 modeled here), putting headline Pro AI cost at roughly **2×** this doc's figure.
+> **Still canonical:** infra unit costs (§1, §5), storage compounding (§5a), fixed-compute levers
+> (§5c), the minimum-profitable-price *methodology* (§7), and the revenue-model rationale (§9).
+> Current price anchors: [pricing.md](pricing.md).
+
 > **Scope:** monthly **compute cost only** (infra + AI). **No** human, support, sales, payment-fee,
 > or other costs. Three plans: **aesthetics-Basic**, **aesthetics-Pro**, **therapy**. Sized for
 > **50 clinics**. From COGS we derive a **minimum profitable monthly per-clinic price**.
@@ -113,7 +121,7 @@ capture pattern, **not** a recording of the whole 50-min session.
 
 ## 3. What AI actually runs per plan (from the capability matrix)
 
-Source of truth: `capabilities.py` + redesign-foundation §3. **Critical:** matching and out-of-context
+Source of truth: `capabilities.py` + [spines.md](../spines.md) §3. **Critical:** matching and out-of-context
 detection are **$0 incremental** — they're emitted by the *same* transcription call
 (`patient_information` + `intents` in the structured JSON), and matching itself is **deterministic**
 (`deterministic-patient-matching`, no LLM). The live/session report is **deterministic today**; the
@@ -356,9 +364,11 @@ natural **tier** axis (e.g. "premium transcription") that also recovers its extr
 - **Therapy = capture-style.** Modeled as short in-session + post-session captures (`T_aud`=6 min/session),
   **not** ambient whole-session recording. If a clinic opts into ambient mode, use the §8 sensitivity
   (48-min row) — its economics are an order of magnitude different.
-- **Agreed vs. built.** AI here models the **agreed feature set** (redesign-foundation §3). Today's code is
-  cheaper still: the session report is **deterministic (no LLM)**, Q&A isn't built, matching is deterministic.
-  These are **ceiling** AI numbers for the agreed product.
+- **Agreed vs. built (updated 2026-07).** AI here modeled the then-agreed feature set with a
+  deterministic session report. That has since inverted: the live report is now a **real LLM synthesis
+  job that re-runs per capture**, and post-session Q&A is built — so these AI numbers are a **floor**,
+  not a ceiling. Measured costs: [ai-usage-limits.md](ai-usage-limits.md). Matching remains
+  deterministic ($0).
 - **No double-counting.** Transcription rate **includes prompt overhead** and emits identity+intents in one
   call → matching/out-of-context are **$0 incremental**.
 - **AI gateway** (P3) is a thin OpenAI-compatible redirector (a sample runs at `194.5.193.5:8081/docs`);

@@ -50,7 +50,7 @@ def main() -> int:
         status = "PASS" if results[name] == 0 else "FAIL"
         print(f"  {status}  {name}")
     for name in missing:
-        print(f"  TODO  {name}  (not yet written — see docs/ai_engine/eval-epic.md)")
+        print(f"  TODO  {name}  (not yet written — see docs/ai_engine/evals.md)")
     failed = [name for name, code in results.items() if code != 0]
     print(f"\n{len(present) - len(failed)}/{len(present)} evals green; {len(missing)} TODO.")
     return 1 if failed else 0

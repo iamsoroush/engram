@@ -2,7 +2,7 @@
 
 ## Product Shape
 
-Engram is currently an MVP prototype for fast clinical capture. The primary workflow is:
+Engram is capture-first clinical memory. The primary workflow is:
 
 1. Capture first.
 2. Save locally immediately.
@@ -28,21 +28,23 @@ Backend
   Celery producer for background AI job processing
   Redis broker/result backend
   Alembic-managed schema
+  Prometheus /metrics + GlitchTip error tracking
 
 AI Engine
-  Celery worker process
-  Placeholder audio/text/image capture processors
+  Celery worker (+ beat) process
+  Gateway-backed AI jobs: transcription, image caption,
+  report synthesis, patient memory, Q&A drafts
 
 Storage
   Postgres metadata
   MinIO object storage (development and production)
 ```
 
-Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows; the schema is managed with Alembic. MinIO stores source files and generated artifacts in both development and production. See [backend design](backend/design.md), [storage](backend/storage.md), [auth](backend/auth.md), and [production](production.md) for details.
+Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows; the schema is managed with Alembic. MinIO stores source files and generated artifacts in both development and production. See [backend data model](backend/data-model.md), [storage](backend/storage.md), [auth](backend/auth.md), and [production](production.md) for details.
 
-Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks. `apps/ai_engine` consumes those tasks and owns the current placeholder implementations for audio capture processing, text capture processing, and image capture processing.
+Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks; `apps/ai_engine` consumes them and executes the AI jobs against an LLM gateway ([ai_engine/processing.md](ai_engine/processing.md)). Every AI job is **eval-gated**: changes must keep `apps/ai_engine/eval/run_all.py` green ([ai_engine/evals.md](ai_engine/evals.md)).
 
-The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and partial progress through protected backend internal endpoints at `/internal/ai/jobs/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service. Real AI logic will replace the placeholder job bodies later.
+The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and results through protected backend internal endpoints at `/internal/ai/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service.
 
 ## Data Flow
 
@@ -53,42 +55,23 @@ The AI engine does not import backend modules or connect directly to Postgres. I
 3. UI confirms local safety using the shared UX state language.
 4. The outbox attempts upload to the backend when possible.
 5. Backend stores the source file and session metadata.
-6. Backend creates a queued capture processing job and dispatches it to Celery.
+6. On an AI-capable tenant, the backend creates a queued capture processing job and dispatches it to Celery (in per-session capture order). On aesthetics Basic — zero AI capabilities — no job is created; the report rebuilds synchronously.
 7. Browser removes the pending outbox entry and keeps a synced local cache copy.
-8. Celery marks the job `running`, writes partial placeholder generated metadata, waits briefly, and marks it `succeeded`; failures are retried and then marked `failed`.
+8. The worker transcribes/captions the capture through the gateway and reports start/complete/fail back to the backend; failures retry with bounded backoff and are swept by the recovery beat.
 9. UI updates through assistant-style states owned by [UX states](ux/states.md).
 
 ### Session Evolution And Report Generation
 
-The first uploaded capture creates a durable backend session in `draft` status.
-Sessions are continuously evolving objects: new captures can be added in any
-state, and every session response includes frontend-stable `report`,
-`summaries`, `findings`, and `processingStatus` contracts.
+The first uploaded capture creates a durable backend session. Sessions are continuously evolving objects: new captures can be added in any state, and every session response includes frontend-stable `report`, `summaries`, `findings`, and `processingStatus` contracts.
 
-Phase 2.1 uses deterministic mocked session evolution instead of real AI. Capture
-upload updates the same session with a partial report draft, summary, extracted
-finding rows, and processing status metadata. Phase 2.2 adds fake async worker
-stages that post partial transcript, report, finding, and summary updates over
-time.
+Report generation is two-layered (details: [backend/processing.md](backend/processing.md)):
 
-The explicit session processing endpoint remains available as a report refresh
-hook, but it is no longer the workflow gate that makes a session reviewable or
-editable. The live report is now rebuilt **deterministically and synchronously** (no LLM, no
-`session_organize` job) once a session's capture chain is idle; the backend stores the report and
-moves the session to `needs_review` if a patient is assigned, otherwise `unassigned`. Completion is
-auto-derived (`complete`) — there is no manual verify step.
+- **Deterministic baseline (always, both tiers, no LLM):** once a session's capture chain is idle, the backend rebuilds the live report synchronously as a pure function of the processed, in-context captures — grouped by type for Pro, chronological for Basic. The report is always current; the session settles to `needs_review` (patient assigned) or `unassigned`. Completion is auto-derived (`complete`) — there is no manual verify step.
+- **Pro LLM synthesis (the revived `session_organize` job):** for synthesis-enabled Pro tenants, a single-pass LLM job then refines the baseline into the synthesized report — prose plus structured treatments, safety flags, and aftercare selections. It runs as a quiet enrichment (the baseline stays visible), is debounced over a quiet period so a visit's captures coalesce into ~one run, and is the dominant AI cost — its dispatch is gated by the fair-use budget ([business/ai-usage-limits.md](business/ai-usage-limits.md)).
 
-Structured report content is stored in `sessions.report_model` as the backend
-source of truth. Markdown remains a rendered/export format in the session
-contract. Session processing receives a versioned context with the raw report
-template, clinic context, assigned DB patient context, patient history summary,
-processed capture outputs, artifact URLs, and session metadata. Its completed
-output is body-level structured content only: sections, image/artifact
-references, source capture references, extracted findings, and an optional
-summary. The default singleton report template renders clinic information,
-patient information, and body sections; patient information is injected from the
-assigned patient record and identifiers, not from AI-generated body text. The
-current template key is `default`.
+Structured report content is stored in `sessions.report_model` as the backend source of truth; markdown remains a rendered/export format. The default singleton report template renders clinic information, patient information, and body sections; patient information is injected from the assigned patient record and identifiers, not from AI-generated body text.
+
+Each synthesis output is snapshotted as a content-addressed report version, so capture undo/delete restores a previously-seen state deterministically (no LLM, no "wrong entries") with user decisions preserved — see [architecture/pipeline-versioning.md](architecture/pipeline-versioning.md).
 
 ### Review
 
@@ -99,6 +82,33 @@ When previewing a capture, the frontend resolves the source in this order:
 3. Backend source file URL.
 
 This keeps review fast while still allowing cache eviction after backend sync.
+
+## AI Layer
+
+The real, gateway-backed AI pipeline (worker execution: [ai_engine/processing.md](ai_engine/processing.md); backend orchestration: [backend/processing.md](backend/processing.md)):
+
+- **Per-capture jobs** — transcription (audio), neutral image caption (photo), plus patient matching/intent and out-of-context detection.
+- **Report synthesis** (`session_organize`) — the Pro single-pass synthesis above, including the **safety-reconcile** pass (cross-visit safety-flag dedup/supersede; selection-only, never generation).
+- **Patient memory** — the Pro cross-visit summary + history projection; lazy (read/line-up triggered plus a background quiescence sweep), never enqueued per-session.
+- **Patient Q&A drafts** (`qa_draft` / `qa_revise`) — AI-drafted, doctor-verified replies on the patient Q&A surface ([backend/aes-pro-qa-api.md](backend/aes-pro-qa-api.md)).
+
+Cross-cutting machinery:
+
+- **Tier gating by capability** — features gate on `(vertical, tier)`-resolved capabilities (`services/capabilities.py`); aesthetics Basic resolves to zero AI ([spines.md](spines.md) §3).
+- **Fair-use metering/limits** — real gateway spend is metered per clinic/seat/month; over budget, background enrichment jobs park and resume next period. Capture is never blocked. See [business/ai-usage-limits.md](business/ai-usage-limits.md).
+- **Recovery** — a Celery-beat sweep re-dispatches due queued/failed/stale jobs, resumes parked jobs, drives the debounced synthesis, and refreshes quiescent stale patient memory.
+- **Safety flags** — synthesis-detected flags project to the patient as the recomputed union of kept flags; rejections are user-authoritative, deterministic, and instant.
+
+## Product Surfaces (backend-served)
+
+- **Patient shares + public surface** — tokenized, revocable curated snapshots (`/share/{token}`) and the Pro patient Q&A (`/qa/{token}`); the token is the capability, withholding is structural. Contracts: [backend/aes-basic-api.md](backend/aes-basic-api.md), [backend/aes-pro-qa-api.md](backend/aes-pro-qa-api.md).
+- **Smart lists + lot/product recall** — deterministic Pro lists over synthesized treatments, plus the exact-match recall cohort ([ux/screens/patients.md](ux/screens/patients.md)).
+- **Insights** — owner/admin clinic analytics (deterministic aggregation; treatments tab Pro-gated) — [backend/insights-feedback.md](backend/insights-feedback.md).
+- **AI-quality feedback harvester** — staff corrections/ratings of AI outputs recorded as candidate eval cases (same doc).
+
+## Observability
+
+The backend exposes Prometheus metrics at `/metrics` (HTTP metrics plus product-critical counters such as failed capture uploads and AI-job failures) and ships errors to self-hosted GlitchTip via the Sentry SDK with PHI-scrubbing `before_send` hooks (`app/observability/`). The full overlay (Prometheus/Grafana, exporters, Uptime Kuma, alert rules): [monitoring.md](monitoring.md).
 
 ## Entity Model (verticals)
 
@@ -176,7 +186,6 @@ session payload) replaces the old manual "verify" gate.
 
 ## Known Limits
 
-- AI capture/session processing is still placeholder logic, not real models.
 - There is no encryption-at-rest implementation yet.
 - Browser storage quotas are not fully surfaced to the user yet.
 - Audio recording on phone browsers may require HTTPS; a file input fallback exists for local HTTP testing.

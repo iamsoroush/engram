@@ -4,9 +4,9 @@
 
 `/#insights` — an account-style utility page, reached from the **account menu** (top-right avatar),
 shown only to **owner/admin** (same `canManageTeam` gate as [Team](team.md)/Plan). Placed directly
-above **Team** in the menu. Has a **Back** action returning to the previous screen. Account-style
-chrome (hides nothing that Settings/Team don't; the persistent capture bar stays visible — capture is
-never blocked).
+above **Team** in the menu. Has a **Back** action returning to the previous screen. Like all
+account/utility pages, it hides the capture bar (there is no capture context here — see
+[navigation.md](../navigation.md)).
 
 ## Purpose
 

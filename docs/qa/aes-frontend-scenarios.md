@@ -5,8 +5,8 @@
 > persona + tier, and any sample data to create first), the **steps** (where to navigate / what to
 > click), and the **expected** result (tied to the story's acceptance criteria).
 >
-> Companion docs: stories [`../ux/aesthetics-stories.md`](../ux/aesthetics-stories.md) · spec
-> [`../ux/redesign-aesthetics.md`](../ux/redesign-aesthetics.md) · backend contracts
+> Companion docs: stories [`../ux/aesthetics-stories.md`](../ux/aesthetics-stories.md) · screens
+> [`../ux/screens/capture.md`](../ux/screens/capture.md) + [`../ux/screens/patients.md`](../ux/screens/patients.md) · backend contracts
 > [`../backend/aes-basic-api.md`](../backend/aes-basic-api.md). Prototypes the screens match:
 > `apps/frontend/design-prototypes/aesthetics-{capture,patient,report,frontdesk}.html`.
 

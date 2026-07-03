@@ -7,19 +7,19 @@ or sharing a database. This is handled by `scripts/dev-stack.sh`.
 ## Model
 
 ```text
-                ┌─────────────────────── shared infra (project: engram-infra) ───────────────────────┐
-                │  Postgres  (host :5442)              MinIO (host :9010 api / :9011 console)         │
-                │   ├─ engram               (canonical / main dev data — the clone source)            │
-                │   ├─ engram_<slugA>       bucket engram-captures            (canonical)              │
-                │   └─ engram_<slugB>       bucket engram-captures-<slugA>    (mirror of canonical)    │
-                └────────────────────────────────────────────────────────────────────────────────────┘
-                        ▲ backend only                         ▲ backend only
-   ┌── main checkout ───┴──┐   ┌── worktree A ────┴──┐   ┌── worktree B ───────────┐
-   │ backend  :8010        │   │ backend  :81xx       │   │ backend  :81yy          │
-   │ frontend :5183        │   │ frontend :52xx       │   │ frontend :53yy          │
-   │ ai-engine + redis     │   │ ai-engine + redis    │   │ ai-engine + redis       │
-   │ db = engram           │   │ db = engram_<slugA>  │   │ db = engram_<slugB>     │
-   └───────────────────────┘   └──────────────────────┘   └─────────────────────────┘
+   ┌──────────────────── shared infra (project: engram-infra) ─────────────────────┐
+   │  Postgres (host :5442)                MinIO (host :9010 api / :9011 console)  │
+   │   ├─ engram          (canonical)       ├─ engram-captures         (canonical) │
+   │   ├─ engram_<slugA>  (clone of ^)      ├─ engram-captures-<slugA> (mirror)    │
+   │   └─ engram_<slugB>  (clone of ^)      └─ engram-captures-<slugB> (mirror)    │
+   └───────────────────────────────────────────────────────────────────────────────┘
+            ▲ backend only              ▲ backend only            ▲ backend only
+   ┌── main checkout ──────┐   ┌── worktree A ────────┐   ┌── worktree B ────────┐
+   │ backend  :8010        │   │ backend  :81xx       │   │ backend  :81yy       │
+   │ frontend :5183        │   │ frontend :52xx       │   │ frontend :53yy       │
+   │ ai-engine + redis     │   │ ai-engine + redis    │   │ ai-engine + redis    │
+   │ db = engram           │   │ db = engram_<slugA>  │   │ db = engram_<slugB>  │
+   └───────────────────────┘   └──────────────────────┘   └──────────────────────┘
 ```
 
 - **Shared (one instance, heavy/stateful):** Postgres + MinIO. Defined in
@@ -146,6 +146,14 @@ and you launch the main app with `scripts/dev-stack.sh up` instead of the root
   Postgres + MinIO. Far lighter than a full all-in-one stack per worktree.
 - Slugs are derived from the branch name; ports are pinned per worktree in `.env`, so a
   stack keeps the same ports across restarts.
+- **Port-guard caveat:** when picking ports, the collision guard (`other_ports` in
+  `dev-stack.sh`) only scans pinned `.env` files under the main repo and
+  `<main-repo>/.claude/worktrees/*/` — worktrees living elsewhere (e.g.
+  `~/engram-worktrees/<slug>`, the recommended location) are invisible to that scan while
+  their stacks are **stopped**. A *running* stack's ports are still avoided (the guard also
+  probes live ports), so the collision case is two stopped stacks later started on the same
+  pinned port — if that happens, `up` fails to bind; free the port or re-pin one stack's
+  `FRONTEND_PORT`/`BACKEND_PORT` in its `.env`.
 - If a worktree is specifically changing storage/MinIO behavior, point it at its own
   MinIO instead of the shared one (override `BACKEND_OBJECT_STORAGE_*` in its `.env`) so
   it can't corrupt shared objects.

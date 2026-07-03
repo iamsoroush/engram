@@ -1,164 +1,92 @@
 # Product
 
-## Product summary
+> Current product, top of funnel: what Engram is, who uses it, its shape, and the durable accepted
+> behaviors. Strategy and sequencing live in [spines.md](spines.md); tier semantics in
+> [spines.md](spines.md) §3; screen-level UX in [ux/overview.md](ux/overview.md); the capture→intent
+> apply-semantics contract in [intelligence-layer.md](intelligence-layer.md).
 
-Engram is an AI-native clinical memory system for aesthetics and therapy clinics (dermatology next). It helps doctors capture clinical information quickly during visits and progressively organize it into patient-centered session histories.
+## Purpose & promise
 
-The product is designed around real clinical behavior:
+Engram is **capture-first clinical memory**. Clinicians document visits today across phone photos,
+Apple Notes, voice memos, and messaging apps — fast in the moment, useless as memory. Engram keeps
+capture that fast and turns it into organized, longitudinal patient memory.
 
-- capture first
-- organize later
-- review naturally during downtime
-- never block the user with rigid workflows
+The promise: **fast capture with progressively organized clinical memory.** Capture first, organize
+later, review naturally during downtime — never block the clinician with rigid workflows.
 
----
+## Users
 
-## Target users
+- **Doctor / injector / therapist** — captures during visits, reviews generated session output,
+  answers patient Q&A (Pro).
+- **Owner** — the clinic's founding user from self-serve sign-up; a full superset of doctor + admin.
+  Manages Team, Plan, and the Insights analytics panel.
+- **Assistant** — captures, assigns patients, reviews session memory.
+- **Admin** — read-oriented management (Team, Plan, Insights); no capture.
+- **Patient** — not an account. Reached through public token links: a curated report + aftercare
+  share page, and a Q&A page (Pro) where they ask questions and read doctor-verified replies.
 
-- Aesthetics and therapy clinicians
-- Small and medium clinics
-- Clinical assistants involved in documentation
+## Product shape — verticals × tiers × surfaces
 
----
+**Verticals** (editions of the same Spine-A core; see [spines.md](spines.md)):
 
-## Core problem
+- **Aesthetics** — the primary vertical, **live in production at engram.ir** with both tiers.
+- **Therapy** — single plan; slice 1 built (note-first capture, two-plane session summary,
+  federated private caseloads). Pre-session brief and intake/patient surface are later slices.
+- **Dermatology** — next, after therapy's remaining slices.
 
-Doctors often document visits using scattered tools such as:
+**Tiers** — *Basic = recall (deterministic), Pro = understanding (AI)*. Aesthetics has Basic + Pro;
+therapy is a single plan. Features gate on resolved **capabilities**, never on `tier` directly
+([spines.md](spines.md) §3). The Pro AI layer: transcription, image captions, patient matching,
+out-of-context detection, cross-visit synthesis (patient memory), live report synthesis, and
+post-session patient Q&A. AI spend is metered per clinic with fair-use limits that pause background
+enrichment at the budget — never capture ([business/ai-usage-limits.md](business/ai-usage-limits.md)).
 
-- phone photos
-- Apple Notes
-- voice recordings
-- messaging apps
+**Surfaces:**
 
-This creates friction during the visit and weak longitudinal memory across sessions.
+- **Staff app** — mobile-first, bilingual (fa/en) + RTL. Three primary screens: Active Session
+  (capture + live report workspace), Clinical Memory (Today / Patients / Needs input — plus Lists
+  with smart lists and lot recall on Pro), and Search. Pro adds a Q&A inbox. Account pages: Settings,
+  Profile, Team, Plan, Insights (owner/admin).
+- **Public patient surfaces** — separate token-link pages outside the staff shell, no login: the
+  curated report/aftercare share and the patient Q&A thread (Pro). Revocable; a dead token shows one
+  graceful "no longer available" screen.
+- **Self-serve entry** — public landing → sign-up creates the clinic + founding owner and signs them
+  straight in; a first-run onboarding tour follows.
 
----
+## The core loop
 
-## Product promise
-
-Fast capture with progressively organized clinical memory.
-
----
+1. **Capture first.** Audio, photo, or text in seconds — before any patient selection. Captures
+   persist locally before upload; offline, capture keeps working and syncs later.
+2. **AI organizes.** Transcription, captions, matching, and report synthesis run in the background.
+   A deterministic report baseline is always current; synthesis quietly refines it. On Basic, the
+   deterministic pipeline runs alone.
+3. **Verify by exception.** Session completion is auto-derived — there is no manual verify gate.
+   The Needs-input inbox surfaces only the items that genuinely require human judgment (patient
+   assignment, out-of-context decisions, storage review).
+4. **Patient timeline.** Everything lands in long-term patient memory: an AI-synthesized summary,
+   the session timeline, and search — plus smart lists and exact-match lot recall (Pro).
 
 ## Core concepts
 
-### Patient
+- **Patient** — the long-term memory container: synthesized history, session timeline, and
+  needs-input indicators.
+- **Session** (the vertical-typed Encounter) — the working object. It evolves continuously as
+  captures arrive and AI processing updates the report; it stays accessible in every state.
+- **Capture** — audio, photo, or text. Always immediate and lightweight.
 
-The long-term memory container.
+## Accepted product behavior (durable)
 
-A patient includes:
-
-- AI-generated summarized history
-- session timeline
-- quick actions
-- unresolved session indicators
-
-### Session
-
-The primary working object.
-
-A session continuously evolves:
-
-- captures are added
-- AI processing updates the report
-- metadata is extracted
-- summaries improve progressively
-
-Sessions remain accessible in all states.
-
-### Capture
-
-Supported capture types:
-
-- audio
-- photo
-- text
-
-Capture must always feel immediate and lightweight.
-
----
-
-## Navigation model
-
-Top-left navigation:
-
-- Active Session
-- Clinical Memory
-- Search
-
-Persistent bottom actions:
-
-- Record audio
-- Take photo
-- Write note
-
----
-
-## Active session workspace
-
-The capture screen is also the active session workspace.
-
-The user captures and reviews in the same surface.
-
-The workspace includes:
-
-- session header
-- clinical report
-- collapsible summary
-- collapsible extracted findings
-- expandable captures
-- contextual quick actions
-
-The report area always exists, even while processing is incomplete.
-
----
-
-## Session states
-
-States are assistant-like, informative, and not blocking.
-
-Sessions remain reviewable and editable in all states.
-
-Verification should reduce uncertainty, not gate usability.
-
----
-
-## Clinical Memory
-
-Clinical Memory replaces the old Patients screen as the main long-term memory surface.
-
-It should feel like a calm intelligent assistant, not a database browser. The default view optimizes for current work and recent memory instead of showing every patient and every session.
-
-Main sections:
-
-- Today: session-first current-day visit work.
-- Patients: patient-memory-first cards without nested session cards.
-- Needs input: decision-first inbox for human choices and data-safety actions.
-
-Patient cards include:
-
-- patient identity
-- an assistant-style natural memory sentence
-- latest visit reference, active-session badge, and exact needs-input label when relevant
-- one clear primary action
-
-Long-term session history belongs in patient detail and timeline views, not nested on the main list.
-
-Needs-input actions open focused resolvers such as patient assignment, patient choice, summary review, or storage review. They should not use the active session page as the primary action.
-
-See [UX Overview](ux/overview.md) for screen-level behavior and state language.
-
----
-
-## AI behavior
-
-AI progressively generates:
-
-- report drafts
-- summaries
-- extracted findings
-- patient matching suggestions
-
-Raw captures remain available as expandable source material to support trust and review.
-
-Internal AI details should remain hidden in normal use. When AI is unavailable, the app keeps capture working and quietly organizes later.
+- **Capture is never blocked** — not by patient selection, AI availability, network, or an exhausted
+  AI budget.
+- **Sessions remain reviewable and editable in all states.** States use assistant-like language,
+  never job queues or backend failure labels.
+- **Completion is derived, not gated.** Review reduces uncertainty by exception; nothing forces a
+  verification step before the work counts.
+- **Raw captures remain available** as expandable source material behind every AI output — trust
+  through provenance.
+- **Internal AI detail stays hidden** in normal use. When AI is unavailable, capture continues and
+  organization catches up quietly.
+- **UI chrome is bilingual (fa/en) + RTL-correct; clinical content follows the tenant's report
+  language** — two independent axes.
+- **Basic is genuinely AI-free** — a deterministic Notes-killer with standalone value, not a
+  crippled Pro.

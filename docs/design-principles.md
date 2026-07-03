@@ -1,5 +1,8 @@
 # Design Principles
 
+> **Scope: Spine A** (capture-first memory). These principles are not platform-wide defaults — for
+> the diagnostic-report spines, verification IS a gate ([spines.md](spines.md) §2).
+
 ## 1. Capture first
 
 The user must be able to capture audio, photo, or text before selecting a patient.

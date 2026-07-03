@@ -3,9 +3,11 @@
 > **Purpose:** one kit the interviewer uses end-to-end to (1) learn how clinics work today, (2) find and
 > size the pains aes-Basic/Pro and therapy are meant to solve, (3) validate that those pains are real and
 > worth paying to fix, (4) react to a product demo, and (5) probe willingness-to-pay.
-> **Status:** pre-PMF. This is the master (English). The interviewer-facing version is Farsi
-> ([handoff version](../../../Documents/wtp-interview-guide-fa.md) covers the WTP block today; a full Farsi
-> translation of this kit follows once you approve it).
+> **Status:** pre-PMF. **Operational GTM artifact for the current Tehran discovery wave** — after the
+> wave, fold the readout into a findings doc and prune this kit. It stays in `docs/business/` while
+> active because other docs cite its hypotheses and price anchors (e.g. [pricing.md](pricing.md)).
+> This is the master (English). A Persian interviewer-facing field guide exists outside the repo
+> (covers the WTP block today); a full Farsi translation of this kit follows once approved.
 >
 > **Golden rule (read first):** you are here to *learn their world*, not to sell. Talk about their life,
 > not our idea. Demo comes **late, on purpose** — pitching early poisons the discovery.

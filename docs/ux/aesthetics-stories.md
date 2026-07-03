@@ -1,47 +1,49 @@
 # Aesthetics — User-Story Inventory (build hand-off)
 
-> Deliverable 3 of the aesthetics design track ([foundation §6](redesign-foundation.md)). The hand-off
-> to build, and the `AES-###` story-ID registry the spec cites. Companion: spec
-> [redesign-aesthetics.md](redesign-aesthetics.md). North-star: [redesign-foundation.md](redesign-foundation.md).
+> Deliverable 3 of the aesthetics design track ([foundation §6](foundation.md)): the `AES-###`
+> story-ID registry the docs and code cite. North-star: [foundation.md](foundation.md); the as-built
+> surfaces are the system-state screen docs under [`screens/`](screens/).
 >
 > Every story is `As a <persona>, I want <goal>, so that <value>` + **acceptance** notes, tagged:
 > **Tier** (`Basic` · `Pro` · `Both`) · **Persona** (Dr=doctor · As=assistant · Rc=receptionist ·
-> Pt=patient) · **Build** (`exists` · `new` · `modify`, a planning estimate per
-> [foundation §3](redesign-foundation.md) — confirm against the codebase at build time). `⊕` marks a
-> **candidate extension** beyond the agreed set, for human review (see
-> [redesign-aesthetics.md §10](redesign-aesthetics.md)); these are **proposals, not committed scope**.
+> Pt=patient) · **Build** (`exists` · `new` · `modify` — the original planning estimates, kept for
+> the record). `⊕` marks a **candidate extension** beyond the agreed set, for human review (rationale
+> + recommendation per extension: the **Decisions** block at the end); these are **proposals, not
+> committed scope**.
 >
-> Traceability: each epic cites the agreed [foundation §3](redesign-foundation.md) Basic/Pro item it
-> details. **Build order:** aesthetics-**Basic** first ([foundation §6](redesign-foundation.md)) — the
-> `Basic` + `Both` stories are P1; `Pro` stories follow.
+> Traceability: each epic cites the agreed [foundation §3](foundation.md) Basic/Pro item it
+> details.
 >
-> **Status (2026-06-28):** **Basic, Both, and nearly all Pro stories are built and merged to `main`** —
+> **Status:** **Basic, Both, and all committed Pro stories are built and merged to `main`** —
 > Pro synthesis (AES-107/108), patient memory + matching (AES-207/208), out-of-context (AES-109), Q&A
-> (AES-402/403), safety flags (AES-604/701), the unified report + verify surface, capture undo, and
-> multi-seat E9. As-built notes + manual test scripts: [redesign-aesthetics.md](redesign-aesthetics.md)
-> header, [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md), and
-> [`../qa/aes-pro-smoke.md`](../qa/aes-pro-smoke.md). **AES-501 (smart lists) + AES-502 (lot/product
-> recall) are now built** — the Pro **Lists** tab in Clinical Memory (deterministic lenses + an
-> exact-match lot recall cohort with the Q&A outreach handoff); design + as-built in
-> [redesign-smart-lists-recall.md](redesign-smart-lists-recall.md). **Remaining committed scope:**
-> **AES-705** (products/lots registry — still only implicit via extraction; 501/502 read raw extracted
-> lots, with a clean seam for the registry to layer on). Candidate extensions (⊕) and the §10 deferrals
-> below remain proposals, not committed scope; **AES-703 was dropped** (see Decisions).
+> (AES-402/403), safety flags (AES-604/701), the unified report + verify surface, capture undo,
+> multi-seat E9, and **AES-501/502** (the Pro **Lists** tab in Clinical Memory — deterministic lenses
+> + an exact-match lot-recall cohort with the Q&A outreach handoff; as-built in
+> [screens/patients.md](screens/patients.md)). Manual test scripts:
+> [`../qa/aes-frontend-scenarios.md`](../qa/aes-frontend-scenarios.md) and
+> [`../qa/aes-pro-smoke.md`](../qa/aes-pro-smoke.md). **Remaining committed scope:** **AES-705**
+> (products/lots registry — still only implicit via extraction; 501/502 read raw extracted lots
+> through a single ledger-builder aggregation point, the clean seam for the registry to layer on —
+> canonical lots, expiry, per-product due-to-return precision — without reshaping responses).
+> Candidate extensions (⊕) and the deferrals below remain proposals, not committed scope;
+> **AES-703 was dropped** (see Decisions).
 
 Legend in each story line: **`〔Tier · Persona · Build〕`**.
 
 ---
 
 ## E1 — Capture & active session
-*Details [foundation §3 Basic 8 (zero-AI capture lifecycle), 3, 7](redesign-foundation.md) + [Pro 1, 2, 3, 7](redesign-foundation.md).*
+*Details [foundation §3 Basic 8 (zero-AI capture lifecycle), 3, 7](foundation.md) + [Pro 1, 2, 3, 7](foundation.md).*
 
 ### AES-101 — Instant, zero-AI capture (Basic lifecycle) 〔Basic · Dr/As · modify〕
 As a **doctor**, I want note/photo/audio captured and saved **instantly, locally, with no AI job or
 `processing` state**, so that capture feels like Apple Notes and works offline.
 - **Acceptance:** Basic capture writes local-first, shows `Saved on this device`; **no** transcript /
   caption / report job, **no** `processing`/`Organizing` AI states. Audio is a **voice-memo** (playable,
-  not transcribed). Matches [redesign-capture-surface.md](redesign-capture-surface.md) Basic.
-- **Note:** today Basic still runs the AI pipeline — this is the core P1 re-gate ([foundation §3 Basic 8](redesign-foundation.md)).
+  not transcribed). Matches the Basic surface in [screens/capture.md](screens/capture.md).
+- **As built:** no persistent sync badges — not on the session header, not per capture. A single
+  `Trying to sync` marker appears **only** while offline / the backend is unreachable; when
+  connected, captures are badge-free.
 
 ### AES-102 — Audio-first Pro capture + enrichment 〔Pro · Dr/As · exists/modify〕
 As a **doctor**, I want to **dictate** the visit and have audio transcribed, photos captioned, and notes
@@ -86,7 +88,7 @@ retrieval and documentation is one edit, not a retype.
 ### AES-107 — Structured session report (Pro) 〔Pro · Dr · modify〕
 As a **doctor**, I want my dictation + photos + notes turned into a **structured per-visit report**, so
 that the record is consistent and the treatment specifics are captured.
-- **Acceptance:** fixed v1 sections ([foundation §3 Pro 3](redesign-foundation.md)): Visit summary ·
+- **Acceptance:** fixed v1 sections ([foundation §3 Pro 3](foundation.md)): Visit summary ·
   Concern/goals · Assessment · **Treatment performed** (per item: *area · product · brand · units/volume
   · lot #*) · Before/after media · Plan & follow-up · Aftercare given. Rebuilt deterministically-as-text
   but **AI-synthesized** content as captures land; auto-**Complete** badge; no Generate button, no verify
@@ -104,7 +106,7 @@ units/volume · lot*, so that "what we did" is queryable **without my filling a 
 ### AES-109 — Out-of-context capture 〔Pro · Dr · exists〕
 As a **doctor**, I want an off-topic capture (a phone call, a side comment) dimmed and excluded from the
 report, never deleted, with one-tap **Mark relevant**, so that the report stays clean.
-- **Acceptance:** as the generic build ([capture-surface](redesign-capture-surface.md)); Pro-only
+- **Acceptance:** as the generic build ([screens/capture.md](screens/capture.md)); Pro-only
   (report exclusion). Basic has no report synthesis to exclude from.
 
 ### AES-110 — Face-map injection visualization 〔Pro · Dr · new · ⊕〕
@@ -118,7 +120,7 @@ correct, so that where/what was injected is visual — **without filling a form*
 ---
 
 ## E2 — Patient file, memory & search
-*Details [foundation §3 Basic 2, 3, 4, 7](redesign-foundation.md) + [Pro 4](redesign-foundation.md).*
+*Details [foundation §3 Basic 2, 3, 4, 7](foundation.md) + [Pro 4](foundation.md).*
 
 ### AES-201 — Patient-centric automatic filing 〔Basic · All · modify〕
 As a **doctor**, I want every capture filed under **patient → visit** automatically, so that the clinic's
@@ -171,13 +173,13 @@ now) and to **recall** "what did I use last time", so that I walk in knowing the
 ### AES-208 — AI patient matching 〔Pro · Dr/Rc · exists〕
 As a **doctor**, I want visits **auto-matched / created / reassigned / suggested** to the right patient,
 so that I never stop to assign.
-- **Acceptance:** existing matching + partial-match resolution + strictness ([capture-surface](redesign-capture-surface.md)).
+- **Acceptance:** existing matching + partial-match resolution + strictness ([screens/capture.md](screens/capture.md) "Partial-match resolution").
   Basic uses deterministic assign (AES-301) instead.
 
 ---
 
 ## E3 — Assignment & reports
-*Details [foundation §3 Basic 5, 6](redesign-foundation.md) + [Pro 3](redesign-foundation.md).*
+*Details [foundation §3 Basic 5, 6](foundation.md) + [Pro 3](foundation.md).*
 
 ### AES-301 — Capture-first, deterministic assign-later 〔Basic · All · modify〕
 As a **doctor**, I want to capture **before** choosing a patient and get a **deterministic "Assign to …?"**
@@ -189,7 +191,7 @@ suggestion (from the open patient / recent context), so that capture never block
 As a **doctor**, I want the visit rendered as a **clean chronological document** (clinic + patient header
 from template/DB, notes + photos shown, honest timestamps, no synthesis), so that Basic produces a tidy
 notebook that stands alone.
-- **Acceptance:** as [redesign-capture-surface.md](redesign-capture-surface.md) B2 Basic; no AI chips.
+- **Acceptance:** as the Basic chronological report in [screens/capture.md](screens/capture.md); no AI chips.
 
 ### AES-303 — Shareable curated patient report 〔Basic · Dr/As · new〕
 As an **assistant**, I want to **curate** a few before/after + the visit into a **read-only patient
@@ -206,7 +208,7 @@ patient has correct, consistent guidance.
 ---
 
 ## E4 — Patient surface (the shared clinic→patient channel)
-*Details [foundation §4](redesign-foundation.md) + [§3 Basic 6, Pro 8](redesign-foundation.md). One
+*Details [foundation §4](foundation.md) + [§3 Basic 6, Pro 8](foundation.md). One
 primitive, two payloads; designed as a contract (access · delivery · consent · shared-vs-withheld).*
 
 ### AES-401 — Patient receives the report + aftercare (Basic payload) 〔Basic · Pt · new〕
@@ -240,7 +242,7 @@ on the channel they use.
 ---
 
 ## E5 — Smart lists, filters & lot recall (Pro)
-*Details [foundation §3 Pro 5, 6](redesign-foundation.md).*
+*Details [foundation §3 Pro 5, 6](foundation.md).*
 
 ### AES-501 — Smart lists / filters 〔Pro · Dr/As · new〕
 As a **doctor**, I want lists like **seen this week · due for follow-up · on product X · missing
@@ -263,7 +265,7 @@ accurate and effortless.
 ---
 
 ## E6 — Front desk / reception
-*Designs the receptionist persona inside aesthetics ([foundation §2](redesign-foundation.md)); a light
+*Designs the receptionist persona inside aesthetics ([foundation §2](foundation.md)); a light
 Today/arrivals lens, not a scheduler ([design-principles §2](../design-principles.md)).*
 
 ### AES-601 — Register a patient (one shared form) 〔Basic · Rc/As · modify〕
@@ -293,7 +295,7 @@ so that the room is ready and consent isn't missed.
 ---
 
 ## E7 — Flags, settings & configuration
-*Details [foundation §3 Pro 7](redesign-foundation.md) + supporting config.*
+*Details [foundation §3 Pro 7](foundation.md) + supporting config.*
 
 ### AES-701 — Safety flags surfaced each visit (Pro) 〔Pro · Dr/As · new〕
 As a **doctor**, I want **allergy · consent · preference** flags surfaced on the patient at every visit,
@@ -328,22 +330,30 @@ extraction/recall/expiry work.
 ### AES-706 — Report template (Pro) 〔Pro · Admin · modify〕
 As an **admin**, I want the structured report to use the **fixed aesthetic default template** now and be
 **uploadable later**, so that the report is consistent today and customizable when needed.
-- **Acceptance:** fixed v1 ([foundation §3 Pro 3](redesign-foundation.md)); name + **Change** affordance
-  in the report meta strip ([capture-surface B2](redesign-capture-surface.md)); user-uploadable is a
+- **Acceptance:** fixed v1 ([foundation §3 Pro 3](foundation.md)); name + **Change** affordance
+  in the report meta strip ([screens/capture.md](screens/capture.md)); user-uploadable is a
   future axis (shared with radiology/pathology).
 
 ---
 
 ## E8 — The upsell line (✨ Try Pro teasers)
-*Details [foundation §3 Pro 9, §1](redesign-foundation.md). Lightweight AI appears in Basic **only** as a
+*Details [foundation §3 Pro 9, §1](foundation.md). Lightweight AI appears in Basic **only** as a
 clearly-labelled teaser — a conversion lever, never a Basic feature.*
+
+**As built — one Try Pro per screen.** The per-capture teasers below were consolidated to a single
+placement each: a **"Do more with Pro"** card at the foot of the Basic captures feed (one info box
+covering transcription + caption/before-after pairing + the structured report — AES-802/803/801),
+plus one teaser each on the Basic **report** (AES-801) and the **patient file** (AES-804). Tapping
+any teaser opens a labelled info box — it never runs AI on Basic content. *Why:* repeating ✨ on
+every capture read as upsell pressure; one consolidated explainer keeps Basic calm while still
+selling Pro. The stories below still record *what each capability sells*.
 
 ### AES-801 — Teaser: structure this note 〔Basic · Dr/As · new〕
 As a **Basic doctor**, I want to see what a **structured treatment report** would look like, so that the
 value of Pro is concrete at the moment I'd use it.
 - **Acceptance:** on the Basic chronological report, a labelled `✨ Try Pro — turn this into a structured
   treatment report` card → upgrade/preview; **never** silently structures Basic content. *(The most
-  tempting cheap-LLM task is exactly the core Pro value — [foundation §1](redesign-foundation.md).)*
+  tempting cheap-LLM task is exactly the core Pro value — [foundation §1](foundation.md).)*
 
 ### AES-802 — Teaser: transcribe this dictation 〔Basic · Dr · new〕
 As a **Basic doctor**, I want my voice-memo to offer `✨ Try Pro — transcribe & structure`, so that the
@@ -364,7 +374,7 @@ AI-history teaser, so that the longitudinal-understanding upsell shows on every 
 ---
 
 ## E9 — Multi-seat / multi-user
-*Details [foundation §7](redesign-foundation.md). **Built** (finishes the Basic tier) — contracts in
+*Details [foundation §7](foundation.md). **Built** (finishes the Basic tier) — contracts in
 [docs/backend/aes-basic-api.md](../backend/aes-basic-api.md) §E9.*
 
 ### AES-901 — Author attribution 〔Both · All · new〕
@@ -433,7 +443,7 @@ unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes
 
 ## Coverage check — every agreed feature is detailed
 
-| [Foundation §3](redesign-foundation.md) item | Stories |
+| [Foundation §3](foundation.md) item | Stories |
 | --- | --- |
 | Basic 1 — shared clinic workspace | (exists; underpins AES-201, E6) |
 | Basic 2 — patient-centric filing | AES-201 |
@@ -456,7 +466,7 @@ unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes
 
 **Candidate extensions (⊕, for human review):** AES-105 ghost-overlay · AES-110 face-map ·
 AES-404 SMS/WhatsApp delivery · AES-503 lot scan · AES-703 consent capture · AES-704 pre-visit link.
-Rationale + recommendation for each: [redesign-aesthetics.md §10](redesign-aesthetics.md).
+Rationale + recommendation for each: the **Decisions** block below.
 
 **Decisions (2026-06-11 & 06-12 reviews):** **Before/after — Basic presents** (a visit-grouped photo
 gallery, **no tagging / pairs / slider**); **Pro prepares** (captions + assembled before/after pairs +
@@ -466,4 +476,4 @@ consent — dropped** (a consent form a clinic wants on file is just a photo). *
 copy-link / native-share / QR first; automated SMS/WhatsApp deferred. **AES-110 face-map** — a *derived*
 visualization of dictated treatment only (never tap-to-enter), later spike. **AES-503 lot scan** — out
 of MVP. **AES-704 pre-visit link** — agreed, deferred. **AES-105 ghost-overlay** — adopt v1 Basic,
-reframed as an optional "align to a previous photo" aid. See [redesign-aesthetics.md §10](redesign-aesthetics.md).
+reframed as an optional "align to a previous photo" aid.

@@ -272,7 +272,7 @@ are never reachable from the patient surface.
 
 > Both tiers. The clinic is a shared workspace; a visit is **owned by its creator** and edits/curation
 > are owner-only by default, with **tenant-configurable** per-role permission presets. Capture-first is
-> never blocked. Details: [`docs/ux/redesign-foundation.md`](../ux/redesign-foundation.md) §7.
+> never blocked. Details: [`docs/ux/foundation.md`](../ux/foundation.md) §7.
 
 ### Author attribution (AES-901) — additive fields, not new endpoints
 

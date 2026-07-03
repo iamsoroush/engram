@@ -2,9 +2,9 @@
 
 Celery worker app for Engram AI processing jobs.
 
-Detailed processing contracts and replacement boundaries live in [docs/ai_engine](../../docs/ai_engine/README.md).
+Detailed processing contracts live in [docs/ai_engine](../../docs/ai_engine/README.md).
 
-The backend is the producer: it creates durable job rows and sends named Celery tasks. The AI engine is the consumer: it runs those task names, calls backend internal APIs to update job state, and submits placeholder generated metadata until real AI processors are implemented.
+The backend is the producer: it creates durable job rows and sends named Celery tasks. The AI engine is the consumer: it runs those task names against the configured OpenAI-compatible gateway (transcription, captions, report synthesis, patient memory, Q&A) and calls backend internal APIs to update job state and submit generated output. Gateway-less environments fall back deterministically per job (see [docs/ai_engine/processing.md](../../docs/ai_engine/processing.md)).
 
 The AI engine does not import backend code or connect directly to the database. Its coupling points are Redis task names and backend `/internal/ai/jobs/...` endpoints authenticated with `AI_ENGINE_INTERNAL_TOKEN`.
 
@@ -32,19 +32,9 @@ AI_ENGINE_BACKEND_INTERNAL_URL=http://localhost:8010 celery -A ai_engine.celery_
 
 ## Environment
 
-```sh
-AI_ENGINE_CELERY_BROKER_URL=redis://redis:6379/0
-AI_ENGINE_CELERY_RESULT_BACKEND=redis://redis:6379/1
-AI_ENGINE_BACKEND_INTERNAL_URL=http://backend:8000
-AI_ENGINE_INTERNAL_TOKEN=dev-ai-engine-token
-AI_ENGINE_JOB_MAX_RETRIES=3
-AI_ENGINE_JOB_RETRY_DELAY_SECONDS=30
-AI_ENGINE_RECOVERY_INTERVAL_SECONDS=60
-AI_ENGINE_MOCK_STAGE_DELAY_SECONDS=1.25
-AI_ENGINE_TRANSCRIPTION_BASE_URL=
-AI_ENGINE_TRANSCRIPTION_API_KEY=unused
-AI_ENGINE_TRANSCRIPTION_MODEL=gemini-3.1-flash-lite
-```
+Settings are `AI_ENGINE_`-prefixed env vars; the authoritative list (with defaults and per-task
+gateway/model overrides) is [`ai_engine/config.py`](ai_engine/config.py) — read it rather than
+relying on any enumeration here, which would go stale.
 
 When `AI_ENGINE_TRANSCRIPTION_BASE_URL` is set, audio capture jobs download the
 source capture from the backend internal API, convert it to mono 16 kHz FLAC

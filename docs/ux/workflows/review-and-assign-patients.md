@@ -16,7 +16,9 @@ Keep capturing with almost no friction while Engram quietly saves, organizes, su
 
 1. User opens Clinical Memory.
 2. `Today` shows session-first visit work for the current day. Session cards can include patient context, but they must identify the visit and use explicit labels such as `Session:` and `Updated:`. Selecting a session card opens that visit in Active Session; visible buttons are reserved for focused tasks.
-3. User searches or opens `Patients` to find patient-memory-first rows.
+3. User searches or opens `Patients` to find patient-memory-first rows. (Pro also has a
+   deterministic **Lists** tab — smart lists + lot/product recall; see
+   [Clinical Memory screen](../screens/patients.md).)
 4. Patient rows show natural memory summaries, latest visit references, exact needs-input labels when relevant, and one primary action. They do not show nested session lists, nor an "active session" badge (live work lives in `Today`).
 5. User opens a patient to view the patient assistant summary and timeline.
 6. Timeline sessions are grouped by actual session time: `Today`, `Earlier this week`, and `Older`.
@@ -38,7 +40,7 @@ Keep capturing with almost no friction while Engram quietly saves, organizes, su
 A *partial* (fuzzy) patient match is resolved **in place on the capture**, not only in the
 resolver. Apply semantics: [intelligence-layer §5](../../intelligence-layer.md); the surface and
 the basis × match-quality × visit-state decision matrix:
-[redesign-capture-surface.md](../redesign-capture-surface.md) "Partial-match resolution".
+[capture.md](../screens/capture.md) "Partial-match resolution".
 
 - A partial match is **never silently applied** (CLAUDE.md: never mis-assign). It shows the
   **matched-vs-spoken identity** ("Matched *معاصد* · you said *معاضد*") and one-tap actions:

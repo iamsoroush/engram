@@ -22,8 +22,15 @@ link a patient opens (no login). **Persona:** Doctor / Assistant / Admin (staff)
 
 ## 1 · Environment & access
 - **App:** `http://localhost:5183` (Chrome).
-- **Sign in (no password):** pick the **Basic** tier on the switch, then click a **persona** (Doctor /
+- **Sign in (dev stack, no password):** pick the **Basic** tier on the switch, then click a **persona** (Doctor /
   Assistant / Admin). Log out (top-right) to switch persona. Confirm the header reads *"Engram Demo Clinic (Basic)"*.
+- **Against production** (`https://engram.ir`): the persona switch does **not** exist there — dev-login
+  is disabled in production — so sign in with the real **email + password** of a test account in your
+  clinic (the clinic owner can add one on the **Team** screen; you need two staff accounts for the A5
+  multi-seat cases). Stick to **read-mostly** checks plus data you create yourself under a clearly
+  marked `ZZ Test …` name. **Never** edit or delete real patient data, don't revoke a share link a
+  real patient may still be using (A4.3 is fine on your own test patient), and skip **A5.4** — it
+  changes the clinic's role presets — unless you revert the preset right after.
 - **Test data:** create patients with a **unique, findable name** each run (e.g. `ZZ Test 2026-06-13 01`).
   **Don't delete** existing demo data.
 

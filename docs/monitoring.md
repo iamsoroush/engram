@@ -3,18 +3,20 @@
 Self-hosted observability for the production stack, delivered as a Compose **overlay**
 (`docker-compose.monitoring.yml`). Everything runs **on the box** — no foreign SaaS
 (Sentry.io, Datadog, etc.), which may be blocked/sanctioned from the **ArvanCloud / Iran**
-deployment. Companion to [production.md](production.md) and
-[production-readiness.md](production-readiness.md) (task **T6**).
+deployment. Companion to [production.md](production.md).
 
-> **Scope note.** This effort owns only `docker-compose.monitoring.yml`, this doc, and the
-> config files under `monitoring/`. It does **not** edit `docker-compose.prod.yml`,
-> `apps/frontend/nginx.conf`, `.env.prod.example`, or `scripts/` — those belong to the
-> parallel deploy-stack effort. The [Hand-off](#hand-off-to-the-deploy-stack-effort) section
-> lists exactly what that effort must add.
+> **Status: built, not deployed.** The overlay, dashboards, and alert rules are committed and
+> validated, but production does not run them — `scripts/deploy.sh` starts only the app + TLS
+> compose files, a deliberate alpha trade-off
+> ([production-alpha-tradeoffs.md](production-alpha-tradeoffs.md)). See
+> [Current status + how to enable](#current-status--how-to-enable).
 
 ## What's monitored
 
-Covers the [production-readiness "What to monitor"](production-readiness.md#what-to-monitor-t6-detail) list:
+The production watch-list: API error rate + p95 latency · **failed uploads** (product-critical) ·
+**AI-job failure rate + Celery/Redis queue depth** · Postgres connections + disk · object-store
+disk/usage · Redis memory · container restarts · host CPU/mem/disk · **TLS cert expiry** ·
+**backup freshness**. How each is covered:
 
 | Concern | Source | Surfaced in |
 |---|---|---|
@@ -26,16 +28,15 @@ Covers the [production-readiness "What to monitor"](production-readiness.md#what
 | **Object-store / Postgres / backup disk** | node-exporter (host filesystem) | Grafana, alerts |
 | Uptime of `/api/v1/health` (https + http) | Uptime Kuma | Uptime Kuma, alerts |
 | **TLS cert expiry** | Uptime Kuma | Uptime Kuma, alerts |
-| **API error rate + p95 latency** | backend `/metrics` *(needs app wiring)* | Grafana, alerts |
-| **Failed uploads** (product-critical) | backend `/metrics` custom counter *(needs app wiring)* | Grafana, alerts |
-| **AI-job failure rate** | backend/worker `/metrics` custom counter *(needs app wiring)* | Grafana, alerts |
-| **Application errors / stack traces** | GlitchTip (Sentry-compatible) *(needs DSN wiring)* | GlitchTip UI |
-| **Backup freshness** | see [Backup freshness](#backup-freshness) | alert (manual hook) |
+| **API error rate + p95 latency** | backend `/metrics` (wired — see [Application metrics](#application-metrics-metrics--as-built)) | Grafana, alerts |
+| **Failed uploads** (product-critical) | backend `/metrics` counter `engram_capture_uploads_failed_total` (wired) | Grafana, alerts |
+| **AI-job failure rate** | backend `/metrics` counter `engram_ai_jobs_total{status=…}` (wired) | Grafana, alerts |
+| **Application errors / stack traces** | GlitchTip (Sentry-compatible) *(SDKs installed; DSNs minted after first GlitchTip login)* | GlitchTip UI |
+| **Backup freshness** | see [Backup freshness](#backup-freshness) *(metric not yet emitted)* | alert (manual hook) |
 
-Three items are marked *needs wiring* — they require small backend/frontend changes that
-are **out of this effort's scope** but are fully specified in
-[Hand-off](#hand-off-to-the-deploy-stack-effort). Until then, the infra/host/DB/Redis/queue/
-uptime/cert metrics above work with **zero app changes**.
+The app-side wiring (backend `/metrics`, the two product counters, DSN-gated Sentry SDKs in
+backend + frontend) is **done** — everything above lights up as soon as the overlay itself is
+deployed, except the GlitchTip DSNs (set after its first login) and the backup-freshness metric.
 
 ## Why this stack
 
@@ -118,15 +119,15 @@ Then open `http://localhost:3000` (Grafana), `:9090`, `:3001`, `:8080` on your l
 
 ### Option B — behind the CDN with auth
 
-Expose a UI through the ArvanCloud CDN at e.g. `https://grafana.<domain>` **only** if the
-deploy-stack effort fronts it with auth (nginx Basic Auth or an auth proxy) and binds the
-upstream to the same localhost ports. GlitchTip and Grafana have their own logins, but do
-**not** publish them without an extra auth layer + TLS. Never expose Prometheus or the raw
-exporters publicly (they have no auth).
+Expose a UI at e.g. `https://grafana.<domain>` **only** behind an extra auth layer (nginx/Caddy
+Basic Auth or an auth proxy) upstreaming to the same localhost ports. GlitchTip and Grafana have
+their own logins, but do **not** publish them without that extra layer + TLS. Never expose
+Prometheus or the raw exporters publicly (they have no auth).
 
 ## Environment variables
 
-Add these to `.env.prod`. Names are final — the deploy-stack effort wires them.
+All of these are already stubbed in `.env.prod.example`, and `scripts/gen-secrets.sh` generates
+the secret ones — fill them in `.env.prod` before starting the overlay.
 
 ### Required (have no safe default; `config` fails without them)
 
@@ -169,26 +170,23 @@ The backend/frontend wiring (out of this effort's scope) should read **exactly**
 > the **internal** DSN host `glitchtip-web:8000` (both on `default` net) to avoid leaving the
 > box; the browser must use the **public** GlitchTip URL (`GLITCHTIP_DOMAIN`).
 
-## Application metrics (`/metrics`) — required for API/upload/AI-job panels
+## Application metrics (`/metrics`) — as built
 
-Prometheus already has a `backend` scrape job (`backend:8000/metrics`). It is **DOWN until the
-backend exposes `/metrics`** — expected, not an outage (the `ScrapeTargetDown` alert notes
-this). To light up the API error-rate / latency / failed-upload / AI-job panels + alerts, the
-backend effort should:
+The backend **exposes `/metrics`** via `prometheus-fastapi-instrumentator`
+(`apps/backend/app/observability/`) — mounted outside `/api/v1`, unauthenticated but reachable
+only on the internal Docker network, matching Prometheus's `backend` scrape job
+(`backend:8000/metrics`):
 
-1. Add `prometheus-fastapi-instrumentator` (or `prometheus-client`) and mount `/metrics`
-   (unauthenticated, but only reachable on the internal Docker network).
-2. Default metrics give `http_requests_total{status=...}` and
-   `http_request_duration_seconds_bucket` — used by the dashboard + `APIHighErrorRate` /
-   `APIHighLatency` alerts.
-3. Add two custom counters for the product-critical alerts (names are referenced by
-   `monitoring/prometheus/alert.rules.yml`):
-   - `engram_capture_uploads_failed_total` — increment on a failed capture upload.
-   - `engram_ai_jobs_total{status="succeeded|failed|..."}` — increment on AI-job completion
-     (backend or worker).
+- Default HTTP metrics (`http_requests_total{status=...}`,
+  `http_request_duration_seconds_bucket`) feed the dashboard + `APIHighErrorRate` /
+  `APIHighLatency` alerts.
+- Two custom product-critical counters (names referenced by
+  `monitoring/prometheus/alert.rules.yml`): `engram_capture_uploads_failed_total`
+  (incremented on the capture-upload error path) and `engram_ai_jobs_total{status=…}`
+  (incremented on AI-job terminal states).
 
-Until then, queue depth (`redis_key_size{key="ai_jobs"}`) already gives a strong proxy for
-AI-job health with no code change.
+Queue depth (`redis_key_size{key="ai_jobs"}`) additionally proxies AI-job health straight from
+the redis-exporter, independent of the backend.
 
 ## Dashboards & datasource
 
@@ -197,7 +195,7 @@ Grafana auto-provisions on boot from `monitoring/grafana/provisioning/`:
 - **Datasource** — Prometheus at `http://prometheus:9090` (default).
 - **Dashboard** — *Engram — Production Overview* (`monitoring/grafana/dashboards/engram-overview.json`):
   host CPU/mem/disk, per-container CPU/mem, Postgres connections + DB size, Redis memory,
-  Celery `ai_jobs` queue depth, and API request-rate + p95 panels (populate once `/metrics` lands).
+  Celery `ai_jobs` queue depth, and API request-rate + p95 panels (fed by the backend's `/metrics`).
 
 For richer per-component views, import community dashboards by ID in Grafana: Node Exporter Full
 (**1860**), cAdvisor (**14282**), Postgres (**9628**), Redis (**763**).
@@ -207,8 +205,8 @@ For richer per-component views, import community dashboards by ID in Grafana: No
 Rules live in `monitoring/prometheus/alert.rules.yml` (mounted into Prometheus). Highlights:
 host CPU/mem/disk (warn + critical), container restart loops, scrape-target down, Postgres
 down / connections >80% of max, Redis down / memory >85% / **`ai_jobs` backlog >100**, health
-endpoint down, **TLS cert expiring <14d**, and (once `/metrics` lands) API 5xx >5%, p95 >1.5s,
-failed uploads, AI-job failure >20%.
+endpoint down, **TLS cert expiring <14d**, API 5xx >5%, p95 >1.5s, failed uploads, AI-job
+failure >20%.
 
 Prometheus only **evaluates** rules; to be **notified** you need a router. Two options:
 
@@ -231,9 +229,10 @@ After first login at `http://localhost:3001` (via tunnel):
    expiry** + **uptime** items directly in Uptime Kuma even before Grafana alerting exists.
 3. Add a second monitor for the http→https redirect or the origin if useful.
 4. **AI gateway** monitor: type **HTTP(s)** (or **TCP** if it exposes no health URL), target the EU
-   transcription gateway (`AI_ENGINE_TRANSCRIPTION_BASE_URL`), interval 60s. AI jobs depend on it, so
-   this alerts you when the gateway becomes unreachable from the server — even though it's not part of
-   our own stack. (Metric-based alternative once `/metrics` lands: alert on the AI-job failure counter.)
+   transcription gateway (`AI_ENGINE_TRANSCRIPTION_BASE_URL`, i.e. `gw.engram.ir`), interval 60s. AI
+   jobs depend on it, so this alerts you when the gateway becomes unreachable from the server — even
+   though it's not part of our own stack. (Metric-based alternative: alert on the
+   `engram_ai_jobs_total{status="failed"}` counter.)
 5. Configure a notification channel (Telegram/email) in Settings → Notifications.
 
 To also surface Uptime Kuma in Grafana, enable its Prometheus metrics (Settings → API Keys),
@@ -242,32 +241,38 @@ rules.
 
 ### Backup freshness
 
-Backups (production-readiness **T3**, owned by the deploy-stack effort) should record a
-freshness signal Prometheus can alert on. Recommended once T3 lands:
+Nightly encrypted backups are live (`scripts/backup.sh` on cron), but they don't yet emit a
+freshness signal Prometheus can alert on. Recommended wiring (still open):
 
 - Have `scripts/backup.sh` write a metric to the **node-exporter textfile collector** on
   success, e.g. `engram_last_backup_success_timestamp_seconds <epoch>`, then add an alert:
   `time() - engram_last_backup_success_timestamp_seconds > 90000` (>25h). This needs
-  node-exporter's `--collector.textfile.directory` + a mounted dir — a small follow-up to wire
-  with the backup effort. Until then, monitor backup freshness via Uptime Kuma push or a cron
-  heartbeat check.
+  node-exporter's `--collector.textfile.directory` + a mounted dir. Until then, monitor backup
+  freshness via Uptime Kuma push or a cron heartbeat check.
 
-## Hand-off to the deploy-stack effort
+## Current status + how to enable
 
-That effort owns the protected files; to fully integrate monitoring it should:
+Already in place: the overlay + config under `monitoring/`, the env vars stubbed in
+`.env.prod.example` (secrets generated by `scripts/gen-secrets.sh`), the backend `/metrics`
+endpoint + product counters, and DSN-gated Sentry SDKs in backend and frontend. **Not running in
+production** — `scripts/deploy.sh` doesn't include the overlay.
 
-1. **`.env.prod.example`** — add the vars from [Environment variables](#environment-variables):
-   `GRAFANA_ADMIN_PASSWORD`, `GLITCHTIP_SECRET_KEY`, `GLITCHTIP_POSTGRES_PASSWORD` (required),
-   plus the optional + DSN vars (`BACKEND_SENTRY_DSN`, `VITE_SENTRY_DSN`, `SENTRY_ENVIRONMENT`,
-   etc.). `scripts/gen-secrets.sh` should generate the secret-y ones.
-2. **Deploy script** — include `-f docker-compose.monitoring.yml` in the prod
-   `docker compose` invocation so monitoring comes up with the app.
-3. **(Optional) CDN/nginx** — if exposing Grafana/GlitchTip via the CDN, add an auth-protected
-   vhost upstreaming to the localhost ports; otherwise document SSH-tunnel-only access.
-4. **App `/metrics` + Sentry DSN wiring** — see
-   [Application metrics](#application-metrics-metrics--required-for-apiuploadai-job-panels) and
-   the [DSN table](#error-tracking-dsn-set-after-first-glitchtip-login).
-5. **Backup freshness metric** — emit the textfile metric from `scripts/backup.sh` (above).
+To enable on the prod box:
+
+1. Fill the monitoring secrets in `.env.prod` (`GRAFANA_ADMIN_PASSWORD`, `GLITCHTIP_SECRET_KEY`,
+   `GLITCHTIP_POSTGRES_PASSWORD` — see [Environment variables](#environment-variables)).
+2. Add `-f docker-compose.monitoring.yml` to the prod `docker compose` invocation — the natural
+   place is the `FILES` list in `scripts/deploy.sh` — then deploy.
+3. First-login setup: Grafana admin, [Uptime Kuma monitors](#uptime-kuma-uptime--cert-expiry),
+   a GlitchTip project → put its DSNs (`BACKEND_SENTRY_DSN`, `VITE_SENTRY_DSN`) in `.env.prod`
+   and redeploy backend + frontend.
+
+Still open beyond that:
+
+- **Backup-freshness metric** — emit the textfile metric from `scripts/backup.sh`
+  (see [Backup freshness](#backup-freshness)).
+- **(Optional) CDN/nginx-fronted UIs** — an auth-protected vhost upstreaming to the localhost
+  ports; otherwise access stays SSH-tunnel-only.
 
 ## Validation
 

@@ -1,21 +1,27 @@
 # AI Engine Docs
 
-AI engine docs describe the Celery worker boundary, placeholder processors, job recovery behavior, and future replacement path for real AI processors.
+AI engine docs describe the Celery worker boundary, the AI processing jobs, job retry/recovery
+behavior, and the eval suite that gates changes to them.
 
 ## Documents
 
-- [Processing](processing.md): the AI engine's capture/session processors — real transcription,
-  Pro enrichment (captions/decoration), deterministic report generation, durable retry, and the
-  patient-identity/matching boundary (the now-implemented durable-retry + context-rich transcription
-  + patient-extraction direction lives here and in [intelligence-layer.md](../intelligence-layer.md)).
-- [Eval epic](eval-epic.md): golden-set evals for every AI job (transcription, caption, synthesis =
-  treatments + aftercare + sections, patient memory, matching) + a runner (`eval/run_all.py`) that
-  scores them, and the **scenario catalog** for clinician-recorded audio/photo fixtures. Gate prompt/
-  model changes on the whole scorecard instead of tuning one job at a time.
+- [Processing](processing.md): the as-built AI jobs — audio transcription (+ patient information +
+  intents), Pro photo captions with pairing/OOC attributes, note passthrough, the Pro report
+  synthesis + treatment extraction job (deterministic baseline → synthesis overwrite, the A↔B
+  contract, aftercare selections, safety flags + cross-visit reconcile), patient memory, the Q&A
+  draft/voice-edit jobs, live per-task model config, retry/recovery, and the patient-matching
+  boundary. Apply semantics live in [intelligence-layer.md](../intelligence-layer.md).
+- [Evals](evals.md): the golden-set eval suite (`eval/run_all.py`) — two-tier scoring
+  (deterministic safety gates + LLM judge), the fixture store and clinician recording workflow, the
+  feedback→golden-set harvest loop, current coverage, and the CI reality. AI-job changes are gated
+  on this scorecard (CLAUDE.md §4).
 
-## Direction
+## Boundary
 
-The backend owns API contracts, database schema, tenant scoping, and job rows. The AI engine consumes named Celery tasks and reports lifecycle state through protected backend internal endpoints. Real AI processors should replace placeholder job bodies without moving backend ownership into the worker.
+The backend owns API contracts, database schema, tenant scoping, and job rows. The AI engine
+consumes named Celery tasks and reports lifecycle state through protected backend internal
+endpoints. Processors are pure functions of their backend-built payloads — new AI jobs slot in
+behind the same boundary without moving backend ownership into the worker.
 
 ## Caution: AI jobs must be vertical-agnostic
 

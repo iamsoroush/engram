@@ -12,6 +12,12 @@ A product-direction simplification of the intelligence layer:
   processed, in-context captures (Basic = one chronological section; Pro = grouped-by-type:
   Audio notes / Written notes / Photos). Always current for the latest capture; no "updating" churn.
   The legacy worker session path is retained only to drain in-flight jobs.
+  > **Superseded (partially):** the deterministic rebuild still stands as the always-current
+  > baseline, but `session_organize` was later revived as the **Pro single-pass LLM report
+  > synthesis** (prose + treatments + safety flags + aftercare) that refines the baseline — the
+  > dominant AI cost, debounced and budget-gated. See
+  > [backend/processing.md](backend/processing.md) and
+  > [business/ai-usage-limits.md](business/ai-usage-limits.md).
 - **Completion is auto-derived, not manually verified.** The manual *Verify report* gate
   (`/sessions/{id}/verify` + `/reopen`, the report button, `SessionStatus.verified`) is removed. A
   session's **`complete`** flag is computed (`session_is_complete`: captures processed + patient
@@ -33,15 +39,15 @@ The compact docs under `docs/ux/` describe the currently implemented user-facing
 
 Capture upload persists the source object, capture row, and queued processing job before dispatching Celery. The backend no longer derives time-based placeholder completion during reads.
 
-The backend is the producer and sends named Celery tasks. `apps/ai_engine` is the worker app and owns deterministic placeholders for audio, text, and image capture processing. The AI engine uses backend internal HTTP endpoints for start/complete/retry/fail updates instead of importing backend modules or writing directly to Postgres.
+The backend is the producer and sends named Celery tasks. `apps/ai_engine` is the worker app and owns execution of the capture processing jobs (initially deterministic placeholders, since replaced by the real gateway-backed pipeline — see [ai_engine/processing.md](ai_engine/processing.md)). The AI engine uses backend internal HTTP endpoints for start/complete/retry/fail updates instead of importing backend modules or writing directly to Postgres.
 
 ## Continuously Evolving Session Contracts
 
 Sessions are created as `draft` when the first capture reaches the backend, but the explicit save action is no longer the boundary for reviewability. A session can receive captures, be reviewed, and be edited across all states; completion is auto-derived (see "Intelligence-Layer Simplification").
 
-Every backend session payload exposes stable frontend contracts for `report`, `summaries`, `findings`, and `processingStatus`. Phase 2.1 writes deterministic mocked outputs into those contracts so the real AI pipeline can later replace the mock writer without changing frontend object shape.
+Every backend session payload exposes stable frontend contracts for `report`, `summaries`, `findings`, and `processingStatus`. The contract shapes were designed so the real AI pipeline could replace the early mocked writer without changing frontend object shape — which is what happened; the real pipeline now fills them.
 
-The backend still owns report template selection and can pass template content to the AI engine through the report refresh endpoint. Patient full name and national ID remain special extracted metadata fields because they support deterministic placeholder matching now and future patient matching later.
+The backend still owns report template selection and can pass template content to the AI engine through the report refresh endpoint. Patient full name and national ID remain special extracted metadata fields because they anchor patient matching.
 
 ## Intelligence Layer Is Intent-Driven With An Explicit AI↔Backend↔Frontend Contract
 
@@ -72,10 +78,11 @@ is **not** abstracted. The entity that generalizes is the report-required **Enco
 (`Session` for clinics; `Study`/`Case` for radiology/pathology), one per `Report`. v1 implements
 the Encounter as today's `Session` and does **not** rename it.
 
-Implemented scaffolding (A0): `tenant.vertical` (default `clinic`) plus a reserved
+Implemented scaffolding (A0): `tenant.vertical` (default `aesthetics`; the legacy `clinic` value
+is normalized to `aesthetics`) plus a reserved
 `session.attributes` JSONB extension point for per-vertical fields (kept separate from
 `extracted_metadata`). The work-unit presentation label is derived from the vertical via
-`services/verticals.encounter_label` (clinic→"Session", radiology→"Study", pathology→"Case") and
+`services/verticals.encounter_label` (aesthetics/therapy→"Session", radiology→"Study", pathology→"Case") and
 surfaced on the `TenantProfile` (`vertical`, `encounterLabel`) — it must not be hardcoded in
 core/apply logic. The literal `Session → Encounter` rename and the per-type `attributes` fields
 land with the second vertical.
@@ -85,8 +92,8 @@ See [architecture.md](architecture.md) "Entity Model (verticals)" and
 
 ## Therapy Slice 1 — Changes Beyond The Original Plan (2026-06-14)
 
-The therapy-vertical slice-1 build (`build/therapy-core`) is recorded in
-[ux/redesign-therapy.md](ux/redesign-therapy.md) (build-status note). The plan was narrow: a
+The therapy-vertical slice-1 build (`build/therapy-core`) is recorded in the therapy vertical
+spec, tracked in the `docs/work/` process area. The plan was narrow: a
 note-first capture surface + "Session so far" + a `vertical=='therapy'` report-synthesis branch + a
 **minimal** client view (sessions list + per-session note/report) + federated caseloads, with backend
 edits kept localized to `ai_jobs`. The following changes went **beyond that plan**; captured here so
@@ -145,3 +152,25 @@ future agents know what was added and why.
 - **Fair-use $ budget is internal.** The per-seat AI budget (dollars) is never sent to the client or
   shown in the UI — only a percentage + status. `clinic_usage_state_dict` strips the dollar fields.
   *Why:* pricing/margin is internal economics, not something to surface to clinics.
+
+## Report Sharing And Recall Decisions (2026-06-20)
+
+Durable decisions from the Pro-report and recall builds:
+
+- **One report, no separate patient projection.** The patient share is a curated subset of the
+  *same* synthesized report — there is no second, patient-specific report artifact. Withholding is
+  enforced server-side (only curated content is copied into the share snapshot), never by client
+  filtering. See [ux/screens/patient-surface.md](ux/screens/patient-surface.md).
+- **Share treatment specifics are generic by default.** A per-clinic `share_include_brands`
+  setting (default **off**) controls whether shared treatment lines name brands; with it off the
+  wording is generic. The structured treatment table and **lot numbers are always withheld** from
+  patient shares regardless of the setting.
+- **Assessment on the patient share is opt-in, default off.** Clinician findings can alarm out of
+  context, so the assessment section is only shared deliberately per send.
+- **Carried-forward dose gates completeness.** An unconfirmed carried-forward dose keeps a session
+  out of `Complete` (`session_contracts.py:41`) — the one deliberate safety-critical exception to
+  the warnings-over-blocking principle. Other review items (low-confidence, ambiguous, missing
+  lot) stay non-blocking. See [ux/screens/session-review.md](ux/screens/session-review.md).
+- **Lot-recall matching is exact-only.** Lot identity normalizes by uppercase + trim + collapse
+  internal spaces, keeping hyphens/dots; near-misses are *never* merged into a recall cohort (a
+  recall list must be trustworthy — fuzzy expansion belongs to a human, not the query).

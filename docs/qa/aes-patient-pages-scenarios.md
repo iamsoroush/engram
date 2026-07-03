@@ -12,7 +12,7 @@ What this verifies:
 - a **revoked** link no longer opens;
 - an **invalid / expired** token is handled gracefully.
 
-Background spec: [redesign-aesthetics.md §6](../ux/redesign-aesthetics.md) ·
+Background spec: [patient-surface.md](../ux/screens/patient-surface.md) ·
 [aesthetics-stories.md AES-401/403](../ux/aesthetics-stories.md) ·
 API contract: [aes-basic-api.md](../backend/aes-basic-api.md).
 
@@ -44,15 +44,33 @@ URL. A common mistake is pasting the API address; the patient page only loads fr
 
 ## 1 · How to get a test share link
 
-There are two ways. **Recipe A** (curl) works today and is the reliable way to mint links for these
-tests. **Recipe B** (the clinic UI) is how staff will really do it, once that screen ships
-(track ② — *Curate & Share*).
+There are two ways. **Recipe A** (the clinic app UI) is how staff really do it — use it by default.
+**Recipe B** (curl) is a developer fallback; you still need it for the **expiry** scenario (the UI
+doesn't set an expiry) and for creating the withhold-test patient in Scenario 3.
 
-### Recipe A — mint a link with the API (works today)
+### Recipe A — via the clinic app (the staff path)
+
+1. Sign in to the clinic app at `<APP>` as a doctor or assistant.
+2. Open **Clinical Memory**, open the patient, and tap **Share with patient** at the top of the
+   patient's page.
+3. In the share sheet: set a **title**, tick the **before/after photos** to include, toggle the
+   report sections to share (**visit summary**, **what we did**, **assessment**), and pick an
+   **aftercare template**. **Preview** shows exactly what the patient will see; the sheet also
+   reminds you what is *always withheld* (raw audio, internal notes, lots, national ID, other
+   visits).
+4. Tap **Send link**, then **Copy link**. That copied link is `<APP>/share/<token>`.
+5. The same sheet has **Revoke access** — the staff way to kill the link (used in Scenario 4).
+
+Use that link in the scenarios below exactly as you'd use a Recipe-B link.
+
+### Recipe B — mint a link with the API (developer fallback)
 
 Run these in a terminal, in order. Copy/paste each block and substitute `<API>` with your API URL.
 
-**A1. Sign in as a clinician and grab a token.** This prints a big JSON blob — find the long
+> These use `POST /auth/dev-login`, so they work only against a dev/local stack
+> (`BACKEND_AUTH_MODE=dev`) — never against production.
+
+**B1. Sign in as a clinician and grab a token.** This prints a big JSON blob — find the long
 `"accessToken": "…"` value and copy it.
 
 ```sh
@@ -70,7 +88,7 @@ TOKEN=$(curl -s -X POST "<API>/auth/dev-login" -H "Content-Type: application/jso
 echo "$TOKEN"
 ```
 
-**A2. Get a patient to share with.** List patients and copy any patient's `id` (a long
+**B2. Get a patient to share with.** List patients and copy any patient's `id` (a long
 `xxxxxxxx-xxxx-…` value):
 
 ```sh
@@ -90,7 +108,7 @@ Save the patient id:
 PATIENT="<paste-the-patient-id-here>"
 ```
 
-**A3. Create an aftercare template** (so the share has aftercare). Copy the returned `id`:
+**B3. Create an aftercare template** (so the share has aftercare). Copy the returned `id`:
 
 ```sh
 curl -s -X POST "<API>/aftercare-templates" -H "Authorization: Bearer $TOKEN" \
@@ -104,7 +122,7 @@ curl -s -X POST "<API>/aftercare-templates" -H "Authorization: Bearer $TOKEN" \
 TEMPLATE="<paste-the-template-id-here>"
 ```
 
-**A4. (Optional) Find this patient's before/after photos.** Photos only appear in the share if the
+**B4. (Optional) Find this patient's before/after photos.** Photos only appear in the share if the
 patient already has photo captures from a visit. Check with:
 
 ```sh
@@ -113,10 +131,10 @@ curl -s "<API>/patients/$PATIENT/last-visit" -H "Authorization: Bearer $TOKEN"
 
 In the response, under `visit.media`, copy any `captureId` values. If `media` is empty, that's fine —
 skip the `"media"` line in the next step and you'll get a text-only share (still fully testable). To
-populate photos with no extra tooling, use **Recipe B** once it ships, or have a developer capture a
-photo for this patient in the clinic app.
+populate photos with no extra tooling, capture a photo for this patient in the clinic app and use
+**Recipe A** instead.
 
-**A5. Create the share.** This returns the share. Copy the `"token"` value.
+**B5. Create the share.** This returns the share. Copy the `"token"` value.
 
 ```sh
 curl -s -X POST "<API>/patient-shares" -H "Authorization: Bearer $TOKEN" \
@@ -127,7 +145,7 @@ curl -s -X POST "<API>/patient-shares" -H "Authorization: Bearer $TOKEN" \
       {"label":"Visit","body":"Forehead Botox performed — 20 units across the forehead lines."},
       {"label":"What to expect","body":"Results settle over the next 7–14 days. Book a review in two weeks if you'\''d like a touch-up."}
     ],
-    "media":[{"captureId":"<paste-a-captureId-from-A4>","caption":"Before"},{"captureId":"<another-captureId>","caption":"After"}],
+    "media":[{"captureId":"<paste-a-captureId-from-B4>","caption":"Before"},{"captureId":"<another-captureId>","caption":"After"}],
     "aftercare":{"templateId":"'"$TEMPLATE"'"},
     "expiresInDays":30
   }'
@@ -141,20 +159,8 @@ In the response, the `token` is your link. The patient's page is:
 <APP>/share/<token>
 ```
 
-Keep the response handy — you'll also see `"id"` (the share id, used for the revoke test) and
-`"publicPath"` (which is exactly `/share/<token>`).
-
-### Recipe B — via the clinic Curate & Share screen (when track ② ships)
-
-This is the real staff path; the screen is being built separately. When available, the flow will be:
-
-1. Sign in to the clinic app at `<APP>` as a doctor or assistant.
-2. Open the patient, open the visit, choose **Share** / **Curate & Share**.
-3. Tick the before/after photos and report sections to include, pick an **aftercare template**, set an
-   optional expiry, and review the **preview** of exactly what the patient will see.
-4. Confirm to create the link, then **Copy link**. That copied link is `<APP>/share/<token>`.
-
-Use that link in the scenarios below exactly as you'd use the Recipe-A link.
+Keep the response handy — you'll also see `"id"` (the share id, used for the API revoke in
+Scenario 4) and `"publicPath"` (which is exactly `/share/<token>`).
 
 ---
 
@@ -217,7 +223,7 @@ This is the withholding guarantee (AES-403): the patient sees only the curated s
     -H "Content-Type: application/json" \
     -d '{"displayName":"Test Withhold","nationalId":"0012345678","notes":"INTERNAL: VIP, comp the next visit"}'
   ```
-  Use that patient's id for a fresh share (§1 A5).
+  Use that patient's id for a fresh share (§1 B5, or Recipe A from the clinic app).
 - **Steps:**
   1. Open the share page and read every word shown.
   2. In the browser, open **View Source** or DevTools (`F12`) and use **Find** (`Cmd+F`) to search the
@@ -234,13 +240,17 @@ This is the withholding guarantee (AES-403): the patient sees only the curated s
 
 ### Scenario 4 — A revoked link no longer opens
 
-- **Setup:** A working share (note its `id` from the §1 A5 response) that you have confirmed opens.
+- **Setup:** A working share that you have confirmed opens. (If revoking via the API, note the
+  share `id` from the §1 B5 response.)
 - **Steps:**
   1. Open the link once to confirm it works.
-  2. Revoke it (staff action):
-     ```sh
-     curl -s -X POST "<API>/patient-shares/<share-id>/revoke" -H "Authorization: Bearer $TOKEN"
-     ```
+  2. Revoke it (staff action) — either way:
+     - **UI:** in the clinic app, reopen **Share with patient** for that patient and tap
+       **Revoke access** (Recipe A step 5); or
+     - **API:**
+       ```sh
+       curl -s -X POST "<API>/patient-shares/<share-id>/revoke" -H "Authorization: Bearer $TOKEN"
+       ```
   3. Refresh the patient page (or open `<APP>/share/<token>` again).
 - **Expected:**
   - The report is **gone**. The page now shows a lock icon and **"This link is no longer available"**
@@ -254,7 +264,8 @@ This is the withholding guarantee (AES-403): the patient sees only the curated s
   developer to set an expiry in the past. With `expiresInDays:1` you can verify the *"available until"*
   footer today and re-check after the date passes.
 - **Steps:**
-  1. Create a share with `"expiresInDays":1` (§1 A5) and confirm it opens; note the **"Available
+  1. Create a share with `"expiresInDays":1` (§1 B5 — the UI recipe sets no expiry, so this
+     scenario needs the API) and confirm it opens; note the **"Available
      until …"** date in the footer.
   2. After the expiry date passes (or using a developer-set past expiry), open the link again.
 - **Expected:**

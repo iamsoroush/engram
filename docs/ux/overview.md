@@ -18,19 +18,24 @@ The UX keeps capture first while moving long-term review toward Clinical Memory:
 ## Main Workflows
 
 - [Capture a session](workflows/capture-session.md)
-- [Generate structured session report](workflows/save-session.md)
 - [Clinical Memory workflow](workflows/review-and-assign-patients.md)
 
 ## Main Screens
 
 - [Landing / Login / Sign-up](screens/login.md) (bilingual fa/en + RTL; self-serve clinic sign-up)
 - [First-run onboarding](screens/onboarding.md)
-- [Team (member management)](screens/team.md) (owner/admin)
-- [Plan (Basic vs Pro)](screens/plan.md) (owner/admin)
 - [Capture / Active Session](screens/capture.md)
-- [Clinical Memory](screens/patients.md)
+- [Clinical Memory](screens/patients.md) — Today, Patients, and Needs input tabs; Pro adds a
+  deterministic **Lists** tab (smart lists + lot/product recall)
 - [Search](screens/search.md)
 - [Session review](screens/session-review.md)
+- Q&A inbox (Pro) — staff side of patient Q&A; see [navigation](navigation.md)
+- [Insights (clinic analytics)](screens/insights.md) (owner/admin)
+- [Account pages — Settings & Profile](screens/account.md) (+ Switch clinic for multi-clinic users)
+- [Team (member management)](screens/team.md) (owner/admin)
+- [Plan (Basic vs Pro)](screens/plan.md) (owner/admin)
+- [Public patient surfaces](screens/patient-surface.md) — `/share/{token}` curated report + aftercare,
+  `/qa/{token}` patient Q&A (Pro); token-capability pages outside the staff shell
 
 ## How To Read These Docs
 
@@ -46,8 +51,16 @@ The frontend is a single React app with hash-based screen selection:
 
 - Default: Active Session Workspace
 - `#active-session`: current active session workspace
-- `#patients`: Clinical Memory with Today, Patients, and Needs input tabs
+- `#patients`: Clinical Memory with Today, Patients, Needs input, and (Pro) Lists tabs
 - `#search`: local memory search
+- `#qa-inbox`: Q&A inbox (Pro; top-bar icon beside Search)
+- `#settings`, `#profile`: account pages (account menu)
+- `#insights`: clinic analytics (owner/admin; account menu)
+- `#team`, `#plan`: member management and plan switch (owner/admin; account menu)
+- `#switch-clinic`: switch the active clinic (multi-clinic users; account menu)
+
+Two public, token-capability routes live outside the staff shell: `/share/{token}` (curated
+patient report) and `/qa/{token}` (patient Q&A, Pro).
 
 The shell keeps Active Session, Clinical Memory, and Search available from a compact top-left navigator after staff login. Capture actions are always available as a sticky bottom row for staff users.
 

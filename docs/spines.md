@@ -47,8 +47,8 @@ WhatsApp/questionnaire, microscopic, comments) and assembles + verifies into the
 
 ## 3. Capabilities and tiers
 
-Express the platform as **capabilities** (transcription, image_caption, note_decoration,
-patient_matching, out_of_context, cross_visit_synthesis, live_report_synthesis, pre_session_brief,
+Express the platform as **capabilities** (transcription, image_caption, patient_matching,
+out_of_context, cross_visit_synthesis, live_report_synthesis, post_session_qa, pre_session_brief,
 structured_report, template_export, multi_role_workflow, …). Each **(vertical, tier)** = a subset of
 capabilities + vertical-specific presentation. **Gate features on resolved capabilities, not on
 `tier` directly** — a thin resolver `capabilities(vertical, tier) → set` (not a plugin framework).
@@ -65,9 +65,10 @@ Principle: **Basic = recall (deterministic), Pro = understanding (synthesis/matc
 |---|:-:|:-:|:-:|
 | Structured capture + patient memory + search *(deterministic)* | ✓ | ✓ | ✓ |
 | Transcription | — | ✓ | ✓ |
-| AI matching · captions · decoration · out-of-context | — | ✓ | ✓ |
+| AI matching · captions · out-of-context | — | ✓ | ✓ |
 | Cross-visit synthesis *(memory, history, live report)* | — | ✓ | ✓ |
-| Pre-session brief surface | — | — | ✓ |
+| Post-session patient Q&A | — | ✓ | ✓ |
+| Pre-session brief surface *(designed, not yet built)* | — | — | ✓ |
 
 - **Aesthetics** = organizational floor → **Basic + Pro**. Basic = no AI (deterministic Notes-killer);
   transcription is **Pro-only** here (deliberate packaging exception — protects the upsell, contains
@@ -86,19 +87,20 @@ redesign the current app into a **Spine-A platform for design-partner testing �
 three polished products.**
 
 **Spine-A redesign**
-- **P0 — Foundations:** capability resolver (re-gate the AI block off `tier`); expand
+- **P0 — Foundations** *(✓ done)*: capability resolver (re-gate the AI block off `tier`); expand
   `tenant.vertical` taxonomy (`clinic`→`aesthetics`, add `therapy`, `dermatology`); per-vertical
   config module.
-- **P1 — Aesthetics to the agreed line:** Basic = genuinely AI-free Notes-killer (fast capture,
-  patient-centric structure, search, performance as data grows); Pro = full current intelligence,
-  re-gated via capabilities.
+- **P1 — Aesthetics to the agreed line** *(✓ done — Basic/Pro live in production at engram.ir)*:
+  Basic = genuinely AI-free Notes-killer (fast capture, patient-centric structure, search,
+  performance as data grows); Pro = full current intelligence, re-gated via capabilities.
 - **P2 — Therapy as vertical #2:**
-  - **P2a — Therapy UX design** *(dedicated design step — every new vertical gets one).* Design the
-    pre-session brief surface ("walk in knowing the patient"), in/post-session capture, and the
-    narrative, privacy-aware summary presentation. Output: prototype + spec under `docs/ux/`.
-  - **P2b — Therapy build:** vertical config (single tier; transcription in the Basic-set),
-    therapy prompt-shaping for summaries/history, the pre-session brief surface (reusing the existing
-    patient-memory artifact), terminology.
+  - **P2a — Therapy UX design** *(✓ done — dedicated design step; every new vertical gets one).*
+    Designed the pre-session brief surface ("walk in knowing the patient"), in/post-session capture,
+    and the narrative, privacy-aware summary presentation. Prototypes:
+    `apps/frontend/design-prototypes/therapy-*.html`.
+  - **P2b — Therapy build** *(slice 1 ✓ built: the core loop — note-first capture, two-plane session
+    summary, federated private caseloads)*. **Remaining slices ← next:** the pre-session brief
+    surface (B1), intake/consent + patient surface.
 - Then **derm patient-capture channel** (fast-follow) → **Spine C (pathology)**.
 
 > **Per-vertical UX design is a first-class step.** Each vertical has a different preferred UX; do not
@@ -108,10 +110,11 @@ three polished products.**
 ## 5. Per-spine next steps
 
 **Spine A (Engram) — active**
-1. P0 foundations (capability resolver + vertical taxonomy + config). ← next
-2. P1 aesthetics Basic/Pro to the agreed line.
-3. P2 therapy: **UX design step (P2a)** → build (P2b).
-4. (later) derm patient-capture channel.
+1. ✓ P0 foundations (capability resolver + vertical taxonomy + config).
+2. ✓ P1 aesthetics Basic/Pro to the agreed line — live in production (engram.ir).
+3. ✓ P2 therapy: UX design (P2a) + build slice 1 (P2b, the core loop).
+4. Therapy later slices: **pre-session brief (B1)**, intake/consent + patient surface. ← next
+5. (then) derm patient-capture channel.
 
 **Spine C (pathology) — next strategic bet (after Spine-A)**
 1. Design-partner discovery + workflow mapping of a real lab (the branch/merge case lifecycle).
