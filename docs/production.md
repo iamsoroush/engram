@@ -192,10 +192,16 @@ Health check: `curl https://engram.ir/api/v1/health` (externally) or
 ### CI
 
 `.github/workflows/ci.yml` runs on every PR and on pushes to `main`: backend + ai-engine test
-suites, frontend typecheck + unit tests + i18n guard, hermetic Playwright e2e (mocked API), and
-prod-compose validation. `.github/workflows/eval.yml` is the **manual-only, non-blocking** AI
-golden-set eval (run from the Actions tab). Deploys are not CI-gated — the box builds whatever
-is checked out (tracked in [production-alpha-tradeoffs.md](production-alpha-tradeoffs.md)).
+suites, frontend typecheck + unit tests + i18n guard, hermetic Playwright e2e (mocked API),
+prod-compose validation, and — merge-blocking — the **`e2e-stack`** job, which boots the real compose
+stack gateway-less (`docker-compose.e2e.yml`) and runs the P0 real-stack Playwright suite against it
+(API contract, migrations, MinIO, Celery pipeline, tier gating, public token pages). A second job,
+**`e2e-stack-ai`** (push-to-`main` only), adds a deterministic mock LLM gateway
+(`docker-compose.e2e-ai.yml`) and runs the P1 synthesis suite. Both are keyless. See
+[the frontend README's Testing section](../apps/frontend/README.md). `.github/workflows/eval.yml` is
+the **manual-only, non-blocking** AI golden-set eval (run from the Actions tab). Deploys are not
+CI-gated — the box builds whatever is checked out (tracked in
+[production-alpha-tradeoffs.md](production-alpha-tradeoffs.md)).
 
 ## ArvanCloud DNS & TLS — pick one setup
 

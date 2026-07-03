@@ -1,0 +1,44 @@
+# E2E merge-gate override for the real-stack Playwright suite (apps/frontend/tests/e2e-stack/).
+#
+# Layered on top of the root docker-compose.yml to make the stack DETERMINISTIC and gateway-less:
+# no LLM keys, no synthesis, fast mock stage delay. It also adds backend + frontend healthchecks so
+# `docker compose up -d --wait` blocks until the app is actually serving. The values here are literal
+# (not ${VAR:-default}) on purpose — they must win over any developer `.env` that points the stack at
+# the real gateway. See docs/frontend/README.md "Testing" and docs/production.md CI notes.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+#
+# The mock-gateway (P1) is added by a further override, docker-compose.e2e-ai.yml.
+services:
+  backend:
+    environment:
+      BACKEND_AUTH_MODE: "dev"
+      # Gateway-less determinism: synthesis is never dispatched, so the deterministic baseline
+      # report stands (spec determinism seam #4).
+      BACKEND_REPORT_SYNTHESIS_ENABLED: "false"
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).status==200 else 1)\""
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 45s
+
+  ai-engine:
+    environment:
+      # Force gateway-less: fixture captures return canned text, non-fixture photos blank-caption,
+      # synthesis/patient-memory/Q&A fall back deterministically (spec determinism seam #3).
+      AI_ENGINE_TRANSCRIPTION_BASE_URL: ""
+      # Speed up the deterministic mock pipeline stages (default 1.25s).
+      AI_ENGINE_MOCK_STAGE_DELAY_SECONDS: "0.1"
+
+  frontend:
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"require('http').get('http://127.0.0.1:5183/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))\""
+      interval: 5s
+      timeout: 10s
+      retries: 48
+      start_period: 30s

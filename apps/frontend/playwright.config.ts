@@ -7,6 +7,9 @@ const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests",
+  // The real-stack suite (tests/e2e-stack/) needs a live backend and runs under its own
+  // playwright.stack.config.ts + the `e2e-stack` CI job — keep it out of the hermetic run.
+  testIgnore: ["**/e2e-stack/**"],
   outputDir: "./test-results",
   reporter: [["list"], ["html", { open: "never" }]],
   webServer: externalBaseUrl

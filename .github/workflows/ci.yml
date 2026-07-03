@@ -161,3 +161,103 @@ jobs:
           name: playwright-report
           path: apps/frontend/playwright-report
           retention-days: 7
+
+  e2e-stack:
+    name: E2E stack (Playwright, real backend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Install Playwright's Chrome
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chrome
+
+      # Bring up the REAL compose stack, gateway-less + deterministic (docker-compose.e2e.yml), and
+      # block until backend + frontend are healthy. This exercises the API contract, Alembic
+      # migrations, MinIO upload, the Celery pipeline, real tier gating, and the public token pages.
+      - name: Start stack
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+
+      - name: Run e2e-stack (P0)
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5183
+        run: npx playwright test --config playwright.stack.config.ts p0-
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-stack
+          path: apps/frontend/playwright-report-stack
+          retention-days: 7
+
+      - name: Dump backend + ai-engine logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml logs --no-color backend ai-engine
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v
+
+  e2e-stack-ai:
+    name: E2E stack + mock AI (Playwright, P1)
+    # Main-merge only (slower; adds the mock LLM gateway + synthesis). PRs run the P0 gate above.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/frontend
+        run: npm ci
+
+      - name: Install Playwright's Chrome
+        working-directory: apps/frontend
+        run: npx playwright install --with-deps chrome
+
+      # Same real stack, plus the deterministic mock LLM gateway + synthesis enabled.
+      - name: Start stack (+ mock gateway)
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.e2e-ai.yml up -d --build --wait
+
+      - name: Run e2e-stack-ai (P1)
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5183
+        run: npx playwright test --config playwright.stack.config.ts p1-
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-stack-ai
+          path: apps/frontend/playwright-report-stack
+          retention-days: 7
+
+      - name: Dump backend + ai-engine + mock-gateway logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.e2e-ai.yml logs --no-color backend ai-engine mock-gateway
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.e2e-ai.yml down -v

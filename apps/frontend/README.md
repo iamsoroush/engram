@@ -87,6 +87,53 @@ npm run test:e2e     # Playwright e2e (hermetic, mocked API)
 npm run i18n:guard   # fails on hardcoded chrome strings (see docs/frontend/i18n.md)
 ```
 
+## Testing
+
+Two Playwright layers, run by two different CI jobs (`.github/workflows/ci.yml`):
+
+- **Hermetic** (`tests/e2e/`, `playwright.config.ts`) — the frontend runs for real, the API is mocked
+  via `page.route` (`tests/e2e/_setup.ts`). Fast UI/i18n coverage, no backend. `npm run test:e2e`.
+- **Real-stack** (`tests/e2e-stack/`, `playwright.stack.config.ts`) — the **merge gate**: the frontend
+  drives the real backend + Celery + MinIO from the compose stack (nothing mocked), so the API
+  contract, Alembic migrations, object storage, tier gating, and the public token pages are exercised
+  on every merge. Helpers are in `tests/e2e-stack/_stack.ts`.
+
+The real-stack suite has two tiers, both keyless:
+
+- **P0** (`p0-*.spec.ts`) — merge-blocking, **gateway-less** and deterministic (`docker-compose.e2e.yml`
+  forces no LLM gateway + synthesis off). AI stays deterministic via **fixture captures**: the
+  filenames under `tests/e2e-stack/fixtures/` (e.g. `audio_01_initial_consultation.wav`) are
+  load-bearing — the AI engine returns canned transcripts/captions for them with no gateway. Because
+  the browser re-encodes/renames audio uploads, gateway-less audio fixtures are seeded through the
+  `/captures` API (`uploadCaptureApi`), not the capture dialog.
+- **P1** (`p1-*.spec.ts`) — main-merge only, adds a deterministic OpenAI-compatible **mock gateway**
+  (`e2e-mock-gateway/mock_gateway.py`, wired by `docker-compose.e2e-ai.yml`) with synthesis enabled, so
+  the structured report / treatments / safety-flags path runs end-to-end. The mock's canned payloads
+  mirror the AI-engine synthesis fixtures (`apps/ai_engine/tests/test_report_synthesis.py`) so schema
+  drift breaks the P1 job loudly.
+
+Run the real-stack suite locally:
+
+```sh
+# From the repo root — bring up the deterministic gateway-less stack and wait for health:
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+
+# Then run the P0 suite against it (default frontend port 5183):
+cd apps/frontend
+PLAYWRIGHT_BASE_URL=http://localhost:5183 npx playwright test --config playwright.stack.config.ts p0-
+```
+
+For P1, add the mock-gateway override and run the `p1-` files:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.e2e-ai.yml up -d --build --wait
+PLAYWRIGHT_BASE_URL=http://localhost:5183 npx playwright test --config playwright.stack.config.ts p1-
+```
+
+Isolated worktree stacks run on non-default host ports — pass the matching `PLAYWRIGHT_BASE_URL` (and
+port env vars to `docker compose`) so both stacks can coexist. The `tests/visual` snapshots stay
+advisory (`npm run test:visual`).
+
 ## Source Layout
 
 - `src/app`: root app orchestration, navigation, and session state helpers.

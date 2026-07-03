@@ -1,0 +1,37 @@
+# E2E AI override (P1): layer on top of docker-compose.yml + docker-compose.e2e.yml to swap the
+# gateway-less determinism for a deterministic OpenAI-compatible MOCK gateway and enable synthesis.
+# This exercises the full AI path (report synthesis incl. treatments + safety flags, patient memory,
+# Q&A drafts) with zero LLM keys. Runs the P1 suite (apps/frontend/tests/e2e-stack/p1-*).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml -f docker-compose.e2e-ai.yml up -d --build --wait
+#
+# See e2e-mock-gateway/mock_gateway.py and the `e2e-stack-ai` CI job in .github/workflows/ci.yml.
+services:
+  mock-gateway:
+    image: python:3.13-slim
+    volumes:
+      - ./e2e-mock-gateway:/app:ro
+    command: python /app/mock_gateway.py
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:9099/health', timeout=3).status==200 else 1)\""
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  ai-engine:
+    environment:
+      # Point every AI task at the mock gateway (overrides the empty value from docker-compose.e2e.yml).
+      AI_ENGINE_TRANSCRIPTION_BASE_URL: "http://mock-gateway:9099/v1"
+      AI_ENGINE_TRANSCRIPTION_API_KEY: "mock"
+      AI_ENGINE_MOCK_STAGE_DELAY_SECONDS: "0.1"
+    depends_on:
+      mock-gateway:
+        condition: service_healthy
+
+  backend:
+    environment:
+      # Synthesis is dispatched now (overrides the "false" from docker-compose.e2e.yml).
+      BACKEND_REPORT_SYNTHESIS_ENABLED: "true"
