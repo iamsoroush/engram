@@ -264,7 +264,7 @@ class EnrichmentHelperTests(unittest.TestCase):
 
 
 class EnrichmentGatewayTests(unittest.TestCase):
-    @patch("ai_engine.processing.gateway_client")
+    @patch("ai_engine.jobs.capture_photo.gateway_client")
     def test_caption_returns_structured_result(self, client_factory):
         client_factory.return_value.chat.completions.create.return_value = _gateway_response(
             _caption_json("Pre-correction image of mild left cheek asymmetry.", confidence=0.85)
@@ -273,12 +273,12 @@ class EnrichmentGatewayTests(unittest.TestCase):
         self.assertEqual(result["caption"], "Pre-correction image of mild left cheek asymmetry.")
         self.assertEqual(result["confidence"], 0.85)
 
-    @patch("ai_engine.processing.gateway_client")
+    @patch("ai_engine.jobs.capture_photo.gateway_client")
     def test_caption_empty_response_is_none(self, client_factory):
         client_factory.return_value.chat.completions.create.return_value = _gateway_response("  ")
         self.assertIsNone(caption_image_content(b"img", "image/jpeg", None))
 
-    @patch("ai_engine.processing.gateway_client")
+    @patch("ai_engine.jobs.capture_photo.gateway_client")
     def test_product_label_triggers_high_detail_reread(self, client_factory):
         create = client_factory.return_value.chat.completions.create
         # First (low-detail) pass flags a product label; the second (high-detail) pass reads the lot.
