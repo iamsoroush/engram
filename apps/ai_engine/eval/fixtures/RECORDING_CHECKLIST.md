@@ -13,13 +13,40 @@ Sibling `.json` (expected facts) gets authored by the agent once the media is in
 - [ ] **t04** `t04-correction.m4a` — *"دو سی‌سی... نه اشتباه گفتم، سه سی‌سی."*  (expect: both «۲» and «۳» appear verbatim)
 - [ ] **t05** `t05-noisy.m4a` — repeat **t01** fast, with clinic background noise  (expect: still accurate)
 
+**Batch 2 — high-value edge conditions (Part-2 #1a).** The one-speaker core set never reaches a
+confusable dose minimal pair, length, code-switch, or a second voice — these do.
+
+- [ ] **t10** `t10-confusable-24-20.m4a` — say clearly: *"بیست و چهار واحد بوتاکس روی پیشانی زدم."*
+      (the confusable minimal pair — must hear **۲۴**, never «۲۰»; expect: `numbers:[24]` **and**
+      `numbersForbidden:[20]` — the gate fails in **both** directions)
+- [ ] **t11** `t11-long-monologue.m4a` — a ~**60s** natural multi-treatment monologue in one take
+      (forehead botox, both cheeks filler with a brand + spoken lot, and an aftercare instruction)
+      (expect: every dose/brand/area present — completeness under length)
+- [ ] **t12** `t12-english.m4a` — a short **English** clinical sentence (e.g. *"Twenty units of botox on
+      the forehead, one cc of filler in the left cheek."*)  (expect: `language:"en"`, dose/brand kept)
+- [ ] **t13** `t13-latin-brand-lot.m4a` — Farsi with a **Latin brand + spoken lot**: *"یک سی‌سی ژوویدرم،
+      شماره لات ... را زدم."* read a real box's Latin lot aloud  (expect: brand + lot verbatim, Farsi native script)
+- [ ] **t14** `t14-second-speaker.m4a` — **t01** recorded by a **different speaker**  (expect: same accuracy — not overfit to one voice)
+
 ## 📷 Image caption (photo → text)  →  `caption/`
 
-- [ ] **p01** `p01-product-box.jpg` — a filler/botox **box where the lot/batch is legible**  (expect: lot read; no diagnosis)
+> Sourcing (approved 2026-07-04): **none needs a patient.** p01/p04 are **product boxes** (photograph
+> at the partner clinic during the Tehran wave); p02/p03/p06 use a **consenting staff volunteer** (a
+> cheek photo, a pen-dot "injection site", a before/after area pair); p05 is any receipt/screenshot.
+> One ~10-min phone session covers all six → `stage` → `push` → `run`.
+
+- [ ] **p01** `p01-product-box.jpg` — a filler/botox **box where the lot/batch is legible** (known lot **PS18025**)  (expect: lot read verbatim, `isProductLabel`, no diagnosis)
 - [ ] **p02** `p02-treatment-area.jpg` — a treatment-area photo (e.g. cheek/forehead)  (expect: neutral objective caption, **no diagnosis**)
-- [ ] **p03** `p03-injection-site.jpg` — a close-up of an injection site  (expect: objective description only)
+- [ ] **p03** `p03-injection-site.jpg` — a close-up of an injection site (fresh marks/redness)  (expect: objective findings only, **no assessment**)
+- [ ] **p04** `p04-unreadable-lot.jpg` — a product box with the lot **blurred / cut off**  (expect: must **NOT invent** a lot — deterministic `forbiddenPattern` gate + groundedNoInvention judge)
+- [ ] **p05** `p05-out-of-context.jpg` — a **non-clinical** photo (screenshot / parking receipt)  (expect: `expectOutOfContext` flag set)
+- [ ] **p06** `p06-before-after.jpg` — a **before/after** treatment-area pair (same volunteer)  (expect: `pairing.phase` labeled correctly; objective, no diagnosis)
 
 ## 🎙️ Full-visit synthesis (audio → report)  →  `synthesis/`
+
+> **Now wired.** A fixture-driven synthesis path in `treatments_eval.py` consumes `synthesis/` (transcribe
+> the clip → synthesize → gate treatments + aftercare). Recording any of s01–s04 scores it immediately —
+> the "real noisy carried-forward session" lesson made permanent (synthetic text was too clean).
 
 - [ ] **s01** `s01-botox-filler-sun.m4a` — *"بیست واحد بوتاکس پیشانی و یک سی‌سی فیلر لب. به بیمار گفتم تا یک هفته از آفتاب مستقیم پرهیز کنه."*
       (expect: treatments = botox + filler; aftercare **botox = conflicts** (sun 1wk vs 3d), **filler = applies**) — *the real-session case that mis-attributed before*
@@ -31,6 +58,14 @@ Sibling `.json` (expected facts) gets authored by the agent once the media is in
 
 - [ ] **m01** `m01-exact-name.m4a` — *"بیمار نگار محمدی."*  (expect: matches the existing نگار محمدی)
 - [ ] **m02** `m02-near-miss.m4a` — say a name **slightly wrong** vs an existing patient  (expect: NOT silently auto-assigned — surfaces a candidate)
+
+**Batch 2 — extraction faithfulness (Part-2 #9).**
+
+- [ ] **m07** `m07-name-mid-dictation.m4a` — name spoken **mid-sentence**, not as the lead phrase:
+      *"برای خانم محمدی امروز بیست واحد بوتاکس زدم."*  (expect: «محمدی» extracted, `basis` implicit)
+- [ ] **m08** `m08-two-similar.m4a` — two **similar-sounding existing** patients, say only ONE:
+      *"خانم محمودی امروز اومد، نه خانم محمدی."*  (expect: faithful «محمودی»; **not** auto-corrected to «محمدی»)
+- [ ] **m09** `m09-near-miss-noisy.m4a` — re-record **m02** (the «نگار معمری» near-miss) **with clinic noise**  (expect: near-miss surname still NOT snapped to «محمدی»)
 
 ---
 

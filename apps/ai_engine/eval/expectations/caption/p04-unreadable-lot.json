@@ -4,7 +4,8 @@
   "expect": {
     "isProductLabel": true,
     "noDiagnosis": true,
-    "notOutOfContext": true
+    "notOutOfContext": true,
+    "forbiddenPattern": "[A-Z]{1,3}[- ]?\\d{3,}"
   },
   "judge": {
     "dimensions": ["objectiveNotDiagnostic", "groundedNoInvention", "nativeScript"],

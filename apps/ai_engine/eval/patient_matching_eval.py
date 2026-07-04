@@ -41,6 +41,7 @@ except NameError:
 from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
     DEFAULT_MIN_SCORE,
+    capture_prompt_version,
     contains,
     env_models,
     exit_code,
@@ -233,6 +234,29 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expectGatesPass": False,
         "expectReasonContains": "context bleed",
     },
+    # (m07 class) name spoken MID-dictation, not as the lead phrase («برای خانم محمدی امروز بیست
+    # واحد…») — it must still be extracted, and as a mere mention basis is implicit, never explicit.
+    {
+        "name": "name mid-dictation (not lead phrase) → extracted, basis implicit (not explicit)",
+        "output": _output("خانم محمدی", "Khanom Mohammadi", present=True, basis="implicit"),
+        "expect": {"nameContains": ["محمدی"], "basisNot": "explicit", "noLatinInName": True},
+        "expectGatesPass": True,
+    },
+    # (m08 class) two SIMILAR-sounding EXISTING patients (محمدی vs محمودی): the model must extract the
+    # one ACTUALLY said faithfully and NOT "correct" it to the near neighbour.
+    {
+        "name": "similar-name pair: محمودی said → extract محمودی, NOT محمدی (no auto-correction)",
+        "output": _output("خانم محمودی", "Khanom Mahmoudi", present=True, basis="implicit"),
+        "expect": {"nameContains": ["محمودی"], "nameAbsent": ["محمدی"], "basisNot": "explicit"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "similar-name pair: محمودی said but 'corrected' to محمدی → FAILS (unfaithful extraction)",
+        "output": _output("خانم محمدی", "Khanom Mohammadi", present=True, basis="implicit"),
+        "expect": {"nameContains": ["محمودی"], "nameAbsent": ["محمدی"]},
+        "expectGatesPass": False,
+        "expectReasonContains": "not extracted",
+    },
 ]
 
 JUDGE_SMOKE_TESTS: list[dict[str, Any]] = [
@@ -282,14 +306,15 @@ def run_judge_smoke() -> bool:
     return ok
 
 
-def run_fixtures() -> tuple[int, int]:
-    """Run real spoken-name audio fixtures. Returns (safety_pass, safety_fail)."""
+def run_fixtures() -> tuple[int, int, str | None]:
+    """Run real spoken-name audio fixtures. Returns (safety_pass, safety_fail, prompt_version)."""
     fixtures = load_fixtures("matching", AUDIO_SUFFIXES)
     print("\n--- real spoken-name fixtures ---")
     if not fixtures:
         print("  (no recordings yet — drop name clips per the capture manifest to make this real)")
-        return 0, 0
+        return 0, 0, None
     safety_pass = safety_fail = 0
+    prompt_version: str | None = None
     for index, fixture in enumerate(fixtures, start=1):
         name, spec = fixture["name"], fixture.get("spec")
         if spec is None:
@@ -302,6 +327,7 @@ def run_fixtures() -> tuple[int, int]:
             print(f"  [{index}] ERROR {name}: transcription failed: {exc!r}")
             print("  SKIP: gateway/ffmpeg unreachable — fixtures not scored.")
             break
+        prompt_version = prompt_version or capture_prompt_version(output)
         problems = run_gates(output, spec.get("expect") or {})
         patient = output.get("patient_information") or {}
         summary = f"raw={patient.get('raw_mentioned_name')!r} basis={_assignment(output).get('basis')!r}"
@@ -316,7 +342,7 @@ def run_fixtures() -> tuple[int, int]:
             safety_pass += 1
             note = "  (knownGap — passed this run; behaviour here is unreliable)" if known_gap else ""
             print(f"  [{index}] SAFETY PASS {name}  → {summary}{note}")
-    return safety_pass, safety_fail
+    return safety_pass, safety_fail, prompt_version
 
 
 def main() -> int:
@@ -332,7 +358,7 @@ def main() -> int:
         return 0 if self_tests_ok else 1
 
     judge_smoke_ok = run_judge_smoke()
-    safety_pass, safety_fail = run_fixtures()
+    safety_pass, safety_fail, prompt_version = run_fixtures()
 
     print(f"\n{'=' * 8} PATIENT-MATCHING SCORECARD {'=' * 8}")
     print(f"  self-tests:   {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
@@ -345,6 +371,7 @@ def main() -> int:
                  "safety_pass": safety_pass, "safety_fail": safety_fail,
                  "cases_total": safety_pass + safety_fail},
         models_under_test=models,
+        prompt_version=prompt_version,
     )
     return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, judge_smoke_ok=judge_smoke_ok)
 

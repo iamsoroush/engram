@@ -39,6 +39,7 @@ from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
     DEFAULT_MIN_SCORE,
     STRICT_QUALITY,
+    capture_prompt_version,
     contains,
     env_models,
     exit_code,
@@ -87,6 +88,13 @@ def run_gates(transcript: str, language: str | None, expect: dict[str, Any]) -> 
             token = str(number).rstrip("0").rstrip(".") if isinstance(number, float) else str(number)
             if str(number) not in present and token not in present:
                 problems.append(f"number {number} not transcribed as a digit token (have {sorted(present) or '∅'})")
+
+    if expect.get("numbersForbidden"):
+        present = number_tokens(transcript)
+        for number in expect["numbersForbidden"]:
+            token = str(number).rstrip("0").rstrip(".") if isinstance(number, float) else str(number)
+            if str(number) in present or token in present:
+                problems.append(f"forbidden number {number} present (misheard minimal-pair value)")
 
     for brand in expect.get("brandsVerbatim", []):
         if not contains(transcript, brand):
@@ -234,6 +242,21 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expectGatesPass": False,
         "expectReasonContains": "forbidden",
     },
+    {
+        "name": "confusable dose ۲۴ correct, forbidden ۲۰ absent → passes both directions",
+        "transcript": "بیست و چهار واحد بوتاکس، ۲۴ واحد",
+        "language": "fa",
+        "expect": {"numbers": [24], "numbersForbidden": [20]},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "misheard minimal-pair ۲۰ present FAILS the numbersForbidden gate",
+        "transcript": "بیست واحد بوتاکس، ۲۰ واحد",
+        "language": "fa",
+        "expect": {"numbersForbidden": [20]},
+        "expectGatesPass": False,
+        "expectReasonContains": "forbidden number",
+    },
 ]
 
 # Judge smoke cases: synthetic (reference, candidate) text pairs that exercise the LLM judge so the
@@ -308,14 +331,15 @@ def run_judge_smoke() -> bool:
     return ok
 
 
-def run_fixtures() -> tuple[int, int, int, int]:
-    """Run real-audio fixtures. Returns (safety_pass, safety_fail, quality_pass, quality_fail)."""
+def run_fixtures() -> tuple[int, int, int, int, str | None]:
+    """Run real-audio fixtures. Returns (safety_pass, safety_fail, quality_pass, quality_fail, prompt_version)."""
     fixtures = load_fixtures("transcription", AUDIO_SUFFIXES)
     print("\n--- real-audio fixtures ---")
     if not fixtures:
         print("  (no recordings yet — drop clips per the capture manifest to make this real)")
-        return 0, 0, 0, 0
+        return 0, 0, 0, 0, None
     safety_pass = safety_fail = quality_pass = quality_fail = 0
+    prompt_version: str | None = None
     for index, fixture in enumerate(fixtures, start=1):
         name, spec = fixture["name"], fixture.get("spec")
         if spec is None:
@@ -328,6 +352,7 @@ def run_fixtures() -> tuple[int, int, int, int]:
             print(f"  [{index}] ERROR {name}: transcription failed: {exc!r}")
             print("  SKIP: gateway/ffmpeg unreachable — fixtures not scored. Re-run where reachable.")
             break
+        prompt_version = prompt_version or capture_prompt_version(output)
         transcript, language = output.get("transcript") or "", output.get("language")
 
         problems = run_gates(transcript, language, spec.get("expect") or {})
@@ -361,7 +386,7 @@ def run_fixtures() -> tuple[int, int, int, int]:
                 quality_fail += 1
                 tag = "QUALITY FAIL"
             print(f"             {tag} ({quality_line(result['scores'], threshold)}) — {result.get('rationale')}")
-    return safety_pass, safety_fail, quality_pass, quality_fail
+    return safety_pass, safety_fail, quality_pass, quality_fail, prompt_version
 
 
 def main() -> int:
@@ -379,7 +404,7 @@ def main() -> int:
         return 0 if self_tests_ok else 1
 
     judge_smoke_ok = run_judge_smoke()
-    safety_pass, safety_fail, quality_pass, quality_fail = run_fixtures()
+    safety_pass, safety_fail, quality_pass, quality_fail, prompt_version = run_fixtures()
 
     print(f"\n{'=' * 8} TRANSCRIPTION SCORECARD {'=' * 8}")
     print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
@@ -394,6 +419,7 @@ def main() -> int:
                  "quality_pass": quality_pass, "quality_fail": quality_fail,
                  "cases_total": safety_pass + safety_fail},
         models_under_test=models,
+        prompt_version=prompt_version,
     )
     return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, quality_fail=quality_fail, judge_smoke_ok=judge_smoke_ok)
 

@@ -1,25 +1,41 @@
 name: AI eval (golden set)
 
-# Runs the AI-job eval suite (apps/ai_engine/eval/run_all.py) on a GitHub-hosted runner.
-# NON-BLOCKING by design: if the gateway is unreachable or an eval regresses, it emits a
-# ::warning:: and the job stays GREEN — the eval is non-deterministic and costs money, so it's a
-# signal, not a hard merge gate. Runs on demand + when an AI job changes (CLAUDE.md §4).
+# Stage-2 of the eval CI ladder (docs/ai_engine/evals.md → "CI ladder"): the gateway-backed run.
+# It runs the AI-job eval suite (apps/ai_engine/eval/run_all.py) against the production gateway on a
+# GitHub-hosted runner. NON-BLOCKING by design: if the gateway is unreachable or an eval regresses it
+# emits a ::warning:: and the job stays GREEN — the eval is non-deterministic and costs money, so it is
+# a signal, not a hard merge gate (the deterministic Stage-1 gate in ai-eval-gate.yml is the blocker).
+# Judge-scored quality stays ADVISORY here (EVAL_STRICT_QUALITY is not set) — only deterministic gates
+# would ever warn.
+#
+# On each run it archives the merged JSON scorecard to the eval bucket under the scorecards/ prefix and
+# renders scripts/eval-trend.py into the job summary, so a model/prompt swap shows up as a step in the
+# trend without ever flaking a build.
 #
 # GitHub setup (repo -> Settings -> Secrets and variables -> Actions):
 #   REQUIRED secret:  AI_ENGINE_TRANSCRIPTION_API_KEY   (the gw_... gateway key)
-#   OPTIONAL (to actually SCORE the golden set — fixtures live in object storage, not git):
+#   OPTIONAL (to SCORE the golden set + archive the scorecard trend — the eval bucket, not git):
 #     secrets:  EVAL_FIXTURES_S3_ENDPOINT, EVAL_FIXTURES_S3_ACCESS_KEY, EVAL_FIXTURES_S3_SECRET_KEY
-#     var:      EVAL_FIXTURES_S3_BUCKET
-#     pointing at a runner-reachable S3 (e.g. ArvanCloud S3) that holds the mirrored fixtures.
-#     Without them the suite has nothing to score (skips / warns) — reachable gateway, no golden set.
+#     var:      EVAL_FIXTURES_S3_BUCKET   (default engram-eval-fixtures)
+#     pointing at a runner-reachable S3 (e.g. ArvanCloud S3) that holds the mirrored fixtures +
+#     accumulates scorecards/. Without them the suite has a reachable gateway but no golden set (it
+#     skips/warns) and the trend renders from the single local run only.
 
 on:
-  workflow_dispatch: {} # MANUAL ONLY for now — run on demand from the Actions tab
-  # To auto-run when an AI job changes (CLAUDE.md §4 eval-gate), uncomment this block:
-  # push:
-  #   branches: [main]
-  #   paths:
-  #     - "apps/ai_engine/**"
+  workflow_dispatch: {} # run on demand from the Actions tab
+  schedule:
+    - cron: "0 3 * * 1,3,5" # Mon/Wed/Fri 03:00 UTC — the scheduled full-gateway signal run
+  # Tripwire: also run when an AI job lands on main (CLAUDE.md §4 eval-gate). Non-blocking — a post-merge
+  # signal + a fresh scorecard point in the trend, not a merge gate (that is ai-eval-gate.yml).
+  push:
+    branches: [main]
+    paths:
+      - "apps/ai_engine/**"
+
+# One gateway run at a time per ref — the gateway spend is real money; don't stack overlapping runs.
+concurrency:
+  group: ai-eval-gateway-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   eval:
@@ -27,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       FIX_EP: ${{ secrets.EVAL_FIXTURES_S3_ENDPOINT }}
+      BUCKET: ${{ vars.EVAL_FIXTURES_S3_BUCKET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,16 +61,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Pull golden-set fixtures (only if object storage is configured)
+      - name: Install mc (object-storage client)
         if: env.FIX_EP != ''
         env:
           AK: ${{ secrets.EVAL_FIXTURES_S3_ACCESS_KEY }}
           SK: ${{ secrets.EVAL_FIXTURES_S3_SECRET_KEY }}
-          BUCKET: ${{ vars.EVAL_FIXTURES_S3_BUCKET }}
         run: |
           curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o "$RUNNER_TEMP/mc"
           chmod +x "$RUNNER_TEMP/mc"
           "$RUNNER_TEMP/mc" alias set evals "$FIX_EP" "$AK" "$SK"
+
+      - name: Pull golden-set fixtures (only if object storage is configured)
+        if: env.FIX_EP != ''
+        run: |
           "$RUNNER_TEMP/mc" mirror --overwrite "evals/${BUCKET:-engram-eval-fixtures}" apps/ai_engine/eval/fixtures
 
       - name: Run eval (non-blocking — warns on regression or unreachable gateway)
@@ -67,3 +87,30 @@ jobs:
         run: |
           python eval/run_all.py \
             || echo "::warning title=AI eval::eval regressed or gateway unreachable (non-blocking) — see the scorecard above"
+
+      - name: Archive scorecard to the eval bucket (scorecards/ prefix)
+        if: ${{ always() && env.FIX_EP != '' }}
+        run: |
+          SC=apps/ai_engine/eval/out/scorecard.json
+          [ -f "$SC" ] || { echo "no scorecard.json produced — nothing to archive"; exit 0; }
+          DEST="scorecards/$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}.json"
+          "$RUNNER_TEMP/mc" cp "$SC" "evals/${BUCKET:-engram-eval-fixtures}/${DEST}"
+          echo "archived scorecard → ${BUCKET:-engram-eval-fixtures}/${DEST}"
+
+      - name: Render trend into the job summary
+        if: always()
+        run: |
+          DIR=apps/ai_engine/eval/out
+          if [ -n "$FIX_EP" ]; then
+            "$RUNNER_TEMP/mc" mirror --overwrite "evals/${BUCKET:-engram-eval-fixtures}/scorecards" "$RUNNER_TEMP/scorecards" || true
+            [ -d "$RUNNER_TEMP/scorecards" ] && DIR="$RUNNER_TEMP/scorecards"
+          fi
+          python3 scripts/eval-trend.py "$DIR" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload scorecard artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-scorecard
+          path: apps/ai_engine/eval/out/scorecard.json
+          if-no-files-found: warn

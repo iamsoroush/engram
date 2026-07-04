@@ -1,12 +1,14 @@
 # AI eval — capture manifest
 
-These are the **real recordings** the golden-set evals need. The other jobs (report-sections,
-patient-memory, treatments, aftercare) run on synthetic text and need **no recordings**.
+These are the **real recordings** the golden-set evals need. Report-sections and patient-memory run on
+synthetic text and need no recordings; **full-visit synthesis** now has a fixture-driven path too (see
+`synthesis/` below) that scores `treatments` + `aftercare` on real clips.
 
-> **Status (2026-06): 🎙️ audio DONE — 📷 images TODO (deferred).** All 15 audio clips (transcription
-> `t01`–`t09`, matching `m01`–`m06`) are recorded, persisted in object storage, and scored. The **5
-> caption photos (`p01`–`p05`) are postponed** — drop them in `caption/` later and `push` + `run`; no
-> code change. `p01`'s lot is **PS18025**.
+> **Status: 🎙️ audio batch-1 DONE — batch-2 + 📷 images TODO.** The 15 batch-1 audio clips (transcription
+> `t01`–`t09`, matching `m01`–`m06`) are recorded, in object storage, and scored. **Outstanding** (drop
+> them in the matching folder later, then `push` + `run` — no code change): the caption photos
+> **`p01`–`p06`** (`p01`'s lot is **PS18025**), the transcription edge batch **`t10`–`t14`**, the
+> full-visit synthesis clips **`s01`–`s04`**, and matching **`m07`–`m09`**.
 
 Record each on your phone in **natural clinical Farsi**, name it exactly, and drop it in the matching
 folder of your staging dir (created by `scripts/eval-fixtures.sh stage`, default
@@ -46,7 +48,20 @@ scripts/eval-fixtures.sh run      # score the suite against them
 | `t08-decimal.m4a` | «یک و نیم سی‌سی ژل توی لب.» | half/decimal dose |
 | `t09-laterality.m4a` | «فقط گونه راست رو تزریق کردم، سمت چپ هیچی نزدم.» | left/right not swapped |
 
+**Batch 2 (Part-2 #1a — record these next)**
+
+| File | Say | Why |
+|---|---|---|
+| `t10-confusable-24-20.m4a` | «بیست و چهار واحد بوتاکس روی پیشانی زدم.» | confusable dose **minimal pair** — must hear ۲۴, never ۲۰ (gated both ways: `numbers:[24]`, `numbersForbidden:[20]`) |
+| `t11-long-monologue.m4a` | ~60s multi-treatment monologue (botox + both-cheek filler w/ brand + spoken lot + aftercare) | completeness **under length** |
+| `t12-english.m4a` | «Twenty units of botox on the forehead, one cc of filler in the left cheek.» | **English / code-switch** (`language:"en"`) |
+| `t13-latin-brand-lot.m4a` | «یک سی‌سی ژوویدرم، شماره لات ... را زدم.» (read a real Latin lot aloud) | Latin brand + lot verbatim, Farsi stays native |
+| `t14-second-speaker.m4a` | repeat **t01** in a **different voice** | not overfit to one speaker |
+
 ## 📷 caption/ — photo → text
+
+> Sourcing (approved 2026-07-04): none needs a patient — p01/p04 are **product boxes**, p02/p03/p06 a
+> **consenting staff volunteer**, p05 any receipt/screenshot. One ~10-min phone session covers all six.
 
 **Core**
 
@@ -60,8 +75,21 @@ scripts/eval-fixtures.sh run      # score the suite against them
 
 | File | What | Why |
 |---|---|---|
-| `p04-unreadable-lot.jpg` | a box where the **lot is blurry / cut off** | must NOT invent a lot |
+| `p04-unreadable-lot.jpg` | a box where the **lot is blurry / cut off** | must NOT invent a lot (`forbiddenPattern` gate) |
 | `p05-out-of-context.jpg` | a **non-clinical** photo (screenshot / receipt) | flagged out-of-context |
+| `p06-before-after.jpg` | a **before/after** treatment-area pair (same volunteer) | `pairing.phase` labeled correctly |
+
+## 🎙️ synthesis/ — full-visit audio → report (treatments + aftercare)
+
+Now consumed by the fixture-driven path in `treatments_eval.py` (transcribe → synthesize → gate). Drop a
+clip and it scores end-to-end — the real noisy carried-forward session synthetic text can't reproduce.
+
+| File | Say | Expect |
+|---|---|---|
+| `s01-botox-filler-sun.m4a` | «بیست واحد بوتاکس پیشانی و یک سی‌سی فیلر لب. به بیمار گفتم تا یک هفته از آفتاب مستقیم پرهیز کنه.» | treatments = botox + filler; aftercare **botox = conflicts** (sun 1wk vs 3d), **filler = applies** |
+| `s02-carry-forward.m4a` | «بوتاکس پیشانی مثل دفعه قبل، همون مقدار.» | `carriedForward = true` |
+| `s03-own-aftercare.m4a` | «بوتاکس پیشانی. مراقبت‌ها رو خودم کامل گفتم، محدودیت آفتاب نداره.» | aftercare = superseded |
+| `s04-consult-only.m4a` | «فقط مشاوره بود، امروز تزریقی انجام نشد.» | treatments = [] |
 
 ## 🎙️ matching/ — spoken patient name → extraction
 
@@ -80,6 +108,14 @@ scripts/eval-fixtures.sh run      # score the suite against them
 | `m04-two-patients.m4a` | «بعد از خانم احمدی، نوبت خانم محمدیه.» | **ambiguous** → don't auto-assign (fill `_todo`) |
 | `m05-reassign.m4a` | «بیمار رو عوض کن به نگار محمدی.» | explicit reassignment (basis=explicit) |
 | `m06-national-id.m4a` | «کد ملی صفر صفر یک دو سه ...» digit-by-digit | ID normalized to digits (fill `_todo`) |
+
+**Batch 2 (Part-2 #9 — extraction faithfulness)**
+
+| File | Say | Why |
+|---|---|---|
+| `m07-name-mid-dictation.m4a` | «برای خانم محمدی امروز بیست واحد بوتاکس زدم.» | name spoken **mid-sentence** → still extracted, `basis` implicit |
+| `m08-two-similar.m4a` | «خانم محمودی امروز اومد، نه خانم محمدی.» | two **similar-sounding existing** patients → faithful «محمودی», not corrected to «محمدی» |
+| `m09-near-miss-noisy.m4a` | re-record **m02** («نگار معمری») with clinic noise | near-miss surname still not snapped to «محمدی» under noise |
 
 ---
 
