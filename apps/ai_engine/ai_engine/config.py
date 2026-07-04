@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     report_synthesis_base_url: str = ""
     report_synthesis_api_key: str = ""
     report_synthesis_reasoning_effort: str = "low"
+    # Gateway-enforced structured outputs (§3.2): send response_format=json_schema on every
+    # JSON-emitting task and do one validation-failure retry. On by default; a kill-switch for a gateway
+    # or model family that doesn't conform (the conformance test in tests/ is the pre-rollout check).
+    structured_outputs_enabled: bool = True
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

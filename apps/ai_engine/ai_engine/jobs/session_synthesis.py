@@ -7,14 +7,23 @@ the deterministic baseline stands (Basic + gateway-less run zero AI and must nev
 of this module is that deterministic baseline path (the legacy progressive stages + fixtures) that
 the same Celery job falls back to. Vertical-agnostic via the domain descriptor.
 """
-import json
-import re
 from time import sleep
 from typing import Any
 
 from ai_engine.config import settings
+# The A↔B synthesis contract (report sections + performed treatments) now lives in
+# ``contracts.synthesis``; these are re-exported so the ``processing`` shim and tests keep importing
+# them from the job module.
+from ai_engine.contracts.synthesis import (  # noqa: F401
+    SESSION_SYNTHESIS_OUTPUT_VERSION,
+    SYNTHESIS_LANGUAGES,
+    SYNTHESIS_SECTION_IDS,
+    SYNTHESIS_SECTION_TITLES_FA,
+    SYNTHESIS_SECTIONS,
+    parse_session_synthesis_output,
+    synthesis_section_title,
+)
 from ai_engine.core.backend_client import BackendClient
-from ai_engine.core.domain import domain_framing
 from ai_engine.core.fixtures import TEST_CAPTURE_TEXT_BY_FILENAME, TEST_FINAL_SUMMARY
 from ai_engine.core.gateway import (
     gateway_client,
@@ -22,7 +31,11 @@ from ai_engine.core.gateway import (
     resolve_reasoning_effort,
     transcription_is_configured,
 )
-from ai_engine.core.util import clamp_confidence, utc_now
+from ai_engine.core.util import utc_now
+# The synthesis prompt lives in its own versioned module (§3.3); ``report_synthesis_prompt`` is
+# re-exported for the shim + tests, and the envelope stamps ``REPORT_SYNTHESIS_PROMPT_VERSION``.
+from ai_engine.prompts.synthesis import PROMPT_VERSION as REPORT_SYNTHESIS_PROMPT_VERSION
+from ai_engine.prompts.synthesis import build as report_synthesis_prompt  # noqa: F401
 from ai_engine.jobs.safety_reconcile import _safety_flag_key, reconcile_safety_flags
 
 
@@ -514,42 +527,6 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
 # capture. Gateway-less / malformed → a SKIP sentinel; the backend keeps the deterministic baseline
 # and treatments stay empty (Basic + gateway-less run zero AI and must never break).
 
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
-
-# Fixed section ids + order (rendered by the backend). `treatment-performed` is a PROSE MIRROR of
-# treatments[] — the backend re-renders it FROM treatments[] so prose + store can never diverge.
-SYNTHESIS_SECTIONS: tuple[tuple[str, str], ...] = (
-    ("visit-summary", "Visit summary"),
-    ("concern-goals", "Concern & goals"),
-    ("assessment", "Assessment"),
-    ("treatment-performed", "Treatment performed"),
-    ("media", "Media"),
-    ("plan-followup", "Plan & follow-up"),
-    ("aftercare", "Aftercare"),
-)
-SYNTHESIS_SECTION_IDS: tuple[str, ...] = tuple(section_id for section_id, _ in SYNTHESIS_SECTIONS)
-SYNTHESIS_LANGUAGES = {"fa", "en", "mixed"}
-
-# Persian section titles (report_language="fa"). The body prose already follows reportLanguage; the
-# fixed section TITLES must too, or a Persian report shows English headings.
-SYNTHESIS_SECTION_TITLES_FA: dict[str, str] = {
-    "visit-summary": "خلاصه ویزیت",
-    "concern-goals": "نگرانی‌ها و اهداف",
-    "assessment": "ارزیابی",
-    "treatment-performed": "درمان انجام‌شده",
-    "media": "تصاویر",
-    "plan-followup": "برنامه و پیگیری",
-    "aftercare": "مراقبت‌های بعد از درمان",
-}
-
-
-def synthesis_section_title(section_id: str, default_title: str, report_language: str | None) -> str:
-    """Return the section title localized to the report language (English title by default)."""
-    if isinstance(report_language, str) and report_language.strip().lower().startswith("fa"):
-        return SYNTHESIS_SECTION_TITLES_FA.get(section_id, default_title)
-    return default_title
-
-
 def report_synthesis_json_schema() -> dict[str, Any]:
     """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
     block = {
@@ -631,305 +608,6 @@ def report_synthesis_json_schema() -> dict[str, Any]:
     }
 
 
-def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
-    """Build the single-pass report-synthesis + treatment-extraction prompt.
-
-    Vertical-AGNOSTIC: the clinical setting comes from the domain descriptor (neutral "clinic" when
-    absent). The prompt encodes the design's discipline: ground every statement in captures, native
-    script prose, verbatim quantities/brands, stable targeted update from the prior draft + changeset,
-    corrections-vs-additions with `supersedesCaptureId`, carry-forward only on an explicit cue, and
-    "leave null rather than guess".
-    """
-    context = processing_context if isinstance(processing_context, dict) else {}
-    label, vocabulary, _ = domain_framing(context)
-    report_language = context.get("reportLanguage")
-    language_directive = (
-        f"Write all report prose in {report_language} using its native script."
-        if isinstance(report_language, str) and report_language.strip()
-        else "Write all report prose in the language the captures use (the report template's default)."
-    )
-    vocab_line = f"Common {label} vocabulary may include {', '.join(vocabulary)}. " if vocabulary else ""
-    section_lines = "; ".join(f"{section_id} ({title})" for section_id, title in SYNTHESIS_SECTIONS)
-    return "\n\n".join(
-        (
-            f"You are Engram, synthesizing ONE per-visit clinical report and extracting the performed "
-            f"treatments for a {label}. Work only from the provided captures (audio transcripts, photo "
-            f"captions, and raw text notes) and the prior visit context. Invent nothing.",
-            (
-                "Produce a strict JSON object with EXACTLY these keys: summary, language, sections, "
-                "treatments, uncertainties, aftercareSelections, safetyFlags.\n"
-                f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
-                "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
-                "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
-                "Leave a section's blocks empty ([]) when the captures do not support it — never pad it.\n"
-                f"- {language_directive} Write the DESCRIPTIVE treatment fields — area, product (the "
-                "generic/category, e.g. فیلر/ژل, بوتاکس), and unit (e.g. واحد, سی‌سی) — in the REPORT "
-                "LANGUAGE using its native script; prefer the clinician's own word when they gave one. "
-                "Do NOT emit an English category (\"filler\", \"botox\", \"unit\") in a Persian report. "
-                "Keep VERBATIM in their original script: brand names, lot numbers, patient/clinician "
-                "quotes, and quantityText (e.g. «۲ سی‌سی») — never translate or romanize these, and never "
-                "normalize «۲» to \"2\" in quantityText.\n"
-                f"{vocab_line}"
-                "- treatments: one TreatmentItem per distinct performed treatment, with core fields "
-                "area, product, brand, quantity (number or null), unit, quantityText (VERBATIM original "
-                "script), lot (dictated or read off a product-label photo), confidence (0..1), "
-                "sourceCaptureIds, evidence, carriedForward, supersedesCaptureId, and an open attributes "
-                "map (needleGauge, depth, device, sessions, …). The treatment-performed section is a prose "
-                "MIRROR of treatments — keep them consistent.\n"
-                "- product vs brand: `product` is the GENERIC category ONLY (e.g. ژل/فیلر, بوتاکس) — never "
-                "put a commercial brand in it. `brand` is the commercial name verbatim (e.g. ژوویدرم/"
-                "Juvederm, رستیلین/Restylane, ولوما/Voluma), null if none was said. When the clinician "
-                "names a brand (e.g. «ژل ژوویدرم»), set product=«ژل» and brand=«ژوویدرم» — split them, "
-                "never merge the brand into product.\n"
-                "- Leave any field null rather than guessing. Set confidence to reflect genuine certainty."
-            ),
-            (
-                "UPDATE DISCIPLINE — the captures are authoritative. If a prior report draft and a "
-                "changeset are provided, update the prior draft to match the current captures: keep "
-                "unchanged prose byte-stable, recompute only the sections/treatments affected by the "
-                "changed captures, and REMOVE anything no longer supported by a capture."
-            ),
-            (
-                "CORRECTIONS vs ADDITIONS (e.g. «ژل ۲ سی‌سی» then «ژل ۳ سی‌سی» for the same area):\n"
-                "- CORRECTION (supersede): on an explicit correction cue (اشتباه گفتم، منظورم…بود، "
-                "\"actually\", \"make that\") OR the same area+product+unit simply restated with a new "
-                "quantity. Emit ONE corrected TreatmentItem and set supersedesCaptureId to the captureId "
-                "of the superseded statement (auditable/undoable).\n"
-                "- ADDITION: on an additive cue (هم…هم، اضافه، \"another\") OR a different area/product. "
-                "Emit a separate TreatmentItem for each.\n"
-                "- AMBIGUOUS (cannot tell correction from addition): DO NOT silently overwrite. Emit BOTH "
-                "treatments AND add a clear sentence to uncertainties describing the ambiguity."
-            ),
-            (
-                "CARRY-FORWARD: only when a capture explicitly says \"same as last time\" (همون قبلی، "
-                "مثل دفعه قبل). Then set carriedForward=true, LOWER the confidence, cite the prior visit "
-                "in sourceCaptureIds/evidence, and copy the referenced prior-visit treatment. NEVER "
-                "silently materialize a prior dose without an explicit cue."
-            ),
-            (
-                "AFTERCARE SELECTION (intelligent, not keyword): the clinic's reusable aftercare protocols "
-                "are in the context as `aftercareTemplates` [{id, name, procedureType, body}]. Decide by "
-                "CLINICAL RELEVANCE — judge the procedure, not a word match — and return one entry per "
-                "applicable protocol in `aftercareSelections` [{templateId, status, note}].\n"
-                "- COMPLETENESS: emit a selection for EVERY protocol whose procedure was actually performed "
-                "this visit (one per treatment area/product, e.g. a botox+filler visit → BOTH the botox and "
-                "filler protocols). Do not omit an applicable protocol just because another one conflicts. "
-                "Omit only protocols whose procedure was NOT performed; return [] if none were performed or "
-                "there are no templates.\n"
-                "- PER-PROCEDURE: compare a protocol ONLY against what the clinician dictated about that "
-                "SAME procedure/area — never judge the botox protocol against a filler instruction.\n"
-                "- status='applies': that procedure's protocol fits and the clinician dictated nothing that "
-                "contradicts it. note=null.\n"
-                "- status='conflicts': the clinician DICTATED aftercare for that procedure that DIFFERS from "
-                "its protocol (e.g. botox protocol says avoid sun 3 days, clinician said 1 week). The "
-                "clinician's words win — set note to ONE sentence in the report language naming the specific "
-                "difference and quoting both values.\n"
-                "- status='superseded': the clinician dictated their OWN full aftercare that REPLACES that "
-                "protocol entirely. note = one short sentence in the report language saying so.\n"
-                "Prefer the clinician's dictated aftercare over a fixed protocol whenever they differ; never "
-                "silently include a protocol that contradicts what the clinician said."
-            ),
-            (
-                "SAFETY FLAGS (highest priority — surface, never gate): scan EVERY capture for any ALLERGY, "
-                "CONTRAINDICATION, or CONSENT statement actually made this visit, and return one entry per "
-                "distinct mention in `safetyFlags` [{kind, text, sourceCaptureIds}].\n"
-                "- kind='allergy': a stated allergy or prior adverse reaction (e.g. «به لیدوکائین حساسیت "
-                "داره», «آلرژی به پنی‌سیلین»).\n"
-                "- kind='contraindication': a stated reason to avoid or use caution with a treatment — "
-                "pregnancy/breastfeeding, anticoagulants, active infection at the site, recent isotretinoin, "
-                "autoimmune or keloid history, a drug interaction the clinician flags.\n"
-                "- kind='consent': a statement about informed consent for a procedure — given, declined, "
-                "withdrawn, or still pending/required (e.g. «رضایت‌نامه امضا شد», «هنوز رضایت نگرفتیم»).\n"
-                "- text: ONE short clinical sentence, in the REPORT LANGUAGE using its native script, stating "
-                "exactly what the capture says (quote the clinician's own words where possible). NEVER "
-                "translate, soften, or generalize the clinical content.\n"
-                "- GROUNDING: flag ONLY what a capture EXPLICITLY states. Invent nothing; never infer an "
-                "allergy or contraindication from the treatment itself, and NEVER emit a negative/absence "
-                "statement (no «no known allergies», no «مشکلی نداشت»). Set sourceCaptureIds to the "
-                "captureId(s) that state it.\n"
-                "- Safety errs toward INCLUSION: when a statement plausibly reads as an allergy / "
-                "contraindication / consent concern, include it — the clinician removes a wrong one. Return "
-                "[] only when no capture states any such thing."
-            ),
-            (
-                "uncertainties: a list of short human-readable sentences for anything a clinician should "
-                "confirm (ambiguous correction, a missing-but-expected lot number, a low-confidence "
-                "product, a carried-forward dose). Return ONLY strict JSON, no markdown, no code fences."
-            ),
-            f"Session context (captures, prior report draft, changeset, prior-visit treatments):\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
-        )
-    )
-
-
-def _clean_synthesis_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
-    """Coerce model block output into validated paragraph/image blocks."""
-    blocks: list[dict[str, Any]] = []
-    if not isinstance(raw_blocks, list):
-        return blocks
-    for block in raw_blocks:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get("type")
-        if block_type == "paragraph":
-            text = block.get("text")
-            if isinstance(text, str) and text.strip():
-                blocks.append({"type": "paragraph", "text": text.strip()})
-        elif block_type == "image":
-            capture_id = block.get("captureId")
-            if isinstance(capture_id, str) and capture_id.strip():
-                image: dict[str, Any] = {"type": "image", "captureId": capture_id.strip()}
-                caption = block.get("caption")
-                if isinstance(caption, str) and caption.strip():
-                    image["caption"] = caption.strip()
-                blocks.append(image)
-    return blocks
-
-
-def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
-    """Coerce one TreatmentItem into the stable core+attributes shape, or None if unusable."""
-    if not isinstance(raw, dict):
-        return None
-    area = raw.get("area")
-    product = raw.get("product")
-    if not (isinstance(area, str) and area.strip()) and not (isinstance(product, str) and product.strip()):
-        return None
-
-    def _text(value: Any) -> str | None:
-        return value.strip() if isinstance(value, str) and value.strip() else None
-
-    def _number(value: Any) -> float | int | None:
-        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-    source_ids = raw.get("sourceCaptureIds")
-    attributes = raw.get("attributes")
-    return {
-        "area": _text(area) or "",
-        "product": _text(product) or "",
-        "brand": _text(raw.get("brand")),
-        "quantity": _number(raw.get("quantity")),
-        "unit": _text(raw.get("unit")),
-        "quantityText": _text(raw.get("quantityText")),
-        "lot": _text(raw.get("lot")),
-        "confidence": clamp_confidence(raw.get("confidence")),
-        "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)] if isinstance(source_ids, list) else [],
-        "evidence": _text(raw.get("evidence")),
-        "carriedForward": raw.get("carriedForward") is True,
-        "supersedesCaptureId": _text(raw.get("supersedesCaptureId")),
-        "attributes": attributes if isinstance(attributes, dict) else {},
-    }
-
-
-def parse_session_synthesis_output(
-    raw_text: str, *, source_capture_ids: list[str] | None = None, report_language: str | None = None
-) -> dict[str, Any] | None:
-    """Parse + validate the synthesis JSON into the A↔B contract, or None to fall back.
-
-    Returns the full output with ALL fixed section ids present (in order), cleaned treatments, and
-    `sourceReferences` covering every reportable capture so the backend can mark contributions.
-    """
-    if not raw_text or not raw_text.strip():
-        return None
-    text = raw_text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    summary = parsed.get("summary")
-    if not isinstance(summary, str) or not summary.strip():
-        return None
-
-    raw_sections = parsed.get("sections")
-    blocks_by_id: dict[str, list[dict[str, Any]]] = {}
-    if isinstance(raw_sections, list):
-        for section in raw_sections:
-            if isinstance(section, dict) and isinstance(section.get("id"), str):
-                blocks_by_id[section["id"]] = _clean_synthesis_blocks(section.get("blocks"))
-    sections = [
-        {
-            "id": section_id,
-            "title": synthesis_section_title(section_id, title, report_language),
-            "blocks": blocks_by_id.get(section_id, []),
-        }
-        for section_id, title in SYNTHESIS_SECTIONS
-    ]
-
-    treatments = [cleaned for cleaned in (_clean_synthesis_treatment(item) for item in (parsed.get("treatments") or [])) if cleaned]
-    language = parsed.get("language") if parsed.get("language") in SYNTHESIS_LANGUAGES else "mixed"
-    uncertainties = parsed.get("uncertainties")
-    source_references = [{"type": "capture", "captureId": capture_id} for capture_id in (source_capture_ids or [])]
-    return {
-        "schemaVersion": SESSION_SYNTHESIS_OUTPUT_VERSION,
-        "summary": summary.strip(),
-        "language": language,
-        "sections": sections,
-        "treatments": treatments,
-        "sourceReferences": source_references,
-        "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
-        "aftercareSelections": _clean_aftercare_selections(parsed.get("aftercareSelections")),
-        "safetyFlags": _clean_safety_flags(parsed.get("safetyFlags")),
-        "generatedBy": "ai-engine",
-        "generatedAt": utc_now().isoformat(),
-    }
-
-
-def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
-    """Coerce the model's aftercare matches into validated {templateId, status, note} items."""
-    selections: list[dict[str, Any]] = []
-    if not isinstance(raw, list):
-        return selections
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        template_id = item.get("templateId")
-        status = item.get("status")
-        if not isinstance(template_id, str) or not template_id.strip():
-            continue
-        if status not in {"applies", "conflicts", "superseded"}:
-            continue
-        note = item.get("note")
-        selections.append(
-            {"templateId": template_id, "status": status, "note": note if isinstance(note, str) and note.strip() else None}
-        )
-    return selections
-
-
-def _clean_safety_flags(raw: Any) -> list[dict[str, Any]]:
-    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds} items.
-
-    Safety errs toward inclusion (opt-out): a flag the model surfaced is kept — the clinician removes a
-    wrong one downstream. We only drop items that are structurally unusable (unknown kind, empty text).
-    ``text`` is clinical content in the report language and is never translated.
-    """
-    flags: list[dict[str, Any]] = []
-    if not isinstance(raw, list):
-        return flags
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        kind = item.get("kind")
-        text = item.get("text")
-        if kind not in {"allergy", "contraindication", "consent"}:
-            continue
-        if not isinstance(text, str) or not text.strip():
-            continue
-        source_ids = item.get("sourceCaptureIds")
-        flags.append(
-            {
-                "kind": kind,
-                "text": text.strip(),
-                "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)]
-                if isinstance(source_ids, list)
-                else [],
-            }
-        )
-    return flags
-
-
 def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Run the single-pass report synthesis through the gateway; None to fall back to baseline.
 
@@ -995,6 +673,7 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
     extracted_metadata = {
         "status": "completed",
         "generated_by": "ai-engine",
+        "promptVersion": REPORT_SYNTHESIS_PROMPT_VERSION,
         "job_id": job["id"],
         "job_type": job["jobType"],
         "generated_at": utc_now().isoformat(),

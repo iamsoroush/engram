@@ -5,64 +5,28 @@ reply, then produces the final text. The doctor approves before anything is sent
 clinical facts beyond the draft + spoken note + context. Falls back to keeping the current draft
 unchanged when gateway-less / no audio / unusable output.
 """
-import json
-import re
 from typing import Any
 
+from ai_engine.contracts.qa import (  # noqa: F401
+    QA_REVISE_OUTPUT_VERSION,
+    parse_qa_revise_output,
+    qa_revise_json_schema,
+)
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
 from ai_engine.core.media import audio_to_flac_mono_16khz_base64
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    escalation_requested,
+    response_format,
+    structured_outputs_enabled,
+)
 from ai_engine.core.util import utc_now
-
-
-def qa_revise_prompt(payload: dict[str, Any]) -> str:
-    """Prompt for a Q&A reply voice edit: classify revise-vs-replace and produce the reply (AES-402).
-
-    The doctor recorded a voice note while reviewing a draft reply. The model must decide whether the
-    note is a *revision* of the current draft or an *entirely new reply*, then output the resulting
-    reply. The doctor approves before anything is sent, so this is a suggestion — invent no clinical
-    facts beyond the draft + spoken note + context.
-    """
-    qa = payload.get("qaRevise") if isinstance(payload.get("qaRevise"), dict) else {}
-    return "\n\n".join(
-        (
-            "You are Engram, helping an aesthetics-clinic doctor edit a reply to a patient's question "
-            "using a voice note they just recorded. The doctor reviews and approves before sending.",
-            (
-                "Decide from the VOICE NOTE whether the doctor is REVISING the current draft (e.g. "
-                "'make it warmer', 'remove the part about ice', 'add that she should avoid sun') or "
-                "dictating an ENTIRELY NEW reply. Then produce the final reply text in the patient's "
-                "language. Keep the doctor's sign-off. Do NOT invent clinical facts, doses, or products "
-                "not present in the current draft, the spoken note, or the context. "
-                "Return STRICT JSON only: {\"mode\":\"revise\"|\"replace\",\"reply\":\"<final reply text>\"}."
-            ),
-            f"Patient question:\n{qa.get('patientQuestion', '')}",
-            f"Current draft reply:\n{qa.get('currentDraft', '')}",
-            f"This patient's context:\n{json.dumps(qa.get('patientContext', {}), ensure_ascii=False, sort_keys=True)}",
-            f"The doctor's prior answers:\n{json.dumps(qa.get('priorAnswers', []), ensure_ascii=False, sort_keys=True)}",
-        )
-    )
-
-
-def parse_qa_revise_output(text: str) -> dict[str, Any] | None:
-    """Parse the strict JSON {mode, reply} from the model; None to fall back."""
-    if not text or not text.strip():
-        return None
-    cleaned = text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        cleaned = fenced.group(1).strip()
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    reply = parsed.get("reply")
-    if not isinstance(reply, str) or not reply.strip():
-        return None
-    mode = parsed.get("mode") if parsed.get("mode") in {"revise", "replace"} else "revise"
-    return {"mode": mode, "reply": reply.strip()}
+# The prompt lives in its own versioned module (§3.3); ``qa_revise_prompt`` is re-exported for the shim
+# + tests, and the envelope stamps ``QA_REVISE_PROMPT_VERSION``.
+from ai_engine.prompts.qa_revise import PROMPT_VERSION as QA_REVISE_PROMPT_VERSION
+from ai_engine.prompts.qa_revise import build as qa_revise_prompt  # noqa: F401
 
 
 def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[str, Any]:
@@ -75,6 +39,8 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
 
     def _fallback_output() -> dict[str, Any]:
         return {
+            "schemaVersion": QA_REVISE_OUTPUT_VERSION,
+            "promptVersion": QA_REVISE_PROMPT_VERSION,
             "mode": fallback.get("mode") or "revise",
             "reply": fallback.get("reply"),
             "source": fallback.get("source") or "mock-deterministic",
@@ -89,10 +55,9 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
     model = resolve_model("qa_draft", ai_models)
     base64_flac = audio_to_flac_mono_16khz_base64(audio)
     client = gateway_client("qa_draft")
-    # A gateway/network error propagates and is retried by the task wrapper.
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": [
@@ -100,12 +65,25 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
                     {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
                 ],
             }
-        ],
+        ]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("qa_revise_output", qa_revise_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        # A gateway/network error propagates and is retried by the task wrapper.
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    parsed = call_with_validation_retry(
+        task="qa_draft", ai_models=ai_models, model=model, effort=None, invoke=invoke,
+        parse=parse_qa_revise_output, escalate=escalation_requested(payload),
     )
-    parsed = parse_qa_revise_output(response.choices[0].message.content or "")
     if parsed is None:
         return _fallback_output()
     return {
+        "schemaVersion": QA_REVISE_OUTPUT_VERSION,
+        "promptVersion": QA_REVISE_PROMPT_VERSION,
         "mode": parsed["mode"],
         "reply": parsed["reply"],
         "source": f"ai:{model}",

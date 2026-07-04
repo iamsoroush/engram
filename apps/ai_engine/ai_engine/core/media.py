@@ -9,6 +9,8 @@ import base64
 import subprocess
 from io import BytesIO
 
+from ai_engine.core.errors import ConversionFailed
+
 try:  # Pillow is used to downscale photos before captioning; degrade gracefully if absent.
     from PIL import Image, ImageOps
 except ImportError:  # pragma: no cover - exercised only in a Pillow-less environment
@@ -45,10 +47,10 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
     try:
         result = subprocess.run(cmd, input=content, capture_output=True, check=True)
     except FileNotFoundError as exc:
-        raise RuntimeError("Audio conversion to FLAC failed: ffmpeg is not installed or not available on PATH") from exc
+        raise ConversionFailed("Audio conversion to FLAC failed: ffmpeg is not installed or not available on PATH") from exc
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Audio conversion to FLAC failed: {stderr or exc}") from exc
+        raise ConversionFailed(f"Audio conversion to FLAC failed: {stderr or exc}") from exc
     return base64.b64encode(result.stdout).decode("ascii")
 
 

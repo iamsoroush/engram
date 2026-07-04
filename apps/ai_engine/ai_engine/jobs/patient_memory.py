@@ -5,100 +5,27 @@ inventing nothing. Falls back to the backend-provided deterministic content when
 configured or the model returns something unusable, so the job always completes with valid memory.
 Vertical-agnostic via the domain descriptor.
 """
-import json
 from typing import Any
 
+from ai_engine.contracts.memory import (  # noqa: F401 — re-exported for the processing shim + tests
+    PATIENT_MEMORY_OUTPUT_VERSION,
+    parse_patient_memory_output,
+    patient_memory_json_schema,
+)
 from ai_engine.core.backend_client import BackendClient
-from ai_engine.core.domain import domain_framing
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    escalation_requested,
+    response_format,
+    structured_outputs_enabled,
+)
 from ai_engine.core.util import utc_now
-
-
-def patient_memory_prompt(payload: dict[str, Any]) -> str:
-    """Build the prompt for the combined patient summary + history (incremental, grounded)."""
-    patient = payload.get("patient") if isinstance(payload.get("patient"), dict) else {}
-    language = payload.get("language")
-    label, _, _ = domain_framing(payload)  # vertical-aware; neutral "clinic" when absent
-    language_directive = (
-        f"Write EVERY field in {language} and ONLY {language} — one language throughout, native script."
-        if isinstance(language, str) and language.strip()
-        else (
-            "Write EVERY field in the SAME language the visit notes use (if the notes are Persian/Farsi, "
-            "write Persian — do NOT default to English) — one language throughout, native script."
-        )
-    )
-    return "\n\n".join(
-        (
-            "You are Engram, a calm clinical assistant that maintains a patient's longitudinal memory. "
-            f"The clinical setting is a {label}.",
-            (
-                "Update this patient's memory from the prior memory and the new visit briefs below. "
-                "Each visit brief may include the treatments performed that visit (product, dose, area, "
-                "lot) — use them to ground recall in specifics (e.g. 'last visit: Voluma 0.3 mL, left "
-                "cheek'), quoting doses verbatim. Produce a warm, assistant-voiced brief — natural "
-                "sentences, never a form or bullet dump. Synthesize across visits, but do NOT invent "
-                "clinical facts, names, products, or doses that are not present in the briefs. Do NOT "
-                "include the patient's name in any field — it is already shown beside this text in the "
-                "UI; use pronouns or omit the subject. Keep the card summary to 1-2 sentences. "
-                "Also produce a compact 'card' for the line-up worklist: 'storySoFar' and 'rightNow' are "
-                "EACH at most 2 short sentences; 'flags' surfaces only genuinely important "
-                "allergy/consent/preference/caution items actually found in the briefs — return an empty "
-                "list when there are none, and never invent one. "
-                f"{language_directive} "
-                "The whole brief MUST be in that one language — NEVER mix (e.g. an English sentence "
-                "containing «گونه چپ»). Brand names and lot numbers may keep their original form. When "
-                "the language is Persian/Farsi, embedding common English clinical terms is fine "
-                "(Finglish, e.g. «فیلر گونه چپ»), but do not switch into English sentences and never "
-                "romanize Persian into Latin."
-            ),
-            (
-                "Return ONLY strict JSON (no markdown, no code fences) with EXACTLY this shape:\n"
-                '{"summary": "<1-2 sentence card summary>", '
-                '"history": {"snapshot": "<one line: patient + current focus>", '
-                '"sections": [{"label": "Story so far", "body": "<2-4 sentences>"}, '
-                '{"label": "Worth remembering", "body": "<preferences, cautions, recurring themes>"}, '
-                '{"label": "Right now", "body": "<open threads / next visit>"}], "visits": []}, '
-                '"card": {"storySoFar": "<at most 2 short sentences>", '
-                '"rightNow": "<at most 2 short sentences: what is open / next visit>", '
-                '"flags": [{"kind": "allergy|consent|preference|caution", "label": "<short>"}]}}'
-            ),
-            f"Patient context:\n{json.dumps(patient, ensure_ascii=False, sort_keys=True)}",
-        )
-    )
-
-
-def parse_patient_memory_output(text: str) -> dict[str, Any] | None:
-    """Parse the model's patient-memory JSON; return None if unusable so the caller can fall back."""
-    if not text or not text.strip():
-        return None
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) >= 2 else cleaned.strip("`")
-        if cleaned.lstrip().lower().startswith("json"):
-            cleaned = cleaned.lstrip()[4:]
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        data = json.loads(cleaned[start : end + 1])
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    summary = data.get("summary")
-    history = data.get("history")
-    if not isinstance(summary, str) or not summary.strip() or not isinstance(history, dict):
-        return None
-    if not isinstance(history.get("snapshot"), str):
-        return None
-    sections = history.get("sections")
-    if not isinstance(sections, list) or not sections:
-        return None
-    # The compact line-up card is optional (backend layers in a deterministic fallback if absent).
-    card = data.get("card")
-    return {"summary": summary.strip(), "history": history, "card": card if isinstance(card, dict) else None}
+# The prompt lives in its own versioned module (§3.3); ``patient_memory_prompt`` is re-exported for the
+# shim + tests, and the envelope stamps ``PATIENT_MEMORY_PROMPT_VERSION``.
+from ai_engine.prompts.patient_memory import PROMPT_VERSION as PATIENT_MEMORY_PROMPT_VERSION
+from ai_engine.prompts.patient_memory import build as patient_memory_prompt  # noqa: F401
 
 
 def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
@@ -111,6 +38,8 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
 
     def _fallback_output() -> dict[str, Any]:
         return {
+            "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
+            "promptVersion": PATIENT_MEMORY_PROMPT_VERSION,
             "summary": fallback.get("summary"),
             "history": fallback.get("history"),
             "card": fallback.get("card"),
@@ -125,17 +54,29 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
     model = resolve_model("patient_memory", ai_models)
     client = gateway_client("patient_memory")
-    # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": patient_memory_prompt(payload)}],
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [{"role": "user", "content": patient_memory_prompt(payload)}]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("patient_memory_output", patient_memory_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    parsed = call_with_validation_retry(
+        task="patient_memory", ai_models=ai_models, model=model, effort=None,
+        invoke=invoke, parse=parse_patient_memory_output, escalate=escalation_requested(payload),
     )
-    parsed = parse_patient_memory_output(response.choices[0].message.content or "")
     if parsed is None:
         return _fallback_output()
     history = parsed["history"]
     history["source"] = f"ai:{model}"
     return {
+        "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
+        "promptVersion": PATIENT_MEMORY_PROMPT_VERSION,
         "summary": parsed["summary"],
         "history": history,
         # Carry the model's compact card through; backend coerces it + falls back deterministically.
