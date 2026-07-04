@@ -23,7 +23,7 @@ ACCESS_KEY="${EVAL_FIXTURES_S3_ACCESS_KEY:-engram-dev}"
 SECRET_KEY="${EVAL_FIXTURES_S3_SECRET_KEY:-engram-dev-secret}"
 MC_IMAGE="${EVAL_FIXTURES_MC_IMAGE:-minio/mc}"
 CONTAINER="${EVAL_FIXTURES_CONTAINER:-engram-main-ai-engine-1}"
-JOBS="transcription caption matching"
+JOBS="transcription caption matching qa_revise"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 EVAL_DIR="$HERE/../apps/ai_engine/eval"

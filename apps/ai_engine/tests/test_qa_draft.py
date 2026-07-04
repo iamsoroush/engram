@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from ai_engine.processing import completed_qa_draft_output, parse_qa_draft_output
+from ai_engine.prompts.qa_draft import build as qa_draft_prompt
 
 PAYLOAD = {
     "qaDraft": {
@@ -32,6 +33,31 @@ class ParseQaDraftTests(unittest.TestCase):
 
     def test_empty_is_none(self):
         self.assertIsNone(parse_qa_draft_output("   "))
+
+
+class QaDraftPromptGroundingTests(unittest.TestCase):
+    """v2 retrieval grounding (AES-410): the exemplar block + guardrail rules render when present."""
+
+    def test_no_exemplar_block_when_none_retrieved(self):
+        prompt = qa_draft_prompt(PAYLOAD)
+        self.assertNotIn("Retrieved exemplars", prompt)
+
+    def test_exemplar_block_and_grounding_rules_render(self):
+        payload = {
+            "qaDraft": {
+                **PAYLOAD["qaDraft"],
+                "retrievedExemplars": [
+                    {"question": "swelling after filler?", "answer": "mild swelling is normal", "source": "template"}
+                ],
+            }
+        }
+        prompt = qa_draft_prompt(payload)
+        self.assertIn("Retrieved exemplars", prompt)
+        self.assertIn("mild swelling is normal", prompt)
+        # The three safety-priority rules must be present verbatim in spirit.
+        self.assertIn("PATIENT'S CONTEXT always wins", prompt)
+        self.assertIn("NEVER copy a specific dose", prompt)
+        self.assertIn("escalate", prompt.lower())
 
 
 class CompletedQaDraftTests(unittest.TestCase):

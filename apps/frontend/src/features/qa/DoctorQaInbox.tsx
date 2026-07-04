@@ -10,6 +10,7 @@ import {
   fetchQaSettings,
   fetchTreatingDoctors,
   routeQaThread,
+  saveReplyAsTemplate,
   sendQaReply,
   setQaRoutingMode,
   type QaInboxItem,
@@ -18,6 +19,7 @@ import {
   type QaTreatingDoctor,
   type QaVisitMarker,
 } from "./qaClient";
+import { LibraryTab } from "./LibraryTab";
 import { useVoiceEdit } from "./useVoiceEdit";
 
 /**
@@ -39,6 +41,7 @@ export function DoctorQaInbox({
   onChanged?: () => void;
 }) {
   const t = useT();
+  const [tab, setTab] = React.useState<"inbox" | "library">("inbox");
   const [scope, setScope] = React.useState<"mine" | "all">("mine");
   const [items, setItems] = React.useState<QaInboxItem[]>([]);
   const [loaded, setLoaded] = React.useState(false);
@@ -131,51 +134,85 @@ export function DoctorQaInbox({
   return (
     <div className="qa-inbox" data-testid="qa-inbox">
       <div className="qa-inbox-head">
-        <h1>{t("qa.inboxTitle")}</h1>
-        <div className="qa-inbox-controls">
-          <div className="qa-scope" role="tablist" aria-label={t("qa.scopeAria")}>
-            <button className={scope === "mine" ? "active" : ""} onClick={() => setScope("mine")} type="button">
-              {t("qa.scopeMine")}
+        <div className="qa-inbox-head-top">
+          <h1>{t("qa.inboxTitle")}</h1>
+          <div className="qa-tabs" role="tablist" aria-label={t("qa.tabsAria")}>
+            <button
+              className={tab === "inbox" ? "active" : ""}
+              data-testid="qa-tab-inbox"
+              onClick={() => setTab("inbox")}
+              type="button"
+              role="tab"
+              aria-selected={tab === "inbox"}
+            >
+              {t("qa.tabInbox")}
             </button>
-            <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-              {t("qa.scopeClinic")}
+            <button
+              className={tab === "library" ? "active" : ""}
+              data-testid="qa-tab-library"
+              onClick={() => setTab("library")}
+              type="button"
+              role="tab"
+              aria-selected={tab === "library"}
+            >
+              {t("qa.tabLibrary")}
             </button>
           </div>
-          {settings ? (
-            <label className="qa-routing">
-              {t("qa.routingLabel")}
-              <select
-                value={settings.routingMode === "manual" ? "manual" : "ai_default"}
-                onChange={(event) => void handleRoutingMode(event.target.value as "ai_default" | "manual")}
-              >
-                <option value="ai_default">{t("qa.routingAuto")}</option>
-                <option value="manual">{t("qa.routingManual")}</option>
-              </select>
-            </label>
-          ) : null}
         </div>
+        {tab === "inbox" ? (
+          <div className="qa-inbox-controls">
+            <div className="qa-scope" role="tablist" aria-label={t("qa.scopeAria")}>
+              <button className={scope === "mine" ? "active" : ""} onClick={() => setScope("mine")} type="button">
+                {t("qa.scopeMine")}
+              </button>
+              <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+                {t("qa.scopeClinic")}
+              </button>
+            </div>
+            {settings ? (
+              <label className="qa-routing">
+                {t("qa.routingLabel")}
+                <select
+                  value={settings.routingMode === "manual" ? "manual" : "ai_default"}
+                  onChange={(event) => void handleRoutingMode(event.target.value as "ai_default" | "manual")}
+                >
+                  <option value="ai_default">{t("qa.routingAuto")}</option>
+                  <option value="manual">{t("qa.routingManual")}</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      {error ? <Alert tone="red">{error}</Alert> : null}
-
-      {!loaded ? (
-        <Card className="qa-card">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-12" />
-        </Card>
-      ) : items.length === 0 ? (
-        <p className="qa-empty">{scope === "mine" ? t("qa.emptyMine") : t("qa.emptyClinic")}</p>
+      {tab === "library" ? (
+        <LibraryTab apiFetch={apiFetch} onToast={onToast} />
       ) : (
-        items.map((item) => (
-          <QaThreadCard
-            key={item.threadId}
-            item={item}
-            apiFetch={apiFetch}
-            onSend={handleSend}
-            onDismiss={handleDismiss}
-            onReroute={handleReroute}
-          />
-        ))
+        <>
+          {error ? <Alert tone="red">{error}</Alert> : null}
+
+          {!loaded ? (
+            <Card className="qa-card">
+              <Skeleton className="h-16" />
+              <Skeleton className="h-12" />
+            </Card>
+          ) : items.length === 0 ? (
+            <p className="qa-empty">{scope === "mine" ? t("qa.emptyMine") : t("qa.emptyClinic")}</p>
+          ) : (
+            items.map((item) => (
+              <QaThreadCard
+                key={item.threadId}
+                item={item}
+                apiFetch={apiFetch}
+                onToast={onToast}
+                onSend={handleSend}
+                onDismiss={handleDismiss}
+                onReroute={handleReroute}
+                onOpenLibrary={() => setTab("library")}
+              />
+            ))
+          )}
+        </>
       )}
     </div>
   );
@@ -202,18 +239,32 @@ function buildTimeline(messages: QaThreadMessage[], visits: QaVisitMarker[]): Ti
 function QaThreadCard({
   item,
   apiFetch,
+  onToast,
   onSend,
   onDismiss,
   onReroute,
+  onOpenLibrary,
 }: {
   item: QaInboxItem;
   apiFetch: ApiFetch;
+  onToast?: (message: string) => void;
   onSend: (item: QaInboxItem, reply: string) => void;
   onDismiss: (item: QaInboxItem) => void;
   onReroute: (item: QaInboxItem, doctorUserId: string) => void;
+  onOpenLibrary: () => void;
 }) {
   const t = useT();
   const pending = item.pendingQuestion;
+
+  // Promote a sent doctor reply into a reusable template (AES-410) — grows the retrieval corpus.
+  const saveAsTemplate = async (messageId: string) => {
+    try {
+      await saveReplyAsTemplate(apiFetch, messageId);
+      onToast?.(t("qa.library.savedToast"));
+    } catch {
+      onToast?.(t("qa.library.saveError"));
+    }
+  };
   const [reply, setReply] = React.useState(pending?.suggestedReply || "");
   const [doctors, setDoctors] = React.useState<QaTreatingDoctor[] | null>(null);
   // Collapsed by default: an open conversation shows just its latest question + the suggested reply;
@@ -320,6 +371,16 @@ function QaThreadCard({
                   {entry.message.status === "dismissed" ? <span className="qa-msg-time"> · {t("qa.dismissed")}</span> : null}
                 </div>
                 <div dir="auto" data-content>{entry.message.body}</div>
+                {entry.message.role === "doctor" && entry.message.status === "sent" ? (
+                  <button
+                    type="button"
+                    className="qa-save-template"
+                    data-testid="qa-save-template"
+                    onClick={() => void saveAsTemplate(entry.message.id)}
+                  >
+                    {t("qa.saveAsTemplate")}
+                  </button>
+                ) : null}
               </div>
             ),
           )}
@@ -365,6 +426,19 @@ function QaThreadCard({
             ) : (
               <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>
             )}
+            {draftReady && pending?.draftProvenance ? (
+              <button
+                type="button"
+                className="qa-draft-provenance"
+                data-testid="qa-draft-provenance"
+                onClick={onOpenLibrary}
+                title={t("qa.basedOnOpenLibrary")}
+              >
+                {pending.draftProvenance.kind === "template"
+                  ? t("qa.basedOnTemplate", { name: pending.draftProvenance.label ?? "" })
+                  : t("qa.basedOnReply")}
+              </button>
+            ) : null}
           </div>
           {voiceMode ? (
             <div className="qa-voice-note">

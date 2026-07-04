@@ -67,7 +67,27 @@ confusable dose minimal pair, length, code-switch, or a second voice — these d
       *"خانم محمودی امروز اومد، نه خانم محمدی."*  (expect: faithful «محمودی»; **not** auto-corrected to «محمدی»)
 - [ ] **m09** `m09-near-miss-noisy.m4a` — re-record **m02** (the «نگار معمری» near-miss) **with clinic noise**  (expect: near-miss surname still NOT snapped to «محمدی»)
 
+## 🎙️ Q&A reply voice-edit (voice note → revise/replace)  →  `qa_revise/`
+
+> **Now wired.** `qa_revise_eval.py` consumes `qa_revise/`: each clip is the doctor's spoken edit of a
+> **fixed `currentDraft`** (in the sibling `.json`); the eval runs the real job and gates the
+> revise-vs-replace classification + numbers-preserved + escalation-survives + native script. The
+> harness is green on parser + gate self-tests + judge smoke until clips land. **Record on a phone,
+> natural clinical Farsi** (never auto-generated). The base draft to edit is:
+> «سلام سارا، ورم خفیف بعد از بیست واحد بوتاکس در روزهای اول طبیعی است. لطفاً کمپرس یخ بگذارید. اگر بدتر شد با کلینیک تماس بگیرید. — دکتر دمو»
+
+- [ ] **r01** `r01-warmer-shorter.m4a` — *«یکم گرم‌تر و کوتاه‌ترش کن»*  (expect: mode=revise; dose «۲۰» + clinic-contact kept)
+- [ ] **r02** `r02-remove-ice.m4a` — *«اون قسمت کمپرس یخ رو حذف کن»*  (expect: revise; «کمپرس یخ» gone, everything else intact)
+- [ ] **r03** `r03-add-sun.m4a` — *«اضافه کن که تا یک هفته آفتاب نره»*  (expect: revise; sun+«یک هفته» added, nothing invented)
+- [ ] **r04** `r04-replace.m4a` — *«کلاً اینو ول کن، بنویس: سلام، لطفاً فردا برای معاینه به کلینیک بیاید. — دکتر دمو»*  (expect: mode=replace; old draft gone)
+- [ ] **r05** `r05-reassure.m4a` — *«بگو نگران نباشه»*  (expect: revise; reassurance folded in, the **clinic-contact tail survives**)
+- [ ] **r06** `r06-override-aftercare.m4a` — *«بگو سونا مشکلی نداره»* (over a draft variant that says avoid sauna)  (expect: follows the doctor)
+- [ ] **r07** `r07-english-note-fa-draft.m4a` — English note *"make it friendlier"* over the fa draft  (expect: reply stays **fa**, no Latin)
+- [ ] **r08** `r08-dictate-dose.m4a` — *«بگو بیست واحد بوتاکس بوده»*  (expect: «بیست»/«۲۰» present)
+- [ ] **r09** `r09-signoff.m4a` — any revise note  (expect: the «— دکتر دمو» sign-off kept)
+- [ ] **r10** `r10-noisy-warmer.m4a` — re-record **r01** with clinic background noise  (expect: same as r01 — robustness)
+
 ---
 
-When you've recorded a batch, tell the agent which `tNN/pNN/sNN/mNN` are in — it authors the `.json`
+When you've recorded a batch, tell the agent which `tNN/pNN/sNN/mNN/rNN` are in — it authors the `.json`
 expectations and wires each into its `*_eval.py`, then `run_all.py` scores them.

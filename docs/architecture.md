@@ -46,6 +46,8 @@ Celery and Redis provide the background job boundary. The backend creates durabl
 
 The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and results through protected backend internal endpoints at `/internal/ai/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service.
 
+The one narrow exception is **Q&A knowledge retrieval** (AES-410): retrieval is a backend concern (the worker stays stateless), so the backend makes a single optional outbound call to an OpenAI-compatible `/embeddings` gateway to embed the query + exemplars for hybrid retrieval (`app/services/qa_knowledge/`). Unconfigured (`BACKEND_EMBEDDINGS_*` blank) it degrades to deterministic lexical-only retrieval, so dev/CI/e2e are unaffected. Embeddings are stored in a pgvector column in the existing Postgres — no new datastore.
+
 ## Data Flow
 
 ### Capture

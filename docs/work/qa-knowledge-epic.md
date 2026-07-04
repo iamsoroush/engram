@@ -1,14 +1,26 @@
 # QA knowledge epic — clinic QA library + retrieval-grounded drafting
 
-**Status:** epic seed from the 2026-07-04 review — direction agreed with the user, full design not
-started. Owns everything needed to implement the patient-Q&A AI jobs *correctly*, including their
-eval golden sets (moved here from [eval-improvement-plan.md](eval-improvement-plan.md)).
+**Status: v1 BUILT (2026-07-05, branch `epic/qa-knowledge`).** The library + retrieval-grounded
+drafting + provenance + both evals shipped; the §3 decisions below were the input. Durable content has
+been **folded into system-state docs** — this process doc now tracks only what remains. The eval
+golden sets (appendix) were moved here from [eval-improvement-plan.md](eval-improvement-plan.md) and
+are now implemented in `apps/ai_engine/eval/qa_draft_eval.py` + `qa_revise_eval.py`.
 
-**Fold destinations (when built):** `docs/ai_engine/processing.md` (qa_draft/qa_revise grounding
-inputs), `docs/backend/aes-pro-qa-api.md` (library + retrieval endpoints), a new
-`docs/ux/screens/` section or file for the library UI, `docs/ai_engine/evals.md` (qa eval
-coverage), `docs/ux/aesthetics-stories.md` (new AES band), `docs/technical-decisions.md`
-(retrieval-store decision).
+**Built (AES-410/411):** pgvector `qa_knowledge_exemplars` store (templates + auto-indexed sent
+replies, per-tenant, exclude list); hybrid lexical+embedding retrieval (`app/services/qa_knowledge/`,
+lexical-only gateway-less); backend-built `retrievedExemplars` → `qa_draft` (worker stateless);
+prompt-v2 grounding rules + the provenance chip; Library tab + Save-as-template; `qa_draft_eval` +
+`qa_revise` harness. Folded into: [../ai_engine/processing.md](../ai_engine/processing.md),
+[../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md),
+[../ux/screens/qa-inbox.md](../ux/screens/qa-inbox.md),
+[../backend/data-model.md](../backend/data-model.md), [../ai_engine/evals.md](../ai_engine/evals.md),
+[../ux/aesthetics-stories.md](../ux/aesthetics-stories.md) (AES-410/411),
+[../technical-decisions.md](../technical-decisions.md) (pgvector), and
+[../production-alpha-tradeoffs.md](../production-alpha-tradeoffs.md) (image swap + REINDEX).
+
+**Remaining (then delete this doc):** record the `qa_revise` clips `r01–r10`
+(`apps/ai_engine/eval/fixtures/RECORDING_CHECKLIST.md`); configure `BACKEND_EMBEDDINGS_*` in prod to
+turn on semantic recall; run the prod REINDEX on first deploy.
 
 ---
 

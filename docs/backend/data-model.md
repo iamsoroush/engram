@@ -153,7 +153,15 @@ user-state overlay is *not* stored here. Full design:
   content at create time (the structural withholding contract — see
   [aes-basic-api.md](aes-basic-api.md)).
 - `qa_threads` / `qa_messages` — the Pro post-session patient↔clinic Q&A
-  ([aes-pro-qa-api.md](aes-pro-qa-api.md)).
+  ([aes-pro-qa-api.md](aes-pro-qa-api.md)). A `qa_messages` patient question carries the AI draft +
+  its `draft_provenance` (the top retrieved exemplar the draft was grounded in — doctor-only).
+- `qa_knowledge_exemplars` — the Pro Q&A **knowledge library** (AES-410): curated `template`s +
+  auto-indexed `sent_reply`s, the retrieval corpus behind grounded `qa_draft`. Per-tenant; a
+  normalized `search_text` (lexical match target) + an optional native pgvector `embedding` (NULL when
+  the embeddings gateway is unconfigured → lexical-only). `status` `active`/`excluded` is the
+  manage/exclude list; `source_message_id` links an indexed reply back to its `qa_messages` row
+  (idempotent auto-index). Requires the `vector` extension (see
+  [technical-decisions.md](../technical-decisions.md) → *Q&A Knowledge Retrieval*).
 - `worklist_entries` — the soft "line a patient up" lane (AES-903).
 - `ai_feedback_events` — harvested AI-quality signals (corrections/confirmations/ratings) feeding
   the eval golden sets; see [insights-feedback.md](insights-feedback.md).
