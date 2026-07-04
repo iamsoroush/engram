@@ -1,24 +1,57 @@
-import base64
-import contextvars
 import json
 import logging
 import re
-import subprocess
 from datetime import datetime, timezone
-from io import BytesIO
 from time import sleep
 from typing import Any, Literal, NotRequired, TypedDict
 
-import httpx
-from openai import OpenAI
-
-try:  # Pillow is used to downscale photos before captioning; degrade gracefully if absent.
-    from PIL import Image, ImageOps
-except ImportError:  # pragma: no cover - exercised only in a Pillow-less environment
-    Image = None
-    ImageOps = None
-
 from ai_engine.config import settings
+
+# ``processing`` is a transitional re-export shim (Axis-1 increment 1): the shared worker
+# infrastructure now lives under ``ai_engine.core``, but evals (``eval/*``) and unit tests still
+# import these names from ``ai_engine.processing`` and patch them here. The imports below rebind the
+# moved names into this module so ``from ai_engine.processing import X`` and
+# ``patch("ai_engine.processing.X")`` keep working until the shim is deleted (increment 5). Job
+# bodies still defined below resolve these dependencies in this namespace, so patching the shim
+# still intercepts their calls.
+from ai_engine.core.backend_client import BackendClient  # noqa: F401
+from ai_engine.core.domain import domain_framing
+from ai_engine.core.fixtures import (  # noqa: F401
+    TEST_CAPTURE_TEXT_BY_FILENAME,
+    TEST_FINAL_SUMMARY,
+    is_fixture_capture,
+)
+from ai_engine.core.gateway import (  # noqa: F401
+    _MeteredChat,
+    _MeteredClient,
+    _MeteredCompletions,
+    _pending_audio_seconds,
+    _record_gateway_usage,
+    _usage_sink,
+    arm_usage_sink,
+    drain_usage_sink,
+    gateway_client,
+    gateway_settings_for,
+    resolve_model,
+    resolve_reasoning_effort,
+    set_pending_audio_seconds,
+)
+from ai_engine.core.media import (  # noqa: F401
+    CAPTION_JPEG_QUALITY,
+    CAPTION_MAX_EDGE,
+    CAPTION_PRODUCT_LABEL_MAX_EDGE,
+    audio_duration_seconds,
+    audio_to_flac_mono_16khz_base64,
+    downscale_image_for_caption,
+    image_to_data_url,
+)
+from ai_engine.core.text import (  # noqa: F401
+    _LATIN_DIGITS,
+    TRANSCRIPTION_LANGUAGE_NAMES,
+    enrichment_language_directive,
+    normalize_digits_to_latin,
+    transcription_language_directive,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,47 +97,9 @@ NOT_DETECTED_PATIENT: DetectedPatientOutput = {
     "source_text": None,
 }
 
-TEST_CAPTURE_TEXT_BY_FILENAME = {
-    "audio_01_initial_consultation.wav": "Patient Sara Nazari came for a follow-up after cheek filler. She reports mild asymmetry on the left cheek and wants a conservative correction. No pain, no fever, and no allergy was reported.",
-    "photo_01_pre_correction_left_cheek.jpg": "Pre-correction image showing mild left cheek asymmetry before touch-up.",
-    "text_note_01.txt": "Patient prefers subtle correction and does not want visible overfilling. Conservative approach requested. Aftercare instructions were given. Patient should send a follow-up photo in 2 weeks if asymmetry persists.",
-    "audio_02_procedure_note.wav": "Injected 0.3 mL hyaluronic acid filler into the left mid cheek. Used cannula technique. Patient tolerated the procedure well. Advised no massage and avoid heavy exercise for 24 hours.",
-    "photo_02_post_correction_left_cheek.jpg": "Post-correction image showing improved left cheek contour after conservative correction.",
-}
-
-TEST_FINAL_SUMMARY = "Follow-up cheek filler correction for mild left cheek asymmetry. Conservative 0.3 mL hyaluronic acid filler touch-up was performed in the left mid cheek using cannula technique. Patient tolerated the procedure well and received aftercare instructions."
-
 TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
 
 ASSIGNMENT_INTENT_BASES = {"explicit", "implicit"}
-
-TRANSCRIPTION_LANGUAGE_NAMES = {
-    "fa": "Persian (Farsi)",
-    "en": "English",
-    "ar": "Arabic",
-}
-
-
-def transcription_language_directive(transcription_context: dict[str, Any] | None) -> str:
-    """Instruct the model on transcript language/script.
-
-    Default ('auto') transcribes verbatim in the original script — this prevents Persian speech
-    from coming back romanized in Latin, which otherwise breaks name matching and reassignment.
-    A specific preferred language asks the model to transcribe in that language's native script.
-    """
-    context = transcription_context if isinstance(transcription_context, dict) else {}
-    preferred = str(context.get("preferredLanguage") or "auto").strip().lower()
-    if preferred and preferred not in {"auto", "unknown", "mixed"}:
-        name = TRANSCRIPTION_LANGUAGE_NAMES.get(preferred, preferred)
-        return (
-            f"The clinic's preferred transcription language is {name}: write the transcript in {name} using its "
-            "native script. Do not translate into another language and do not romanize."
-        )
-    return (
-        "Transcribe VERBATIM in whatever language(s) are actually spoken, preserving the ORIGINAL SCRIPT — "
-        "Persian/Farsi speech MUST be written in Persian script (e.g. «بیمار را عوض کن به سروش»), never romanized "
-        "Latin (not «Bimar ro avaz kon be Soroush»). Never translate the transcript and never romanize it."
-    )
 
 PATIENT_INFORMATION_FIELDS = (
     "raw_mentioned_name",
@@ -278,23 +273,6 @@ def normalize_intents(raw: Any) -> dict[str, Any] | None:
     return intents or None
 
 
-def domain_framing(context: dict[str, Any] | None) -> tuple[str, list[str], list[str]]:
-    """Extract vertical-aware prompt framing from a job context/payload.
-
-    Vertical-AGNOSTIC by contract: the backend supplies a `domain` descriptor
-    (`app/services/verticals.py:domain_descriptor`) carrying the setting `label` and optional
-    `vocabulary` / `captionFindings` hints. When it is absent this returns a neutral "clinic"
-    default with no vocabulary — so a worker prompt NEVER hardcodes or assumes a vertical. Any
-    vertical-specific wording must come through this descriptor (i.e. be optional + data-driven).
-    """
-    domain = context.get("domain") if isinstance(context, dict) and isinstance(context.get("domain"), dict) else {}
-    raw_label = domain.get("label")
-    label = raw_label.strip() if isinstance(raw_label, str) and raw_label.strip() else "clinic"
-    vocabulary = [value for value in (domain.get("vocabulary") or []) if isinstance(value, str)]
-    caption_findings = [value for value in (domain.get("captionFindings") or []) if isinstance(value, str)]
-    return label, vocabulary, caption_findings
-
-
 def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
     """Build the rich instruction prompt for the OpenAI-compatible gateway."""
     context = transcription_context if isinstance(transcription_context, dict) else {}
@@ -387,49 +365,6 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     }
 
 
-def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
-    """Convert arbitrary audio bytes to mono 16 kHz FLAC and base64 encode them."""
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        "pipe:0",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-sample_fmt",
-        "s16",
-        "-f",
-        "flac",
-        "pipe:1",
-    ]
-    try:
-        result = subprocess.run(cmd, input=content, capture_output=True, check=True)
-    except FileNotFoundError as exc:
-        raise RuntimeError("Audio conversion to FLAC failed: ffmpeg is not installed or not available on PATH") from exc
-    except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Audio conversion to FLAC failed: {stderr or exc}") from exc
-    return base64.b64encode(result.stdout).decode("ascii")
-
-
-def audio_duration_seconds(content: bytes) -> float | None:
-    """Best-effort audio duration (seconds) via ffprobe, for per-minute transcription pricing."""
-    cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=nokey=1:noprint_wrappers=1", "pipe:0",
-    ]
-    try:
-        result = subprocess.run(cmd, input=content, capture_output=True, check=True)
-        value = result.stdout.decode("utf-8", errors="replace").strip()
-        return float(value) if value else None
-    except Exception:
-        return None
-
-
 def transcribe_audio_content(
     content: bytes,
     transcription_context: dict[str, Any] | None = None,
@@ -474,64 +409,10 @@ def transcribe_audio_content(
 # to a bounded-longest-edge JPEG before sending (detail:low). A product-label shot is re-read at a
 # higher resolution with detail:high so the lot/brand text stays legible.
 
-# Longest-edge caps + JPEG quality for the worker-side downscale. A normal caption pass bounds the
-# longest edge into the 1024–1536 band (detail:low); a product-label re-read keeps more pixels so
-# small lot/brand text is legible (detail:high). GPT-class vision tokens scale with pixels.
-CAPTION_MAX_EDGE = 1280
-CAPTION_PRODUCT_LABEL_MAX_EDGE = 2048
-CAPTION_JPEG_QUALITY = 80
 # Below this the model's own confidence is treated as "AI unsure" and the backend raises a review.
 CAPTION_LOW_CONFIDENCE_THRESHOLD = 0.5
 PAIRING_LATERALITIES = {"left", "right", "bilateral", "midline", "central"}
 PAIRING_PHASES = {"before", "after", "during", "intraop", "other"}
-
-
-def downscale_image_for_caption(
-    content: bytes,
-    media_type: str | None,
-    *,
-    max_edge: int = CAPTION_MAX_EDGE,
-    quality: int = CAPTION_JPEG_QUALITY,
-) -> tuple[bytes, str]:
-    """Re-encode image bytes to a bounded-longest-edge JPEG before sending to the gateway.
-
-    Honors EXIF orientation, flattens to RGB, bounds the longest edge to ``max_edge`` (keeping aspect),
-    and JPEG-encodes at ``quality``. Returns ``(bytes, "image/jpeg")``. On any failure (Pillow absent,
-    undecodable bytes, already small) it returns the original bytes + media type — captioning must
-    never break because a downscale failed.
-    """
-    if Image is None or ImageOps is None:
-        return content, media_type or "image/jpeg"
-    try:
-        with Image.open(BytesIO(content)) as image:
-            image = ImageOps.exif_transpose(image)  # bake in rotation; drop EXIF
-            if image.mode not in ("RGB", "L"):
-                image = image.convert("RGB")
-            longest = max(image.size)
-            if longest > max_edge:
-                scale = max_edge / float(longest)
-                image = image.resize(
-                    (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
-                    Image.LANCZOS,
-                )
-            buffer = BytesIO()
-            image.convert("RGB").save(buffer, format="JPEG", quality=quality, optimize=True)
-            return buffer.getvalue(), "image/jpeg"
-    except Exception:  # noqa: BLE001 - any decode/encode failure falls back to the raw upload
-        return content, media_type or "image/jpeg"
-
-
-def enrichment_language_directive(enrichment_context: dict[str, Any] | None) -> str:
-    """Instruct the model on enrichment output language/script (mirrors transcription)."""
-    context = enrichment_context if isinstance(enrichment_context, dict) else {}
-    preferred = str(context.get("preferredLanguage") or "auto").strip().lower()
-    if preferred and preferred not in {"auto", "unknown", "mixed"}:
-        name = TRANSCRIPTION_LANGUAGE_NAMES.get(preferred, preferred)
-        return f"Write the output in {name} using its native script. Do not translate into another language and do not romanize."
-    return (
-        "Write the output in the same language and script as the source material; never translate it "
-        "and never romanize Persian/Farsi into Latin."
-    )
 
 
 def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
@@ -588,168 +469,6 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
             f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )
     )
-
-
-def gateway_settings_for(task: str) -> tuple[str, str, str]:
-    """Resolve (base_url, api_key, model) for an AI task, falling back to the transcription gateway.
-
-    `task` is one of `transcription`, `caption`, `patient_memory`, `report_synthesis`. A blank
-    per-task override falls back to the shared `transcription_*` setting, so a single
-    OpenAI-compatible gateway only needs the per-task `*_model` set, while a separate provider per
-    task can also override base_url/api_key.
-    """
-    base_url = (getattr(settings, f"{task}_base_url", "") or settings.transcription_base_url).strip()
-    api_key = getattr(settings, f"{task}_api_key", "") or settings.transcription_api_key
-    model = getattr(settings, f"{task}_model", "") or settings.transcription_model
-    return base_url, api_key, model
-
-
-# --- Real AI-usage metering ---------------------------------------------------
-#
-# Every gateway call returns an OpenAI-style `usage` block; the worker used to discard it. We now
-# capture it per job so the backend can meter REAL spend (never lose money on a plan). A ContextVar
-# sink is armed for the duration of one job (see tasks.run_task_with_retries); the metered client
-# below appends one record per gateway call, and BackendClient.complete_job ships the records with
-# the completion callback. `report_synthesis`/`transcription` etc. are the task labels the backend's
-# pricing table keys on. Audio is priced per-minute, so transcription records also carry audioSeconds.
-_usage_sink: "contextvars.ContextVar[list[dict[str, Any]] | None]" = contextvars.ContextVar(
-    "engram_ai_usage_sink", default=None
-)
-_pending_audio_seconds: "contextvars.ContextVar[float | None]" = contextvars.ContextVar(
-    "engram_ai_audio_seconds", default=None
-)
-
-
-def arm_usage_sink() -> "contextvars.Token":
-    """Start collecting per-call gateway usage for the current job. Returns a reset token."""
-    return _usage_sink.set([])
-
-
-def drain_usage_sink() -> list[dict[str, Any]]:
-    """Return the usage records collected since the sink was armed (empty if none)."""
-    sink = _usage_sink.get()
-    return list(sink) if sink else []
-
-
-def set_pending_audio_seconds(seconds: float | None) -> None:
-    """Record the audio duration for the NEXT transcription call (priced per-minute)."""
-    _pending_audio_seconds.set(seconds)
-
-
-def _record_gateway_usage(task: str, model: str | None, response: Any) -> None:
-    sink = _usage_sink.get()
-    if sink is None:
-        return
-    usage = getattr(response, "usage", None)
-    record: dict[str, Any] = {
-        "task": task,
-        "model": model,
-        "promptTokens": int(getattr(usage, "prompt_tokens", 0) or 0),
-        "completionTokens": int(getattr(usage, "completion_tokens", 0) or 0),
-    }
-    audio_seconds = _pending_audio_seconds.get()
-    if audio_seconds is not None:
-        record["audioSeconds"] = float(audio_seconds)
-        _pending_audio_seconds.set(None)
-    sink.append(record)
-
-
-class _MeteredCompletions:
-    def __init__(self, inner: Any, task: str) -> None:
-        self._inner = inner
-        self._task = task
-
-    def create(self, *args: Any, **kwargs: Any) -> Any:
-        response = self._inner.create(*args, **kwargs)
-        try:
-            _record_gateway_usage(self._task, kwargs.get("model"), response)
-        except Exception:  # metering must never break a job
-            logger.debug("Failed to record gateway usage", exc_info=True)
-        return response
-
-
-class _MeteredChat:
-    def __init__(self, inner: Any, task: str) -> None:
-        self._inner = inner
-        self._task = task
-
-    @property
-    def completions(self) -> _MeteredCompletions:
-        return _MeteredCompletions(self._inner.completions, self._task)
-
-
-class _MeteredClient:
-    """Thin proxy over the OpenAI client that records `usage` for every chat completion."""
-
-    def __init__(self, inner: OpenAI, task: str) -> None:
-        self._inner = inner
-        self._task = task
-
-    @property
-    def chat(self) -> _MeteredChat:
-        return _MeteredChat(self._inner.chat, self._task)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._inner, name)
-
-
-def gateway_client(task: str) -> Any:
-    """Return a usage-metering OpenAI-compatible client for an AI task's resolved gateway."""
-    base_url, api_key, _ = gateway_settings_for(task)
-    inner = OpenAI(base_url=base_url, api_key=api_key, timeout=settings.transcription_timeout_seconds)
-    return _MeteredClient(inner, task)
-
-
-def resolve_model(task: str, ai_models: dict[str, Any] | None, *, override: str | None = None) -> str:
-    """Resolve the model id for a task: explicit override → live `aiModels` payload → env default.
-
-    The backend resolves the live per-task selection and passes it in the job payload's `aiModels`,
-    so a model change applies to the next request; a blank/absent value falls back to the worker env.
-    A task entry may be a bare model string (legacy) or a `{model, reasoningEffort}` object — the
-    richer shape carries the per-task quality knobs (see `resolve_reasoning_effort`).
-    """
-    if isinstance(override, str) and override.strip():
-        return override.strip()
-    if isinstance(ai_models, dict):
-        selected = ai_models.get(task)
-        if isinstance(selected, dict):
-            selected = selected.get("model")
-        if isinstance(selected, str) and selected.strip():
-            return selected.strip()
-    return gateway_settings_for(task)[2]
-
-
-def resolve_reasoning_effort(task: str, ai_models: dict[str, Any] | None, *, default: str | None = None) -> str | None:
-    """Resolve a task's reasoning effort from the live `aiModels` payload, else `default`.
-
-    Only the `{model, reasoningEffort}` task shape carries an effort; a bare model string has none.
-    GPT-5-class models take `reasoning_effort` instead of `temperature` (which they reject), so this
-    is the stability/quality knob for structured synthesis. Returns None to send no effort at all.
-    """
-    if isinstance(ai_models, dict):
-        selected = ai_models.get(task)
-        if isinstance(selected, dict):
-            effort = selected.get("reasoningEffort")
-            if isinstance(effort, str) and effort.strip():
-                return effort.strip()
-    return default
-
-
-def image_to_data_url(content: bytes, media_type: str | None) -> str:
-    """Base64-encode image bytes into an OpenAI-compatible data URL."""
-    mime = media_type if isinstance(media_type, str) and media_type.startswith("image/") else "image/jpeg"
-    return f"data:{mime};base64,{base64.b64encode(content).decode('ascii')}"
-
-
-# Persian (۰-۹) and Arabic-Indic (٠-٩) digits → Western/Latin 0-9. Quantification read off a photo
-# (lot/batch numbers, doses, dates) must be comparable across captures regardless of the caption's
-# language, so digits are normalized deterministically while the prose words stay untouched.
-_LATIN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
-
-
-def normalize_digits_to_latin(text: str) -> str:
-    """Convert Persian/Arabic-Indic digits to Western 0-9 (digit normalization, not romanizing words)."""
-    return text.translate(_LATIN_DIGITS)
 
 
 def normalize_caption_pairing(raw: Any) -> dict[str, Any]:
@@ -926,16 +645,6 @@ def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any])
     if isinstance(display, str) and display.strip() and display.strip() != (caption_result.get("caption") or "").strip():
         output["display"] = display
     return output
-
-
-def is_fixture_capture(capture: dict[str, Any]) -> bool:
-    """Return whether a capture maps to a deterministic QA fixture (skip real enrichment)."""
-    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
-    filename = str(metadata.get("original_filename") or "").strip()
-    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
-        return True
-    detail = " ".join(str(metadata.get("detail") or "").split())
-    return "Patient prefers subtle correction" in detail and "follow-up photo in 2 weeks" in detail
 
 
 def raw_note_text(capture: dict[str, Any]) -> str | None:
@@ -1461,110 +1170,6 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
             },
         },
     }
-
-
-class BackendClient:
-    """HTTP client for backend-owned AI job state."""
-
-    def __init__(self) -> None:
-        self.base_url = settings.backend_internal_url.rstrip("/")
-        self.headers = {"Authorization": f"Bearer {settings.internal_token}"}
-
-    def post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """POST JSON to an internal backend endpoint."""
-        response = httpx.post(
-            f"{self.base_url}{path}",
-            json=payload,
-            headers=self.headers,
-            timeout=settings.http_timeout_seconds,
-        )
-        response.raise_for_status()
-        return response.json()
-
-    def get_bytes(self, path: str) -> bytes:
-        """GET binary content from an internal backend endpoint."""
-        response = httpx.get(
-            f"{self.base_url}{path}",
-            headers=self.headers,
-            timeout=settings.http_timeout_seconds,
-        )
-        response.raise_for_status()
-        return response.content
-
-    def get_file(self, path: str) -> tuple[bytes, str]:
-        """GET binary content plus its content type from an internal backend endpoint."""
-        response = httpx.get(
-            f"{self.base_url}{path}",
-            headers=self.headers,
-            timeout=settings.http_timeout_seconds,
-        )
-        response.raise_for_status()
-        return response.content, response.headers.get("content-type", "")
-
-    def start_job(self, job_id: str, *, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:
-        """Mark a job running and fetch its input payload."""
-        return self.post(
-            f"/internal/ai/jobs/{job_id}/start",
-            {"celery_task_id": celery_task_id, "retry_count": retry_count},
-        )
-
-    def complete_job(self, job_id: str, *, output_key: str, output: dict[str, Any]) -> dict[str, Any]:
-        """Submit successful job output to the backend, with the real gateway usage for this job."""
-        return self.post(
-            f"/internal/ai/jobs/{job_id}/complete",
-            {"output_key": output_key, "output": output, "usage": drain_usage_sink()},
-        )
-
-    def progress_job(self, job_id: str, *, output_key: str, output: dict[str, Any], stage: str) -> dict[str, Any]:
-        """Submit partial job output to the backend."""
-        return self.post(
-            f"/internal/ai/jobs/{job_id}/progress",
-            {"output_key": output_key, "output": output, "stage": stage},
-        )
-
-    def retry_job(
-        self,
-        job_id: str,
-        *,
-        error_message: str,
-        celery_task_id: str | None,
-        retry_count: int,
-        retry_reason: str | None = None,
-    ) -> dict[str, Any]:
-        """Record a failed attempt before Celery retries."""
-        return self.post(
-            f"/internal/ai/jobs/{job_id}/retry",
-            {
-                "error_message": error_message,
-                "celery_task_id": celery_task_id,
-                "retry_count": retry_count,
-                "retry_reason": retry_reason,
-            },
-        )
-
-    def fail_job(
-        self,
-        job_id: str,
-        *,
-        error_message: str,
-        celery_task_id: str | None,
-        retry_count: int,
-        retry_reason: str | None = None,
-    ) -> dict[str, Any]:
-        """Record terminal job failure."""
-        return self.post(
-            f"/internal/ai/jobs/{job_id}/fail",
-            {
-                "error_message": error_message,
-                "celery_task_id": celery_task_id,
-                "retry_count": retry_count,
-                "retry_reason": retry_reason,
-            },
-        )
-
-    def recover_jobs(self) -> dict[str, Any]:
-        """Ask the backend to re-dispatch queued or retryable failed work."""
-        return self.post("/internal/ai/jobs/recover", {})
 
 
 def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry_count: int) -> None:

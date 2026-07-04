@@ -66,7 +66,7 @@ class StructuredTranscriptionTests(unittest.TestCase):
             parse_structured_transcription_output("transcript: not json")
 
     def test_missing_ffmpeg_raises_conversion_failure(self):
-        with patch("ai_engine.processing.subprocess.run", side_effect=FileNotFoundError("ffmpeg")):
+        with patch("ai_engine.core.media.subprocess.run", side_effect=FileNotFoundError("ffmpeg")):
             with self.assertRaisesRegex(RuntimeError, "Audio conversion to FLAC failed: ffmpeg"):
                 audio_to_flac_mono_16khz_base64(b"audio")
 
