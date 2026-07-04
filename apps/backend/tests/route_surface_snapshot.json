@@ -1,0 +1,1404 @@
+{
+  "openapi_paths": {
+    "/api/v1/aftercare-templates": {
+      "get": {
+        "operationId": "aftercare_templates_list_route_api_v1_aftercare_templates_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "aftercare_templates_create_route_api_v1_aftercare_templates_post",
+        "tags": []
+      }
+    },
+    "/api/v1/aftercare-templates/{template_id}": {
+      "delete": {
+        "operationId": "aftercare_templates_delete_route_api_v1_aftercare_templates__template_id__delete",
+        "tags": []
+      },
+      "get": {
+        "operationId": "aftercare_templates_get_route_api_v1_aftercare_templates__template_id__get",
+        "tags": []
+      },
+      "patch": {
+        "operationId": "aftercare_templates_update_route_api_v1_aftercare_templates__template_id__patch",
+        "tags": []
+      }
+    },
+    "/api/v1/ai-config/models": {
+      "get": {
+        "operationId": "get_ai_models_route_api_v1_ai_config_models_get",
+        "tags": []
+      },
+      "put": {
+        "operationId": "update_ai_models_route_api_v1_ai_config_models_put",
+        "tags": []
+      }
+    },
+    "/api/v1/ai-jobs/recover": {
+      "post": {
+        "operationId": "recover_ai_jobs_route_api_v1_ai_jobs_recover_post",
+        "tags": []
+      }
+    },
+    "/api/v1/ai-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_ai_job_route_api_v1_ai_jobs__job_id__get",
+        "tags": []
+      }
+    },
+    "/api/v1/ai-usage": {
+      "get": {
+        "operationId": "get_ai_usage_route_api_v1_ai_usage_get",
+        "tags": []
+      }
+    },
+    "/api/v1/ai-usage/dev/set": {
+      "post": {
+        "operationId": "set_ai_usage_dev_route_api_v1_ai_usage_dev_set_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/dev-login": {
+      "post": {
+        "operationId": "auth_dev_login_api_v1_auth_dev_login_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "auth_login_api_v1_auth_login_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "auth_logout_api_v1_auth_logout_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "auth_refresh_api_v1_auth_refresh_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "auth_register_api_v1_auth_register_post",
+        "tags": []
+      }
+    },
+    "/api/v1/auth/switch-tenant": {
+      "post": {
+        "operationId": "auth_switch_tenant_api_v1_auth_switch_tenant_post",
+        "tags": []
+      }
+    },
+    "/api/v1/captures": {
+      "post": {
+        "operationId": "upload_capture_api_v1_captures_post",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}": {
+      "delete": {
+        "operationId": "delete_capture_route_api_v1_captures__capture_id__delete",
+        "tags": []
+      },
+      "get": {
+        "operationId": "get_capture_route_api_v1_captures__capture_id__get",
+        "tags": []
+      },
+      "patch": {
+        "operationId": "update_capture_route_api_v1_captures__capture_id__patch",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}/assign-patient": {
+      "post": {
+        "operationId": "assign_capture_patient_route_api_v1_captures__capture_id__assign_patient_post",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}/file": {
+      "get": {
+        "operationId": "get_capture_file_url_api_v1_captures__capture_id__file_get",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}/file-content": {
+      "get": {
+        "operationId": "get_capture_file_content_api_v1_captures__capture_id__file_content_get",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}/metadata": {
+      "get": {
+        "operationId": "get_capture_metadata_route_api_v1_captures__capture_id__metadata_get",
+        "tags": []
+      }
+    },
+    "/api/v1/captures/{capture_id}/retry-processing": {
+      "post": {
+        "operationId": "retry_capture_processing_route_api_v1_captures__capture_id__retry_processing_post",
+        "tags": []
+      }
+    },
+    "/api/v1/clinic/members": {
+      "get": {
+        "operationId": "clinic_members_route_api_v1_clinic_members_get",
+        "tags": []
+      }
+    },
+    "/api/v1/clinic/plan": {
+      "patch": {
+        "operationId": "clinic_plan_route_api_v1_clinic_plan_patch",
+        "tags": []
+      }
+    },
+    "/api/v1/clinic/team": {
+      "get": {
+        "operationId": "team_list_route_api_v1_clinic_team_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "team_create_route_api_v1_clinic_team_post",
+        "tags": []
+      }
+    },
+    "/api/v1/clinic/team/{user_id}": {
+      "patch": {
+        "operationId": "team_update_route_api_v1_clinic_team__user_id__patch",
+        "tags": []
+      }
+    },
+    "/api/v1/feedback": {
+      "get": {
+        "operationId": "list_feedback_route_api_v1_feedback_get",
+        "tags": [
+          "feedback"
+        ]
+      },
+      "post": {
+        "operationId": "create_feedback_route_api_v1_feedback_post",
+        "tags": [
+          "feedback"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health_check_api_v1_health_get",
+        "tags": []
+      }
+    },
+    "/api/v1/insights/overview": {
+      "get": {
+        "operationId": "overview_api_v1_insights_overview_get",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/api/v1/insights/patients": {
+      "get": {
+        "operationId": "patients_api_v1_insights_patients_get",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/api/v1/insights/team": {
+      "get": {
+        "operationId": "team_api_v1_insights_team_get",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/api/v1/insights/treatments": {
+      "get": {
+        "operationId": "treatments_api_v1_insights_treatments_get",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/api/v1/lot-ledger": {
+      "get": {
+        "operationId": "lot_ledger_api_v1_lot_ledger_get",
+        "tags": [
+          "smart-lists"
+        ]
+      }
+    },
+    "/api/v1/lot-recall": {
+      "get": {
+        "operationId": "lot_recall_api_v1_lot_recall_get",
+        "tags": [
+          "smart-lists"
+        ]
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "get_me_api_v1_me_get",
+        "tags": []
+      }
+    },
+    "/api/v1/patient-memory": {
+      "get": {
+        "operationId": "patient_memory_list_route_api_v1_patient_memory_get",
+        "tags": []
+      }
+    },
+    "/api/v1/patient-qa/inbox": {
+      "get": {
+        "operationId": "qa_inbox_api_v1_patient_qa_inbox_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/messages/{message_id}/dismiss": {
+      "post": {
+        "operationId": "qa_dismiss_api_v1_patient_qa_messages__message_id__dismiss_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/messages/{message_id}/draft": {
+      "get": {
+        "operationId": "qa_message_draft_api_v1_patient_qa_messages__message_id__draft_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/messages/{message_id}/send": {
+      "post": {
+        "operationId": "qa_send_reply_api_v1_patient_qa_messages__message_id__send_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/messages/{message_id}/voice-edit": {
+      "post": {
+        "operationId": "qa_voice_edit_api_v1_patient_qa_messages__message_id__voice_edit_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/patients/{patient_id}/treating-doctors": {
+      "get": {
+        "operationId": "qa_treating_doctors_api_v1_patient_qa_patients__patient_id__treating_doctors_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/settings": {
+      "get": {
+        "operationId": "qa_get_settings_api_v1_patient_qa_settings_get",
+        "tags": [
+          "patient-qa"
+        ]
+      },
+      "patch": {
+        "operationId": "qa_update_settings_api_v1_patient_qa_settings_patch",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/threads": {
+      "get": {
+        "operationId": "qa_list_threads_api_v1_patient_qa_threads_get",
+        "tags": [
+          "patient-qa"
+        ]
+      },
+      "post": {
+        "operationId": "qa_create_thread_api_v1_patient_qa_threads_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/threads/{thread_id}": {
+      "get": {
+        "operationId": "qa_thread_detail_api_v1_patient_qa_threads__thread_id__get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/threads/{thread_id}/revoke": {
+      "post": {
+        "operationId": "qa_revoke_thread_api_v1_patient_qa_threads__thread_id__revoke_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/threads/{thread_id}/route": {
+      "post": {
+        "operationId": "qa_route_thread_api_v1_patient_qa_threads__thread_id__route_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-shares": {
+      "get": {
+        "operationId": "patient_shares_list_route_api_v1_patient_shares_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "patient_shares_create_route_api_v1_patient_shares_post",
+        "tags": []
+      }
+    },
+    "/api/v1/patient-shares/{share_id}": {
+      "get": {
+        "operationId": "patient_shares_get_route_api_v1_patient_shares__share_id__get",
+        "tags": []
+      }
+    },
+    "/api/v1/patient-shares/{share_id}/revoke": {
+      "post": {
+        "operationId": "patient_shares_revoke_route_api_v1_patient_shares__share_id__revoke_post",
+        "tags": []
+      }
+    },
+    "/api/v1/patients": {
+      "get": {
+        "operationId": "patients_search_api_v1_patients_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "patients_create_api_v1_patients_post",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/duplicate-check": {
+      "post": {
+        "operationId": "patients_duplicate_check_api_v1_patients_duplicate_check_post",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/search": {
+      "get": {
+        "operationId": "patients_smart_search_api_v1_patients_search_get",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/{patient_id}": {
+      "get": {
+        "operationId": "patients_get_api_v1_patients__patient_id__get",
+        "tags": []
+      },
+      "patch": {
+        "operationId": "patients_update_api_v1_patients__patient_id__patch",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/{patient_id}/last-visit": {
+      "get": {
+        "operationId": "patients_last_visit_api_v1_patients__patient_id__last_visit_get",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/{patient_id}/memory": {
+      "get": {
+        "operationId": "patients_memory_get_api_v1_patients__patient_id__memory_get",
+        "tags": []
+      }
+    },
+    "/api/v1/patients/{patient_id}/session-context": {
+      "get": {
+        "operationId": "patients_session_context_api_v1_patients__patient_id__session_context_get",
+        "tags": []
+      }
+    },
+    "/api/v1/qa/{token}": {
+      "get": {
+        "operationId": "qa_public_thread_api_v1_qa__token__get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/qa/{token}/ask": {
+      "post": {
+        "operationId": "qa_public_ask_api_v1_qa__token__ask_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/sessions": {
+      "get": {
+        "operationId": "get_sessions_api_v1_sessions_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "create_session_route_api_v1_sessions_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "get": {
+        "operationId": "get_session_route_api_v1_sessions__session_id__get",
+        "tags": []
+      },
+      "patch": {
+        "operationId": "update_session_route_api_v1_sessions__session_id__patch",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/aftercare-dismissal": {
+      "post": {
+        "operationId": "set_aftercare_dismissal_route_api_v1_sessions__session_id__aftercare_dismissal_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/ai-jobs": {
+      "get": {
+        "operationId": "list_session_ai_jobs_route_api_v1_sessions__session_id__ai_jobs_get",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/artifacts": {
+      "get": {
+        "operationId": "list_session_artifacts_route_api_v1_sessions__session_id__artifacts_get",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/assign-patient": {
+      "post": {
+        "operationId": "assign_session_patient_route_api_v1_sessions__session_id__assign_patient_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/assignment-suggestion": {
+      "get": {
+        "operationId": "session_assignment_suggestion_route_api_v1_sessions__session_id__assignment_suggestion_get",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/captures": {
+      "get": {
+        "operationId": "list_session_captures_route_api_v1_sessions__session_id__captures_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "upload_session_capture_api_v1_sessions__session_id__captures_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/confirm-carried-forward": {
+      "post": {
+        "operationId": "confirm_carried_forward_route_api_v1_sessions__session_id__confirm_carried_forward_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/retry-processing": {
+      "post": {
+        "operationId": "retry_session_processing_route_api_v1_sessions__session_id__retry_processing_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/safety-flag-rejection": {
+      "post": {
+        "operationId": "set_safety_flag_rejection_route_api_v1_sessions__session_id__safety_flag_rejection_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/save": {
+      "post": {
+        "operationId": "save_session_route_api_v1_sessions__session_id__save_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/start-review": {
+      "post": {
+        "operationId": "start_review_route_api_v1_sessions__session_id__start_review_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/therapy/format": {
+      "post": {
+        "operationId": "therapy_set_format_route_api_v1_sessions__session_id__therapy_format_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/therapy/reflections": {
+      "post": {
+        "operationId": "therapy_reflections_route_api_v1_sessions__session_id__therapy_reflections_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/therapy/release": {
+      "post": {
+        "operationId": "therapy_release_route_api_v1_sessions__session_id__therapy_release_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/therapy/risk": {
+      "post": {
+        "operationId": "therapy_risk_route_api_v1_sessions__session_id__therapy_risk_post",
+        "tags": []
+      }
+    },
+    "/api/v1/share/{token}": {
+      "get": {
+        "operationId": "public_share_route_api_v1_share__token__get",
+        "tags": []
+      }
+    },
+    "/api/v1/share/{token}/media/{capture_id}": {
+      "get": {
+        "operationId": "public_share_media_route_api_v1_share__token__media__capture_id__get",
+        "tags": []
+      }
+    },
+    "/api/v1/smart-lists": {
+      "get": {
+        "operationId": "smart_lists_counts_api_v1_smart_lists_get",
+        "tags": [
+          "smart-lists"
+        ]
+      }
+    },
+    "/api/v1/smart-lists/{key}": {
+      "get": {
+        "operationId": "smart_list_rows_api_v1_smart_lists__key__get",
+        "tags": [
+          "smart-lists"
+        ]
+      }
+    },
+    "/api/v1/tenant/settings": {
+      "patch": {
+        "operationId": "update_tenant_settings_route_api_v1_tenant_settings_patch",
+        "tags": []
+      }
+    },
+    "/api/v1/worklist": {
+      "get": {
+        "operationId": "list_worklist_route_api_v1_worklist_get",
+        "tags": []
+      },
+      "post": {
+        "operationId": "create_worklist_route_api_v1_worklist_post",
+        "tags": []
+      }
+    },
+    "/api/v1/worklist/{entry_id}": {
+      "delete": {
+        "operationId": "cancel_worklist_entry_route_api_v1_worklist__entry_id__delete",
+        "tags": []
+      }
+    },
+    "/api/v1/worklist/{entry_id}/seen": {
+      "post": {
+        "operationId": "worklist_entry_seen_route_api_v1_worklist__entry_id__seen_post",
+        "tags": []
+      }
+    }
+  },
+  "routes": [
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/aftercare-templates"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/aftercare-templates"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/api/v1/aftercare-templates/{template_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/aftercare-templates/{template_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/aftercare-templates/{template_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/ai-config/models"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PUT"
+      ],
+      "path": "/api/v1/ai-config/models"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/ai-jobs/recover"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/ai-jobs/{job_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/ai-usage"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/ai-usage/dev/set"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/dev-login"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/login"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/logout"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/register"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/auth/switch-tenant"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/captures"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/api/v1/captures/{capture_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/captures/{capture_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/captures/{capture_id}/assign-patient"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}/file"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}/file-content"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}/metadata"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/captures/{capture_id}/retry-processing"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/clinic/members"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/clinic/plan"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/clinic/team"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/clinic/team"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/clinic/team/{user_id}"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "path": "/api/v1/docs"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/feedback"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/feedback"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/health"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/insights/overview"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/insights/patients"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/insights/team"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/insights/treatments"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/lot-ledger"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/lot-recall"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/me"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "path": "/api/v1/openapi.json"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-memory"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/inbox"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/messages/{message_id}/dismiss"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/messages/{message_id}/draft"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/messages/{message_id}/send"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/messages/{message_id}/voice-edit"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/patients/{patient_id}/treating-doctors"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/settings"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/patient-qa/settings"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/threads"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/threads"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/threads/{thread_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/threads/{thread_id}/revoke"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/threads/{thread_id}/route"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-shares"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-shares"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-shares/{share_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-shares/{share_id}/revoke"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patients"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patients/duplicate-check"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients/search"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients/{patient_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/patients/{patient_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients/{patient_id}/last-visit"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients/{patient_id}/memory"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patients/{patient_id}/session-context"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/qa/{token}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/qa/{token}/ask"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "path": "/api/v1/redoc"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/sessions/{session_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/aftercare-dismissal"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/ai-jobs"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/artifacts"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/assign-patient"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/assignment-suggestion"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/captures"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/captures"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/confirm-carried-forward"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/retry-processing"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/safety-flag-rejection"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/save"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/start-review"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/therapy/format"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/therapy/reflections"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/therapy/release"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/therapy/risk"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/share/{token}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/share/{token}/media/{capture_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/smart-lists"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/smart-lists/{key}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/tenant/settings"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/worklist"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/worklist"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/api/v1/worklist/{entry_id}"
+    },
+    {
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/worklist/{entry_id}/seen"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "path": "/docs/oauth2-redirect"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/recover"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/{job_id}/complete"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/{job_id}/fail"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/{job_id}/progress"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/{job_id}/retry"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "POST"
+      ],
+      "path": "/internal/ai/jobs/{job_id}/start"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET"
+      ],
+      "path": "/internal/captures/{capture_id}/file-content"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET"
+      ],
+      "path": "/internal/qa/voice/{job_id}"
+    },
+    {
+      "in_schema": false,
+      "methods": [
+        "GET"
+      ],
+      "path": "/metrics"
+    }
+  ]
+}
