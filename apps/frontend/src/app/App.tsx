@@ -1,7 +1,6 @@
 import React from "react";
 import { flushSync } from "react-dom";
 import type {
-  ApiFetch,
   AftercareTemplate,
   AuthSession,
   CaptureDraft,
@@ -148,6 +147,7 @@ import {
   PROCESSING_REFRESH_DELAYS,
   resolveRestoredSession,
 } from "./sessionState";
+import { ApiProvider, useApi, useRegisterAuthBridge } from "./providers/ApiProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
 // reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
@@ -165,7 +165,8 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
   return session.items.some((item) => item.status === "uploaded" || item.status === "processing" || item.status === "uploading");
 }
 
-export function App() {
+function AppInner() {
+  const apiFetch = useApi();
   const [auth, setAuth] = React.useState<AuthSession | null>(null);
   // App-wide UI language, date/Jalali formatting, and document direction are all driven from the
   // tenant's APP language (distinct from report language, which scopes only report/share content) by
@@ -182,7 +183,6 @@ export function App() {
     (key, vars) => translate(toLang(authRef.current?.tenant.appLanguage), key, vars),
     [],
   );
-  const refreshPromiseRef = React.useRef<Promise<string> | null>(null);
   const bootstrappedAuthRef = React.useRef(false);
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
@@ -266,51 +266,27 @@ export function App() {
     setAuthError("");
   }, []);
 
-  const refreshAccessToken = React.useCallback(async () => {
+  // Auth bridge for ApiProvider (seam A1): how apiFetch reads the current token and performs the
+  // single token refresh (commit on success, clear on failure). The single-flight coalescing lives in
+  // ApiProvider; this just does the work once per call.
+  const refreshTokens = React.useCallback(async () => {
     const currentAuth = authRef.current;
     if (!currentAuth) throw new Error("No auth session");
-    if (!refreshPromiseRef.current) {
-      refreshPromiseRef.current = refreshAuthToken(currentAuth.refreshToken)
-        .then((tokens) => {
-          const refreshed = { ...currentAuth, ...tokens };
-          commitAuth(refreshed);
-          return refreshed.accessToken;
-        })
-        .catch((error) => {
-          clearAuth();
-          throw error;
-        })
-        .finally(() => {
-          refreshPromiseRef.current = null;
-        });
+    try {
+      const tokens = await refreshAuthToken(currentAuth.refreshToken);
+      const refreshed = { ...currentAuth, ...tokens };
+      commitAuth(refreshed);
+      return refreshed.accessToken;
+    } catch (error) {
+      clearAuth();
+      throw error;
     }
-    return refreshPromiseRef.current;
   }, [clearAuth, commitAuth]);
 
-  /**
-   * Adds the current bearer token to API requests and performs a single token
-   * refresh/retry when the backend responds with 401.
-   */
-  const apiFetch = React.useCallback<ApiFetch>(
-    async (input, init = {}) => {
-      const token = authRef.current?.accessToken;
-      const headers = new Headers(init.headers);
-      if (token) headers.set("Authorization", `Bearer ${token}`);
-
-      const response = await fetch(input, { ...init, headers });
-      if (response.status !== 401) return response;
-
-      try {
-        const nextToken = await refreshAccessToken();
-        const retryHeaders = new Headers(init.headers);
-        retryHeaders.set("Authorization", `Bearer ${nextToken}`);
-        return await fetch(input, { ...init, headers: retryHeaders });
-      } catch {
-        return response;
-      }
-    },
-    [refreshAccessToken],
-  );
+  useRegisterAuthBridge({
+    getAccessToken: () => authRef.current?.accessToken,
+    refreshTokens,
+  });
 
   // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
   // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
@@ -2491,6 +2467,17 @@ export function App() {
       <Toast message={toast} />
       </>
     </AppLangProvider>
+  );
+}
+
+// Composition root (frontend-refactor plan §2). Assembles the shared-infrastructure provider seams
+// around the app body. Increment 1 mounts ApiProvider (seam A1); later increments add Auth,
+// Capabilities, Sync, and the session store here as they are extracted from AppInner.
+export function App() {
+  return (
+    <ApiProvider>
+      <AppInner />
+    </ApiProvider>
   );
 }
 
