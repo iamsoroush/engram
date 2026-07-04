@@ -9,6 +9,17 @@ previousVisitDate.setDate(now.getDate() - 42);
 const previousVisitDateLabel = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(previousVisitDate);
 
 test.beforeEach(async ({ page }) => {
+  // Catch-all FIRST (lowest Playwright priority — later routes win): any unmocked /api/v1/** call
+  // returns an empty 200 instead of failing into offline/self-heal states. These specs predate
+  // worklist/ai-usage/preview endpoints; without this, whichever unmocked fetch loses the race
+  // flips the app state and a random test in this file times out (the exact flake _setup.ts:51
+  // documents for the hermetic suite). Specific routes below override per-endpoint.
+  await page.route("**/api/v1/**", async (route) => {
+    const url = route.request().url();
+    const body = /\/(inbox|members|threads|treating-doctors|worklist)/.test(url) ? { items: [], total: 0 } : {};
+    await route.fulfill({ contentType: "application/json", json: body });
+  });
+
   await page.route("**/api/v1/auth/dev-login", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -36,6 +47,28 @@ test.beforeEach(async ({ page }) => {
       json: {
         accessToken: "visual-access-token-refreshed",
         refreshToken: "visual-refresh-token-refreshed",
+      },
+    });
+  });
+
+  // The goto("/#patients") after login is a full reload; bootstrap restores the user via /me.
+  // Without this mock the catch-all answers {} and the app falls back to the landing page —
+  // the source of the one-random-test-per-run timeout this file was known for.
+  await page.route("**/api/v1/me", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        user: {
+          id: "doctor-visual",
+          email: "doctor@example.test",
+          displayName: "Doctor Demo",
+          persona: "doctor",
+        },
+        tenant: {
+          id: "tenant-visual",
+          name: "Engram Visual Clinic",
+        },
+        memberships: [{ tenantId: "tenant-visual", role: "doctor" }],
       },
     });
   });
@@ -126,7 +159,9 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#patients");
+  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
+  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
+  await page.getByRole("button", { name: "Memory" }).click();
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Active visit" })).toBeVisible();
@@ -163,7 +198,9 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#patients");
+  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
+  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
+  await page.getByRole("button", { name: "Memory" }).click();
   await page.getByRole("tab", { name: "Patients" }).click();
 
   await expect(page.getByRole("heading", { name: "Soroush" })).toBeVisible();
@@ -186,7 +223,9 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#patients");
+  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
+  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
+  await page.getByRole("button", { name: "Memory" }).click();
   await page.getByRole("tab", { name: "Needs input" }).click();
 
   await expect(page.getByText("A few things need your judgment to keep memory accurate and useful.")).toBeVisible();
@@ -226,7 +265,9 @@ test("Assign patient opens a focused resolver and updates memory state", async (
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#patients");
+  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
+  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
+  await page.getByRole("button", { name: "Memory" }).click();
 
   await page.getByRole("button", { name: "Assign patient", exact: true }).click();
   const resolver = page.getByRole("dialog", { name: "Assign patient" });
@@ -255,7 +296,9 @@ test("Choose patient resolves an uncertain patient match without opening the vis
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#patients");
+  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
+  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
+  await page.getByRole("button", { name: "Memory" }).click();
   await page.getByRole("tab", { name: "Needs input" }).click();
 
   await page.getByRole("button", { name: "Choose patient", exact: true }).click();
