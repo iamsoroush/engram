@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from ai_engine.config import settings
+from ai_engine.core.errors import SourceMissing
 from ai_engine.core.gateway import drain_usage_sink
 
 
@@ -30,6 +31,12 @@ class BackendClient:
         response.raise_for_status()
         return response.json()
 
+    def _raise_for_file(self, response: httpx.Response, path: str) -> None:
+        """Raise for a file fetch — a 404 is a missing source artifact (not a generic worker error)."""
+        if response.status_code == 404:
+            raise SourceMissing(f"Source file is missing: {path}")
+        response.raise_for_status()
+
     def get_bytes(self, path: str) -> bytes:
         """GET binary content from an internal backend endpoint."""
         response = httpx.get(
@@ -37,7 +44,7 @@ class BackendClient:
             headers=self.headers,
             timeout=settings.http_timeout_seconds,
         )
-        response.raise_for_status()
+        self._raise_for_file(response, path)
         return response.content
 
     def get_file(self, path: str) -> tuple[bytes, str]:
@@ -47,7 +54,7 @@ class BackendClient:
             headers=self.headers,
             timeout=settings.http_timeout_seconds,
         )
-        response.raise_for_status()
+        self._raise_for_file(response, path)
         return response.content, response.headers.get("content-type", "")
 
     def start_job(self, job_id: str, *, celery_task_id: str | None, retry_count: int) -> dict[str, Any]:

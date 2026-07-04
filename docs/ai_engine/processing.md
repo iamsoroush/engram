@@ -327,9 +327,15 @@ prompts. See the [README caution](README.md#caution-ai-jobs-must-be-vertical-agn
 ## Retry + recovery
 
 If a worker attempt raises, the task logs the exception, stores the last error + retry reason on the
-job row (`source_missing`, `conversion_failed`, `gateway_unavailable`, `worker_error`), and lets
-Celery perform its bounded local retry; the backend also stores `next_retry_at` with bounded backoff.
-After Celery retries are exhausted, retryable jobs remain durable `failed` rows.
+job row, and lets Celery perform its bounded local retry; the backend also stores `next_retry_at` with
+bounded backoff. After Celery retries are exhausted, retryable jobs remain durable `failed` rows.
+
+The reason is **type-based** (`ai_engine/core/errors.py`): each failure is raised at the seam that
+knows the cause as a typed `WorkerError` subclass — `SourceMissing` (`source_missing`; backend file
+404 / missing content), `ConversionFailed` (`conversion_failed`; ffmpeg), `GatewayUnavailable`
+(`gateway_unavailable`; gateway transport / not configured), `InvalidOutput` (`invalid_output`; model
+returned malformed/unusable output — separates model failures from gateway outages), else
+`worker_error`. `retry_reason_for_exception` maps type → code exhaustively (no substring matching).
 
 AI jobs are durable backend rows: queued jobs, retryable failed jobs whose `next_retry_at` has
 arrived, and stale running jobs are re-dispatched after broker or worker downtime. Recovery runs

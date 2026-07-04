@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_engine.core.errors import InvalidOutput
 from ai_engine.core.text import normalize_digits_to_latin
 from ai_engine.core.util import clamp_confidence
 
@@ -136,8 +137,9 @@ def normalize_intents(raw: Any) -> dict[str, Any] | None:
 def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     """Parse and validate strict structured transcription JSON into the capture-intelligence contract.
 
-    Raises ``RuntimeError`` (retryable) on malformed/missing required content — the transcript and
-    patient_information object are required; everything else degrades to a null/empty default.
+    Raises ``InvalidOutput`` (retryable → ``invalid_output``) on malformed/missing required content —
+    the transcript and patient_information object are required; everything else degrades to a null/empty
+    default.
     """
     text = raw_text.strip()
     fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
@@ -146,13 +148,13 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Audio transcription returned malformed structured JSON") from exc
+        raise InvalidOutput("Audio transcription returned malformed structured JSON") from exc
     if not isinstance(parsed, dict):
-        raise RuntimeError("Audio transcription returned non-object structured JSON")
+        raise InvalidOutput("Audio transcription returned non-object structured JSON")
 
     transcript = parsed.get("transcript")
     if not isinstance(transcript, str) or not transcript.strip():
-        raise RuntimeError("Audio transcription structured JSON is missing transcript")
+        raise InvalidOutput("Audio transcription structured JSON is missing transcript")
     # Normalize spoken numbers (doses, national IDs, phones, dates) to Western/Latin digits so all
     # extracted quantification is comparable regardless of the spoken language. Prose words stay original.
     transcript = normalize_digits_to_latin(transcript.strip())
@@ -161,7 +163,7 @@ def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
         language = "unknown"
     patient_information = parsed.get("patient_information")
     if not isinstance(patient_information, dict):
-        raise RuntimeError("Audio transcription structured JSON is missing patient_information")
+        raise InvalidOutput("Audio transcription structured JSON is missing patient_information")
 
     normalized_patient = empty_patient_information(source_text=transcript)
     for field in PATIENT_INFORMATION_FIELDS:

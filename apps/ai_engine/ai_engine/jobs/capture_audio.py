@@ -7,6 +7,7 @@ capture raises so the backend can retry. Vertical-agnostic via the domain descri
 """
 from typing import Any
 
+from ai_engine.core.errors import GatewayUnavailable, InvalidOutput, SourceMissing
 from ai_engine.core.fixtures import TEST_CAPTURE_TEXT_BY_FILENAME
 from ai_engine.core.gateway import (
     gateway_client,
@@ -76,7 +77,7 @@ def transcribe_audio_content(
     )
     text = response.choices[0].message.content
     if not text or not text.strip():
-        raise RuntimeError("Audio transcription returned empty text")
+        raise InvalidOutput("Audio transcription returned empty text")
     return parse_structured_transcription_output(text)
 
 
@@ -95,10 +96,10 @@ def completed_audio_metadata(
         structured = structured_transcription_from_text(TEST_CAPTURE_TEXT_BY_FILENAME[filename])
     elif transcription_is_configured():
         if content is None:
-            raise RuntimeError("Audio capture source file is missing")
+            raise SourceMissing("Audio capture source file is missing")
         structured = transcribe_audio_content(content, transcription_context, model=model)
     else:
-        raise RuntimeError("Audio transcription gateway is not configured")
+        raise GatewayUnavailable("Audio transcription gateway is not configured")
     text = structured["transcript"]
     patient_information = structured["patient_information"]
 

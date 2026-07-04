@@ -7,6 +7,7 @@ can all use it without an import cycle.
 """
 from typing import Any, Literal, NotRequired, TypedDict
 
+from ai_engine.core.errors import GatewayUnavailable
 from ai_engine.core.fixtures import TEST_CAPTURE_TEXT_BY_FILENAME
 from ai_engine.core.util import utc_now
 
@@ -89,7 +90,7 @@ def placeholder_text_for_capture(capture: dict[str, Any]) -> str:
     detail = str(metadata.get("detail") or "").strip()
     capture_type = capture.get("type")
     if capture_type == "audio":
-        raise RuntimeError("Audio transcription gateway is not configured")
+        raise GatewayUnavailable("Audio transcription gateway is not configured")
     if capture_type == "photo":
         return "Caption placeholder. Image capture processing completed successfully."
     if detail:

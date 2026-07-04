@@ -2,10 +2,10 @@ import logging
 
 from celery.signals import worker_ready
 from celery.exceptions import MaxRetriesExceededError
-import httpx
 
 from ai_engine.celery_app import celery_app
 from ai_engine.config import settings
+from ai_engine.core.errors import retry_reason_for_exception  # noqa: F401 — re-exported for tests
 from ai_engine.processing import (
     BackendClient,
     arm_usage_sink,
@@ -33,27 +33,6 @@ def recover_pending_ai_jobs() -> None:
         logger.info("Requested AI job recovery", extra={"result": result})
     except Exception:
         logger.exception("Failed to request AI job recovery")
-
-
-def retry_reason_for_exception(exc: Exception) -> str:
-    """Map worker exceptions to backend retry reason codes."""
-    message = str(exc).lower()
-    if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 404:
-        return "source_missing"
-    if "source file is missing" in message:
-        return "source_missing"
-    if "conversion to flac failed" in message or "ffmpeg" in message:
-        return "conversion_failed"
-    if (
-        isinstance(exc, (httpx.ConnectError, httpx.TimeoutException))
-        or "transcription" in message
-        or "openai" in message
-        or "timeout" in message
-        or "connection" in message
-        or "rate limit" in message
-    ):
-        return "gateway_unavailable"
-    return "worker_error"
 
 
 def run_task_with_retries(task, job_id: str, runner, label: str) -> None:

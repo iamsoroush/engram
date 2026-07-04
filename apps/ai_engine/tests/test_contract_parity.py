@@ -45,11 +45,17 @@ def _strip_volatile(value):
 
 
 def _capture(fn, *args, **kwargs):
-    """Run a parser, returning its stripped output or a ``{__raises__}`` sentinel — mirrors capture."""
+    """Run a parser, returning its stripped output or a ``{__raises__}`` sentinel — mirrors capture.
+
+    RuntimeError subclasses canonicalize to ``RuntimeError`` so the §3.6 exception refinement
+    (RuntimeError → InvalidOutput, same message, still a RuntimeError) reads as behavior-preserving at
+    the parse-contract level — the invariant is "raises a retryable RuntimeError with this message".
+    """
     try:
         return _strip_volatile(fn(*args, **kwargs))
     except Exception as exc:  # noqa: BLE001 — parity pins raise-behavior too
-        return {"__raises__": f"{type(exc).__name__}: {exc}"}
+        name = "RuntimeError" if isinstance(exc, RuntimeError) else type(exc).__name__
+        return {"__raises__": f"{name}: {exc}"}
 
 
 class ContractParityTests(unittest.TestCase):

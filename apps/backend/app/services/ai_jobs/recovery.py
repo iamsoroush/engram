@@ -42,6 +42,11 @@ def classify_retry_reason(error_message: str) -> str:
         return "source_missing"
     if "conversion to flac failed" in normalized or "ffmpeg" in normalized:
         return "conversion_failed"
+    # Model returned malformed/unusable output (worker raises InvalidOutput). Kept BEFORE the gateway
+    # branch so "malformed … transcription …" is not misread as an availability problem. The worker now
+    # supplies retry_reason=invalid_output directly; this fallback classifier just stays consistent.
+    if "invalid output" in normalized or "malformed" in normalized or "unusable output" in normalized:
+        return "invalid_output"
     if (
         "gateway" in normalized
         or "transcription" in normalized

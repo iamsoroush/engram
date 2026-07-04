@@ -142,7 +142,10 @@ The AI-engine worker runs Celery beat with one periodic task, `ai_engine.recover
 
 Retry backoff is bounded-exponential from `BACKEND_AI_JOB_RETRY_DELAY_SECONDS` up to
 `BACKEND_AI_JOB_RETRY_MAX_DELAY_SECONDS`, with reasons classified (`gateway_unavailable`,
-`source_missing`, `conversion_failed`, `worker_error`, `broker_unavailable`) for triage.
+`source_missing`, `conversion_failed`, `invalid_output`, `worker_error`, `broker_unavailable`) for
+triage. The worker supplies the reason directly (typed exceptions → codes; see
+`docs/ai_engine/processing.md`); `classify_retry_reason` is only the fallback when it doesn't.
+`invalid_output` marks a malformed/unusable model output (distinct from a gateway outage).
 
 ## Patient memory triggers (Pro)
 
