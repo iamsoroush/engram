@@ -51,6 +51,7 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
                 source_content,
                 payload.get("transcriptionContext"),
                 model=resolve_model("transcription", ai_models),
+                ai_models=ai_models,
             ),
         )
         return
@@ -75,7 +76,7 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
     ):
         content, media_type = client.get_file(f"/internal/captures/{capture['id']}/file-content")
         caption_result = caption_image_content(
-            content, media_type, enrichment_context, model=resolve_model("caption", ai_models)
+            content, media_type, enrichment_context, model=resolve_model("caption", ai_models), ai_models=ai_models
         )
         output = caption_output_metadata(job, caption_result) if caption_result else capture_processing_output(job, "")
         client.complete_job(job_id, output_key=output_key, output=output)

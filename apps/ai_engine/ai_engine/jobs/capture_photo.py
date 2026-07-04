@@ -14,11 +14,17 @@ higher resolution with detail:high so the lot/brand text stays legible.
 """
 from typing import Any
 
-from ai_engine.core.gateway import gateway_client, gateway_settings_for
+from ai_engine.core.gateway import gateway_client, resolve_model
 from ai_engine.core.media import (
     CAPTION_PRODUCT_LABEL_MAX_EDGE,
     downscale_image_for_caption,
     image_to_data_url,
+)
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    response_format,
+    structured_outputs_enabled,
 )
 # The caption contract (clean caption + pairing/OOC attributes) — shaping lives in ``contracts.caption``;
 # re-exported here so the ``processing`` shim and tests keep importing these names from the job module.
@@ -26,6 +32,7 @@ from ai_engine.contracts.caption import (  # noqa: F401
     CAPTION_OUTPUT_VERSION,
     PAIRING_LATERALITIES,
     PAIRING_PHASES,
+    caption_json_schema,
     normalize_caption_pairing,
     parse_caption_output,
 )
@@ -44,14 +51,15 @@ def _request_caption(
     media_type: str | None,
     enrichment_context: dict[str, Any] | None,
     *,
-    model: str | None,
+    model: str,
     detail: str,
+    ai_models: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """One structured caption pass at a given image detail level."""
+    """One structured caption pass at a given image detail level (§3.2 structured output + retry)."""
     client = gateway_client("caption")
-    response = client.chat.completions.create(
-        model=model or gateway_settings_for("caption")[2],
-        messages=[
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": [
@@ -59,10 +67,18 @@ def _request_caption(
                     {"type": "image_url", "image_url": {"url": image_to_data_url(content, media_type), "detail": detail}},
                 ],
             }
-        ],
+        ]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("caption_output", caption_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    return call_with_validation_retry(
+        task="caption", ai_models=ai_models, model=model, effort=None, invoke=invoke, parse=parse_caption_output,
     )
-    text = response.choices[0].message.content
-    return parse_caption_output(text) if text and text.strip() else None
 
 
 def caption_image_content(
@@ -71,6 +87,7 @@ def caption_image_content(
     enrichment_context: dict[str, Any] | None = None,
     *,
     model: str | None = None,
+    ai_models: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Caption a clinical image through the gateway; None when the model returns no usable caption.
 
@@ -79,13 +96,14 @@ def caption_image_content(
     lot/brand text is legible — that high-detail caption (which carries the lot) wins, but the
     first pass's pairing attributes are preserved.
     """
+    resolved_model = resolve_model("caption", ai_models, override=model)
     standard_bytes, standard_mime = downscale_image_for_caption(content, media_type)
-    parsed = _request_caption(standard_bytes, standard_mime, enrichment_context, model=model, detail="low")
+    parsed = _request_caption(standard_bytes, standard_mime, enrichment_context, model=resolved_model, detail="low", ai_models=ai_models)
     if parsed is None:
         return None
     if parsed.get("pairing", {}).get("isProductLabel") is True:
         label_bytes, label_mime = downscale_image_for_caption(content, media_type, max_edge=CAPTION_PRODUCT_LABEL_MAX_EDGE)
-        high_detail = _request_caption(label_bytes, label_mime, enrichment_context, model=model, detail="high")
+        high_detail = _request_caption(label_bytes, label_mime, enrichment_context, model=resolved_model, detail="high", ai_models=ai_models)
         if high_detail is not None:
             high_detail["pairing"] = {**parsed.get("pairing", {}), **high_detail.get("pairing", {}), "isProductLabel": True}
             return high_detail

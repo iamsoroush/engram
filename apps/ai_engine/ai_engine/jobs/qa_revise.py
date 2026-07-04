@@ -7,10 +7,20 @@ unchanged when gateway-less / no audio / unusable output.
 """
 from typing import Any
 
-from ai_engine.contracts.qa import QA_REVISE_OUTPUT_VERSION, parse_qa_revise_output  # noqa: F401
+from ai_engine.contracts.qa import (  # noqa: F401
+    QA_REVISE_OUTPUT_VERSION,
+    parse_qa_revise_output,
+    qa_revise_json_schema,
+)
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
 from ai_engine.core.media import audio_to_flac_mono_16khz_base64
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    response_format,
+    structured_outputs_enabled,
+)
 from ai_engine.core.util import utc_now
 # The prompt lives in its own versioned module (§3.3); ``qa_revise_prompt`` is re-exported for the shim
 # + tests, and the envelope stamps ``QA_REVISE_PROMPT_VERSION``.
@@ -44,10 +54,9 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
     model = resolve_model("qa_draft", ai_models)
     base64_flac = audio_to_flac_mono_16khz_base64(audio)
     client = gateway_client("qa_draft")
-    # A gateway/network error propagates and is retried by the task wrapper.
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": [
@@ -55,9 +64,19 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
                     {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
                 ],
             }
-        ],
+        ]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("qa_revise_output", qa_revise_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        # A gateway/network error propagates and is retried by the task wrapper.
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    parsed = call_with_validation_retry(
+        task="qa_draft", ai_models=ai_models, model=model, effort=None, invoke=invoke, parse=parse_qa_revise_output,
     )
-    parsed = parse_qa_revise_output(response.choices[0].message.content or "")
     if parsed is None:
         return _fallback_output()
     return {

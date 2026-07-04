@@ -24,6 +24,36 @@ class PatientMemoryOutput(BaseModel):
     card: dict[str, Any] | None = None
 
 
+def patient_memory_json_schema() -> dict[str, Any]:
+    """Gateway ``json_schema`` for the patient-memory output (§3.2). Loose, mirrors the prompt."""
+    section = {"type": "object", "properties": {"label": {"type": "string"}, "body": {"type": "string"}}}
+    flag = {"type": "object", "properties": {"kind": {"type": "string"}, "label": {"type": "string"}}}
+    return {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "history": {
+                "type": "object",
+                "properties": {
+                    "snapshot": {"type": "string"},
+                    "sections": {"type": "array", "items": section},
+                    "visits": {"type": "array", "items": {"type": "object"}},
+                },
+                "required": ["snapshot", "sections"],
+            },
+            "card": {
+                "type": ["object", "null"],
+                "properties": {
+                    "storySoFar": {"type": ["string", "null"]},
+                    "rightNow": {"type": ["string", "null"]},
+                    "flags": {"type": "array", "items": flag},
+                },
+            },
+        },
+        "required": ["summary", "history"],
+    }
+
+
 def parse_patient_memory_output(text: str) -> dict[str, Any] | None:
     """Parse the model's patient-memory JSON; return None if unusable so the caller can fall back."""
     if not text or not text.strip():

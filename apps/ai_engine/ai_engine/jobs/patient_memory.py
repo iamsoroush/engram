@@ -10,9 +10,16 @@ from typing import Any
 from ai_engine.contracts.memory import (  # noqa: F401 — re-exported for the processing shim + tests
     PATIENT_MEMORY_OUTPUT_VERSION,
     parse_patient_memory_output,
+    patient_memory_json_schema,
 )
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    response_format,
+    structured_outputs_enabled,
+)
 from ai_engine.core.util import utc_now
 # The prompt lives in its own versioned module (§3.3); ``patient_memory_prompt`` is re-exported for the
 # shim + tests, and the envelope stamps ``PATIENT_MEMORY_PROMPT_VERSION``.
@@ -46,12 +53,22 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     ai_models = payload.get("aiModels") if isinstance(payload.get("aiModels"), dict) else None
     model = resolve_model("patient_memory", ai_models)
     client = gateway_client("patient_memory")
-    # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
-    response = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": patient_memory_prompt(payload)}],
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [{"role": "user", "content": patient_memory_prompt(payload)}]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("patient_memory_output", patient_memory_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        # A gateway/network error propagates and is retried by the task wrapper (gateway_unavailable).
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    parsed = call_with_validation_retry(
+        task="patient_memory", ai_models=ai_models, model=model, effort=None,
+        invoke=invoke, parse=parse_patient_memory_output,
     )
-    parsed = parse_patient_memory_output(response.choices[0].message.content or "")
     if parsed is None:
         return _fallback_output()
     history = parsed["history"]

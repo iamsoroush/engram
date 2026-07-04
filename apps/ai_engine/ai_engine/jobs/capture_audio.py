@@ -11,11 +11,17 @@ from ai_engine.core.errors import GatewayUnavailable, InvalidOutput, SourceMissi
 from ai_engine.core.fixtures import TEST_CAPTURE_TEXT_BY_FILENAME
 from ai_engine.core.gateway import (
     gateway_client,
-    gateway_settings_for,
+    resolve_model,
     set_pending_audio_seconds,
     transcription_is_configured,
 )
 from ai_engine.core.media import audio_duration_seconds, audio_to_flac_mono_16khz_base64
+from ai_engine.core.structured import (
+    call_with_validation_retry,
+    correction_message,
+    response_format,
+    structured_outputs_enabled,
+)
 from ai_engine.core.util import utc_now
 # The capture-intelligence contract (transcript + patient information + intents) — the tolerant
 # shaping now lives in ``contracts.capture``; re-exported here so the ``processing`` shim and tests
@@ -29,6 +35,7 @@ from ai_engine.contracts.capture import (  # noqa: F401
     normalize_intents,
     parse_structured_transcription_output,
     structured_transcription_from_text,
+    transcription_json_schema,
 )
 # The prompt lives in its own versioned module (§3.3); ``transcription_prompt`` is re-exported here so
 # the shim + tests keep the old name, and the envelope stamps ``TRANSCRIPTION_PROMPT_VERSION``.
@@ -51,21 +58,30 @@ def detected_patient_from_patient_information(patient_information: dict[str, Any
     }
 
 
+def _parse_transcription(raw_text: str) -> dict[str, Any]:
+    """Parse the gateway transcription output, treating an empty reply as an invalid output."""
+    if not raw_text or not raw_text.strip():
+        raise InvalidOutput("Audio transcription returned empty text")
+    return parse_structured_transcription_output(raw_text)
+
+
 def transcribe_audio_content(
     content: bytes,
     transcription_context: dict[str, Any] | None = None,
     *,
     model: str | None = None,
+    ai_models: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Transcribe audio through the configured OpenAI-compatible gateway."""
+    """Transcribe audio through the configured OpenAI-compatible gateway (§3.2 structured output)."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
     # Duration drives per-minute transcription cost in the backend meter (set before the call so the
     # metered client attaches it to this transcription's usage record).
     set_pending_audio_seconds(audio_duration_seconds(content))
+    resolved_model = resolve_model("transcription", ai_models, override=model)
     client = gateway_client("transcription")
-    response = client.chat.completions.create(
-        model=model or gateway_settings_for("transcription")[2],
-        messages=[
+
+    def invoke(call_model: str, _effort: str | None, correction: str | None) -> str:
+        messages: list[dict[str, Any]] = [
             {
                 "role": "user",
                 "content": [
@@ -73,12 +89,19 @@ def transcribe_audio_content(
                     {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
                 ],
             }
-        ],
+        ]
+        request: dict[str, Any] = {"model": call_model, "messages": messages}
+        if structured_outputs_enabled():
+            request["response_format"] = response_format("capture_intelligence_output", transcription_json_schema())
+        if correction is not None:
+            messages.append(correction_message(correction))
+        response = client.chat.completions.create(**request)
+        return response.choices[0].message.content or ""
+
+    return call_with_validation_retry(
+        task="transcription", ai_models=ai_models, model=resolved_model, effort=None,
+        invoke=invoke, parse=_parse_transcription,
     )
-    text = response.choices[0].message.content
-    if not text or not text.strip():
-        raise InvalidOutput("Audio transcription returned empty text")
-    return parse_structured_transcription_output(text)
 
 
 def completed_audio_metadata(
@@ -88,6 +111,7 @@ def completed_audio_metadata(
     transcription_context: dict[str, Any] | None = None,
     *,
     model: str | None = None,
+    ai_models: dict[str, Any] | None = None,
 ) -> CaptureProcessingOutput:
     """Return completed audio metadata using real transcription."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
@@ -97,7 +121,7 @@ def completed_audio_metadata(
     elif transcription_is_configured():
         if content is None:
             raise SourceMissing("Audio capture source file is missing")
-        structured = transcribe_audio_content(content, transcription_context, model=model)
+        structured = transcribe_audio_content(content, transcription_context, model=model, ai_models=ai_models)
     else:
         raise GatewayUnavailable("Audio transcription gateway is not configured")
     text = structured["transcript"]

@@ -86,6 +86,42 @@ class StructuredTranscription(BaseModel):
     intents: dict[str, Any] | None = None
 
 
+def transcription_json_schema() -> dict[str, Any]:
+    """Gateway ``json_schema`` for the structured transcription output (§3.2). Loose, mirrors the prompt."""
+    intent = lambda extra: {"type": ["object", "null"], "properties": {"present": {"type": "boolean"}, **extra}}
+    return {
+        "type": "object",
+        "properties": {
+            "transcript": {"type": "string"},
+            "language": {"type": "string", "enum": ["fa", "en", "mixed", "unknown"]},
+            "patient_information": {
+                "type": "object",
+                "properties": {
+                    "raw_mentioned_name": {"type": ["string", "null"]},
+                    "standardized_display_name": {"type": ["string", "null"]},
+                    "alternate_transliterations": {"type": "array", "items": {"type": "string"}},
+                    "national_id": {"type": ["string", "null"]},
+                    "phone": {"type": ["string", "null"]},
+                    "date_of_birth": {"type": ["string", "null"]},
+                    "evidence": {"type": ["string", "null"]},
+                    "confidence": {"type": "number"},
+                },
+            },
+            "clinical_summary": {"type": ["string", "null"]},
+            "uncertainties": {"type": "array", "items": {"type": "string"}},
+            "intents": {
+                "type": ["object", "null"],
+                "properties": {
+                    "assignment": intent({"basis": {"type": ["string", "null"]}, "confidence": {"type": "number"}, "evidence": {"type": ["string", "null"]}}),
+                    "append": intent({"confidence": {"type": "number"}}),
+                    "out_of_context": intent({"confidence": {"type": "number"}, "reason": {"type": ["string", "null"]}}),
+                },
+            },
+        },
+        "required": ["transcript", "language", "patient_information"],
+    }
+
+
 def empty_patient_information(*, source_text: str | None = None) -> dict[str, Any]:
     """Return the patient-information dict for no detected identity."""
     return PatientInformation(source_text=source_text).model_dump()

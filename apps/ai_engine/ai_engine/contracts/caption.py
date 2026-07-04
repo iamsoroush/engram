@@ -46,6 +46,38 @@ class CaptionResult(BaseModel):
     uncertainties: list[str] = Field(default_factory=list)
 
 
+def caption_json_schema() -> dict[str, Any]:
+    """Gateway ``json_schema`` for the structured caption output (§3.2). Loose, mirrors the prompt."""
+    return {
+        "type": "object",
+        "properties": {
+            "caption": {"type": "string"},
+            "display": {"type": ["string", "null"]},
+            "confidence": {"type": ["number", "null"]},
+            "outOfContext": {
+                "type": ["object", "null"],
+                "properties": {
+                    "present": {"type": "boolean"},
+                    "reason": {"type": ["string", "null"]},
+                    "confidence": {"type": ["number", "null"]},
+                },
+            },
+            "pairing": {
+                "type": ["object", "null"],
+                "properties": {
+                    "region": {"type": ["string", "null"]},
+                    "laterality": {"type": ["string", "null"]},
+                    "view": {"type": ["string", "null"]},
+                    "phase": {"type": ["string", "null"]},
+                    "isProductLabel": {"type": "boolean"},
+                },
+            },
+            "uncertainties": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["caption"],
+    }
+
+
 def normalize_caption_pairing(raw: Any) -> dict[str, Any]:
     """Coerce model pairing output into the stable {region,laterality,view,phase,isProductLabel} shape."""
     pairing = raw if isinstance(raw, dict) else {}

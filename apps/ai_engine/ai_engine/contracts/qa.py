@@ -26,6 +26,18 @@ class QaReviseOutput(BaseModel):
     reply: str
 
 
+def qa_revise_json_schema() -> dict[str, Any]:
+    """Gateway ``json_schema`` for the Q&A voice-edit output (§3.2)."""
+    return {
+        "type": "object",
+        "properties": {
+            "mode": {"type": "string", "enum": ["revise", "replace"]},
+            "reply": {"type": "string"},
+        },
+        "required": ["mode", "reply"],
+    }
+
+
 def parse_qa_draft_output(text: str) -> str | None:
     """Return a usable plain-text reply draft from the model output, else None to fall back."""
     if not text or not text.strip():
