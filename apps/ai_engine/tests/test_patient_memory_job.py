@@ -41,7 +41,7 @@ class ParsePatientMemoryTests(unittest.TestCase):
 
 class CompletedPatientMemoryTests(unittest.TestCase):
     def test_no_gateway_uses_fallback(self):
-        with patch("ai_engine.processing.transcription_is_configured", return_value=False):
+        with patch("ai_engine.jobs.patient_memory.transcription_is_configured", return_value=False):
             out = completed_patient_memory_output({"tier": "pro", "deterministicFallback": FALLBACK})
         self.assertEqual(out["summary"], "Fallback summary.")
         self.assertEqual(out["source"], "mock-deterministic")
@@ -51,9 +51,9 @@ class CompletedPatientMemoryTests(unittest.TestCase):
         client.chat.completions.create.return_value = _response(
             '{"summary":"AI sum","history":{"snapshot":"snap","sections":[{"label":"Story so far","body":"b"}],"visits":[]}}'
         )
-        with patch("ai_engine.processing.transcription_is_configured", return_value=True), patch(
-            "ai_engine.processing.gateway_client", return_value=client
-        ), patch("ai_engine.processing.resolve_model", return_value="test-model"):
+        with patch("ai_engine.jobs.patient_memory.transcription_is_configured", return_value=True), patch(
+            "ai_engine.jobs.patient_memory.gateway_client", return_value=client
+        ), patch("ai_engine.jobs.patient_memory.resolve_model", return_value="test-model"):
             out = completed_patient_memory_output(
                 {"tier": "pro", "deterministicFallback": FALLBACK, "patient": {"displayName": "X"}, "aiModels": {}}
             )
@@ -65,9 +65,9 @@ class CompletedPatientMemoryTests(unittest.TestCase):
     def test_gateway_bad_output_falls_back(self):
         client = MagicMock()
         client.chat.completions.create.return_value = _response("garbage, not json")
-        with patch("ai_engine.processing.transcription_is_configured", return_value=True), patch(
-            "ai_engine.processing.gateway_client", return_value=client
-        ), patch("ai_engine.processing.resolve_model", return_value="test-model"):
+        with patch("ai_engine.jobs.patient_memory.transcription_is_configured", return_value=True), patch(
+            "ai_engine.jobs.patient_memory.gateway_client", return_value=client
+        ), patch("ai_engine.jobs.patient_memory.resolve_model", return_value="test-model"):
             out = completed_patient_memory_output(
                 {"tier": "pro", "deterministicFallback": FALLBACK, "patient": {}, "aiModels": {}}
             )
