@@ -122,7 +122,10 @@ test.beforeEach(async ({ page }) => {
 
 test("Clinical Memory Today renders session-first cards on desktop and mobile", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Doctor" }).click();
+  if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
+  }
+  await page.getByRole("button", { name: "Doctor", exact: true }).click();
   await page.goto("/#patients");
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
@@ -138,7 +141,7 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await expect(page.getByRole("heading", { name: "Needs your input" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
-  await expect(page.getByText(/Needs input since:/)).toBeVisible();
+  await expect(page.getByText(/Needs input since:/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open visit" })).toHaveCount(0);
 
@@ -156,7 +159,10 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
 
 test("Clinical Memory Patients renders memory-first cards with focused needs-input actions", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Doctor" }).click();
+  if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
+  }
+  await page.getByRole("button", { name: "Doctor", exact: true }).click();
   await page.goto("/#patients");
   await page.getByRole("tab", { name: "Patients" }).click();
 
@@ -176,7 +182,10 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
 
 test("Clinical Memory Needs input renders a decision-first inbox", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Doctor" }).click();
+  if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
+  }
+  await page.getByRole("button", { name: "Doctor", exact: true }).click();
   await page.goto("/#patients");
   await page.getByRole("tab", { name: "Needs input" }).click();
 
@@ -213,14 +222,17 @@ test("Clinical Memory Needs input renders a decision-first inbox", async ({ page
 
 test("Assign patient opens a focused resolver and updates memory state", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Doctor" }).click();
+  if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
+  }
+  await page.getByRole("button", { name: "Doctor", exact: true }).click();
   await page.goto("/#patients");
 
   await page.getByRole("button", { name: "Assign patient", exact: true }).click();
   const resolver = page.getByRole("dialog", { name: "Assign patient" });
   await expect(resolver).toBeVisible();
   await expect(resolver.getByText("Unassigned visit")).toBeVisible();
-  await expect(resolver.getByText(`Session: ${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
+  await expect(resolver.getByText(`Visit: ${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
   await expect(resolver.getByText("Captures: 2 photos, 1 audio")).toBeVisible();
   await expect(resolver.getByPlaceholder("Search patient")).toBeVisible();
   await expect(resolver.getByText("Soroush")).toBeVisible();
@@ -239,7 +251,10 @@ test("Assign patient opens a focused resolver and updates memory state", async (
 
 test("Choose patient resolves an uncertain patient match without opening the visit", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Doctor" }).click();
+  if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
+    await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
+  }
+  await page.getByRole("button", { name: "Doctor", exact: true }).click();
   await page.goto("/#patients");
   await page.getByRole("tab", { name: "Needs input" }).click();
 
@@ -247,7 +262,7 @@ test("Choose patient resolves an uncertain patient match without opening the vis
   const resolver = page.getByRole("dialog", { name: "Choose patient" });
   await expect(resolver).toBeVisible();
   await expect(resolver.getByText("This visit may belong to more than one patient. Choose the correct patient.")).toBeVisible();
-  await expect(resolver.getByText(`Session: ${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
+  await expect(resolver.getByText(`Visit: ${todayDateLabel} · ${todaySessionTime}`)).toBeVisible();
   await expect(resolver.getByText("Captures: 1 note")).toBeVisible();
   await expect(resolver.getByRole("button", { name: /Soroush/ })).toBeVisible();
   await expect(resolver.getByRole("button", { name: /Sara/ })).toBeVisible();
