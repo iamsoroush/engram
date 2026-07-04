@@ -23,6 +23,7 @@ from app.services.capabilities import LIVE_REPORT_SYNTHESIS, tenant_has_capabili
 from app.services.caseload import tenant_vertical
 from app.services.reporting import empty_report_model, render_report_body_markdown
 from app.services.session_processing import capture_is_out_of_context
+from app.services.synthesis_escalation import pop_synthesis_escalation
 
 from app.services.ai_jobs.base import utc_now
 from app.services.ai_jobs.context import generated_capture_text
@@ -448,10 +449,14 @@ def maybe_dispatch_session_synthesis(
     ).scalar_one_or_none()
     if session is None:
         return
-    # Cache-hit before dispatch: a recurring capture set is restored deterministically (no LLM).
+    # Cache-hit before dispatch: a recurring capture set is restored deterministically (no LLM). A
+    # pending escalation hint stays pending across a cache-hit (no real synthesis ran to consume it).
     if restore_cached_session_synthesis(db, session=session):
         db.commit()
         return
+    # A prior user correction (fix-at-source / treatment-overlay / assignment) escalates this run to the
+    # strongest configured tier — pop the pending hint so it fires exactly once (§3.1).
+    escalate = pop_synthesis_escalation(session)
     job = create_session_report_job(
         db,
         tenant_id=tenant_id,
@@ -459,6 +464,7 @@ def maybe_dispatch_session_synthesis(
         session=session,
         trigger="settle",
         mark_processing=False,
+        escalate=escalate,
     )
     db.commit()
     db.refresh(job)

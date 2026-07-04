@@ -59,6 +59,7 @@ from app.services.session_processing import (
 )
 from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
 from app.services.report_versions import record_report_version
+from app.services.treatment_overlay import rebind_treatment_overlay
 from app.services.sessions import parse_uuid
 
 from app.services.ai_jobs.base import ai_job_payload, utc_now
@@ -371,6 +372,9 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         "reportTemplate": load_report_template(session.report_template_key),
         "sessionProcessingContext": processing_context,
         "reportSynthesis": report_synthesis,
+        # Correction-triggered escalation hint (§3.1): the worker runs synthesis on the strongest tier
+        # when a user correction (fix-at-source / treatment-overlay / assignment) caused this re-dispatch.
+        "escalate": bool(isinstance(job.result_metadata, dict) and job.result_metadata.get("escalate") is True),
         "aiModels": ai_models,
     }
 
@@ -998,6 +1002,18 @@ def complete_session_worker_job(
     prior_confirmed = previous_metadata.get("confirmed_carried_forward")
     prior_dismissed_aftercare = previous_metadata.get("dismissed_aftercare")
     prior_rejected_safety_flags = previous_metadata.get("rejected_safety_flags")
+    # The user-authored treatment overlay (AES-1101) is user state too — re-bind each edit to the freshly
+    # synthesized rows (exact key → bound; shared source-capture + normalized area, priorKey tie-break →
+    # re-bind; else drop with its source-de-effected row), refreshing aiValue so a fresh-extraction
+    # disagreement surfaces via {aiValue, value}. On the legacy path (no fresh treatments) preserve as-is.
+    prior_treatment_overlay = previous_metadata.get("treatment_overlay")
+    rebound_treatment_overlay = (
+        rebind_treatment_overlay(synthesis_treatments, prior_treatment_overlay)
+        if is_synthesis
+        else [entry for entry in prior_treatment_overlay if isinstance(entry, dict)]
+        if isinstance(prior_treatment_overlay, list)
+        else []
+    )
     preserved_confirmations = {
         **(
             {"confirmed_carried_forward": [value for value in prior_confirmed if isinstance(value, str)]}
@@ -1014,6 +1030,7 @@ def complete_session_worker_job(
             if isinstance(prior_rejected_safety_flags, list) and prior_rejected_safety_flags
             else {}
         ),
+        **({"treatment_overlay": rebound_treatment_overlay} if rebound_treatment_overlay else {}),
     }
     # The synthesized live report is a Pro capability: mark the captures it folded in as
     # contributed and record the included / set-aside counts for the report meta strip.

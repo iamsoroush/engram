@@ -58,6 +58,14 @@ _DOMAIN_DESCRIPTORS: dict[str, dict[str, Any]] = {
             "aftercare", "asymmetry", "touch-up", "swelling", "bruising", "follow-up",
         ],
         "captionFindings": ["asymmetry", "swelling", "bruising", "erythema", "filler/Botox effect", "pre- vs post-correction state"],
+        # Closed, English-slug anatomic vocabulary the synthesis prompt selects `areaCode` from, so the
+        # backend's treatment_key anchors on a LANGUAGE-INDEPENDENT area (schema-v2 §4.6). Aesthetics
+        # facial + common body treatment areas; the model may emit its own slug when none fits.
+        "areaCodes": [
+            "forehead", "glabella", "temples", "eyebrows", "crows-feet", "under-eyes", "tear-trough",
+            "nose", "cheeks", "cheekbones", "nasolabial-folds", "lips", "marionette-lines", "chin",
+            "jawline", "jaw", "masseter", "neck", "under-chin", "hands", "decolletage", "full-face",
+        ],
     },
     "therapy": {
         "label": "psychotherapy practice",

@@ -12,6 +12,7 @@ from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.fixtures import is_fixture_capture
 from ai_engine.core.gateway import resolve_model, transcription_is_configured
 from ai_engine.core.structured import escalation_requested
+from ai_engine.core.text import normalize_bcp47_lang
 from ai_engine.jobs.capture_audio import completed_audio_metadata
 from ai_engine.jobs.capture_note import raw_note_text
 from ai_engine.jobs.capture_photo import caption_image_content, caption_output_metadata
@@ -83,7 +84,12 @@ def run_capture_processing_job(job_id: str, *, celery_task_id: str | None, retry
             content, media_type, enrichment_context, model=resolve_model("caption", ai_models),
             ai_models=ai_models, escalate=escalate,
         )
-        output = caption_output_metadata(job, caption_result) if caption_result else capture_processing_output(job, "")
+        caption_lang = normalize_bcp47_lang(enrichment_context.get("preferredLanguage"))
+        output = (
+            caption_output_metadata(job, caption_result, lang=caption_lang)
+            if caption_result
+            else capture_processing_output(job, "")
+        )
         client.complete_job(job_id, output_key=output_key, output=output)
         return
 

@@ -15,6 +15,7 @@ higher resolution with detail:high so the lot/brand text stays legible.
 from typing import Any
 
 from ai_engine.core.gateway import gateway_client, resolve_model
+from ai_engine.core.text import normalize_bcp47_lang
 from ai_engine.core.media import (
     CAPTION_PRODUCT_LABEL_MAX_EDGE,
     downscale_image_for_caption,
@@ -113,17 +114,22 @@ def caption_image_content(
     return parsed
 
 
-def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any]) -> CaptureProcessingOutput:
+def caption_output_metadata(
+    job: dict[str, Any], caption_result: dict[str, Any], *, lang: str | None = None
+) -> CaptureProcessingOutput:
     """Build the completed photo-caption envelope from the structured caption result.
 
     Carries the free-text caption as `text` (so the existing report/caption readers keep working) PLUS
     the optional attributes: `intents.out_of_context` (reuses the backend OOC path), `pairing`
-    attributes (the deterministic backend pairing step consumes these), the model's `confidence`, and
-    `uncertainties` (the backend raises a needs-review chip below the confidence threshold / on these).
+    attributes (the deterministic backend pairing step consumes these), the model's `confidence`,
+    `uncertainties` (the backend raises a needs-review chip below the confidence threshold / on these),
+    and a BCP-47 `lang` stamp of the caption's display language (schema-v2 §4.6).
     """
     output = capture_processing_output(job, caption_result.get("caption") or "")
     output["schemaVersion"] = CAPTION_OUTPUT_VERSION
     output["promptVersion"] = CAPTION_PROMPT_VERSION
+    if lang is not None:
+        output["lang"] = lang
     out_of_context = caption_result.get("outOfContext")
     if isinstance(out_of_context, dict) and out_of_context.get("present") is True:
         # Match the transcription intent shape so `out_of_context_marker` reads it unchanged.

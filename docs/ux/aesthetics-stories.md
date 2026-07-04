@@ -442,6 +442,30 @@ unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes
 
 ---
 
+## E11 — User-authored treatment overlay (Pro)
+*Realises the deferred `edit` intent as a human-owned overlay (no AI). Data/contract layer **built**
+(AES-1101); the editing UI (AES-1102+) is a later epic. Mechanics:
+[pipeline-versioning D2](../architecture/pipeline-versioning.md),
+[backend/processing.md](../backend/processing.md).*
+
+### AES-1101 — `treatment_overlay` contract + stable treatment keys 〔Pro · Dr · new〕
+As a **doctor**, I want a corrected treatment field (a mis-heard dose, a wrong lot) to be a durable,
+human-owned edit the AI can never silently overwrite, so that the record — and every projection built on
+it — reflects the truth I typed.
+- **Acceptance (DATA layer, no UI in this story):** deterministic content-anchored `treatmentKey`
+  (Unicode-general norm, `areaCode`-anchored, ordinal on collision); `treatment_overlay` as the fourth
+  overlay class (folded at render/projection via `effective_treatments`, excluded from restore, preserved
+  + re-bound across re-synthesis with a no-LLM `{aiValue, value}` reconcile diff); the overlaid value is
+  authoritative for recall / lot-recall / smart lists / patient-memory (the lot-recall safety case); a
+  carried-forward dose edit auto-satisfies the confirm blocker (Q4); owner-gated field-edit endpoints
+  (`POST`/`DELETE /sessions/{id}/treatment-overlay`, field-edit only per Q2). Synthesis schema-v2 adds
+  `areaCode`, `priorKey`, and a `lang` stamp; eval-gated (key-echo-stability case).
+- **Deferred (later epic):** AES-1102 inline field editing + provenance · AES-1103 synthesis-proof
+  reconcile UI · AES-1104 projection-correctness surfacing · AES-1105 attribution/policy gating ·
+  AES-1106 row add/remove · AES-1107 non-owner suggested correction.
+
+---
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

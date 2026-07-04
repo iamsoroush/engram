@@ -31,8 +31,16 @@ _ARTIFACT_METADATA_KEYS = (
     "source_capture_ids",
     "session_processing_output",
 )
-# User-state overlay — authoritative, never part of a version, never overwritten on restore.
-OVERLAY_METADATA_KEYS = ("rejected_safety_flags", "confirmed_carried_forward", "dismissed_aftercare")
+# User-state overlay — authoritative, never part of a version, never overwritten on restore. The
+# `treatment_overlay` (AES-1101) is the fourth class: human field edits on treatment rows, folded at
+# render/projection (services/treatment_overlay.py) and excluded from restore for free — it is not in
+# _ARTIFACT_METADATA_KEYS, so restore_report_version (which copies ONLY those) never touches it.
+OVERLAY_METADATA_KEYS = (
+    "rejected_safety_flags",
+    "confirmed_carried_forward",
+    "dismissed_aftercare",
+    "treatment_overlay",
+)
 
 _FLOOR = datetime.min.replace(tzinfo=timezone.utc)
 

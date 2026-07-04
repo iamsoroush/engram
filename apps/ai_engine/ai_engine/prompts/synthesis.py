@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-04.synthesis.v1"
+PROMPT_VERSION = "2026-07-05.synthesis.v2"
 
 
 def build(processing_context: dict[str, Any]) -> str:
@@ -21,6 +21,20 @@ def build(processing_context: dict[str, Any]) -> str:
     """
     context = processing_context if isinstance(processing_context, dict) else {}
     label, vocabulary, _ = domain_framing(context)
+    domain = context.get("domain") if isinstance(context.get("domain"), dict) else {}
+    area_codes = [value for value in (domain.get("areaCodes") or []) if isinstance(value, str) and value.strip()]
+    area_code_line = (
+        "- areaCode: ALSO set a canonical English anatomical slug identifying the treated area — this is "
+        "LANGUAGE-INDEPENDENT (always English, regardless of the report language) so the same area keys "
+        "identically across visits and languages. "
+        + (
+            f"Choose the best fit from this closed vocabulary when one applies: {', '.join(area_codes)}. "
+            "If none fits, emit your own concise lowercase-hyphenated English slug (e.g. left-cheek). "
+            if area_codes
+            else "Use a concise lowercase-hyphenated English slug (e.g. cheeks, forehead, left-cheek). "
+        )
+        + "Leave null only when no anatomical area is stated.\n"
+    )
     report_language = context.get("reportLanguage")
     language_directive = (
         f"Write all report prose in {report_language} using its native script."
@@ -37,6 +51,9 @@ def build(processing_context: dict[str, Any]) -> str:
             (
                 "Produce a strict JSON object with EXACTLY these keys: summary, language, sections, "
                 "treatments, uncertainties, aftercareSelections, safetyFlags.\n"
+                "Values render in the report language (the display language); the ONE exception is "
+                "areaCode, which is always a canonical English slug (see below) so it is stable across "
+                "languages.\n"
                 f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
                 "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
                 "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
@@ -55,6 +72,12 @@ def build(processing_context: dict[str, Any]) -> str:
                 "sourceCaptureIds, evidence, carriedForward, supersedesCaptureId, and an open attributes "
                 "map (needleGauge, depth, device, sessions, …). The treatment-performed section is a prose "
                 "MIRROR of treatments — keep them consistent.\n"
+                f"{area_code_line}"
+                "- priorKey: the context's prior-visit treatments (referencePriorVisitTreatments) and "
+                "prior-draft treatments each carry a stable `treatmentKey`. If a treatment you emit is THE "
+                "SAME treatment as one of those prior rows (a continuation, correction, or carry-forward of "
+                "it), set priorKey to that row's treatmentKey. This is only a matching HINT — leave null "
+                "for a genuinely new treatment; never invent a key.\n"
                 "- product vs brand: `product` is the GENERIC category ONLY (e.g. ژل/فیلر, بوتاکس) — never "
                 "put a commercial brand in it. `brand` is the commercial name verbatim (e.g. ژوویدرم/"
                 "Juvederm, رستیلین/Restylane, ولوما/Voluma), null if none was said. When the clinician "
@@ -131,9 +154,13 @@ def build(processing_context: dict[str, Any]) -> str:
                 "[] only when no capture states any such thing."
             ),
             (
-                "uncertainties: a list of short human-readable sentences for anything a clinician should "
-                "confirm (ambiguous correction, a missing-but-expected lot number, a low-confidence "
-                "product, a carried-forward dose). Return ONLY strict JSON, no markdown, no code fences."
+                "uncertainties: a list of items, each an object {code, text}. `text` is a short "
+                "human-readable sentence for anything a clinician should confirm; `code` is the "
+                "machine-readable reason, EXACTLY one of: ambiguous_correction (correction vs addition is "
+                "unclear), missing_lot (a lot number is expected but absent), low_confidence (a product/"
+                "field the model is unsure of), carried_forward_dose (a dose carried from a prior visit), "
+                "ambiguous_quantity (the dose/amount itself is unclear), other (anything else). Return ONLY "
+                "strict JSON, no markdown, no code fences."
             ),
             f"Session context (captures, prior report draft, changeset, prior-visit treatments):\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )

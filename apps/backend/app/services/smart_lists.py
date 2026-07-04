@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.models import Capture, CaptureStatus, CaptureType, Patient, PatientStatus, Session
 from app.services.capabilities import LIVE_REPORT_SYNTHESIS, tenant_has_capability
+from app.services.treatment_overlay import effective_treatments
 
 # --- Tunable list predicates (documented; the AES-705 seam to per-product precision) ----------------
 SEEN_THIS_WEEK_DAYS = 7
@@ -90,9 +91,9 @@ def _aware(value: datetime | None) -> datetime | None:
 
 # --- Treatment helpers -----------------------------------------------------------------------------
 def _session_treatments(session: Session) -> list[dict[str, Any]]:
-    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
-    raw = metadata.get("treatments")
-    return [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+    # Read the OVERLAID treatments (report_version ⊕ overlay): a clinician-corrected lot/dose must reach
+    # the recall cohort + lot-recall + smart lists, never the raw AI artifact (AES-1101, the safety case).
+    return effective_treatments(session)
 
 
 def _fmt_num(value: Any) -> str:

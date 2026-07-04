@@ -242,12 +242,16 @@ def create_session_report_job(
     session: Session,
     trigger: str = "manual",
     mark_processing: bool = True,
+    escalate: bool = False,
 ) -> AiJob:
     """Create a queued session live-report job and (optionally) mark the session processing.
 
     `mark_processing=False` keeps the session at its current resting status — used by the Pro
     synthesis refinement, which runs AFTER a deterministic report already exists, so the report must
     stay visible (a quiet enrichment, never an error/processing flash).
+
+    `escalate=True` (a pending user-correction hint) records `escalate` on the job so
+    ``worker_job_payload`` sends it to the worker, which runs synthesis on the escalation tier (§3.1).
     """
     source_ids = [
         str(source_id)
@@ -271,6 +275,7 @@ def create_session_report_job(
             "queue": "ai_jobs",
             "report_template_key": session.report_template_key or DEFAULT_REPORT_TEMPLATE_KEY,
             "trigger": trigger,
+            **({"escalate": True} if escalate else {}),
         },
         created_by_user_id=created_by_user_id,
     )

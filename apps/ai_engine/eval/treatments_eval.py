@@ -143,6 +143,20 @@ CASES: list[dict[str, Any]] = [
         "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"]}], "carriedForward": True},
     },
     {
+        # Key-echo stability across an UPDATE run: the prior row carries a stable treatmentKey; carrying it
+        # forward this visit must repeat that key as priorKey so a user overlay edit re-binds (schema-v2 §4.5).
+        "name": "key-echo stability across update (priorKey repeated)",
+        "captures": [_audio("c1", "بوتاکس پیشونی مثل دفعه قبل، همون مقدار")],
+        "prior": [{
+            "treatmentKey": "t|forehead|botox|prev-1", "areaCode": "forehead", "area": "پیشونی",
+            "product": "بوتاکس", "quantity": 20, "unit": "واحد", "sourceCaptureIds": ["prev-1"],
+        }],
+        "expect": {
+            "count": 1, "items": [{"product": ["بوتاکس", "botox"]}],
+            "carriedForward": True, "priorKeyEcho": "t|forehead|botox|prev-1",
+        },
+    },
+    {
         "name": "lot on label (dictated lot)",
         "captures": [_audio("c1", "ژل ژوویدرم با شماره لات A B C یک دو سه تزریق شد")],
         "brand_separated": "ژوویدرم",
@@ -273,6 +287,12 @@ def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
         notes.append("no carriedForward treatment")
     if expect.get("supersede") and not any(t.get("supersedesCaptureId") for t in treatments):
         notes.append("no supersedesCaptureId set")
+    # Key-echo stability (schema-v2 §4.5): when a treatment continues a prior row, the model must repeat
+    # that row's `treatmentKey` as `priorKey` — the re-bind tie-breaker that keeps an overlay edit bound
+    # across an update run. Asserted on an "update run" case whose prior row carries a known key.
+    prior_key_echo = expect.get("priorKeyEcho")
+    if prior_key_echo and not any(t.get("priorKey") == prior_key_echo for t in treatments):
+        notes.append(f"priorKey key-echo {prior_key_echo!r} not repeated on any treatment")
     if case.get("lang_fa"):
         notes.extend(_language_problems(treatments))
     brand_token = case.get("brand_separated")
@@ -396,6 +416,19 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "output": _output([{"product": "بوتاکس", "quantity": 20, "unit": "واحد", "quantityText": "۲۰ واحد"}]),
         "case": {"expect": {"count": 1, "items": [{"product": ["بوتاکس"], "quantity": 20}], "forbiddenQuantity": [2]}},
         "expectGatesPass": True,
+    },
+    {
+        "name": "priorKey echoed PASSES the key-echo gate",
+        "output": _output([{"product": "بوتاکس", "quantity": 20, "unit": "واحد", "priorKey": "t|forehead|botox|prev-1"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["بوتاکس"]}], "priorKeyEcho": "t|forehead|botox|prev-1"}},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "missing priorKey echo FAILS the key-echo gate",
+        "output": _output([{"product": "بوتاکس", "quantity": 20, "unit": "واحد"}]),
+        "case": {"expect": {"count": 1, "items": [], "priorKeyEcho": "t|forehead|botox|prev-1"}},
+        "expectGatesPass": False,
+        "expectReasonContains": "key-echo",
     },
 ]
 

@@ -14,6 +14,7 @@ from ai_engine.contracts.memory import (  # noqa: F401 — re-exported for the p
 )
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
+from ai_engine.core.text import normalize_bcp47_lang
 from ai_engine.core.structured import (
     call_with_validation_retry,
     correction_message,
@@ -35,11 +36,14 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     the model returns something unusable, so the job always completes with valid memory.
     """
     fallback = payload.get("deterministicFallback") if isinstance(payload.get("deterministicFallback"), dict) else {}
+    # BCP-47 stamp of the language the memory summary/card/history strings were generated in (schema-v2).
+    lang = normalize_bcp47_lang(payload.get("language"))
 
     def _fallback_output() -> dict[str, Any]:
         return {
             "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
             "promptVersion": PATIENT_MEMORY_PROMPT_VERSION,
+            "lang": lang,
             "summary": fallback.get("summary"),
             "history": fallback.get("history"),
             "card": fallback.get("card"),
@@ -77,6 +81,7 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
         "promptVersion": PATIENT_MEMORY_PROMPT_VERSION,
+        "lang": lang,
         "summary": parsed["summary"],
         "history": history,
         # Carry the model's compact card through; backend coerces it + falls back deterministically.

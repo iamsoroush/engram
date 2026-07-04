@@ -13,9 +13,21 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_engine.core.text import normalize_bcp47_lang
 from ai_engine.core.util import clamp_confidence, utc_now
 
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
+# v2 (2026-07-05): treatments gain a canonical English `areaCode` + an optional `priorKey` echo, the
+# envelope + every extracted payload gain a BCP-47 `lang` stamp, and free-string `uncertainties` are
+# joined by machine-readable `uncertaintyReasons` [{code,text}]. See docs/work/ai-engine-refactor-plan
+# §4. NOTE: the backend gates on this exact string (worker.py `is_synthesis`), so its copy in
+# `app/services/session_processing.py` MUST bump in lockstep.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-05.session-synthesis-output.v2"
+
+# Closed machine-readable uncertainty reason vocabulary (the model picks one per uncertainty). Keeps the
+# human `uncertainties` sentences AND a code the close-the-day severity roll-up can map without heuristics.
+UNCERTAINTY_REASON_CODES = frozenset(
+    {"ambiguous_correction", "missing_lot", "low_confidence", "carried_forward_dose", "ambiguous_quantity", "other"}
+)
 
 # Fixed section ids + order (rendered by the backend). `treatment-performed` is a PROSE MIRROR of
 # treatments[] — the backend re-renders it FROM treatments[] so prose + store can never diverge.
@@ -50,6 +62,10 @@ class TreatmentItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     area: str
+    # Canonical, English, language-INDEPENDENT anatomic slug (e.g. "cheeks", "left-cheek"). The backend
+    # anchors the deterministic treatment_key on `areaCode|norm(product)` when present, so overlay
+    # bindings + cross-visit projections survive a report-language switch / a non-fa-en clinic.
+    areaCode: str | None = None
     product: str
     brand: str | None = None
     quantity: int | float | None = None
@@ -61,6 +77,11 @@ class TreatmentItem(BaseModel):
     evidence: str | None = None
     carriedForward: bool
     supersedesCaptureId: str | None = None
+    # Optional tie-breaker: the `treatmentKey` of a prior row the model considers the SAME treatment
+    # (echoed from context). Used only as a re-bind hint — never authoritative (the backend recomputes).
+    priorKey: str | None = None
+    # BCP-47 stamp of the language this row's display strings were generated in (report language).
+    lang: str | None = None
     attributes: dict[str, Any]
 
 
@@ -82,6 +103,8 @@ class SafetyFlag(BaseModel):
     kind: str
     text: str
     sourceCaptureIds: list[str]
+    # BCP-47 stamp of the language the clinical `text` was generated in (report language, never translated).
+    lang: str | None = None
 
 
 class Section(BaseModel):
@@ -102,10 +125,17 @@ class SessionSynthesisOutput(BaseModel):
     schemaVersion: str
     summary: str
     language: str
+    # BCP-47 stamp of the report language the extracted display strings (sections/treatments/flags) were
+    # generated in — the reference field a future language-switch migration reads. Distinct from the
+    # detected-content `language` enum (fa/en/mixed) above; None when the report language is unknown.
+    lang: str | None = None
     sections: list[dict[str, Any]]
     treatments: list[dict[str, Any]]
     sourceReferences: list[dict[str, Any]]
     uncertainties: list[str]
+    # Machine-readable companion to `uncertainties`: [{code, text}] with `code` from
+    # UNCERTAINTY_REASON_CODES. `uncertainties` (strings) stays for existing consumers; this adds codes.
+    uncertaintyReasons: list[dict[str, Any]]
     aftercareSelections: list[dict[str, Any]]
     safetyFlags: list[dict[str, Any]]
     generatedBy: str
@@ -143,7 +173,7 @@ def _clean_synthesis_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
     return blocks
 
 
-def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
+def _clean_synthesis_treatment(raw: Any, *, lang: str | None = None) -> dict[str, Any] | None:
     """Coerce one TreatmentItem into the stable core+attributes shape, or None if unusable."""
     if not isinstance(raw, dict):
         return None
@@ -162,6 +192,7 @@ def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
     attributes = raw.get("attributes")
     return TreatmentItem(
         area=_text(area) or "",
+        areaCode=_area_code(raw.get("areaCode")),
         product=_text(product) or "",
         brand=_text(raw.get("brand")),
         quantity=_number(raw.get("quantity")),
@@ -173,8 +204,51 @@ def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
         evidence=_text(raw.get("evidence")),
         carriedForward=raw.get("carriedForward") is True,
         supersedesCaptureId=_text(raw.get("supersedesCaptureId")),
+        priorKey=_text(raw.get("priorKey")),
+        lang=lang,
         attributes=attributes if isinstance(attributes, dict) else {},
     ).model_dump()
+
+
+def _area_code(value: Any) -> str | None:
+    """Normalize the model's areaCode to a lowercase-hyphenated English slug, or None.
+
+    Language-independent by construction: kept ASCII-slug shape (letters/digits/hyphen) so a
+    report-language switch never fragments the treatment key the backend anchors on it.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    slug = "-".join(value.strip().lower().replace("_", "-").replace(" ", "-").split("-"))
+    slug = "".join(ch for ch in slug if ch.isalnum() or ch == "-").strip("-")
+    return slug or None
+
+
+def _clean_uncertainties(raw: Any) -> tuple[list[str], list[dict[str, Any]]]:
+    """Split the model's uncertainties into (human sentences, machine-readable {code,text}).
+
+    Tolerant to BOTH shapes: v2 objects ``{code, text}`` and legacy bare strings (→ code "other"). The
+    string list is preserved for existing consumers; the coded list feeds the severity roll-up.
+    """
+    sentences: list[str] = []
+    reasons: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return sentences, reasons
+    for item in raw:
+        if isinstance(item, str) and item.strip():
+            text = item.strip()
+            code = "other"
+        elif isinstance(item, dict):
+            text_value = item.get("text")
+            if not (isinstance(text_value, str) and text_value.strip()):
+                continue
+            text = text_value.strip()
+            code_value = item.get("code")
+            code = code_value if code_value in UNCERTAINTY_REASON_CODES else "other"
+        else:
+            continue
+        sentences.append(text)
+        reasons.append({"code": code, "text": text})
+    return sentences, reasons
 
 
 def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
@@ -200,8 +274,8 @@ def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
     return selections
 
 
-def _clean_safety_flags(raw: Any) -> list[dict[str, Any]]:
-    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds} items.
+def _clean_safety_flags(raw: Any, *, lang: str | None = None) -> list[dict[str, Any]]:
+    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds, lang} items.
 
     Safety errs toward inclusion (opt-out): a flag the model surfaced is kept — the clinician removes a
     wrong one downstream. We only drop items that are structurally unusable (unknown kind, empty text).
@@ -226,6 +300,7 @@ def _clean_safety_flags(raw: Any) -> list[dict[str, Any]]:
                 sourceCaptureIds=[str(value) for value in source_ids if isinstance(value, str)]
                 if isinstance(source_ids, list)
                 else [],
+                lang=lang,
             ).model_dump()
         )
     return flags
@@ -270,20 +345,28 @@ def parse_session_synthesis_output(
         for section_id, title in SYNTHESIS_SECTIONS
     ]
 
-    treatments = [cleaned for cleaned in (_clean_synthesis_treatment(item) for item in (parsed.get("treatments") or [])) if cleaned]
     language = parsed.get("language") if parsed.get("language") in SYNTHESIS_LANGUAGES else "mixed"
-    uncertainties = parsed.get("uncertainties")
+    # The `lang` STAMP is the report language the display strings were generated in — deterministic,
+    # never model-emitted. Prefer the explicit report language; fall back to a concrete detected
+    # language (fa/en, not "mixed"/"unknown") so a single-language visit still records its language.
+    lang = normalize_bcp47_lang(report_language) or normalize_bcp47_lang(language)
+    treatments = [
+        cleaned for cleaned in (_clean_synthesis_treatment(item, lang=lang) for item in (parsed.get("treatments") or [])) if cleaned
+    ]
+    uncertainties, uncertainty_reasons = _clean_uncertainties(parsed.get("uncertainties"))
     source_references = [{"type": "capture", "captureId": capture_id} for capture_id in (source_capture_ids or [])]
     return SessionSynthesisOutput(
         schemaVersion=SESSION_SYNTHESIS_OUTPUT_VERSION,
         summary=summary.strip(),
         language=language,
+        lang=lang,
         sections=sections,
         treatments=treatments,
         sourceReferences=source_references,
-        uncertainties=[str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
+        uncertainties=uncertainties,
+        uncertaintyReasons=uncertainty_reasons,
         aftercareSelections=_clean_aftercare_selections(parsed.get("aftercareSelections")),
-        safetyFlags=_clean_safety_flags(parsed.get("safetyFlags")),
+        safetyFlags=_clean_safety_flags(parsed.get("safetyFlags"), lang=lang),
         generatedBy="ai-engine",
         generatedAt=utc_now().isoformat(),
     ).model_dump()

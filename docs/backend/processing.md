@@ -107,6 +107,49 @@ synthesis completion would (ground-truth invariant). See
 [pipeline-versioning](../architecture/pipeline-versioning.md) and
 [docs/business/ai-usage-limits.md](../business/ai-usage-limits.md).
 
+## Treatment keys + the user-authored treatment overlay (AES-1101)
+
+`services/treatment_overlay.py` is the single home for the treatments analogue of the safety overlay.
+
+- **Deterministic treatment_key.** At synthesis completion `finalize_session_synthesis_output` stamps
+  each treatment with `treatmentKey = "t|<areaCode|norm(area)>|norm(product)|<first sourceCaptureId>"`
+  (+ an ordinal `#n` on collision). `norm` is Unicode-general (NFKC · casefold · Unicode-wide digit-fold ·
+  whitespace-collapse) — fa/ar, Turkish, and Latin key identically with no per-language tables. Anchoring
+  on the synthesis-emitted canonical `areaCode` makes the key language-independent (a report-language
+  switch or a non-fa-en clinic no longer fragments it); `norm(area)` is the legacy fallback.
+- **Overlay class.** `treatment_overlay` is the **fourth** `OVERLAY_METADATA_KEYS` class
+  (`report_versions.py`): human field edits `{treatmentKey, field, value, aiValue, editedByUserId, editedAt, op:"edit"}`
+  over `area·product·brand·quantity·lot` (v1 = field-edit only, owner-gated). Endpoints:
+  `POST`/`DELETE /api/v1/sessions/{id}/treatment-overlay` (`sessions.py`). It folds at render/projection
+  via `effective_treatments(session)` (`report_version ⊕ overlay`) and is **excluded from restore** for
+  free (not an artifact key).
+- **effective_treatments is THE only treatments read** for recall / lot-recall cohorts / smart lists
+  (`smart_lists.py`), the treatment-mix + recency cohorts (`insights.py`), and the patient-memory brief
+  (`patient_memory_intelligence.build_patient_memory_job_input`) — so a clinician-corrected **lot/dose**
+  reaches every projection (the highest-stakes requirement), not the raw AI artifact.
+- **Post-synthesis re-bind + reconcile** (`rebind_treatment_overlay`, in `worker.py` completion): each
+  overlay entry re-anchors to the freshly-synthesized rows — exact key → bound; shared source-capture +
+  normalized area (`priorKey` tie-break) → re-bind; else the entry drops with its source-de-effected row.
+  Every surviving entry's `aiValue` is refreshed to the fresh AI value, so a disagreement with the human
+  `value` surfaces as `{aiValue, value}` (Keep-yours / Use-AI) — **never a silent overwrite** (no LLM).
+  The overlay is preserved across re-synthesis alongside `confirmed_carried_forward` etc.
+- **Carried-forward auto-confirm collapse** (`overlay_satisfied_carry_forward_keys`, in
+  `session_contracts.session_is_complete`): a human dose edit on a carried-forward row satisfies that
+  row's confirm-dose blocker — the edit **is** the confirmation (epic Q4).
+
+## Correction-triggered synthesis escalation
+
+A user **correction** proves the cheap model tier failed on this input, so the next re-synthesis of that
+session escalates to the strongest configured tier. `services/synthesis_escalation.py` sets a pending
+marker on three correction signals — a **fix-at-source** transcript/caption edit
+(`mark_session_stale_after_source_text_update`), a **treatment-overlay** field edit, and an explicit
+**assignment reassignment** — and `maybe_dispatch_session_synthesis` pops it at the next dispatch,
+threading `escalate: true` through the job's `result_metadata` → `worker_job_payload` → the worker (which
+already resolves the tier). Decoupling "which correction" from "when synthesis runs" via a marker is
+deliberate: some corrections re-dispatch inline, others rely on the sweep, and a treatment-overlay edit
+runs no synthesis at all (it is instant) — one flag serves all three. See
+[ai_engine/processing.md](../ai_engine/processing.md) §3.1 for the worker side.
+
 On completion the worker-side output is applied, per-capture `report_contribution` flips to
 `added`, patient safety flags are re-synced (with the safety-reconcile decisions), and the result
 is snapshotted as a content-addressed `session_report_versions` row.

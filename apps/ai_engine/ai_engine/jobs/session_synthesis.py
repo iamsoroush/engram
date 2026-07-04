@@ -31,6 +31,7 @@ from ai_engine.core.gateway import (
     resolve_reasoning_effort,
     transcription_is_configured,
 )
+from ai_engine.core.structured import escalation_requested, retry_tier
 from ai_engine.core.util import utc_now
 # The synthesis prompt lives in its own versioned module (§3.3); ``report_synthesis_prompt`` is
 # re-exported for the shim + tests, and the envelope stamps ``REPORT_SYNTHESIS_PROMPT_VERSION``.
@@ -552,6 +553,7 @@ def report_synthesis_json_schema() -> dict[str, Any]:
         "type": "object",
         "properties": {
             "area": {"type": "string"},
+            "areaCode": {"type": ["string", "null"]},
             "product": {"type": "string"},
             "brand": {"type": ["string", "null"]},
             "quantity": {"type": ["number", "null"]},
@@ -563,9 +565,24 @@ def report_synthesis_json_schema() -> dict[str, Any]:
             "evidence": {"type": ["string", "null"]},
             "carriedForward": {"type": "boolean"},
             "supersedesCaptureId": {"type": ["string", "null"]},
+            "priorKey": {"type": ["string", "null"]},
             "attributes": {"type": "object"},
         },
         "required": ["area", "product", "confidence", "sourceCaptureIds", "carriedForward"],
+    }
+    uncertainty = {
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "enum": [
+                    "ambiguous_correction", "missing_lot", "low_confidence",
+                    "carried_forward_dose", "ambiguous_quantity", "other",
+                ],
+            },
+            "text": {"type": "string"},
+        },
+        "required": ["code", "text"],
     }
     aftercare_selection = {
         "type": "object",
@@ -592,7 +609,7 @@ def report_synthesis_json_schema() -> dict[str, Any]:
             "language": {"type": "string", "enum": ["fa", "en", "mixed"]},
             "sections": {"type": "array", "items": section},
             "treatments": {"type": "array", "items": treatment},
-            "uncertainties": {"type": "array", "items": {"type": "string"}},
+            "uncertainties": {"type": "array", "items": uncertainty},
             "aftercareSelections": {"type": "array", "items": aftercare_selection},
             "safetyFlags": {"type": "array", "items": safety_flag},
         },
@@ -622,6 +639,11 @@ def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:
     effort = resolve_reasoning_effort(
         "report_synthesis", ai_models, default=(settings.report_synthesis_reasoning_effort or None)
     )
+    # Correction-triggered escalation (§3.1): a fix-at-source / treatment-overlay / assignment correction
+    # sets `escalate: true` — a correction is proof the cheap tier failed on this input, so re-run on the
+    # strongest configured tier. No-op when no escalation tier is configured (falls back to the base pair).
+    if escalation_requested(payload):
+        model, effort = retry_tier("report_synthesis", ai_models, model=model, effort=effort)
     client = gateway_client("report_synthesis")
     request: dict[str, Any] = {
         "model": model,
@@ -678,9 +700,12 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
         "job_type": job["jobType"],
         "generated_at": utc_now().isoformat(),
         "source_capture_ids": source_capture_ids,
+        # BCP-47 stamp of the report language the extracted display strings were generated in (schema-v2).
+        "lang": synthesis.get("lang"),
         # The backend post-processes treatments (validate/supersede/carry-forward) before storing.
         "treatments": synthesis["treatments"],
         "uncertainties": synthesis["uncertainties"],
+        "uncertainty_reasons": synthesis.get("uncertaintyReasons", []),
         # The model's intelligent aftercare matches (which clinic protocols apply + dictation conflicts).
         "aftercare_selections": synthesis.get("aftercareSelections", []),
         # Session-level safety flags (allergy/contraindication/consent) detected from the captures.

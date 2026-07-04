@@ -26,6 +26,15 @@ from app.services.permissions import (
     tenant_role_permissions,
 )
 from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
+from app.services.synthesis_escalation import mark_synthesis_escalation
+from app.services.treatment_overlay import (
+    TREATMENT_OVERLAY_FIELDS,
+    find_treatment_by_key,
+    remove_overlay_edit,
+    session_treatment_overlay,
+    stored_treatments,
+    upsert_overlay_edit,
+)
 
 
 def session_permission_for_principal(db: DbSession, principal: CurrentPrincipal, session: Session) -> str:
@@ -319,6 +328,81 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
     return session_payload(session, db)
 
 
+def set_treatment_overlay_edit(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, treatment_key: str, field: str, value: str
+) -> dict[str, Any]:
+    """AES-1101: record a human field edit on one treatment row as a user-owned overlay entry.
+
+    Deterministic + instant — NO synthesis, NO AI budget. The edit is authoritative on render
+    (``report_version ⊕ overlay``) and immune to re-mis-extraction: a later re-synthesis re-binds it to
+    the fresh row and surfaces any disagreement (``{aiValue, value}``) rather than overwriting it. v1 is
+    field-edit only (owner-gated per pipeline-versioning permissions); row add/remove are v2.
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't edit its treatments.",
+        )
+    if field not in TREATMENT_OVERLAY_FIELDS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Field '{field}' is not editable")
+    if not isinstance(value, str) or not value.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A non-empty value is required")
+    treatment = find_treatment_by_key(stored_treatments(session), treatment_key)
+    if treatment is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No treatment matches that key")
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    overlay, ai_value = upsert_overlay_edit(
+        session_treatment_overlay(session),
+        treatment=treatment,
+        field=field,
+        value=value.strip(),
+        edited_by_user_id=str(principal.user_id),
+    )
+    metadata["treatment_overlay"] = overlay
+    session.extracted_metadata = metadata
+    # A treatment-overlay edit is a user correction → the NEXT synthesis for this session escalates (§3.1).
+    mark_synthesis_escalation(session)
+    # Harvest the field-granular before→after as a candidate eval case (epic Q5, eval-epic §3a).
+    record_feedback_event(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        kind="correction",
+        ai_output_type="treatment",
+        before_value=ai_value,
+        after_value=value.strip(),
+        session_id=session.id,
+        patient_id=session.patient_id,
+        context={"source": "treatment-overlay", "treatmentKey": treatment_key, "field": field},
+    )
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.treatment_overlay_edit", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
+def remove_treatment_overlay_edit(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, treatment_key: str, field: str
+) -> dict[str, Any]:
+    """AES-1101: Revert-to-AI — drop the overlay edit for (treatmentKey, field) so the AI value returns."""
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    if not can_edit(session_permission_for_principal(db, principal, session)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This session is owned by another clinician; your role can't edit its treatments.",
+        )
+    metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
+    metadata["treatment_overlay"] = remove_overlay_edit(
+        session_treatment_overlay(session), treatment_key=treatment_key, field=field
+    )
+    session.extracted_metadata = metadata
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.treatment_overlay_revert", target_type="session", target_id=session.id)
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
 def set_aftercare_dismissed(
     db: DbSession, principal: CurrentPrincipal, session_id: str, template_id: str, dismissed: bool
 ) -> dict[str, Any]:
@@ -492,6 +576,10 @@ def assign_session_patient(
             drop_session_safety_flags(old_patient, session.id)
     if patient is not None:
         sync_patient_safety_flags(patient, session)
+    # An explicit reassignment is a correction of a prior (often AI) assignment → the next synthesis for
+    # this session, which reads the corrected patient's prior-visit context, escalates to the top tier (§3.1).
+    if is_reassignment:
+        mark_synthesis_escalation(session)
     audit(
         db,
         tenant_id=principal.tenant_id,
