@@ -16,7 +16,12 @@ apps/frontend/src/app/App.tsx
 
 ## Source Layout
 
-- `src/app`: root orchestration, hash navigation, and session state helpers.
+- `src/app`: root orchestration, hash navigation, and session state helpers. `App.tsx` is a thin
+  composition root that mounts the shared-infrastructure provider seams before the app body:
+  `src/app/providers` holds `ApiProvider` (memoized auth-aware `apiFetch` via `useApi()`),
+  `AuthProvider` (the auth session + lifecycle via `useAuth()`), and `CapabilitiesProvider`
+  (tier/role affordances via `useCapabilities()`). Cross-cutting deps are consumed through these
+  hooks rather than threaded as props.
 - `src/domain`: frontend session/capture/auth types and UX status mapping.
 - `src/features/auth`: login and patient-preview gates.
 - `src/features/capture`: capture dialogs, active session workspace, capture metadata, audio helpers, and local capture modeling.
