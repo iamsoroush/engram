@@ -613,6 +613,10 @@
   },
   "routes": [
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -620,6 +624,10 @@
       "path": "/api/v1/aftercare-templates"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -627,6 +635,10 @@
       "path": "/api/v1/aftercare-templates"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "DELETE"
@@ -634,6 +646,10 @@
       "path": "/api/v1/aftercare-templates/{template_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -641,6 +657,10 @@
       "path": "/api/v1/aftercare-templates/{template_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -648,6 +668,10 @@
       "path": "/api/v1/aftercare-templates/{template_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -655,6 +679,10 @@
       "path": "/api/v1/ai-config/models"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PUT"
@@ -662,6 +690,10 @@
       "path": "/api/v1/ai-config/models"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -669,6 +701,10 @@
       "path": "/api/v1/ai-jobs/recover"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -676,6 +712,10 @@
       "path": "/api/v1/ai-jobs/{job_id}"
     },
     {
+      "dependencies": [
+        "get_current_principal",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -683,6 +723,10 @@
       "path": "/api/v1/ai-usage"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -690,6 +734,9 @@
       "path": "/api/v1/ai-usage/dev/set"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -697,6 +744,9 @@
       "path": "/api/v1/auth/dev-login"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -704,6 +754,10 @@
       "path": "/api/v1/auth/login"
     },
     {
+      "dependencies": [
+        "get_current_principal",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -711,6 +765,9 @@
       "path": "/api/v1/auth/logout"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -718,6 +775,9 @@
       "path": "/api/v1/auth/refresh"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -725,6 +785,10 @@
       "path": "/api/v1/auth/register"
     },
     {
+      "dependencies": [
+        "get_current_principal",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -732,6 +796,11 @@
       "path": "/api/v1/auth/switch-tenant"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -739,6 +808,10 @@
       "path": "/api/v1/captures"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "DELETE"
@@ -746,6 +819,10 @@
       "path": "/api/v1/captures/{capture_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -753,6 +830,10 @@
       "path": "/api/v1/captures/{capture_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -760,6 +841,10 @@
       "path": "/api/v1/captures/{capture_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -767,6 +852,11 @@
       "path": "/api/v1/captures/{capture_id}/assign-patient"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -774,6 +864,11 @@
       "path": "/api/v1/captures/{capture_id}/file"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -781,6 +876,10 @@
       "path": "/api/v1/captures/{capture_id}/file-content"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -788,6 +887,10 @@
       "path": "/api/v1/captures/{capture_id}/metadata"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -795,6 +898,10 @@
       "path": "/api/v1/captures/{capture_id}/retry-processing"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -802,6 +909,10 @@
       "path": "/api/v1/clinic/members"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -809,6 +920,10 @@
       "path": "/api/v1/clinic/plan"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -816,6 +931,10 @@
       "path": "/api/v1/clinic/team"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -823,6 +942,10 @@
       "path": "/api/v1/clinic/team"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -830,6 +953,7 @@
       "path": "/api/v1/clinic/team/{user_id}"
     },
     {
+      "dependencies": [],
       "in_schema": false,
       "methods": [
         "GET",
@@ -838,6 +962,10 @@
       "path": "/api/v1/docs"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -845,6 +973,10 @@
       "path": "/api/v1/feedback"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -852,6 +984,7 @@
       "path": "/api/v1/feedback"
     },
     {
+      "dependencies": [],
       "in_schema": true,
       "methods": [
         "GET"
@@ -859,6 +992,10 @@
       "path": "/api/v1/health"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -866,6 +1003,10 @@
       "path": "/api/v1/insights/overview"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -873,6 +1014,10 @@
       "path": "/api/v1/insights/patients"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -880,6 +1025,10 @@
       "path": "/api/v1/insights/team"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -887,6 +1036,10 @@
       "path": "/api/v1/insights/treatments"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -894,6 +1047,10 @@
       "path": "/api/v1/lot-ledger"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -901,6 +1058,10 @@
       "path": "/api/v1/lot-recall"
     },
     {
+      "dependencies": [
+        "get_current_principal",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -908,6 +1069,7 @@
       "path": "/api/v1/me"
     },
     {
+      "dependencies": [],
       "in_schema": false,
       "methods": [
         "GET",
@@ -916,6 +1078,10 @@
       "path": "/api/v1/openapi.json"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -923,6 +1089,10 @@
       "path": "/api/v1/patient-memory"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -930,6 +1100,10 @@
       "path": "/api/v1/patient-qa/inbox"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -937,6 +1111,10 @@
       "path": "/api/v1/patient-qa/messages/{message_id}/dismiss"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -944,6 +1122,10 @@
       "path": "/api/v1/patient-qa/messages/{message_id}/draft"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -951,6 +1133,11 @@
       "path": "/api/v1/patient-qa/messages/{message_id}/send"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -958,6 +1145,10 @@
       "path": "/api/v1/patient-qa/messages/{message_id}/voice-edit"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -965,6 +1156,10 @@
       "path": "/api/v1/patient-qa/patients/{patient_id}/treating-doctors"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -972,6 +1167,10 @@
       "path": "/api/v1/patient-qa/settings"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -979,6 +1178,10 @@
       "path": "/api/v1/patient-qa/settings"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -986,6 +1189,10 @@
       "path": "/api/v1/patient-qa/threads"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -993,6 +1200,10 @@
       "path": "/api/v1/patient-qa/threads"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1000,6 +1211,10 @@
       "path": "/api/v1/patient-qa/threads/{thread_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1007,6 +1222,10 @@
       "path": "/api/v1/patient-qa/threads/{thread_id}/revoke"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1014,6 +1233,10 @@
       "path": "/api/v1/patient-qa/threads/{thread_id}/route"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1021,6 +1244,10 @@
       "path": "/api/v1/patient-shares"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1028,6 +1255,10 @@
       "path": "/api/v1/patient-shares"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1035,6 +1266,10 @@
       "path": "/api/v1/patient-shares/{share_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1042,6 +1277,10 @@
       "path": "/api/v1/patient-shares/{share_id}/revoke"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1049,6 +1288,10 @@
       "path": "/api/v1/patients"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1056,6 +1299,10 @@
       "path": "/api/v1/patients"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1063,6 +1310,10 @@
       "path": "/api/v1/patients/duplicate-check"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1070,6 +1321,10 @@
       "path": "/api/v1/patients/search"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1077,6 +1332,10 @@
       "path": "/api/v1/patients/{patient_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -1084,6 +1343,10 @@
       "path": "/api/v1/patients/{patient_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1091,6 +1354,10 @@
       "path": "/api/v1/patients/{patient_id}/last-visit"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1098,6 +1365,10 @@
       "path": "/api/v1/patients/{patient_id}/memory"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1105,6 +1376,9 @@
       "path": "/api/v1/patients/{patient_id}/session-context"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1112,6 +1386,9 @@
       "path": "/api/v1/qa/{token}"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1119,6 +1396,7 @@
       "path": "/api/v1/qa/{token}/ask"
     },
     {
+      "dependencies": [],
       "in_schema": false,
       "methods": [
         "GET",
@@ -1127,6 +1405,10 @@
       "path": "/api/v1/redoc"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1134,6 +1416,10 @@
       "path": "/api/v1/sessions"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1141,6 +1427,10 @@
       "path": "/api/v1/sessions"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1148,6 +1438,10 @@
       "path": "/api/v1/sessions/{session_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -1155,6 +1449,10 @@
       "path": "/api/v1/sessions/{session_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1162,6 +1460,10 @@
       "path": "/api/v1/sessions/{session_id}/aftercare-dismissal"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1169,6 +1471,10 @@
       "path": "/api/v1/sessions/{session_id}/ai-jobs"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1176,6 +1482,10 @@
       "path": "/api/v1/sessions/{session_id}/artifacts"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1183,6 +1493,10 @@
       "path": "/api/v1/sessions/{session_id}/assign-patient"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1190,6 +1504,10 @@
       "path": "/api/v1/sessions/{session_id}/assignment-suggestion"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1197,6 +1515,11 @@
       "path": "/api/v1/sessions/{session_id}/captures"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1204,6 +1527,10 @@
       "path": "/api/v1/sessions/{session_id}/captures"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1211,6 +1538,10 @@
       "path": "/api/v1/sessions/{session_id}/confirm-carried-forward"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1218,6 +1549,10 @@
       "path": "/api/v1/sessions/{session_id}/retry-processing"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1225,6 +1560,10 @@
       "path": "/api/v1/sessions/{session_id}/safety-flag-rejection"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1232,6 +1571,10 @@
       "path": "/api/v1/sessions/{session_id}/save"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1239,6 +1582,10 @@
       "path": "/api/v1/sessions/{session_id}/start-review"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1246,6 +1593,10 @@
       "path": "/api/v1/sessions/{session_id}/therapy/format"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1253,6 +1604,10 @@
       "path": "/api/v1/sessions/{session_id}/therapy/reflections"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1260,6 +1615,10 @@
       "path": "/api/v1/sessions/{session_id}/therapy/release"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1267,6 +1626,9 @@
       "path": "/api/v1/sessions/{session_id}/therapy/risk"
     },
     {
+      "dependencies": [
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1274,6 +1636,10 @@
       "path": "/api/v1/share/{token}"
     },
     {
+      "dependencies": [
+        "get_db",
+        "get_object_store"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1281,6 +1647,10 @@
       "path": "/api/v1/share/{token}/media/{capture_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1288,6 +1658,10 @@
       "path": "/api/v1/smart-lists"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1295,6 +1669,10 @@
       "path": "/api/v1/smart-lists/{key}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "PATCH"
@@ -1302,6 +1680,10 @@
       "path": "/api/v1/tenant/settings"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "GET"
@@ -1309,6 +1691,10 @@
       "path": "/api/v1/worklist"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1316,6 +1702,10 @@
       "path": "/api/v1/worklist"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "DELETE"
@@ -1323,6 +1713,10 @@
       "path": "/api/v1/worklist/{entry_id}"
     },
     {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
       "in_schema": true,
       "methods": [
         "POST"
@@ -1330,6 +1724,7 @@
       "path": "/api/v1/worklist/{entry_id}/seen"
     },
     {
+      "dependencies": [],
       "in_schema": false,
       "methods": [
         "GET",
@@ -1338,6 +1733,10 @@
       "path": "/docs/oauth2-redirect"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1345,6 +1744,10 @@
       "path": "/internal/ai/jobs/recover"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1352,6 +1755,10 @@
       "path": "/internal/ai/jobs/{job_id}/complete"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1359,6 +1766,10 @@
       "path": "/internal/ai/jobs/{job_id}/fail"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1366,6 +1777,10 @@
       "path": "/internal/ai/jobs/{job_id}/progress"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1373,6 +1788,10 @@
       "path": "/internal/ai/jobs/{job_id}/retry"
     },
     {
+      "dependencies": [
+        "get_db",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "POST"
@@ -1380,6 +1799,11 @@
       "path": "/internal/ai/jobs/{job_id}/start"
     },
     {
+      "dependencies": [
+        "get_db",
+        "get_object_store",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "GET"
@@ -1387,6 +1811,11 @@
       "path": "/internal/captures/{capture_id}/file-content"
     },
     {
+      "dependencies": [
+        "get_db",
+        "get_object_store",
+        "require_ai_engine_token"
+      ],
       "in_schema": false,
       "methods": [
         "GET"
@@ -1394,6 +1823,7 @@
       "path": "/internal/qa/voice/{job_id}"
     },
     {
+      "dependencies": [],
       "in_schema": false,
       "methods": [
         "GET"
