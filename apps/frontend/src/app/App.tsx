@@ -20,7 +20,7 @@ import type {
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
 import { Card, Skeleton, Toast } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
-import { AppLangProvider, toLang, translate, type Translator } from "../shared/i18n";
+import { AppLangProvider, toLang, type Translator } from "../shared/i18n";
 import {
   assignSessionPatient,
   confirmCarriedForward,
@@ -60,14 +60,8 @@ import {
   fetchSession,
   fetchSessionCaptures,
   fetchSessions,
-  loginWithPassword,
-  loginWithPersona,
-  logoutSession,
   markCaptureRelevant,
-  refreshAuthToken,
-  registerClinic,
   type RegisterClinicInput,
-  switchTenant,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
@@ -84,7 +78,6 @@ import {
   verifyAiPatientCreation,
 } from "../services/api/client";
 import { standardizeCaptureDraft } from "../features/capture/audio";
-import { clearStoredAuthProfile, loadStoredAuthProfile, persistAuthProfile } from "../services/storage/authStorage";
 import {
   isLocalSessionId,
   makeLocalCapture,
@@ -147,7 +140,8 @@ import {
   PROCESSING_REFRESH_DELAYS,
   resolveRestoredSession,
 } from "./sessionState";
-import { ApiProvider, useApi, useRegisterAuthBridge } from "./providers/ApiProvider";
+import { ApiProvider, useApi } from "./providers/ApiProvider";
+import { AuthProvider, useAuth } from "./providers/AuthProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
 // reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
@@ -167,23 +161,27 @@ function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
 
 function AppInner() {
   const apiFetch = useApi();
-  const [auth, setAuth] = React.useState<AuthSession | null>(null);
   // App-wide UI language, date/Jalali formatting, and document direction are all driven from the
   // tenant's APP language (distinct from report language, which scopes only report/share content) by
-  // <AppLangProvider>, which wraps every authed render branch below.
-  const [authReady, setAuthReady] = React.useState(false);
-  const [authError, setAuthError] = React.useState("");
-  // First-run guided capture: shown once for a freshly signed-up founder (flagged in handleRegister),
-  // dismissed (and the flag cleared) when they finish or skip the tour.
-  const [onboardingDismissed, setOnboardingDismissed] = React.useState(false);
-  const authRef = React.useRef<AuthSession | null>(null);
-  // App() renders ABOVE <AppLangProvider>, so it can't useT(); bind a translator to the live app
-  // language (via authRef, always current) for the capture-flow chrome/toasts produced here.
-  const appT = React.useCallback<Translator>(
-    (key, vars) => translate(toLang(authRef.current?.tenant.appLanguage), key, vars),
-    [],
-  );
-  const bootstrappedAuthRef = React.useRef(false);
+  // <AppLangProvider>, which wraps every authed render branch below. Auth state + lifecycle live in
+  // AuthProvider (seam A2); `authRef` and `appT` are exposed for the still-in-App async sync/session
+  // code that must read the latest tenant/app-language without a reactive dependency.
+  const {
+    auth,
+    authReady,
+    authError,
+    authRef,
+    appT,
+    commitAuth,
+    signInWithPersona,
+    signInWithPassword,
+    register,
+    switchClinic,
+    applyTierChange,
+    logout,
+    onboardingDismissed,
+    setOnboardingDismissed,
+  } = useAuth();
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
   const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
@@ -250,43 +248,15 @@ function AppInner() {
     if (nextScreen === "active-session") setSelectedSessionId("");
   }, []);
 
-  const clearAuth = React.useCallback(() => {
-    authRef.current = null;
-    setAuth(null);
-    clearStoredAuthProfile();
-    clearWorkspaceState();
-    processingRef.current = false;
-    workspaceHydratedRef.current = false;
-  }, []);
-
-  const commitAuth = React.useCallback((nextAuth: AuthSession) => {
-    authRef.current = nextAuth;
-    setAuth(nextAuth);
-    persistAuthProfile(nextAuth);
-    setAuthError("");
-  }, []);
-
-  // Auth bridge for ApiProvider (seam A1): how apiFetch reads the current token and performs the
-  // single token refresh (commit on success, clear on failure). The single-flight coalescing lives in
-  // ApiProvider; this just does the work once per call.
-  const refreshTokens = React.useCallback(async () => {
-    const currentAuth = authRef.current;
-    if (!currentAuth) throw new Error("No auth session");
-    try {
-      const tokens = await refreshAuthToken(currentAuth.refreshToken);
-      const refreshed = { ...currentAuth, ...tokens };
-      commitAuth(refreshed);
-      return refreshed.accessToken;
-    } catch (error) {
-      clearAuth();
-      throw error;
+  // Sync/workspace refs are App-local (they belong to the outbox + workspace-persistence machinery,
+  // extracted in later increments), so reset them here whenever auth clears — covering logout and a
+  // failed token refresh, which AuthProvider's clearAuth can no longer reach.
+  React.useEffect(() => {
+    if (!auth) {
+      processingRef.current = false;
+      workspaceHydratedRef.current = false;
     }
-  }, [clearAuth, commitAuth]);
-
-  useRegisterAuthBridge({
-    getAccessToken: () => authRef.current?.accessToken,
-    refreshTokens,
-  });
+  }, [auth]);
 
   // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
   // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
@@ -303,20 +273,6 @@ function AppInner() {
   React.useEffect(() => {
     refreshQaPendingCount();
   }, [refreshQaPendingCount]);
-
-  React.useEffect(() => {
-    if (bootstrappedAuthRef.current) return;
-    bootstrappedAuthRef.current = true;
-    const storedAuth = loadStoredAuthProfile();
-    if (!storedAuth) {
-      setAuthReady(true);
-      return;
-    }
-    refreshAuthToken(storedAuth.refreshToken)
-      .then((tokens) => commitAuth({ ...storedAuth, ...tokens }))
-      .catch(() => clearAuth())
-      .finally(() => setAuthReady(true));
-  }, [clearAuth, commitAuth]);
 
   React.useEffect(() => {
     if (!auth || auth.user.persona === "patient-preview") return;
@@ -1825,54 +1781,32 @@ function AppInner() {
     [apiFetch],
   );
 
+  // Auth sign-in/register/switch are owned by AuthProvider; App wraps them only to land on the
+  // role-appropriate default screen (or, for register, to also navigate while letting the form map
+  // 409/422 from the propagated error).
   const handlePersonaLogin = async (persona: Persona, tier: DevTier = "pro") => {
-    setAuthError("");
-    try {
-      const next = await loginWithPersona(persona, tier);
-      commitAuth(next);
-      navigateScreen(defaultScreenForAuth(next));
-    } catch {
-      setAuthError(appT("auth.toastCouldNotSignInPersona"));
-    }
+    const next = await signInWithPersona(persona, tier);
+    if (next) navigateScreen(defaultScreenForAuth(next));
   };
 
   const handlePasswordLogin = async (email: string, password: string) => {
-    setAuthError("");
-    try {
-      const next = await loginWithPassword(email, password);
-      commitAuth(next);
-      navigateScreen(defaultScreenForAuth(next));
-    } catch {
-      setAuthError("Invalid email or password.");
-    }
+    const next = await signInWithPassword(email, password);
+    if (next) navigateScreen(defaultScreenForAuth(next));
   };
 
-  // Self-serve clinic sign-up. Lets the error propagate so the sign-up form can map 409/422; on
-  // success we flag the new founder for the guided first-capture tour before entering the app.
   const handleRegister = async (input: RegisterClinicInput) => {
-    setAuthError("");
-    const next = await registerClinic(input);
-    markOnboardingPending(next.user.id);
-    commitAuth(next);
+    const next = await register(input);
     navigateScreen(defaultScreenForAuth(next));
   };
 
   // Plan switch (Plan screen): reflect the new tier in the in-app tenant so capabilities + UI follow.
   const handleTierChanged = (tier: string) => {
-    const current = authRef.current;
-    if (!current) return;
-    const next = { ...current, tenant: { ...current.tenant, tier } };
-    authRef.current = next;
-    setAuth(next);
-    persistAuthProfile(next);
+    applyTierChange(tier);
     setToast(appT("capture.toastSwitchedTier", { tier: tier === "pro" ? "Pro" : "Basic" }));
   };
 
-  // Multi-clinic switch: re-issue a session for another of the user's clinics. Lets the error
-  // propagate so the chooser can show it; on success we commit the new tenant + tokens.
   const handleSwitchClinic = async (tenantId: string) => {
-    const next = await switchTenant(apiFetch, tenantId);
-    commitAuth(next);
+    const next = await switchClinic(tenantId);
     navigateScreen(defaultScreenForAuth(next));
   };
 
@@ -1933,21 +1867,15 @@ function AppInner() {
   );
 
   const handleLogout = async () => {
-    const currentAuth = authRef.current;
-    clearAuth();
+    // AuthProvider.logout() clears auth locally then best-effort revokes the backend session; App
+    // clears the session/sync workspace and returns to capture.
     setSessions([]);
     setActiveSession(null);
     setSelectedSessionId("");
     setSyncing(false);
     navigateScreen("active-session");
     void refreshPendingCount();
-    if (currentAuth) {
-      try {
-        await logoutSession(currentAuth.accessToken, currentAuth.refreshToken);
-      } catch {
-        // Local logout still wins when the backend cannot be reached.
-      }
-    }
+    await logout();
   };
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
@@ -2476,7 +2404,9 @@ function AppInner() {
 export function App() {
   return (
     <ApiProvider>
-      <AppInner />
+      <AuthProvider>
+        <AppInner />
+      </AuthProvider>
     </ApiProvider>
   );
 }
