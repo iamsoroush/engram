@@ -73,20 +73,24 @@ of these hold:
    configured"; default off, so gateway-less environments dispatch zero synthesis),
 2. the tenant has the `LIVE_REPORT_SYNTHESIS` capability,
 3. the vertical is not therapy (it has its own path),
-4. no capture jobs are pending and no report job is already **queued or running**,
+4. no capture jobs are pending and no report job is already **in flight** (`session_has_active_report_job`
+   — queued, running, **or failed-but-pending-retry**),
 5. some reportable capture is not yet folded in (`report_contribution != added`) — or the caller
    forces it after a content-changing edit/delete.
 
 **Queue-collapse dispatch (no timer, no debounce).** The first capture synthesizes **immediately** —
 per-capture responsiveness is intact — while redundant *queued* work is eliminated by two invariants:
 
-- **Single-flight + at most one pending job per session.** Guard 4 (`session_has_active_report_job`,
-  a queued OR running `session_organize`) makes a trigger while a job is merely *queued* a no-op: that
-  queued job reads the **full current capture set when it starts** (`worker_job_payload` is built at
-  `/start`, not at enqueue), so captures that land while it waits are absorbed for free. A trigger
-  while a job is *running* is likewise a no-op here; the running job's completion handler re-invokes
-  `maybe_dispatch_session_synthesis`, which dispatches the single pending follow-up covering everything
-  the running job didn't see.
+- **Single-flight + at most one pending job per session.** Guard 4 (`session_has_active_report_job`)
+  makes a trigger while a job is merely *queued* a no-op: that queued job reads the **full current
+  capture set when it starts** (`worker_job_payload` is built at `/start`, not at enqueue), so captures
+  that land while it waits are absorbed for free. A trigger while a job is *running* is likewise a no-op
+  here; the running job's completion handler re-invokes `maybe_dispatch_session_synthesis`, which
+  dispatches the single pending follow-up covering everything the running job didn't see. A **failed**
+  synthesis job that is still retryable also counts as in-flight: the recovery beat re-dispatches that
+  same job (re-reading the full current set), so a capture landing during the failure window merges
+  into that retry rather than spawning a second job. A *terminal* failure (`retryable=False`) does not
+  block — it will never retry.
 - Result: a burst of N captures costs **≤ 2 runs** (the in-flight one + one collapsed follow-up)
   instead of N; a single-capture visit adds zero latency and zero extra cost. `force=True` (content
   edits / manual regenerate) keeps its meaning — it re-synthesizes past the all-contributed guard.

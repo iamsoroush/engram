@@ -55,8 +55,11 @@ and no added latency**:
 - **Queue-collapse dispatch.** Single-flight per session + at most one pending job. The first capture
   synthesizes immediately; a trigger while a job is *queued* is a no-op (the queued job reads the full
   current capture set at `/start`), and a trigger while one is *running* yields exactly one collapsed
-  follow-up (dispatched by the running job's completion handler). A burst of N captures costs ≤ 2 runs
-  instead of N. `force=True` (content edits / manual regenerate) keeps its meaning.
+  follow-up (dispatched by the running job's completion handler). A **failed-but-retryable** job also
+  counts as in-flight (`session_has_active_report_job`), so a capture arriving during the failure window
+  merges into that job's recovery-beat retry instead of spawning a second job; a *terminal* failure does
+  not block. A burst of N captures costs ≤ 2 runs instead of N. `force=True` (content edits / manual
+  regenerate) keeps its meaning.
 - **Cache-hit before dispatch.** Every settle first checks the content-addressed
   `session_report_versions` store for the current capture-set hash and **restores** deterministically
   instead of re-synthesizing (edit-then-revert, mark-relevant toggles, re-adds). Out-of-context

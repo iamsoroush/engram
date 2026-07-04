@@ -153,19 +153,31 @@ def session_has_pending_capture_jobs(db: DbSession, *, tenant_id: uuid.UUID, ses
 
 
 def session_has_active_report_job(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
-    """Whether a session-level live-report job is already queued/running (avoid duplicates)."""
-    row = db.execute(
-        select(AiJob.id)
-        .where(
+    """Whether a session synthesis job is already in flight — queued, running, OR failed-but-still-
+    pending an automatic retry.
+
+    Single-flight extends across a failure: a failed-retryable job will be re-dispatched by the
+    recovery beat and re-reads the **full current capture set** at `/start`, so a new settle must NOT
+    spawn a second job to cover captures the failed job hasn't seen yet — its retry already will
+    (they merge into that one job). A **terminal** failure (``retryable=False``, e.g. the session was
+    deleted) does not block: it will never retry, so it must not wedge the session.
+    """
+    rows = db.execute(
+        select(AiJob).where(
             AiJob.tenant_id == tenant_id,
             AiJob.session_id == session_id,
             AiJob.capture_id.is_(None),
             AiJob.job_type == AiJobType.session_organize,
-            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running]),
+            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running, AiJobStatus.failed]),
         )
-        .limit(1)
-    ).scalar_one_or_none()
-    return row is not None
+    ).scalars()
+    for job in rows:
+        if job.status in (AiJobStatus.queued, AiJobStatus.running):
+            return True
+        # failed: blocks only while it will still be auto-retried (mirrors recovery.ai_job_retryable).
+        if (job.result_metadata or {}).get("retryable", True) is not False:
+            return True
+    return False
 
 
 def _reportable_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:

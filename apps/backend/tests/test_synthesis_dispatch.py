@@ -16,6 +16,7 @@ import uuid
 from types import SimpleNamespace
 from unittest import mock
 
+from app.models import AiJobStatus
 from app.services.ai_jobs import reports
 
 
@@ -160,6 +161,40 @@ class RestoreCachedTests(unittest.TestCase):
             reports.restore_cached_session_synthesis(db, session=s)
         sync.assert_called_once_with(patient, s)
         reconcile.assert_called_once()
+
+
+class ActiveReportJobTests(unittest.TestCase):
+    """Single-flight guard: queued/running block, and a failed-but-retryable job also blocks (its retry
+    re-reads the full current set, so a new capture must not spawn a second job — they merge)."""
+
+    def _db(self, jobs):
+        return SimpleNamespace(execute=lambda *_a, **_k: SimpleNamespace(scalars=lambda: list(jobs)))
+
+    def _job(self, status, *, retryable=None):
+        md = {} if retryable is None else {"retryable": retryable}
+        return SimpleNamespace(status=status, result_metadata=md)
+
+    def _has_active(self, jobs):
+        return reports.session_has_active_report_job(
+            self._db(jobs), tenant_id=uuid.uuid4(), session_id=uuid.uuid4()
+        )
+
+    def test_running_blocks(self):
+        self.assertTrue(self._has_active([self._job(AiJobStatus.running)]))
+
+    def test_queued_blocks(self):
+        self.assertTrue(self._has_active([self._job(AiJobStatus.queued)]))
+
+    def test_failed_retryable_blocks(self):
+        self.assertTrue(self._has_active([self._job(AiJobStatus.failed)]))  # default retryable
+        self.assertTrue(self._has_active([self._job(AiJobStatus.failed, retryable=True)]))
+
+    def test_failed_terminal_does_not_block(self):
+        # retryable=False (e.g. session deleted) never retries → must not wedge the session.
+        self.assertFalse(self._has_active([self._job(AiJobStatus.failed, retryable=False)]))
+
+    def test_no_jobs(self):
+        self.assertFalse(self._has_active([]))
 
 
 class SweepPendingTests(unittest.TestCase):
