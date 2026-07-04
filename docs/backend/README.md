@@ -23,6 +23,29 @@ human contracts the frontend builds against.
 - [Insights + feedback](insights-feedback.md): owner/admin clinic analytics and the AI-quality
   feedback harvester.
 
+## Code layout
+
+`app/main.py` is **wiring-only**: it builds the `FastAPI` app (Sentry, Prometheus, CORS), exposes
+`/health`, and mounts routers. It contains no request logic. Every domain is a **self-contained
+`APIRouter` in `app/<domain>_api.py`** whose thin handlers delegate to `app/services/*`:
+
+- `auth_api` (`/auth/*`, `/me`), `tenant_config_api` (AI usage/model config, tenant settings,
+  clinic plan), `patients_api`, `sessions_api` (+ therapy sub-plane, `/ai-jobs/*`), `captures_api`,
+  `worklist_api`, `aftercare_api`, `shares_api` (tenant shares + public `/share/*`), `team_api`.
+- `internal_api` — the AI-engine→backend worker-callback boundary (`/internal/*`, token-auth,
+  hidden from the schema). Pre-existing self-contained routers: `qa_api`/`qa_internal_api`,
+  `smart_lists_api`, `feedback_api`, `insights_api`.
+
+Request/response models live in **per-domain `app/schemas/<domain>.py`**; `app/schemas/api.py` is a
+backward-compatible re-export aggregator (new code imports from the domain module). Reusable HTTP
+plumbing (byte-range media responses, multipart metadata parsing) lives in `app/http/`.
+
+**Route-surface guard:** `tests/test_route_surface.py` snapshots every mounted route
+(path/methods/`include_in_schema`/declared dependencies) and the OpenAPI paths against
+`tests/route_surface_snapshot.json`. The rest of the suite imports services directly and never
+builds the app, so this test is what catches a mis-wired or auth-changed route. Regenerate the
+snapshot for an intentional endpoint change with `python -m tests.regen_route_surface`.
+
 ## Boundaries
 
 Celery and Redis are the processing boundary between the backend (producer) and `apps/ai_engine`

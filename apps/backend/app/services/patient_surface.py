@@ -31,7 +31,7 @@ from app.models import (
     Session,
     Tenant,
 )
-from app.schemas.api import PatientShareCreate
+from app.schemas.shares import PatientShareCreate
 from app.services.patients import get_patient
 from app.services.reporting import report_template_context
 from app.services.sessions import parse_uuid

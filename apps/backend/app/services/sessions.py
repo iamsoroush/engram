@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.models import Artifact, Capture, CaptureStatus, AiJob, OrganizationSource, Patient, Session, SessionStatus
-from app.schemas.api import AssignPatientRequest, SessionCreate, SessionSaveRequest, SessionUpdate
+from app.schemas.patients import AssignPatientRequest
+from app.schemas.sessions import SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 from app.services.feedback import record_feedback_event
 from app.services.patient_safety import drop_session_safety_flags, session_detected_safety_flags, sync_patient_safety_flags

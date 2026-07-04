@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.models import Patient, PatientIdentifier, PatientStatus
-from app.schemas.api import PatientPatch, PatientWrite
+from app.schemas.patients import PatientPatch, PatientWrite
 from app.services.patient_identity import (
     DETERMINISTIC_PATIENT_IDENTIFIER_TYPES,
     deterministic_identifier_specs,

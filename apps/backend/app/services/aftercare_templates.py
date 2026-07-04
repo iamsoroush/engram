@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
 from app.models import AftercareTemplate
-from app.schemas.api import AftercareTemplatePatch, AftercareTemplateWrite
+from app.schemas.aftercare import AftercareTemplatePatch, AftercareTemplateWrite
 
 
 def _normalize_procedure_type(value: str | None) -> str | None:
