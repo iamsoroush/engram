@@ -20,16 +20,11 @@ from app.auth.service import (
 )
 from app.config import settings
 from app.observability import init_sentry, instrument
-from app.observability.metrics import record_ai_job
 from app.db.session import get_db
 from app.schemas.api import (
     AftercareTemplatePatch,
     AftercareTemplateWrite,
-    AiJobCompleteRequest,
     AiUsageDevSetRequest,
-    AiJobErrorRequest,
-    AiJobProgressRequest,
-    AiJobStartRequest,
     AiModelConfigUpdate,
     AssignPatientRequest,
     CaptureUpdate,
@@ -64,21 +59,12 @@ from app.schemas.auth import (
 from app.services.team import create_team_member, list_team_members, update_team_member
 from app.services.ai_model_config import ai_model_settings_payload, set_ai_model_overrides
 from app.services.ai_jobs import (
-    complete_worker_job,
     enqueue_capture_processing_job,
-    fail_worker_job,
     get_ai_job,
-    recover_all_ai_jobs,
     recover_ai_jobs,
-    require_ai_engine_token,
-    retry_worker_job,
-    start_worker_job,
-    sweep_stale_patient_memory,
-    progress_worker_job,
 )
 from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture
 from app.services.capture_storage import (
-    internal_source_file_content,
     source_file_content,
     source_file_url,
     upload_source_capture,
@@ -160,129 +146,12 @@ app.add_middleware(
 )
 
 api_v1 = APIRouter(prefix=API_V1_PREFIX)
-internal_api = APIRouter(
-    prefix="/internal",
-    dependencies=[Depends(require_ai_engine_token)],
-    include_in_schema=False,
-)
 
 
 @api_v1.get("/health")
 def health_check() -> dict[str, str]:
     """Check whether the API process is running and able to serve requests."""
     return {"status": "ok"}
-
-
-@internal_api.post("/ai/jobs/recover")
-def internal_ai_jobs_recover(db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Recover queued/retryable failed AI jobs and sweep stale Pro patient memory.
-
-    The Celery-beat recovery task drives this. Besides re-dispatching durable jobs, it runs the
-    patient-memory quiescence sweep (idle ~30 min + stale → refresh) — the background half of the
-    decoupled memory trigger model, reusing the existing beat so no new infra is added.
-    """
-    result = recover_all_ai_jobs(db)
-    result["memorySweep"] = sweep_stale_patient_memory(db)
-    return result
-
-
-@internal_api.post("/ai/jobs/{job_id}/start")
-def internal_ai_job_start(
-    job_id: str,
-    request: AiJobStartRequest,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Mark an AI processing job as running and return worker input."""
-    return start_worker_job(
-        db,
-        job_id=job_id,
-        celery_task_id=request.celery_task_id,
-        retry_count=request.retry_count,
-    )
-
-
-@internal_api.post("/ai/jobs/{job_id}/complete")
-def internal_ai_job_complete(
-    job_id: str,
-    request: AiJobCompleteRequest,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Persist successful AI processing output from the worker."""
-    result = complete_worker_job(
-        db, job_id=job_id, output_key=request.output_key, output=request.output, usage=request.usage
-    )
-    # AI-job outcome metric (engram_ai_jobs_total): completion is always a terminal success.
-    record_ai_job("succeeded")
-    return result
-
-
-@internal_api.post("/ai/jobs/{job_id}/progress")
-def internal_ai_job_progress(
-    job_id: str,
-    request: AiJobProgressRequest,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Persist partial AI processing output from the worker."""
-    return progress_worker_job(db, job_id=job_id, output_key=request.output_key, output=request.output, stage=request.stage)
-
-
-@internal_api.post("/ai/jobs/{job_id}/retry")
-def internal_ai_job_retry(
-    job_id: str,
-    request: AiJobErrorRequest,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Record a failed AI worker attempt before Celery retries the job."""
-    return retry_worker_job(
-        db,
-        job_id=job_id,
-        error_message=request.error_message,
-        celery_task_id=request.celery_task_id,
-        retry_count=request.retry_count,
-        retry_reason=request.retry_reason,
-    )
-
-
-@internal_api.post("/ai/jobs/{job_id}/fail")
-def internal_ai_job_fail(
-    job_id: str,
-    request: AiJobErrorRequest,
-    db: Session = Depends(get_db),
-) -> dict[str, Any]:
-    """Record terminal AI processing failure after retries are exhausted."""
-    result = fail_worker_job(
-        db,
-        job_id=job_id,
-        error_message=request.error_message,
-        celery_task_id=request.celery_task_id,
-        retry_count=request.retry_count,
-        retry_reason=request.retry_reason,
-    )
-    # AI-job outcome metric (engram_ai_jobs_total): count a failure only when the job is now
-    # terminal. fail_worker_job may instead schedule a durable retry (status stays failed but
-    # retryable) — that is a transient attempt, not a terminal failure, so it must not inflate the
-    # failure rate the AIJobFailureRate alert watches.
-    job_view = result.get("job", {}) if isinstance(result, dict) else {}
-    metadata = job_view.get("resultMetadata") or {}
-    is_terminal = job_view.get("status") == "failed" and metadata.get("retryable") is False
-    if is_terminal:
-        record_ai_job("failed")
-    return result
-
-
-@internal_api.get("/captures/{capture_id}/file-content")
-def internal_capture_file_content(
-    capture_id: str,
-    db: Session = Depends(get_db),
-    object_store: ObjectStore = Depends(get_object_store),
-) -> Response:
-    """Stream capture source bytes to trusted internal AI processors."""
-    file_content = internal_source_file_content(db, object_store=object_store, capture_id=capture_id)
-    return Response(
-        content=file_content["content"],
-        media_type=file_content["media_type"],
-        headers={"Content-Disposition": f'inline; filename="{file_content["filename"]}"'},
-    )
 
 
 @api_v1.post("/auth/dev-login")
@@ -1121,7 +990,12 @@ def public_share_media_route(
 
 
 app.include_router(api_v1)
+
+# Internal AI-engine → backend worker-callback API (distinct trust boundary). Self-contained router.
+from app.internal_api import internal_api  # noqa: E402
+
 app.include_router(internal_api)
+
 # Post-session patient Q&A (Pro payload of the patient surface; AES-402). Self-contained routers.
 from app.qa_api import qa_api, qa_internal_api  # noqa: E402
 
