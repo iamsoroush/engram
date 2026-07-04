@@ -50,28 +50,24 @@ situations** and on an **uploaded QA gallery** the clinic curates. That requires
    a paraphrased question). Per CLAUDE.md §4 the sets below remain **proposals until the user
    approves them**.
 
-## 3. Decisions & open questions (owner review 2026-07-04)
-
-**Resolved:**
+## 3. Decisions (owner review 2026-07-04 — all five resolved; epic is decision-complete)
 
 - **Q2 · Authoring surface — Q&A inbox Library tab** (plus "Save as template" on any sent reply as
   the low-friction entry into it).
 - **Q4 · v1 scope — both:** templates *and* the sent-reply index ship together in v1.
-
-**Recommended, awaiting owner confirm (explained in the review thread):**
-
-- **Q1 · Retrieval store — pgvector recommended; ChromaDB evaluated and not recommended here.**
+- **Q1 · Retrieval store — pgvector; ChromaDB evaluated and rejected for this workload.**
   Chroma is a fine dedicated vector DB, but it is another always-on service to deploy, monitor,
   and back up on the single alpha VPS, with its own persistence and app-side multi-tenancy anyway.
   The corpus here is tiny (hundreds–low-thousands of short texts per clinic) and retrieval needs
   SQL-side filtering (tenant, language, tags) plus transactional writes with the owning rows —
   exactly what pgvector inside the existing Postgres gives for free (existing backups/restore and
   tenant isolation included). Chroma wins only at scales/workloads this feature won't reach.
-- **Q3 · Sent-reply auto-indexing — auto-index by default, with a visible manage/exclude list.**
+- **Q3 · Sent-reply auto-indexing — auto-index by default, with a visible manage/exclude list**
+  (confirmed).
   Every approved+sent reply enters the clinic's own index automatically (never crosses tenants);
   the Library tab lists indexed replies with one-tap exclude, so a bad one-off answer is easy to
   evict. Opt-in would leave most clinics with an empty knowledge base forever.
-- **Q5 · Retrieval signals shown to the doctor — provenance chip only in v1.** A tappable
+- **Q5 · Retrieval signals shown to the doctor — provenance chip only in v1** (confirmed). A tappable
   "based on: {template name} / a previous reply" chip that opens the source. Similarity scores and
   alternative-exemplar pickers stay internal (telemetry for tuning) — scores are meaningless
   numbers to clinicians and alternatives add decision weight to a flow whose whole point is speed;
