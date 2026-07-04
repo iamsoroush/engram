@@ -10,7 +10,7 @@ The AI engine does not import backend code or connect directly to the database. 
 
 **Jobs must be vertical-agnostic.** Never hardcode or assume a vertical (e.g. "aesthetics clinic" /
 "psychotherapy practice", or domain vocabulary) in a prompt or processor. The backend passes a
-`domain` descriptor in each job's context; prompts read it via `processing.domain_framing()` and fall
+`domain` descriptor in each job's context; prompts read it via `core.domain.domain_framing()` and fall
 back to a neutral `"clinic"`. Vertical-specific wording is allowed only when it is optional and
 data-driven through that descriptor — see [docs/ai_engine/README.md](../../docs/ai_engine/README.md#caution-ai-jobs-must-be-vertical-agnostic).
 

@@ -34,7 +34,7 @@ procedure/clinical-domain assumptions baked into a prompt or processor.
   hints (see `app/services/verticals.py:domain_descriptor`, fed in via `build_transcription_context`,
   `build_capture_enrichment_context`, and the patient-memory payload).
 - **The worker reads it and falls back to neutral.** Prompt builders call
-  `processing.domain_framing(context)`, which returns a neutral `"clinic"` label and no vocabulary
+  `core.domain.domain_framing(context)`, which returns a neutral `"clinic"` label and no vocabulary
   when `domain` is absent — so a worker is correct for *any* vertical, including ones with no
   descriptor yet.
 - **Vertical-specific wording is allowed only when it is OPTIONAL and data-driven** — i.e. read from

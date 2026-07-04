@@ -57,7 +57,7 @@ in `config.py` (`ai_budget_usd_per_seat`, `ai_session_soft_cap_captures`, `synth
 ## 4. How it's metered & enforced (as built)
 
 - **Real spend, not estimates.** Every gateway call already returns `usage`; the worker now captures
-  it per job (`_MeteredClient` in `apps/ai_engine/ai_engine/processing.py`) and ships it on the
+  it per job (`_MeteredClient` in `apps/ai_engine/ai_engine/core/gateway.py`) and ships it on the
   completion callback. Transcription is priced per audio-minute (duration via ffprobe); LLM/vision per
   token. The backend computes cost from `pricing.py` and accumulates into **`ai_usage_counters`**
   (per tenant/seat/calendar-month; cost in micro-dollars).
