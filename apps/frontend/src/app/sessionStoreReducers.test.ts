@@ -13,7 +13,7 @@ import {
 // Unit tests for the pure session-list transitions the SessionStore (seam C, increment 5) performs.
 // They pin the subtle reducer semantics the extraction moved out of the App god-component: upsert id
 // swaps, item-status propagation, and — the load-bearing one — the 404 self-heal that clears a stale
-// patient and marks a synthesized report stale rather than freezing (docs/work/frontend-refactor-plan §6).
+// patient and marks a synthesized report stale rather than freezing (see docs/frontend/overview.md).
 
 function item(id: string, overrides: Partial<CaptureItem> = {}): CaptureItem {
   return { id, type: "note", title: "", detail: "", time: "10:00", sourceName: "", status: "uploaded", ...overrides };

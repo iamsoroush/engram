@@ -46,6 +46,12 @@ Celery and Redis provide the background job boundary. The backend creates durabl
 
 The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and results through protected backend internal endpoints at `/internal/ai/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service.
 
+The frontend `App.tsx` is a **composition root** that assembles layered provider seams — shared
+infrastructure (`Api`/`Auth`/`Capabilities`/`Toast`) then the aesthetics shell (`Sync` outbox engine →
+`SessionStore` → `Navigation`) — and features consume them through hooks (`useApi`/`useSync`/
+`useSessions`/`useSessionActions`/`useNavigation`, plus per-feature API binders like `useMemoryApi`)
+rather than prop-threading. See [frontend overview](frontend/overview.md#composition-root--seams).
+
 ## Data Flow
 
 ### Capture

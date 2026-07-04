@@ -6,8 +6,8 @@ Plan only — no source changes made.
 structural-refactor (routers/schemas split — landed; see
 [technical-decisions.md](../technical-decisions.md) "One Router Module Per Domain" and
 [backend/README.md](../backend/README.md) "Code layout"), which owns `apps/backend/app/services/ai_jobs/`
-dispatch-side structure, and [frontend-refactor-plan.md](frontend-refactor-plan.md). Seam ownership
-for cross-cutting changes: §5.
+dispatch-side structure, and the frontend seam architecture ([frontend/overview.md](../frontend/overview.md#composition-root--seams),
+folded from the completed frontend-refactor plan). Seam ownership for cross-cutting changes: §5.
 **Fold destinations (when built):** module map + prompt-versioning + structured-output policy →
 `docs/ai_engine/processing.md` and `docs/ai_engine/README.md`; treatment-key + overlay-extension
 decisions → `docs/architecture/pipeline-versioning.md`; dated decisions (debounce-on, key strategy,

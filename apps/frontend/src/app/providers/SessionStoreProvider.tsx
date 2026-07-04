@@ -75,7 +75,7 @@ import { useToast } from "./ToastProvider";
 // effects (sessionContext, sessionLineupCard, aftercareTemplates, nextLinedUpPatient) stay in App — they
 // are interleaved with navigation and belong to the router seam (increment 7). So App consumes ONE
 // `useSessionStore()` omnibus and destructures it back into the same local names, leaving its large
-// render body + nav helpers unchanged. See docs/work/frontend-sync-store-codesign.md.
+// render body + nav helpers unchanged. See docs/frontend/overview.md#composition-root--seams.
 //
 // Render-cadence (plan §2 fork): split-context — a STABLE actions object (never changes identity) is kept
 // separate from the VOLATILE state slice, so increment-6 consumers that only dispatch don't re-render on

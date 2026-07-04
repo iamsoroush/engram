@@ -14,15 +14,56 @@ apps/frontend/src/main.tsx
 apps/frontend/src/app/App.tsx
 ```
 
+## Composition root & seams
+
+`App.tsx` is a **composition root**, not a god-component: it assembles a layered set of provider seams
+and dispatches routes. Everything cross-cutting is consumed through **hooks**, not threaded as props —
+so a new feature attaches to a module seam instead of adding App state + a callback + a panel. The
+layering (outer → inner), in `src/app/providers`:
+
+```text
+App() composition root
+  ToastProvider          useToast()          transient toast, no prop-threading
+  ApiProvider            useApi()            memoized auth-aware apiFetch + 401 refresh/retry   (INFRA)
+  AuthProvider           useAuth()           auth session + login/register/logout/switch        (INFRA)
+    AppLangProvider      (reads tenant.appLanguage → UI language + RTL)
+  CapabilitiesProvider   useCapabilities()   tier × role → named affordances (the Basic/Pro fork) (INFRA)
+  SyncProvider           useSync()           offline outbox engine (captures + operations)
+  SessionStoreProvider   useSessions() / useActiveSession() / useSessionActions()
+                         sessions[]/activeSession + the session/patient action layer              (seam C)
+  NavigationProvider     useNavigation()     screen + navigateScreen + history + return-context   (seam D)
+  AppInner               the app body — consumes the seams above via hooks; the top-level vertical
+                         branch (unauth → patient-preview → therapy → aesthetics) lives here
+```
+
+- **Infra vs shell.** `Api`/`Auth`/`Capabilities`/`Toast` are shared infrastructure (the therapy
+  vertical and patient-preview branch consume them too). `Sync`/`SessionStore`/`Navigation` are the
+  aesthetics shell. `TherapyApp` is a self-contained app and is not dragged through it.
+- **Session store (seam C).** `SessionStoreProvider` owns `sessions[]` / `activeSession` /
+  `selectedSessionId` / `assignmentSessionId` / `memoryRefreshSignal`, the async-correctness refs, and
+  the whole non-navigating session/patient action layer. It provides the outbox engine's `SessionSink`
+  (see [sync outbox](sync-outbox.md)) and splits a **stable actions context** from the **volatile state
+  slice** so dispatch-only consumers don't re-render on data churn. Its subtle list transitions
+  (upsert id-swap, item-status propagation, the 404 self-heal patient-strip, staff-assignment
+  enrichment) live as pure, unit-tested functions in `src/app/sessionStoreReducers.ts`.
+- **Navigation (seam D).** `NavigationProvider` owns the top-level `screen`, `navigateScreen` (which
+  owns the hash sync + back-stack reset), and the return-context. In-screen levels (patient file,
+  smart-list drill-in, historical review) keep their synthetic-history mechanism in
+  `shared/lib/backStack`. **Navigation-race rule:** an explicit location hash present at first load
+  always wins over restore-last-screen (see [navigation](../ux/navigation.md)).
+- **Feature API hooks (seam A1/E).** Per-feature binders wrap the client with `apiFetch` from context
+  and gate by capability internally — e.g. `useMemoryApi()` (Clinical Memory) resolves its Pro-only
+  binders to `undefined` for Basic. Memoized on `apiFetch` + capabilities so they don't re-fire child
+  effects. This is why `PatientsHome` takes ~7 nav/route props instead of 45, and `CaptureScreen`
+  reads its session mutations from `useSessionActions()` instead of ~40 callback props.
+- **Region components (seam E).** Heavy screens compose region components (e.g. `CaptureRegions` —
+  `SessionSafetyPanel` / `NextLinedUpBar` / `SessionReviewRegion`) so a UX epic attaches to a region,
+  not a monolith.
+
 ## Source Layout
 
-- `src/app`: root orchestration, hash navigation, and session state helpers. `App.tsx` is a thin
-  composition root that mounts the shared-infrastructure provider seams before the app body:
-  `src/app/providers` holds `ApiProvider` (memoized auth-aware `apiFetch` via `useApi()`),
-  `AuthProvider` (the auth session + lifecycle via `useAuth()`), `CapabilitiesProvider`
-  (tier/role affordances via `useCapabilities()`), `ToastProvider` (the transient toast via
-  `useToast()`), and `SyncProvider` (the offline-first outbox engine via `useSync()`). Cross-cutting
-  deps are consumed through these hooks rather than threaded as props.
+- `src/app`: the composition root (above), the navigation + session-store seams, and pure
+  session-state helpers (`sessionState.ts`, `sessionStoreReducers.ts`).
 - `src/app/outbox`: the framework-agnostic outbox engine (`createOutboxEngine`) that `SyncProvider`
   drives — serial capture upload, dependent-operation replay, retry, and the optimistic `saveDraft`.
   It touches no React/IndexedDB directly (injected ports), so it is unit-tested against a fake storage
