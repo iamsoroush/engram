@@ -5,7 +5,6 @@ status out, never new text) can't hallucinate new safety text the way a free-wri
 dedups-by-meaning / supersedes this visit's newly detected flags against the patient's existing ones;
 a failure or sparse set leaves the deterministic union (the safety floor) intact.
 """
-import json
 from typing import Any
 
 from ai_engine.config import settings
@@ -14,6 +13,10 @@ from ai_engine.contracts.safety_reconcile import (  # noqa: F401 — re-exported
     parse_safety_reconcile_output,
 )
 from ai_engine.core.gateway import gateway_client, resolve_model, resolve_reasoning_effort
+# The prompt lives in its own versioned module (§3.3); ``safety_reconcile_prompt`` is re-exported for
+# the shim + tests (this pass folds into synthesis, so its version rides the synthesis provenance).
+from ai_engine.prompts.safety_reconcile import PROMPT_VERSION as SAFETY_RECONCILE_PROMPT_VERSION  # noqa: F401
+from ai_engine.prompts.safety_reconcile import build as safety_reconcile_prompt  # noqa: F401
 
 
 def safety_reconcile_json_schema() -> dict[str, Any]:
@@ -32,40 +35,6 @@ def safety_reconcile_json_schema() -> dict[str, Any]:
         "properties": {"decisions": {"type": "array", "items": decision}},
         "required": ["decisions"],
     }
-
-
-def safety_reconcile_prompt(payload: dict[str, Any]) -> str:
-    """Build the cross-visit safety-reconcile prompt (selection-only; keys + status out, never text)."""
-    existing = payload.get("existingFlags") if isinstance(payload.get("existingFlags"), list) else []
-    new_flags = payload.get("newFlags") if isinstance(payload.get("newFlags"), list) else []
-    return "\n\n".join(
-        (
-            "You are Engram, reconciling a patient's clinical SAFETY FLAGS across visits. You are given the "
-            "patient's EXISTING flags and this visit's NEW flags. Each flag has a stable `key`, a `kind` "
-            "(allergy / contraindication / consent), and `text` (clinical content — never translate or "
-            "rewrite it).",
-            (
-                "Return ONE decision per flag (referenced by its `key`):\n"
-                "- 'keep': a distinct, current safety fact — keep it.\n"
-                "- 'duplicate': states the SAME clinical concept as another flag — set ofKey to that other "
-                "flag's key (e.g. «آلرژی به پنی‌سیلین» and «حساسیت به پنی‌سیلین» are the same; keep one, mark "
-                "the rest duplicate).\n"
-                "- 'superseded': a later flag EXPLICITLY contradicts/updates this one — set ofKey to the "
-                "superseding flag's key (e.g. «بیمار باردار است» then «دیگر باردار نیست»). A superseded flag "
-                "is ANNOTATED, never deleted.\n"
-                "RULES:\n"
-                "- SELECTION ONLY: emit keys + status, never any new/edited text. Every `key` MUST be one of "
-                "the given flags' keys; every `ofKey` MUST also be one of the given keys.\n"
-                "- BIAS TO KEEP (safety errs to inclusion): mark 'duplicate'/'superseded' ONLY when you are "
-                "confident it is the SAME concept or an EXPLICIT update. When unsure, 'keep'. NEVER drop a "
-                "distinct allergy or contraindication.\n"
-                "- NEVER merge across kinds (an allergy is never a duplicate of a consent).\n"
-                "Return ONLY strict JSON: {\"decisions\": [{\"key\", \"status\", \"ofKey\"}]}."
-            ),
-            f"EXISTING flags: {json.dumps(existing, ensure_ascii=False)}",
-            f"NEW flags (this visit): {json.dumps(new_flags, ensure_ascii=False)}",
-        )
-    )
 
 
 def _safety_flag_key(kind: Any, text: Any) -> str:

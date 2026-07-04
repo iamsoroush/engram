@@ -5,40 +5,16 @@ suggestion grounded in the doctor's prior answers + this patient's context, inve
 facts. Falls back to the backend-provided deterministic draft when gateway-less or the model returns
 nothing usable, so the inbox always has a suggestion.
 """
-import json
 from typing import Any
 
 from ai_engine.contracts.qa import QA_DRAFT_OUTPUT_VERSION, parse_qa_draft_output  # noqa: F401
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
 from ai_engine.core.util import utc_now
-
-
-def qa_draft_prompt(payload: dict[str, Any]) -> str:
-    """Build the prompt for a post-session patient Q&A reply draft (AES-402).
-
-    The doctor reviews and approves the result before anything is sent, so the draft must be a warm,
-    clinically-cautious *suggestion* grounded in the doctor's prior answers + this patient's context,
-    inventing no clinical facts and escalating to the clinic when warranted.
-    """
-    qa = payload.get("qaDraft") if isinstance(payload.get("qaDraft"), dict) else {}
-    return "\n\n".join(
-        (
-            "You are Engram, drafting a reply on behalf of an aesthetics clinic doctor to a patient's "
-            "between-visits question. The doctor will review and edit before sending.",
-            (
-                "Write a warm, concise reply (2-4 sentences) in the patient's voice-appropriate register. "
-                "Ground it in the doctor's PRIOR ANSWERS and THIS PATIENT'S CONTEXT below; match the "
-                "doctor's tone. Do NOT invent clinical facts, doses, products, or diagnoses not present "
-                "in the context. Reassure when appropriate, reference the aftercare already given, and "
-                "tell the patient to contact the clinic if symptoms worsen or they are worried. Sign off "
-                f"as {qa.get('doctorName') or 'the clinic'}. Return ONLY the plain-text reply."
-            ),
-            f"Patient question:\n{qa.get('patientQuestion', '')}",
-            f"This patient's context:\n{json.dumps(qa.get('patientContext', {}), ensure_ascii=False, sort_keys=True)}",
-            f"The doctor's prior answers:\n{json.dumps(qa.get('priorAnswers', []), ensure_ascii=False, sort_keys=True)}",
-        )
-    )
+# The prompt lives in its own versioned module (§3.3); ``qa_draft_prompt`` is re-exported for the shim
+# + tests, and the envelope stamps ``QA_DRAFT_PROMPT_VERSION``.
+from ai_engine.prompts.qa_draft import PROMPT_VERSION as QA_DRAFT_PROMPT_VERSION
+from ai_engine.prompts.qa_draft import build as qa_draft_prompt  # noqa: F401
 
 
 def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
@@ -52,6 +28,7 @@ def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
     def _fallback_output() -> dict[str, Any]:
         return {
             "schemaVersion": QA_DRAFT_OUTPUT_VERSION,
+            "promptVersion": QA_DRAFT_PROMPT_VERSION,
             "draft": fallback.get("draft"),
             "source": fallback.get("source") or "mock-deterministic",
             "generated_by": "ai-engine",
@@ -74,6 +51,7 @@ def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
         return _fallback_output()
     return {
         "schemaVersion": QA_DRAFT_OUTPUT_VERSION,
+        "promptVersion": QA_DRAFT_PROMPT_VERSION,
         "draft": draft,
         "source": f"ai:{model}",
         "model": model,

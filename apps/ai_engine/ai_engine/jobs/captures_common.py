@@ -27,6 +27,7 @@ class CaptureProcessingOutput(TypedDict, total=False):
 
     status: str
     schemaVersion: NotRequired[str]
+    promptVersion: NotRequired[str]
     text: str
     generated_by: str
     job_id: str
