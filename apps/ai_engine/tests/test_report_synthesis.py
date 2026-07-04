@@ -92,7 +92,7 @@ class CompletedSynthesisOutputTests(unittest.TestCase):
         }
 
     def test_no_gateway_skips(self):
-        with patch("ai_engine.processing.transcription_is_configured", return_value=False):
+        with patch("ai_engine.jobs.session_synthesis.transcription_is_configured", return_value=False):
             output = completed_session_synthesis_output(self._payload())
         self.assertTrue(output["synthesis_skipped"])
         self.assertEqual(output["reason"], "gateway_not_configured")
@@ -100,9 +100,9 @@ class CompletedSynthesisOutputTests(unittest.TestCase):
     def test_malformed_gateway_output_skips(self):
         client = MagicMock()
         client.chat.completions.create.return_value = _response("garbage, not json")
-        with patch("ai_engine.processing.transcription_is_configured", return_value=True), patch(
-            "ai_engine.processing.gateway_client", return_value=client
-        ), patch("ai_engine.processing.resolve_model", return_value="m"):
+        with patch("ai_engine.jobs.session_synthesis.transcription_is_configured", return_value=True), patch(
+            "ai_engine.jobs.session_synthesis.gateway_client", return_value=client
+        ), patch("ai_engine.jobs.session_synthesis.resolve_model", return_value="m"):
             output = completed_session_synthesis_output(self._payload())
         self.assertTrue(output["synthesis_skipped"])
         self.assertEqual(output["reason"], "empty_or_malformed_synthesis")
@@ -110,9 +110,9 @@ class CompletedSynthesisOutputTests(unittest.TestCase):
     def test_gateway_synthesis_completes(self):
         client = MagicMock()
         client.chat.completions.create.return_value = _response(CANNED_SYNTHESIS)
-        with patch("ai_engine.processing.transcription_is_configured", return_value=True), patch(
-            "ai_engine.processing.gateway_client", return_value=client
-        ), patch("ai_engine.processing.resolve_model", return_value="m"):
+        with patch("ai_engine.jobs.session_synthesis.transcription_is_configured", return_value=True), patch(
+            "ai_engine.jobs.session_synthesis.gateway_client", return_value=client
+        ), patch("ai_engine.jobs.session_synthesis.resolve_model", return_value="m"):
             output = completed_session_synthesis_output(self._payload())
         self.assertEqual(output["status"], "completed")
         self.assertEqual(output["structured_report"]["schemaVersion"], SESSION_SYNTHESIS_OUTPUT_VERSION)
