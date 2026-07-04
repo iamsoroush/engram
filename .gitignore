@@ -36,6 +36,9 @@ apps/ai_engine/eval/fixtures/*/*
 !apps/ai_engine/eval/fixtures/*/.gitkeep
 # Local cache populated by `scripts/eval-fixtures.sh pull`.
 .eval-fixtures-cache/
+# Machine-readable eval scorecards (run artifacts): per-module + merged JSON written by
+# _common.write_scorecard / run_all.py. Trend history is archived to object storage, never git.
+apps/ai_engine/eval/out/
 
 # Notebooks
 notebooks/

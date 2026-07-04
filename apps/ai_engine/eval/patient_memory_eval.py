@@ -36,12 +36,14 @@ from _common import (  # noqa: E402
     DEFAULT_MIN_SCORE,
     STRICT_QUALITY,
     contains,
+    env_models,
     exit_code,
     gateway_configured,
     judge,
     latin_offenders,
     min_score,
     quality_line,
+    write_scorecard,
 )
 from ai_engine.processing import completed_patient_memory_output  # noqa: E402
 
@@ -381,9 +383,16 @@ def run_cases() -> tuple[int, int, int, int]:
 
 
 def main() -> int:
+    models = env_models("AI_ENGINE_PATIENT_MEMORY_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL")
     self_tests_ok = run_gate_self_tests()
     if not gateway_configured():
         print("\nSKIP: no AI gateway configured. Memory cases not run; deterministic self-tests above stand.")
+        write_scorecard(
+            "patient_memory_eval",
+            metrics={"self_tests_ok": int(self_tests_ok), "safety_pass": 0, "safety_fail": 0,
+                     "quality_pass": 0, "quality_fail": 0, "cases_total": 0},
+            models_under_test=models,
+        )
         return 0 if self_tests_ok else 1
 
     safety_pass, safety_fail, quality_pass, quality_fail = run_cases()
@@ -393,6 +402,13 @@ def main() -> int:
     print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail")
     print(f"  quality (judge): {quality_pass} pass / {quality_fail} below threshold  "
           f"({'blocking' if STRICT_QUALITY else 'advisory'})")
+    write_scorecard(
+        "patient_memory_eval",
+        metrics={"self_tests_ok": int(self_tests_ok), "safety_pass": safety_pass, "safety_fail": safety_fail,
+                 "quality_pass": quality_pass, "quality_fail": quality_fail,
+                 "cases_total": safety_pass + safety_fail},
+        models_under_test=models,
+    )
     return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, quality_fail=quality_fail)
 
 

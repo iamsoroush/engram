@@ -1,0 +1,58 @@
+name: AI eval gate (deterministic)
+
+# Stage-1 of the eval CI ladder (docs/ai_engine/evals.md → "CI ladder"): a BLOCKING, deterministic
+# PR gate. It runs the eval suite (apps/ai_engine/eval/run_all.py) with NO gateway configured, so every
+# module runs only its deterministic gate self-tests + matcher/parser self-tests — pure Python, zero
+# gateway spend, zero LLM flake. A harness bug or a matcher regression fails the job and blocks the PR.
+#
+# The gateway-backed, money-spending, non-deterministic run stays in eval.yml (manual / scheduled,
+# non-blocking). This job is the one meant to be a REQUIRED status check in branch protection
+# (Settings → Branches): mark "AI eval self-tests (no gateway)" required.
+
+on:
+  pull_request:
+    paths:
+      - "apps/ai_engine/**"
+
+# Cancel superseded runs for the same PR ref to save CI minutes.
+concurrency:
+  group: ai-eval-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: AI eval self-tests (no gateway)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: apps/ai_engine/requirements.txt
+
+      - name: Install ai_engine deps
+        working-directory: apps/ai_engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # NO AI_ENGINE_TRANSCRIPTION_* env is set on purpose: gateway_configured() is False, so every
+      # module SKIPs its gateway tier and runs deterministic self-tests only. run_all.py exits non-zero
+      # iff a self-test / matcher regressed — that is the merge-blocking signal.
+      - name: Run deterministic eval self-tests
+        working-directory: apps/ai_engine
+        env:
+          PYTHONPATH: .
+        run: python eval/run_all.py
+
+      - name: Upload scorecard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-scorecard
+          path: apps/ai_engine/eval/out/scorecard.json
+          if-no-files-found: warn

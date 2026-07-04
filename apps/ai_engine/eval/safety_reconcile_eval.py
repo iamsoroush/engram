@@ -12,12 +12,19 @@ No gateway → SKIP (exit 0). With a gateway it exits non-zero if any case fails
 """
 from __future__ import annotations
 
+import pathlib
 import sys
 from typing import Any
 
-sys.path.insert(0, ".")
 sys.path.insert(0, "/app")
+sys.path.insert(0, "/app/eval")
+sys.path.insert(0, ".")
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+except NameError:
+    pass
 
+from _common import env_models, write_scorecard  # noqa: E402
 from ai_engine.processing import reconcile_safety_flags, transcription_is_configured  # noqa: E402
 
 
@@ -84,10 +91,17 @@ CASES: list[dict[str, Any]] = [
 
 
 def main() -> int:
+    models = env_models("AI_ENGINE_REPORT_SYNTHESIS_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL")
     if not transcription_is_configured():
         print("SKIP: no AI gateway configured (AI_ENGINE_TRANSCRIPTION_BASE_URL empty).")
+        write_scorecard(
+            "safety_reconcile_eval",
+            metrics={"safety_pass": 0, "safety_fail": 0, "cases_total": 0},
+            models_under_test=models,
+        )
         return 0
     passed = failed = 0
+    records: list[dict[str, Any]] = []
     for index, case in enumerate(CASES, start=1):
         payload = {"existingFlags": case["existing"], "newFlags": case["new"], "aiModels": {}}
         try:
@@ -99,16 +113,25 @@ def main() -> int:
         if decisions is None:
             print(f"[{index}] FAIL  {case['name']}: reconcile returned no usable output")
             failed += 1
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
             continue
         ok, note = case["check"](decisions)
         if ok:
             print(f"[{index}] PASS  {case['name']}")
             passed += 1
+            records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
         else:
             print(f"[{index}] FAIL  {case['name']}  | {note}")
             failed += 1
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": [note]})
     total = passed + failed
     print(f"\nSafety reconcile eval: {passed}/{total} passed.")
+    write_scorecard(
+        "safety_reconcile_eval",
+        metrics={"safety_pass": passed, "safety_fail": failed, "cases_total": total},
+        cases=records,
+        models_under_test=models,
+    )
     return 0 if failed == 0 else 1
 
 

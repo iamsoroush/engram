@@ -1,28 +1,42 @@
 #!/usr/bin/env python3
 """Farsi golden-set eval for Pro AFTERCARE selection + dictation-vs-protocol conflict detection.
 
-Opt-in eval that runs the real single-pass synthesis (``synthesize_session_report``) against the
-configured gateway and asserts the ``aftercareSelections`` output: for the procedures performed this
-visit, the model must (a) pick the right clinic protocol(s) by clinical relevance — COMPLETENESS,
-one per performed procedure — and (b) when the clinician DICTATES aftercare that differs from a
-protocol, flag THAT protocol (per-procedure, same-topic) as conflicts/superseded, never a different
-one. This guards the "intelligent, not keyword" aftercare behaviour the deterministic match couldn't.
+Runs the real single-pass synthesis (``synthesize_session_report``) against the configured gateway and
+asserts the ``aftercareSelections`` output: for the procedures performed this visit, the model must
+(a) pick the right clinic protocol(s) by clinical relevance — COMPLETENESS, one per performed
+procedure — and (b) when the clinician DICTATES aftercare that differs from a protocol, flag THAT
+protocol (per-procedure, same-topic) as conflicts/superseded, never a different one. Shares the harness
+in ``_common.py`` (``knownGap`` xfail, the exit-code policy, the machine-readable scorecard):
+
+* **Safety gates** — deterministic, over the selection statuses. HARD pass/fail.
 
 Run it where a gateway is reachable::
 
     docker exec engram-main-ai-engine-1 python /app/eval/aftercare_conflict_eval.py
 
-No gateway → SKIP (exit 0). With a gateway it exits non-zero if any case fails.
+No gateway → the gateway cases SKIP; deterministic gate self-tests still run. Exit is SAFETY only.
 """
 from __future__ import annotations
 
+import pathlib
 import sys
 from typing import Any
 
-sys.path.insert(0, ".")
 sys.path.insert(0, "/app")
+sys.path.insert(0, "/app/eval")
+sys.path.insert(0, ".")
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+except NameError:
+    pass
 
-from ai_engine.processing import synthesize_session_report, transcription_is_configured  # noqa: E402
+from _common import (  # noqa: E402
+    env_models,
+    exit_code,
+    gateway_configured,
+    write_scorecard,
+)
+from ai_engine.processing import synthesize_session_report  # noqa: E402
 
 DOMAIN = {"label": "aesthetics clinic", "vocabulary": ["بوتاکس", "فیلر", "ژل", "واحد", "سی‌سی"]}
 
@@ -104,52 +118,162 @@ def _status_ok(expected: str, actual: str | None) -> bool:
     return actual in ("conflicts", "superseded")  # "flag": the clinician's words differ — either is fine
 
 
-def _check(case: dict[str, Any], output: dict[str, Any]) -> tuple[bool, list[str]]:
+def run_gates(output: dict[str, Any], expect: dict[str, str]) -> list[str]:
+    """Apply the deterministic aftercare-selection gates; return failures (empty == pass)."""
     selections = [s for s in (output.get("aftercareSelections") or []) if isinstance(s, dict)]
     by_id = {s.get("templateId"): s.get("status") for s in selections}
-    expected = case["expect"]
     notes: list[str] = []
-    for template_id, expected_status in expected.items():
+    for template_id, expected_status in expect.items():
         actual = by_id.get(template_id)
         if actual is None:
             notes.append(f"{template_id}: MISSING (expected {expected_status})")
         elif not _status_ok(expected_status, actual):
             notes.append(f"{template_id}: {actual}≠{expected_status}")
     for template_id, status in by_id.items():
-        if template_id not in expected:
+        if template_id not in expect:
             notes.append(f"{template_id}: UNEXPECTED ({status}) — that procedure wasn't performed")
-    return (not notes), notes
+    return notes
 
 
-def main() -> int:
-    if not transcription_is_configured():
-        print("SKIP: no AI gateway configured (AI_ENGINE_TRANSCRIPTION_BASE_URL empty).")
-        return 0
-    passed = 0
-    failed = 0
+# --- Deterministic gate self-tests (synthetic OUTPUT dicts, no gateway) ---------------------------
+
+def _output(selections: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"aftercareSelections": selections}
+
+
+GATE_SELF_TESTS: list[dict[str, Any]] = [
+    {
+        "name": "applies as expected PASSES",
+        "output": _output([{"templateId": "tmpl-botox", "status": "applies"}]),
+        "expect": {"tmpl-botox": "applies"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "flag accepts conflicts",
+        "output": _output([{"templateId": "tmpl-botox", "status": "conflicts"}]),
+        "expect": {"tmpl-botox": "flag"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "flag accepts superseded",
+        "output": _output([{"templateId": "tmpl-filler", "status": "superseded"}]),
+        "expect": {"tmpl-filler": "flag"},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "applies-expected but conflicts FAILS",
+        "output": _output([{"templateId": "tmpl-botox", "status": "conflicts"}]),
+        "expect": {"tmpl-botox": "applies"},
+        "expectGatesPass": False,
+        "expectReasonContains": "≠applies",
+    },
+    {
+        "name": "flag-expected but applies FAILS",
+        "output": _output([{"templateId": "tmpl-filler", "status": "applies"}]),
+        "expect": {"tmpl-filler": "flag"},
+        "expectGatesPass": False,
+        "expectReasonContains": "≠flag",
+    },
+    {
+        "name": "missing expected selection FAILS",
+        "output": _output([]),
+        "expect": {"tmpl-botox": "applies"},
+        "expectGatesPass": False,
+        "expectReasonContains": "MISSING",
+    },
+    {
+        "name": "selecting a not-performed protocol FAILS (over-selection)",
+        "output": _output([{"templateId": "tmpl-botox", "status": "applies"}, {"templateId": "tmpl-filler", "status": "applies"}]),
+        "expect": {"tmpl-botox": "applies"},
+        "expectGatesPass": False,
+        "expectReasonContains": "UNEXPECTED",
+    },
+]
+
+
+# --- Runners --------------------------------------------------------------------------------------
+
+
+def run_gate_self_tests() -> bool:
+    print("--- safety-gate self-tests (deterministic, no gateway) ---")
+    ok = True
+    for index, case in enumerate(GATE_SELF_TESTS, start=1):
+        problems = run_gates(case["output"], case["expect"])
+        passed = not problems
+        as_expected = passed == case["expectGatesPass"]
+        if as_expected and not case["expectGatesPass"]:
+            needle = case.get("expectReasonContains")
+            if needle and not any(needle in problem for problem in problems):
+                as_expected = False
+        ok = ok and as_expected
+        detail = "gates pass" if passed else f"gates fail: {'; '.join(problems)}"
+        print(f"  [{index}] {'OK  ' if as_expected else 'BUG '} {case['name']}  → {detail}")
+    print(f"  self-tests: {'all matchers behave correctly' if ok else 'HARNESS BUG — a matcher misbehaved'}")
+    return ok
+
+
+def run_cases() -> tuple[int, int, int, list[dict[str, Any]]]:
+    """Run the synthetic aftercare cases on the gateway. Returns (pass, fail, known_gap, records)."""
+    print("\n--- aftercare-conflict cases (synthetic Farsi dictations → gateway) ---")
+    safety_pass = safety_fail = known_gap = 0
+    records: list[dict[str, Any]] = []
     for index, case in enumerate(CASES, start=1):
         try:
             output = synthesize_session_report(_payload(case["captures"]))
-        except Exception as exc:  # noqa: BLE001
-            print(f"ERROR: gateway call failed on case {index} ({case['name']}): {exc!r}")
-            print("SKIP: gateway unreachable — eval not run.")
-            return 0
+        except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop scoring.
+            print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
+            print("  SKIP: gateway unreachable — remaining cases not scored.")
+            break
         if output is None:
-            print(f"[{index}] FAIL  {case['name']}: synthesis returned no usable output")
-            failed += 1
+            print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output")
+            safety_fail += 1
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
             continue
-        ok, notes = _check(case, output)
+        problems = run_gates(output, case["expect"])
         selections = output.get("aftercareSelections") or []
         summary = "; ".join(f"{s.get('templateId')}={s.get('status')}" for s in selections) or "(none)"
-        if ok:
-            print(f"[{index}] PASS  {case['name']}  → {summary}")
-            passed += 1
+        known = case.get("knownGap")
+        if problems and known:
+            known_gap += 1
+            print(f"  [{index}] KNOWN-GAP {case['name']}: {', '.join(problems)}  → {summary}\n             ↳ {known}")
+            records.append({"id": case["name"], "safety": "known-gap", "judge": {}, "reasons": problems})
+        elif problems:
+            safety_fail += 1
+            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}")
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": problems})
         else:
-            print(f"[{index}] FAIL  {case['name']}  → {summary}  | {', '.join(notes)}")
-            failed += 1
-    total = passed + failed
-    print(f"\nAftercare conflict eval: {passed}/{total} passed.")
-    return 0 if failed == 0 else 1
+            safety_pass += 1
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
+            records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
+    return safety_pass, safety_fail, known_gap, records
+
+
+def main() -> int:
+    self_tests_ok = run_gate_self_tests()
+    if not gateway_configured():
+        print("\nSKIP: no AI gateway configured. Aftercare cases not run; deterministic self-tests above stand.")
+        write_scorecard(
+            "aftercare_conflict_eval",
+            metrics={"self_tests_ok": int(self_tests_ok), "safety_pass": 0, "safety_fail": 0, "known_gap": 0, "cases_total": 0},
+            models_under_test=env_models("AI_ENGINE_REPORT_SYNTHESIS_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL"),
+        )
+        return 0 if self_tests_ok else 1
+
+    safety_pass, safety_fail, known_gap, records = run_cases()
+
+    print(f"\n{'=' * 8} AFTERCARE-CONFLICT SCORECARD {'=' * 8}")
+    print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
+    print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail / {known_gap} known-gap")
+    write_scorecard(
+        "aftercare_conflict_eval",
+        metrics={
+            "self_tests_ok": int(self_tests_ok), "safety_pass": safety_pass, "safety_fail": safety_fail,
+            "known_gap": known_gap, "cases_total": safety_pass + safety_fail + known_gap,
+        },
+        cases=records,
+        models_under_test=env_models("AI_ENGINE_REPORT_SYNTHESIS_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL"),
+    )
+    return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail)
 
 
 if __name__ == "__main__":
