@@ -8,6 +8,10 @@ Vertical-agnostic via the domain descriptor.
 import json
 from typing import Any
 
+from ai_engine.contracts.memory import (  # noqa: F401 — re-exported for the processing shim + tests
+    PATIENT_MEMORY_OUTPUT_VERSION,
+    parse_patient_memory_output,
+)
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.domain import domain_framing
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
@@ -67,40 +71,6 @@ def patient_memory_prompt(payload: dict[str, Any]) -> str:
     )
 
 
-def parse_patient_memory_output(text: str) -> dict[str, Any] | None:
-    """Parse the model's patient-memory JSON; return None if unusable so the caller can fall back."""
-    if not text or not text.strip():
-        return None
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) >= 2 else cleaned.strip("`")
-        if cleaned.lstrip().lower().startswith("json"):
-            cleaned = cleaned.lstrip()[4:]
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        data = json.loads(cleaned[start : end + 1])
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    summary = data.get("summary")
-    history = data.get("history")
-    if not isinstance(summary, str) or not summary.strip() or not isinstance(history, dict):
-        return None
-    if not isinstance(history.get("snapshot"), str):
-        return None
-    sections = history.get("sections")
-    if not isinstance(sections, list) or not sections:
-        return None
-    # The compact line-up card is optional (backend layers in a deterministic fallback if absent).
-    card = data.get("card")
-    return {"summary": summary.strip(), "history": history, "card": card if isinstance(card, dict) else None}
-
-
 def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     """Build the combined patient summary+history output, via the gateway when configured.
 
@@ -111,6 +81,7 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
 
     def _fallback_output() -> dict[str, Any]:
         return {
+            "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
             "summary": fallback.get("summary"),
             "history": fallback.get("history"),
             "card": fallback.get("card"),
@@ -136,6 +107,7 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
     history = parsed["history"]
     history["source"] = f"ai:{model}"
     return {
+        "schemaVersion": PATIENT_MEMORY_OUTPUT_VERSION,
         "summary": parsed["summary"],
         "history": history,
         # Carry the model's compact card through; backend coerces it + falls back deterministically.

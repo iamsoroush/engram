@@ -6,7 +6,6 @@ comparable across captures. Fixture audio maps to deterministic text; a gateway-
 capture raises so the backend can retry. Vertical-agnostic via the domain descriptor.
 """
 import json
-import re
 from typing import Any
 
 from ai_engine.config import settings
@@ -19,39 +18,22 @@ from ai_engine.core.gateway import (
     transcription_is_configured,
 )
 from ai_engine.core.media import audio_duration_seconds, audio_to_flac_mono_16khz_base64
-from ai_engine.core.text import normalize_digits_to_latin, transcription_language_directive
-from ai_engine.core.util import clamp_confidence, utc_now
-from ai_engine.jobs.captures_common import CaptureProcessingOutput, DetectedPatientOutput
-
-TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
-
-ASSIGNMENT_INTENT_BASES = {"explicit", "implicit"}
-
-PATIENT_INFORMATION_FIELDS = (
-    "raw_mentioned_name",
-    "standardized_display_name",
-    "alternate_transliterations",
-    "national_id",
-    "phone",
-    "date_of_birth",
-    "evidence",
-    "confidence",
+from ai_engine.core.text import transcription_language_directive
+from ai_engine.core.util import utc_now
+# The capture-intelligence contract (transcript + patient information + intents) — the tolerant
+# shaping now lives in ``contracts.capture``; re-exported here so the ``processing`` shim and tests
+# keep importing these names from the job module.
+from ai_engine.contracts.capture import (  # noqa: F401
+    ASSIGNMENT_INTENT_BASES,
+    CAPTURE_INTELLIGENCE_OUTPUT_VERSION,
+    PATIENT_INFORMATION_FIELDS,
+    TRANSCRIPTION_LANGUAGES,
+    empty_patient_information,
+    normalize_intents,
+    parse_structured_transcription_output,
+    structured_transcription_from_text,
 )
-
-
-def empty_patient_information(*, source_text: str | None = None) -> dict[str, Any]:
-    """Return the generated patient-information schema for no detected identity."""
-    return {
-        "raw_mentioned_name": None,
-        "standardized_display_name": None,
-        "alternate_transliterations": [],
-        "national_id": None,
-        "phone": None,
-        "date_of_birth": None,
-        "evidence": None,
-        "confidence": 0.0,
-        "source_text": source_text,
-    }
+from ai_engine.jobs.captures_common import CaptureProcessingOutput, DetectedPatientOutput
 
 
 def detected_patient_from_patient_information(patient_information: dict[str, Any], transcript: str) -> DetectedPatientOutput:
@@ -66,51 +48,6 @@ def detected_patient_from_patient_information(patient_information: dict[str, Any
         "evidence": str(patient_information.get("evidence")) if patient_information.get("evidence") else None,
         "source_text": transcript,
     }
-
-
-def structured_transcription_from_text(text: str, *, language: str = "en") -> dict[str, Any]:
-    """Return deterministic structured transcription for fixtures and fallback output."""
-    return {
-        "transcript": text,
-        "language": language,
-        "patient_information": empty_patient_information(source_text=text),
-        "clinical_summary": None,
-        "uncertainties": [],
-        "intents": None,
-    }
-
-
-def normalize_intents(raw: Any) -> dict[str, Any] | None:
-    """Normalize best-effort intent classification, dropping absent or malformed intents.
-
-    The transcript is the required, high-trust field; intents are optional so a malformed
-    intent payload never invalidates an otherwise usable transcript.
-    """
-    if not isinstance(raw, dict):
-        return None
-    intents: dict[str, Any] = {}
-    assignment = raw.get("assignment")
-    if isinstance(assignment, dict) and assignment.get("present") is True:
-        basis = assignment.get("basis")
-        evidence = assignment.get("evidence")
-        intents["assignment"] = {
-            "present": True,
-            "basis": basis if basis in ASSIGNMENT_INTENT_BASES else "implicit",
-            "confidence": clamp_confidence(assignment.get("confidence")),
-            "evidence": str(evidence).strip() if isinstance(evidence, str) and evidence.strip() else None,
-        }
-    append = raw.get("append")
-    if isinstance(append, dict) and append.get("present") is True:
-        intents["append"] = {"present": True, "confidence": clamp_confidence(append.get("confidence"))}
-    out_of_context = raw.get("out_of_context")
-    if isinstance(out_of_context, dict) and out_of_context.get("present") is True:
-        reason = out_of_context.get("reason")
-        intents["out_of_context"] = {
-            "present": True,
-            "confidence": clamp_confidence(out_of_context.get("confidence")),
-            "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
-        }
-    return intents or None
 
 
 def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
@@ -148,61 +85,6 @@ def transcription_prompt(transcription_context: dict[str, Any] | None) -> str:
         )
         if part
     )
-
-
-def parse_structured_transcription_output(raw_text: str) -> dict[str, Any]:
-    """Parse and validate strict structured transcription JSON."""
-    text = raw_text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Audio transcription returned malformed structured JSON") from exc
-    if not isinstance(parsed, dict):
-        raise RuntimeError("Audio transcription returned non-object structured JSON")
-
-    transcript = parsed.get("transcript")
-    if not isinstance(transcript, str) or not transcript.strip():
-        raise RuntimeError("Audio transcription structured JSON is missing transcript")
-    # Normalize spoken numbers (doses, national IDs, phones, dates) to Western/Latin digits so all
-    # extracted quantification is comparable regardless of the spoken language — a national ID or dose
-    # dictated in Persian digits must match a stored Latin one. The prose words stay original script.
-    transcript = normalize_digits_to_latin(transcript.strip())
-    language = parsed.get("language")
-    if language not in TRANSCRIPTION_LANGUAGES:
-        language = "unknown"
-    patient_information = parsed.get("patient_information")
-    if not isinstance(patient_information, dict):
-        raise RuntimeError("Audio transcription structured JSON is missing patient_information")
-
-    normalized_patient = empty_patient_information(source_text=transcript)
-    for field in PATIENT_INFORMATION_FIELDS:
-        if field in patient_information:
-            normalized_patient[field] = patient_information[field]
-    alternates = normalized_patient.get("alternate_transliterations")
-    normalized_patient["alternate_transliterations"] = [str(value) for value in alternates if isinstance(value, str)] if isinstance(alternates, list) else []
-    confidence = normalized_patient.get("confidence")
-    normalized_patient["confidence"] = max(0.0, min(float(confidence), 1.0)) if isinstance(confidence, int | float) else 0.0
-    for field in ("raw_mentioned_name", "standardized_display_name", "national_id", "phone", "date_of_birth", "evidence"):
-        value = normalized_patient.get(field)
-        normalized_patient[field] = str(value).strip() if value is not None and str(value).strip() else None
-    # Identifiers/dates are comparison-critical (patient matching reads national_id/phone) → Latin digits.
-    for field in ("national_id", "phone", "date_of_birth"):
-        if normalized_patient.get(field):
-            normalized_patient[field] = normalize_digits_to_latin(normalized_patient[field])
-
-    uncertainties = parsed.get("uncertainties")
-    clinical_summary = parsed.get("clinical_summary")
-    return {
-        "transcript": transcript,
-        "language": language,
-        "patient_information": normalized_patient,
-        "clinical_summary": normalize_digits_to_latin(clinical_summary.strip()) if isinstance(clinical_summary, str) and clinical_summary.strip() else None,
-        "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
-        "intents": normalize_intents(parsed.get("intents")),
-    }
 
 
 def transcribe_audio_content(
@@ -259,6 +141,7 @@ def completed_audio_metadata(
 
     return {
         "status": "completed",
+        "schemaVersion": CAPTURE_INTELLIGENCE_OUTPUT_VERSION,
         "text": text,
         "language": structured["language"],
         "patient_information": patient_information,

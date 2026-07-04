@@ -6,9 +6,9 @@ clinical facts beyond the draft + spoken note + context. Falls back to keeping t
 unchanged when gateway-less / no audio / unusable output.
 """
 import json
-import re
 from typing import Any
 
+from ai_engine.contracts.qa import QA_REVISE_OUTPUT_VERSION, parse_qa_revise_output  # noqa: F401
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
 from ai_engine.core.media import audio_to_flac_mono_16khz_base64
@@ -44,27 +44,6 @@ def qa_revise_prompt(payload: dict[str, Any]) -> str:
     )
 
 
-def parse_qa_revise_output(text: str) -> dict[str, Any] | None:
-    """Parse the strict JSON {mode, reply} from the model; None to fall back."""
-    if not text or not text.strip():
-        return None
-    cleaned = text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", cleaned, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        cleaned = fenced.group(1).strip()
-    try:
-        parsed = json.loads(cleaned)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    reply = parsed.get("reply")
-    if not isinstance(reply, str) or not reply.strip():
-        return None
-    mode = parsed.get("mode") if parsed.get("mode") in {"revise", "replace"} else "revise"
-    return {"mode": mode, "reply": reply.strip()}
-
-
 def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[str, Any]:
     """Revise/replace the reply from the doctor's voice note via the configured Q&A model.
 
@@ -75,6 +54,7 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
 
     def _fallback_output() -> dict[str, Any]:
         return {
+            "schemaVersion": QA_REVISE_OUTPUT_VERSION,
             "mode": fallback.get("mode") or "revise",
             "reply": fallback.get("reply"),
             "source": fallback.get("source") or "mock-deterministic",
@@ -106,6 +86,7 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
     if parsed is None:
         return _fallback_output()
     return {
+        "schemaVersion": QA_REVISE_OUTPUT_VERSION,
         "mode": parsed["mode"],
         "reply": parsed["reply"],
         "source": f"ai:{model}",

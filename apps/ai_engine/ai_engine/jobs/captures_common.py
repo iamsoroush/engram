@@ -26,6 +26,7 @@ class CaptureProcessingOutput(TypedDict, total=False):
     """Stable capture-processing output shape written into capture metadata."""
 
     status: str
+    schemaVersion: NotRequired[str]
     text: str
     generated_by: str
     job_id: str

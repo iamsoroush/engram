@@ -8,6 +8,7 @@ nothing usable, so the inbox always has a suggestion.
 import json
 from typing import Any
 
+from ai_engine.contracts.qa import QA_DRAFT_OUTPUT_VERSION, parse_qa_draft_output  # noqa: F401
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.gateway import gateway_client, resolve_model, transcription_is_configured
 from ai_engine.core.util import utc_now
@@ -40,18 +41,6 @@ def qa_draft_prompt(payload: dict[str, Any]) -> str:
     )
 
 
-def parse_qa_draft_output(text: str) -> str | None:
-    """Return a usable plain-text reply draft from the model output, else None to fall back."""
-    if not text or not text.strip():
-        return None
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        parts = cleaned.split("```")
-        cleaned = parts[1] if len(parts) >= 2 else cleaned.strip("`")
-        cleaned = cleaned.strip()
-    return cleaned or None
-
-
 def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
     """Build the Q&A reply-draft output, via the gateway when configured.
 
@@ -62,6 +51,7 @@ def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
 
     def _fallback_output() -> dict[str, Any]:
         return {
+            "schemaVersion": QA_DRAFT_OUTPUT_VERSION,
             "draft": fallback.get("draft"),
             "source": fallback.get("source") or "mock-deterministic",
             "generated_by": "ai-engine",
@@ -83,6 +73,7 @@ def completed_qa_draft_output(payload: dict[str, Any]) -> dict[str, Any]:
     if draft is None:
         return _fallback_output()
     return {
+        "schemaVersion": QA_DRAFT_OUTPUT_VERSION,
         "draft": draft,
         "source": f"ai:{model}",
         "model": model,

@@ -13,7 +13,6 @@ to a bounded-longest-edge JPEG before sending (detail:low). A product-label shot
 higher resolution with detail:high so the lot/brand text stays legible.
 """
 import json
-import re
 from typing import Any
 
 from ai_engine.core.domain import domain_framing
@@ -23,14 +22,20 @@ from ai_engine.core.media import (
     downscale_image_for_caption,
     image_to_data_url,
 )
-from ai_engine.core.text import enrichment_language_directive, normalize_digits_to_latin
-from ai_engine.core.util import clamp_confidence
+from ai_engine.core.text import enrichment_language_directive
+# The caption contract (clean caption + pairing/OOC attributes) — shaping lives in ``contracts.caption``;
+# re-exported here so the ``processing`` shim and tests keep importing these names from the job module.
+from ai_engine.contracts.caption import (  # noqa: F401
+    CAPTION_OUTPUT_VERSION,
+    PAIRING_LATERALITIES,
+    PAIRING_PHASES,
+    normalize_caption_pairing,
+    parse_caption_output,
+)
 from ai_engine.jobs.captures_common import CaptureProcessingOutput, capture_processing_output
 
 # Below this the model's own confidence is treated as "AI unsure" and the backend raises a review.
 CAPTION_LOW_CONFIDENCE_THRESHOLD = 0.5
-PAIRING_LATERALITIES = {"left", "right", "bilateral", "midline", "central"}
-PAIRING_PHASES = {"before", "after", "during", "intraop", "other"}
 
 
 def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
@@ -87,87 +92,6 @@ def caption_prompt(enrichment_context: dict[str, Any] | None) -> str:
             f"Clinic/visit context:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )
     )
-
-
-def normalize_caption_pairing(raw: Any) -> dict[str, Any]:
-    """Coerce model pairing output into the stable {region,laterality,view,phase,isProductLabel} shape."""
-    pairing = raw if isinstance(raw, dict) else {}
-
-    def _text(value: Any) -> str | None:
-        return value.strip().lower() if isinstance(value, str) and value.strip() else None
-
-    laterality = _text(pairing.get("laterality"))
-    phase = _text(pairing.get("phase"))
-    return {
-        "region": pairing.get("region").strip() if isinstance(pairing.get("region"), str) and pairing.get("region").strip() else None,
-        "laterality": laterality if laterality in PAIRING_LATERALITIES else None,
-        "view": pairing.get("view").strip() if isinstance(pairing.get("view"), str) and pairing.get("view").strip() else None,
-        "phase": phase if phase in PAIRING_PHASES else None,
-        "isProductLabel": pairing.get("isProductLabel") is True,
-    }
-
-
-def _caption_display_text(raw_display: Any, caption_text: str) -> str:
-    """Return the model's Markdown display variant of the caption — but only when it is the SAME text
-    with just **bold** added (verified by stripping the markers). Falls back to the clean caption so
-    the UI never shows wording that diverged from the data text. Digits are normalized to match.
-    """
-    if not isinstance(raw_display, str) or not raw_display.strip():
-        return caption_text
-    candidate = normalize_digits_to_latin(raw_display.strip())
-
-    def _plain(value: str) -> str:
-        return re.sub(r"\s+", " ", value.replace("**", "")).strip().lower()
-
-    return candidate if _plain(candidate) == _plain(caption_text) else caption_text
-
-
-def parse_caption_output(raw_text: str) -> dict[str, Any] | None:
-    """Parse the structured caption JSON; degrade to plain-text caption when it isn't JSON.
-
-    Returns ``{caption, display, confidence, outOfContext, pairing, uncertainties}`` or None when there
-    is no usable caption text. `caption` is the CLEAN text consumed by downstream AI jobs; `display` is
-    the model's Markdown-bolded variant for the UI only. A gateway that returns a bare caption string
-    (no JSON) still works — the raw text becomes both caption and display, with no attributes.
-    """
-    text = raw_text.strip()
-    if not text:
-        return None
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    parsed: Any = None
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        parsed = None
-    if not isinstance(parsed, dict):
-        # Not JSON — treat the whole response as a plain caption (back-compatible, no attributes).
-        plain = normalize_digits_to_latin(raw_text.strip())
-        return {"caption": plain, "display": plain, "confidence": None, "outOfContext": None, "pairing": normalize_caption_pairing(None), "uncertainties": []}
-    caption = parsed.get("caption")
-    if not isinstance(caption, str) or not caption.strip():
-        return None
-    ooc_raw = parsed.get("outOfContext")
-    out_of_context = None
-    if isinstance(ooc_raw, dict) and ooc_raw.get("present") is True:
-        reason = ooc_raw.get("reason")
-        out_of_context = {
-            "present": True,
-            "confidence": clamp_confidence(ooc_raw.get("confidence")),
-            "reason": str(reason).strip() if isinstance(reason, str) and reason.strip() else None,
-        }
-    confidence = parsed.get("confidence")
-    uncertainties = parsed.get("uncertainties")
-    caption_text = normalize_digits_to_latin(caption.strip())
-    return {
-        "caption": caption_text,
-        "display": _caption_display_text(parsed.get("display"), caption_text),
-        "confidence": clamp_confidence(confidence) if isinstance(confidence, int | float) and not isinstance(confidence, bool) else None,
-        "outOfContext": out_of_context,
-        "pairing": normalize_caption_pairing(parsed.get("pairing")),
-        "uncertainties": [str(value).strip() for value in uncertainties if isinstance(value, str) and value.strip()] if isinstance(uncertainties, list) else [],
-    }
 
 
 def _request_caption(
@@ -232,6 +156,7 @@ def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any])
     `uncertainties` (the backend raises a needs-review chip below the confidence threshold / on these).
     """
     output = capture_processing_output(job, caption_result.get("caption") or "")
+    output["schemaVersion"] = CAPTION_OUTPUT_VERSION
     out_of_context = caption_result.get("outOfContext")
     if isinstance(out_of_context, dict) and out_of_context.get("present") is True:
         # Match the transcription intent shape so `out_of_context_marker` reads it unchanged.

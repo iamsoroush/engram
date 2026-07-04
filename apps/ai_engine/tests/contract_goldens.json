@@ -1,0 +1,1226 @@
+{
+  "caption": {
+    "blank_caption_json": null,
+    "confidence_bool_ignored": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "confidence_missing": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "display_diverged": {
+      "caption": "Decosalin spray, batch 04029",
+      "confidence": null,
+      "display": "Decosalin spray, batch 04029",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "display_same_text": {
+      "caption": "Decosalin spray, batch 04029",
+      "confidence": null,
+      "display": "**Decosalin** spray, batch **04029**",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "empty": null,
+    "fenced": {
+      "caption": "fenced caption",
+      "confidence": null,
+      "display": "fenced caption",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "not_json_persian_digits": {
+      "caption": "لات 04029، 2 سی‌سی",
+      "confidence": null,
+      "display": "لات 04029، 2 سی‌سی",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "not_json_plain": {
+      "caption": "Just a plain caption with no JSON.",
+      "confidence": null,
+      "display": "Just a plain caption with no JSON.",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "ooc_present": {
+      "caption": "A parking receipt.",
+      "confidence": null,
+      "display": "A parking receipt.",
+      "outOfContext": {
+        "confidence": 0.9,
+        "present": true,
+        "reason": "not clinical"
+      },
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "ooc_present_no_reason": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": {
+        "confidence": 1.0,
+        "present": true,
+        "reason": null
+      },
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "pairing_not_dict": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "pairing_unknown_enums": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": true,
+        "laterality": null,
+        "phase": null,
+        "region": "Forehead",
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "persian_digits_in_caption": {
+      "caption": "جعبه ژل، شماره بچ 04029",
+      "confidence": null,
+      "display": "جعبه ژل، شماره بچ 04029",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    },
+    "structured_full": {
+      "caption": "Left cheek asymmetry.",
+      "confidence": 0.8,
+      "display": "Left cheek asymmetry.",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": "left",
+        "phase": "before",
+        "region": "cheek",
+        "view": "front"
+      },
+      "uncertainties": [
+        "confirm area"
+      ]
+    },
+    "uncertainties_not_list": {
+      "caption": "x",
+      "confidence": null,
+      "display": "x",
+      "outOfContext": null,
+      "pairing": {
+        "isProductLabel": false,
+        "laterality": null,
+        "phase": null,
+        "region": null,
+        "view": null
+      },
+      "uncertainties": []
+    }
+  },
+  "intents": {
+    "all_false": null,
+    "append_and_ooc": {
+      "append": {
+        "confidence": 0.4,
+        "present": true
+      },
+      "out_of_context": {
+        "confidence": 1.0,
+        "present": true,
+        "reason": "not clinical"
+      }
+    },
+    "append_no_confidence": {
+      "append": {
+        "confidence": 0.0,
+        "present": true
+      }
+    },
+    "assignment_bad_basis": {
+      "assignment": {
+        "basis": "implicit",
+        "confidence": 0.0,
+        "evidence": null,
+        "present": true
+      }
+    },
+    "assignment_explicit": {
+      "assignment": {
+        "basis": "explicit",
+        "confidence": 0.9,
+        "evidence": "e",
+        "present": true
+      }
+    },
+    "assignment_missing_basis": {
+      "assignment": {
+        "basis": "implicit",
+        "confidence": 0.5,
+        "evidence": null,
+        "present": true
+      }
+    },
+    "assignment_not_dict": null,
+    "empty_dict": null,
+    "none": null,
+    "ooc_blank_reason": {
+      "out_of_context": {
+        "confidence": 0.0,
+        "present": true,
+        "reason": null
+      }
+    },
+    "string": null
+  },
+  "memory": {
+    "blank_summary": null,
+    "card_not_dict": {
+      "card": null,
+      "history": {
+        "sections": [
+          {
+            "body": "B",
+            "label": "L"
+          }
+        ],
+        "snapshot": "snap"
+      },
+      "summary": "S"
+    },
+    "empty": null,
+    "empty_sections": null,
+    "fenced_json": {
+      "card": null,
+      "history": {
+        "sections": [
+          {
+            "body": "B",
+            "label": "L"
+          }
+        ],
+        "snapshot": "snap"
+      },
+      "summary": "S"
+    },
+    "history_not_dict": null,
+    "leading_prose": {
+      "card": null,
+      "history": {
+        "sections": [
+          {
+            "body": "B",
+            "label": "L"
+          }
+        ],
+        "snapshot": "snap"
+      },
+      "summary": "S"
+    },
+    "missing_snapshot": null,
+    "not_json": null,
+    "sections_not_list": null,
+    "summary_only": null,
+    "valid": {
+      "card": null,
+      "history": {
+        "sections": [
+          {
+            "body": "B",
+            "label": "L"
+          }
+        ],
+        "snapshot": "snap",
+        "visits": []
+      },
+      "summary": "S"
+    },
+    "valid_with_card": {
+      "card": {
+        "flags": [
+          {
+            "kind": "allergy",
+            "label": "x"
+          }
+        ],
+        "rightNow": "two",
+        "storySoFar": "one"
+      },
+      "history": {
+        "sections": [
+          {
+            "body": "b",
+            "label": "Story so far"
+          }
+        ],
+        "snapshot": "snap",
+        "visits": []
+      },
+      "summary": "S"
+    }
+  },
+  "qa_draft": {
+    "empty": null,
+    "fenced_incomplete": "only-one-fence",
+    "fenced_no_lang": "Hi Sara, rest up.",
+    "multiline": "Line one.\nLine two.",
+    "plain": "Hi Sara, rest up."
+  },
+  "qa_revise": {
+    "blank_reply": null,
+    "empty": null,
+    "fenced": {
+      "mode": "revise",
+      "reply": "Trimmed."
+    },
+    "json_array": null,
+    "missing_mode": {
+      "mode": "revise",
+      "reply": "R"
+    },
+    "missing_reply": null,
+    "not_json": null,
+    "reply_padded": {
+      "mode": "replace",
+      "reply": "padded"
+    },
+    "unknown_mode": {
+      "mode": "revise",
+      "reply": "R"
+    },
+    "valid_replace": {
+      "mode": "replace",
+      "reply": "Hello there."
+    },
+    "whitespace": null
+  },
+  "safety_reconcile": {
+    "decisions_not_list": null,
+    "empty": null,
+    "fenced": {
+      "consent|signed": {
+        "ofKey": null,
+        "status": "keep"
+      }
+    },
+    "item_not_dict": {
+      "consent|signed": {
+        "ofKey": null,
+        "status": "keep"
+      }
+    },
+    "keep_dup_superseded": {
+      "allergy|penicillin": {
+        "ofKey": null,
+        "status": "keep"
+      },
+      "allergy|penicillin sensitivity": {
+        "ofKey": "allergy|penicillin",
+        "status": "duplicate"
+      },
+      "consent|signed": {
+        "ofKey": "allergy|penicillin",
+        "status": "superseded"
+      }
+    },
+    "no_decisions": null,
+    "not_json": null,
+    "ofkey_equals_key": {
+      "allergy|penicillin": {
+        "ofKey": null,
+        "status": "keep"
+      }
+    },
+    "ofkey_not_candidate": {
+      "allergy|penicillin": {
+        "ofKey": null,
+        "status": "keep"
+      }
+    },
+    "unknown_key": {},
+    "unknown_status": {},
+    "whitespace": null
+  },
+  "synthesis": {
+    "blank_summary": null,
+    "empty": null,
+    "fenced": {
+      "aftercareSelections": [],
+      "generatedBy": "ai-engine",
+      "language": "mixed",
+      "safetyFlags": [],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [],
+          "id": "visit-summary",
+          "title": "خلاصه ویزیت"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "نگرانی‌ها و اهداف"
+        },
+        {
+          "blocks": [],
+          "id": "assessment",
+          "title": "ارزیابی"
+        },
+        {
+          "blocks": [],
+          "id": "treatment-performed",
+          "title": "درمان انجام‌شده"
+        },
+        {
+          "blocks": [],
+          "id": "media",
+          "title": "تصاویر"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "برنامه و پیگیری"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "مراقبت‌های بعد از درمان"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "captureId": "cap-x",
+          "type": "capture"
+        }
+      ],
+      "summary": "Fenced summary.",
+      "treatments": [],
+      "uncertainties": []
+    },
+    "full_en_report_language": {
+      "aftercareSelections": [],
+      "generatedBy": "ai-engine",
+      "language": "en",
+      "safetyFlags": [],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [],
+          "id": "visit-summary",
+          "title": "Visit summary"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "Concern & goals"
+        },
+        {
+          "blocks": [
+            {
+              "text": "note",
+              "type": "paragraph"
+            }
+          ],
+          "id": "assessment",
+          "title": "Assessment"
+        },
+        {
+          "blocks": [],
+          "id": "treatment-performed",
+          "title": "Treatment performed"
+        },
+        {
+          "blocks": [],
+          "id": "media",
+          "title": "Media"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "Plan & follow-up"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "Aftercare"
+        }
+      ],
+      "sourceReferences": [],
+      "summary": "Summary.",
+      "treatments": [],
+      "uncertainties": []
+    },
+    "full_fa": {
+      "aftercareSelections": [
+        {
+          "note": null,
+          "status": "applies",
+          "templateId": "t1"
+        },
+        {
+          "note": " differs ",
+          "status": "conflicts",
+          "templateId": "t2"
+        }
+      ],
+      "generatedBy": "ai-engine",
+      "language": "fa",
+      "safetyFlags": [
+        {
+          "kind": "allergy",
+          "sourceCaptureIds": [
+            "cap-a"
+          ],
+          "text": "لیدوکائین"
+        },
+        {
+          "kind": "contraindication",
+          "sourceCaptureIds": [],
+          "text": "pregnant"
+        }
+      ],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [
+            {
+              "text": "بیمار آمد.",
+              "type": "paragraph"
+            }
+          ],
+          "id": "visit-summary",
+          "title": "خلاصه ویزیت"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "نگرانی‌ها و اهداف"
+        },
+        {
+          "blocks": [],
+          "id": "assessment",
+          "title": "ارزیابی"
+        },
+        {
+          "blocks": [
+            {
+              "text": "ژل ۳ سی‌سی",
+              "type": "paragraph"
+            }
+          ],
+          "id": "treatment-performed",
+          "title": "درمان انجام‌شده"
+        },
+        {
+          "blocks": [
+            {
+              "caption": "photo",
+              "captureId": "cap-a",
+              "type": "image"
+            }
+          ],
+          "id": "media",
+          "title": "تصاویر"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "برنامه و پیگیری"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "مراقبت‌های بعد از درمان"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "captureId": "cap-a",
+          "type": "capture"
+        },
+        {
+          "captureId": "cap-b",
+          "type": "capture"
+        }
+      ],
+      "summary": "Follow-up gel touch-up.",
+      "treatments": [
+        {
+          "area": "left cheek",
+          "attributes": {
+            "needleGauge": "27G"
+          },
+          "brand": "Juvederm",
+          "carriedForward": false,
+          "confidence": 0.9,
+          "evidence": "spoken",
+          "lot": null,
+          "product": "gel",
+          "quantity": 3,
+          "quantityText": "۳ سی‌سی",
+          "sourceCaptureIds": [
+            "cap-a"
+          ],
+          "supersedesCaptureId": null,
+          "unit": "cc"
+        },
+        {
+          "area": "forehead",
+          "attributes": {},
+          "brand": null,
+          "carriedForward": false,
+          "confidence": 0.0,
+          "evidence": null,
+          "lot": null,
+          "product": "",
+          "quantity": null,
+          "quantityText": null,
+          "sourceCaptureIds": [],
+          "supersedesCaptureId": null,
+          "unit": null
+        }
+      ],
+      "uncertainties": [
+        "ambiguous dose"
+      ]
+    },
+    "json_array": null,
+    "minimal": {
+      "aftercareSelections": [],
+      "generatedBy": "ai-engine",
+      "language": "mixed",
+      "safetyFlags": [],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [],
+          "id": "visit-summary",
+          "title": "Visit summary"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "Concern & goals"
+        },
+        {
+          "blocks": [],
+          "id": "assessment",
+          "title": "Assessment"
+        },
+        {
+          "blocks": [],
+          "id": "treatment-performed",
+          "title": "Treatment performed"
+        },
+        {
+          "blocks": [],
+          "id": "media",
+          "title": "Media"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "Plan & follow-up"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "Aftercare"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "captureId": "cap-a",
+          "type": "capture"
+        }
+      ],
+      "summary": "A visit summary.",
+      "treatments": [],
+      "uncertainties": []
+    },
+    "no_summary": null,
+    "not_json": null,
+    "sections_not_list": {
+      "aftercareSelections": [],
+      "generatedBy": "ai-engine",
+      "language": "mixed",
+      "safetyFlags": [],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [],
+          "id": "visit-summary",
+          "title": "Visit summary"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "Concern & goals"
+        },
+        {
+          "blocks": [],
+          "id": "assessment",
+          "title": "Assessment"
+        },
+        {
+          "blocks": [],
+          "id": "treatment-performed",
+          "title": "Treatment performed"
+        },
+        {
+          "blocks": [],
+          "id": "media",
+          "title": "Media"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "Plan & follow-up"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "Aftercare"
+        }
+      ],
+      "sourceReferences": [
+        {
+          "captureId": "cap-a",
+          "type": "capture"
+        }
+      ],
+      "summary": "S",
+      "treatments": [],
+      "uncertainties": []
+    },
+    "unknown_language_defaults_mixed": {
+      "aftercareSelections": [],
+      "generatedBy": "ai-engine",
+      "language": "mixed",
+      "safetyFlags": [],
+      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "sections": [
+        {
+          "blocks": [],
+          "id": "visit-summary",
+          "title": "Visit summary"
+        },
+        {
+          "blocks": [],
+          "id": "concern-goals",
+          "title": "Concern & goals"
+        },
+        {
+          "blocks": [],
+          "id": "assessment",
+          "title": "Assessment"
+        },
+        {
+          "blocks": [],
+          "id": "treatment-performed",
+          "title": "Treatment performed"
+        },
+        {
+          "blocks": [],
+          "id": "media",
+          "title": "Media"
+        },
+        {
+          "blocks": [],
+          "id": "plan-followup",
+          "title": "Plan & follow-up"
+        },
+        {
+          "blocks": [],
+          "id": "aftercare",
+          "title": "Aftercare"
+        }
+      ],
+      "sourceReferences": [],
+      "summary": "S",
+      "treatments": [],
+      "uncertainties": []
+    }
+  },
+  "transcription": {
+    "alternates_not_list": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "x",
+        "standardized_display_name": null
+      },
+      "transcript": "x",
+      "uncertainties": []
+    },
+    "blank_string_fields_become_null": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "x",
+        "standardized_display_name": null
+      },
+      "transcript": "x",
+      "uncertainties": []
+    },
+    "blank_transcript": {
+      "__raises__": "RuntimeError: Audio transcription structured JSON is missing transcript"
+    },
+    "confidence_non_numeric": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "x",
+        "standardized_display_name": null
+      },
+      "transcript": "x",
+      "uncertainties": []
+    },
+    "confidence_out_of_range": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 1.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "x",
+        "standardized_display_name": null
+      },
+      "transcript": "x",
+      "uncertainties": []
+    },
+    "empty": {
+      "__raises__": "RuntimeError: Audio transcription returned malformed structured JSON"
+    },
+    "explicit_assignment_intent": {
+      "clinical_summary": null,
+      "intents": {
+        "assignment": {
+          "basis": "explicit",
+          "confidence": 0.9,
+          "evidence": "change the patient to Soroush",
+          "present": true
+        }
+      },
+      "language": "fa",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.7,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": "سروش معاصد",
+        "source_text": "نام بیمار عوض شه به سروش معاصد.",
+        "standardized_display_name": null
+      },
+      "transcript": "نام بیمار عوض شه به سروش معاصد.",
+      "uncertainties": []
+    },
+    "fenced_json": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "fenced ok",
+        "standardized_display_name": null
+      },
+      "transcript": "fenced ok",
+      "uncertainties": []
+    },
+    "full_patient": {
+      "clinical_summary": "Cheek filler follow-up.",
+      "intents": null,
+      "language": "mixed",
+      "patient_information": {
+        "alternate_transliterations": [
+          "Sara Nazari",
+          "Saraa Nazari"
+        ],
+        "confidence": 0.82,
+        "date_of_birth": null,
+        "evidence": "Name and national ID spoken.",
+        "national_id": "0012345678",
+        "phone": "09121234567",
+        "raw_mentioned_name": "سارا نظری",
+        "source_text": "سلام Sara Nazari for cheek filler follow-up.",
+        "standardized_display_name": "Sara Nazari"
+      },
+      "transcript": "سلام Sara Nazari for cheek filler follow-up.",
+      "uncertainties": [
+        "dob missing",
+        "also this"
+      ]
+    },
+    "implicit_assignment_intent": {
+      "clinical_summary": null,
+      "intents": {
+        "assignment": {
+          "basis": "implicit",
+          "confidence": 0.6,
+          "evidence": null,
+          "present": true
+        }
+      },
+      "language": "fa",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": "خانم قاسمی",
+        "source_text": "خانم قاسمی بوتاکس پیشانی.",
+        "standardized_display_name": null
+      },
+      "transcript": "خانم قاسمی بوتاکس پیشانی.",
+      "uncertainties": []
+    },
+    "intents_all_present_false": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "intents_append_and_ooc": {
+      "clinical_summary": null,
+      "intents": {
+        "append": {
+          "confidence": 0.4,
+          "present": true
+        },
+        "out_of_context": {
+          "confidence": 1.0,
+          "present": true,
+          "reason": "not clinical"
+        }
+      },
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "intents_empty": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "intents_non_dict": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok2",
+        "standardized_display_name": null
+      },
+      "transcript": "ok2",
+      "uncertainties": []
+    },
+    "intents_unknown_basis_oob_confidence": {
+      "clinical_summary": null,
+      "intents": {
+        "assignment": {
+          "basis": "implicit",
+          "confidence": 1.0,
+          "evidence": null,
+          "present": true
+        }
+      },
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "json_array": {
+      "__raises__": "RuntimeError: Audio transcription returned non-object structured JSON"
+    },
+    "json_string": {
+      "__raises__": "RuntimeError: Audio transcription returned non-object structured JSON"
+    },
+    "minimal_valid": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "missing_patient_information": {
+      "__raises__": "RuntimeError: Audio transcription structured JSON is missing patient_information"
+    },
+    "missing_transcript": {
+      "__raises__": "RuntimeError: Audio transcription structured JSON is missing transcript"
+    },
+    "no_language": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "unknown",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "not_json": {
+      "__raises__": "RuntimeError: Audio transcription returned malformed structured JSON"
+    },
+    "patient_information_not_dict": {
+      "__raises__": "RuntimeError: Audio transcription structured JSON is missing patient_information"
+    },
+    "persian_digits": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "fa",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.5,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": "1234567890",
+        "phone": "09123456789",
+        "raw_mentioned_name": null,
+        "source_text": "بیمار 2 سی‌سی ژل دریافت کرد",
+        "standardized_display_name": null
+      },
+      "transcript": "بیمار 2 سی‌سی ژل دریافت کرد",
+      "uncertainties": []
+    },
+    "uncertainties_not_list": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "en",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "x",
+        "standardized_display_name": null
+      },
+      "transcript": "x",
+      "uncertainties": []
+    },
+    "unknown_language": {
+      "clinical_summary": null,
+      "intents": null,
+      "language": "unknown",
+      "patient_information": {
+        "alternate_transliterations": [],
+        "confidence": 0.0,
+        "date_of_birth": null,
+        "evidence": null,
+        "national_id": null,
+        "phone": null,
+        "raw_mentioned_name": null,
+        "source_text": "ok",
+        "standardized_display_name": null
+      },
+      "transcript": "ok",
+      "uncertainties": []
+    },
+    "whitespace": {
+      "__raises__": "RuntimeError: Audio transcription returned malformed structured JSON"
+    }
+  }
+}

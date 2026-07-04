@@ -8,11 +8,22 @@ of this module is that deterministic baseline path (the legacy progressive stage
 the same Celery job falls back to. Vertical-agnostic via the domain descriptor.
 """
 import json
-import re
 from time import sleep
 from typing import Any
 
 from ai_engine.config import settings
+# The A↔B synthesis contract (report sections + performed treatments) now lives in
+# ``contracts.synthesis``; these are re-exported so the ``processing`` shim and tests keep importing
+# them from the job module.
+from ai_engine.contracts.synthesis import (  # noqa: F401
+    SESSION_SYNTHESIS_OUTPUT_VERSION,
+    SYNTHESIS_LANGUAGES,
+    SYNTHESIS_SECTION_IDS,
+    SYNTHESIS_SECTION_TITLES_FA,
+    SYNTHESIS_SECTIONS,
+    parse_session_synthesis_output,
+    synthesis_section_title,
+)
 from ai_engine.core.backend_client import BackendClient
 from ai_engine.core.domain import domain_framing
 from ai_engine.core.fixtures import TEST_CAPTURE_TEXT_BY_FILENAME, TEST_FINAL_SUMMARY
@@ -22,7 +33,7 @@ from ai_engine.core.gateway import (
     resolve_reasoning_effort,
     transcription_is_configured,
 )
-from ai_engine.core.util import clamp_confidence, utc_now
+from ai_engine.core.util import utc_now
 from ai_engine.jobs.safety_reconcile import _safety_flag_key, reconcile_safety_flags
 
 
@@ -514,42 +525,6 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
 # capture. Gateway-less / malformed → a SKIP sentinel; the backend keeps the deterministic baseline
 # and treatments stay empty (Basic + gateway-less run zero AI and must never break).
 
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
-
-# Fixed section ids + order (rendered by the backend). `treatment-performed` is a PROSE MIRROR of
-# treatments[] — the backend re-renders it FROM treatments[] so prose + store can never diverge.
-SYNTHESIS_SECTIONS: tuple[tuple[str, str], ...] = (
-    ("visit-summary", "Visit summary"),
-    ("concern-goals", "Concern & goals"),
-    ("assessment", "Assessment"),
-    ("treatment-performed", "Treatment performed"),
-    ("media", "Media"),
-    ("plan-followup", "Plan & follow-up"),
-    ("aftercare", "Aftercare"),
-)
-SYNTHESIS_SECTION_IDS: tuple[str, ...] = tuple(section_id for section_id, _ in SYNTHESIS_SECTIONS)
-SYNTHESIS_LANGUAGES = {"fa", "en", "mixed"}
-
-# Persian section titles (report_language="fa"). The body prose already follows reportLanguage; the
-# fixed section TITLES must too, or a Persian report shows English headings.
-SYNTHESIS_SECTION_TITLES_FA: dict[str, str] = {
-    "visit-summary": "خلاصه ویزیت",
-    "concern-goals": "نگرانی‌ها و اهداف",
-    "assessment": "ارزیابی",
-    "treatment-performed": "درمان انجام‌شده",
-    "media": "تصاویر",
-    "plan-followup": "برنامه و پیگیری",
-    "aftercare": "مراقبت‌های بعد از درمان",
-}
-
-
-def synthesis_section_title(section_id: str, default_title: str, report_language: str | None) -> str:
-    """Return the section title localized to the report language (English title by default)."""
-    if isinstance(report_language, str) and report_language.strip().lower().startswith("fa"):
-        return SYNTHESIS_SECTION_TITLES_FA.get(section_id, default_title)
-    return default_title
-
-
 def report_synthesis_json_schema() -> dict[str, Any]:
     """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
     block = {
@@ -759,175 +734,6 @@ def report_synthesis_prompt(processing_context: dict[str, Any]) -> str:
             f"Session context (captures, prior report draft, changeset, prior-visit treatments):\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
         )
     )
-
-
-def _clean_synthesis_blocks(raw_blocks: Any) -> list[dict[str, Any]]:
-    """Coerce model block output into validated paragraph/image blocks."""
-    blocks: list[dict[str, Any]] = []
-    if not isinstance(raw_blocks, list):
-        return blocks
-    for block in raw_blocks:
-        if not isinstance(block, dict):
-            continue
-        block_type = block.get("type")
-        if block_type == "paragraph":
-            text = block.get("text")
-            if isinstance(text, str) and text.strip():
-                blocks.append({"type": "paragraph", "text": text.strip()})
-        elif block_type == "image":
-            capture_id = block.get("captureId")
-            if isinstance(capture_id, str) and capture_id.strip():
-                image: dict[str, Any] = {"type": "image", "captureId": capture_id.strip()}
-                caption = block.get("caption")
-                if isinstance(caption, str) and caption.strip():
-                    image["caption"] = caption.strip()
-                blocks.append(image)
-    return blocks
-
-
-def _clean_synthesis_treatment(raw: Any) -> dict[str, Any] | None:
-    """Coerce one TreatmentItem into the stable core+attributes shape, or None if unusable."""
-    if not isinstance(raw, dict):
-        return None
-    area = raw.get("area")
-    product = raw.get("product")
-    if not (isinstance(area, str) and area.strip()) and not (isinstance(product, str) and product.strip()):
-        return None
-
-    def _text(value: Any) -> str | None:
-        return value.strip() if isinstance(value, str) and value.strip() else None
-
-    def _number(value: Any) -> float | int | None:
-        return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
-
-    source_ids = raw.get("sourceCaptureIds")
-    attributes = raw.get("attributes")
-    return {
-        "area": _text(area) or "",
-        "product": _text(product) or "",
-        "brand": _text(raw.get("brand")),
-        "quantity": _number(raw.get("quantity")),
-        "unit": _text(raw.get("unit")),
-        "quantityText": _text(raw.get("quantityText")),
-        "lot": _text(raw.get("lot")),
-        "confidence": clamp_confidence(raw.get("confidence")),
-        "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)] if isinstance(source_ids, list) else [],
-        "evidence": _text(raw.get("evidence")),
-        "carriedForward": raw.get("carriedForward") is True,
-        "supersedesCaptureId": _text(raw.get("supersedesCaptureId")),
-        "attributes": attributes if isinstance(attributes, dict) else {},
-    }
-
-
-def parse_session_synthesis_output(
-    raw_text: str, *, source_capture_ids: list[str] | None = None, report_language: str | None = None
-) -> dict[str, Any] | None:
-    """Parse + validate the synthesis JSON into the A↔B contract, or None to fall back.
-
-    Returns the full output with ALL fixed section ids present (in order), cleaned treatments, and
-    `sourceReferences` covering every reportable capture so the backend can mark contributions.
-    """
-    if not raw_text or not raw_text.strip():
-        return None
-    text = raw_text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    summary = parsed.get("summary")
-    if not isinstance(summary, str) or not summary.strip():
-        return None
-
-    raw_sections = parsed.get("sections")
-    blocks_by_id: dict[str, list[dict[str, Any]]] = {}
-    if isinstance(raw_sections, list):
-        for section in raw_sections:
-            if isinstance(section, dict) and isinstance(section.get("id"), str):
-                blocks_by_id[section["id"]] = _clean_synthesis_blocks(section.get("blocks"))
-    sections = [
-        {
-            "id": section_id,
-            "title": synthesis_section_title(section_id, title, report_language),
-            "blocks": blocks_by_id.get(section_id, []),
-        }
-        for section_id, title in SYNTHESIS_SECTIONS
-    ]
-
-    treatments = [cleaned for cleaned in (_clean_synthesis_treatment(item) for item in (parsed.get("treatments") or [])) if cleaned]
-    language = parsed.get("language") if parsed.get("language") in SYNTHESIS_LANGUAGES else "mixed"
-    uncertainties = parsed.get("uncertainties")
-    source_references = [{"type": "capture", "captureId": capture_id} for capture_id in (source_capture_ids or [])]
-    return {
-        "schemaVersion": SESSION_SYNTHESIS_OUTPUT_VERSION,
-        "summary": summary.strip(),
-        "language": language,
-        "sections": sections,
-        "treatments": treatments,
-        "sourceReferences": source_references,
-        "uncertainties": [str(value) for value in uncertainties if isinstance(value, str)] if isinstance(uncertainties, list) else [],
-        "aftercareSelections": _clean_aftercare_selections(parsed.get("aftercareSelections")),
-        "safetyFlags": _clean_safety_flags(parsed.get("safetyFlags")),
-        "generatedBy": "ai-engine",
-        "generatedAt": utc_now().isoformat(),
-    }
-
-
-def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
-    """Coerce the model's aftercare matches into validated {templateId, status, note} items."""
-    selections: list[dict[str, Any]] = []
-    if not isinstance(raw, list):
-        return selections
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        template_id = item.get("templateId")
-        status = item.get("status")
-        if not isinstance(template_id, str) or not template_id.strip():
-            continue
-        if status not in {"applies", "conflicts", "superseded"}:
-            continue
-        note = item.get("note")
-        selections.append(
-            {"templateId": template_id, "status": status, "note": note if isinstance(note, str) and note.strip() else None}
-        )
-    return selections
-
-
-def _clean_safety_flags(raw: Any) -> list[dict[str, Any]]:
-    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds} items.
-
-    Safety errs toward inclusion (opt-out): a flag the model surfaced is kept — the clinician removes a
-    wrong one downstream. We only drop items that are structurally unusable (unknown kind, empty text).
-    ``text`` is clinical content in the report language and is never translated.
-    """
-    flags: list[dict[str, Any]] = []
-    if not isinstance(raw, list):
-        return flags
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        kind = item.get("kind")
-        text = item.get("text")
-        if kind not in {"allergy", "contraindication", "consent"}:
-            continue
-        if not isinstance(text, str) or not text.strip():
-            continue
-        source_ids = item.get("sourceCaptureIds")
-        flags.append(
-            {
-                "kind": kind,
-                "text": text.strip(),
-                "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)]
-                if isinstance(source_ids, list)
-                else [],
-            }
-        )
-    return flags
 
 
 def synthesize_session_report(payload: dict[str, Any]) -> dict[str, Any] | None:

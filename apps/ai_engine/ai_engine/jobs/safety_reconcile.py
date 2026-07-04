@@ -6,10 +6,13 @@ dedups-by-meaning / supersedes this visit's newly detected flags against the pat
 a failure or sparse set leaves the deterministic union (the safety floor) intact.
 """
 import json
-import re
 from typing import Any
 
 from ai_engine.config import settings
+from ai_engine.contracts.safety_reconcile import (  # noqa: F401 — re-exported for the shim + tests
+    SAFETY_RECONCILE_OUTPUT_VERSION,
+    parse_safety_reconcile_output,
+)
 from ai_engine.core.gateway import gateway_client, resolve_model, resolve_reasoning_effort
 
 
@@ -63,42 +66,6 @@ def safety_reconcile_prompt(payload: dict[str, Any]) -> str:
             f"NEW flags (this visit): {json.dumps(new_flags, ensure_ascii=False)}",
         )
     )
-
-
-def parse_safety_reconcile_output(raw_text: str, *, candidate_keys: list[str]) -> dict[str, dict[str, Any]] | None:
-    """Validate the reconcile output into ``{key: {status, ofKey}}``, or None to fall back to the union.
-
-    Safety-first: an unknown key is dropped; a duplicate/superseded whose ofKey isn't a real candidate is
-    downgraded to 'keep' (never silently lose a distinct flag); any candidate with no decision defaults to
-    'keep' upstream.
-    """
-    if not raw_text or not raw_text.strip():
-        return None
-    text = raw_text.strip()
-    fenced = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE)
-    if fenced:
-        text = fenced.group(1).strip()
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("decisions"), list):
-        return None
-    keys = set(candidate_keys)
-    decisions: dict[str, dict[str, Any]] = {}
-    for item in parsed["decisions"]:
-        if not isinstance(item, dict):
-            continue
-        key = item.get("key")
-        status = item.get("status")
-        if key not in keys or status not in {"keep", "duplicate", "superseded"}:
-            continue
-        of_key = item.get("ofKey")
-        # A collapse/supersede must point at a real OTHER candidate; otherwise keep (never drop).
-        if status in {"duplicate", "superseded"} and (of_key not in keys or of_key == key):
-            status, of_key = "keep", None
-        decisions[key] = {"status": status, "ofKey": of_key if status != "keep" else None}
-    return decisions
 
 
 def _safety_flag_key(kind: Any, text: Any) -> str:
