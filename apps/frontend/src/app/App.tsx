@@ -142,6 +142,7 @@ import {
 } from "./sessionState";
 import { ApiProvider, useApi } from "./providers/ApiProvider";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
+import { CapabilitiesProvider, useCapabilities } from "./providers/CapabilitiesProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
 // reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
@@ -182,6 +183,9 @@ function AppInner() {
     onboardingDismissed,
     setOnboardingDismissed,
   } = useAuth();
+  // Capability seam (A3): tier/role affordances have one home. Replaces the scattered
+  // `auth.tenant.tier !== "basic"` checks + `onFetchX = isPro ? cb : undefined` prop-gating below.
+  const { isBasic, canUseQa, canUseSmartLists } = useCapabilities();
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
   const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
@@ -261,14 +265,14 @@ function AppInner() {
   // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
   // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
   const refreshQaPendingCount = React.useCallback(() => {
-    if (!auth || auth.tenant.tier === "basic") {
+    if (!canUseQa) {
       setQaPendingCount(0);
       return;
     }
     fetchQaInbox(apiFetch, "mine")
       .then((response) => setQaPendingCount(response.total))
       .catch(() => undefined);
-  }, [apiFetch, auth]);
+  }, [apiFetch, canUseQa]);
 
   React.useEffect(() => {
     refreshQaPendingCount();
@@ -558,7 +562,6 @@ function AppInner() {
   // the next shot, kept Basic-only. Deterministic retrieval — no AI.
   const patientId = activeSession?.patientId;
   const activeSessionId = activeSession?.id;
-  const isBasicTier = auth?.tenant.tier === "basic";
   React.useEffect(() => {
     if (!patientId || isLocalAssignmentPatient(patientId)) {
       setSessionContext(null);
@@ -571,7 +574,7 @@ function AppInner() {
         if (cancelled) return;
         setSessionContext(context);
         const firstPhoto = context.lastVisit.visit?.media?.[0];
-        const ghostEndpoint = isBasicTier ? firstPhoto?.contentEndpoint || firstPhoto?.fileEndpoint : null;
+        const ghostEndpoint = isBasic ? firstPhoto?.contentEndpoint || firstPhoto?.fileEndpoint : null;
         if (ghostEndpoint) {
           void resolveCaptureFileUrl(apiFetch, ghostEndpoint)
             .then((url) => {
@@ -591,7 +594,7 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [apiFetch, isBasicTier, patientId, activeSessionId]);
+  }, [apiFetch, isBasic, patientId, activeSessionId]);
 
   const scheduleSessionProcessingRefresh = React.useCallback(
     (sessionId: string) => {
@@ -1693,7 +1696,7 @@ function AppInner() {
   // Pro: fetch the active patient's curated brief for the session context card, polling while it is
   // still "organizing" (read-triggered cold generation), capped so it never spins forever.
   React.useEffect(() => {
-    if (isBasicTier || !patientId || isLocalAssignmentPatient(patientId)) {
+    if (isBasic || !patientId || isLocalAssignmentPatient(patientId)) {
       setSessionLineupCard(null);
       return;
     }
@@ -1716,7 +1719,7 @@ function AppInner() {
     return () => {
       cancelled = true;
     };
-  }, [getPatientMemoryDetail, isBasicTier, patientId]);
+  }, [getPatientMemoryDetail, isBasic, patientId]);
   const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
   const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
   const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
@@ -2174,7 +2177,7 @@ function AppInner() {
         />
       );
     }
-    if (screen === "qa-inbox" && auth && auth.tenant.tier !== "basic") {
+    if (screen === "qa-inbox" && canUseQa) {
       // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
       return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshQaPendingCount} />;
     }
@@ -2217,11 +2220,11 @@ function AppInner() {
         onListAftercareTemplates={listAftercare}
         onCreateShare={createShare}
         onRevokeShare={revokeShare}
-        onOpenQaChannel={auth && auth.tenant.tier !== "basic" ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
-        onFetchSmartListCounts={auth && auth.tenant.tier !== "basic" ? fetchSmartListCountsCb : undefined}
-        onFetchSmartList={auth && auth.tenant.tier !== "basic" ? fetchSmartListCb : undefined}
-        onFetchLotLedger={auth && auth.tenant.tier !== "basic" ? fetchLotLedgerCb : undefined}
-        onFetchLotRecall={auth && auth.tenant.tier !== "basic" ? fetchLotRecallCb : undefined}
+        onOpenQaChannel={canUseQa ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
+        onFetchSmartListCounts={canUseSmartLists ? fetchSmartListCountsCb : undefined}
+        onFetchSmartList={canUseSmartLists ? fetchSmartListCb : undefined}
+        onFetchLotLedger={canUseSmartLists ? fetchLotLedgerCb : undefined}
+        onFetchLotRecall={canUseSmartLists ? fetchLotRecallCb : undefined}
         onToast={setToast}
         onLoadAssignmentSuggestion={loadAssignmentSuggestion}
         sessions={sessions}
@@ -2405,7 +2408,9 @@ export function App() {
   return (
     <ApiProvider>
       <AuthProvider>
-        <AppInner />
+        <CapabilitiesProvider>
+          <AppInner />
+        </CapabilitiesProvider>
       </AuthProvider>
     </ApiProvider>
   );
