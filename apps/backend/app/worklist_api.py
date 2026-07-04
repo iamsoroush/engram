@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, staff_required
 from app.db.session import get_db
-from app.schemas.api import WorklistEntryCreate, WorklistEntryResolve
+from app.schemas.worklist import WorklistEntryCreate, WorklistEntryResolve
 from app.services.worklist import create_worklist_entry, list_worklist, resolve_worklist_entry
 
 worklist_api = APIRouter(prefix="/api/v1")

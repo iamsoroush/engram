@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, staff_required
 from app.db.session import get_db
 from app.http.responses import ranged_file_response
-from app.schemas.api import PatientShareCreate
+from app.schemas.shares import PatientShareCreate
 from app.services.patient_surface import (
     create_patient_share,
     get_patient_share_payload,

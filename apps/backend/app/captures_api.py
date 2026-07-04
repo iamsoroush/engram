@@ -14,7 +14,8 @@ from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, sta
 from app.db.session import get_db
 from app.http.forms import parse_metadata_form
 from app.http.responses import ranged_file_response
-from app.schemas.api import AssignPatientRequest, CaptureUpdate
+from app.schemas.captures import CaptureUpdate
+from app.schemas.patients import AssignPatientRequest
 from app.services.ai_jobs import enqueue_capture_processing_job
 from app.services.capture_storage import source_file_content, source_file_url, upload_source_capture
 from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture

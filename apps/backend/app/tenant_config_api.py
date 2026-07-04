@@ -13,7 +13,7 @@ from app.auth.dependencies import CurrentPrincipal, get_current_principal, staff
 from app.auth.service import set_tenant_plan, update_tenant_settings
 from app.config import settings
 from app.db.session import get_db
-from app.schemas.api import AiModelConfigUpdate, AiUsageDevSetRequest
+from app.schemas.tenant import AiModelConfigUpdate, AiUsageDevSetRequest
 from app.schemas.auth import PlanUpdateRequest, TenantSettingsUpdate
 from app.services.ai_model_config import ai_model_settings_payload, set_ai_model_overrides
 

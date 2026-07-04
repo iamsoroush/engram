@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.observability.metrics import record_ai_job
-from app.schemas.api import (
+from app.schemas.ai_jobs import (
     AiJobCompleteRequest,
     AiJobErrorRequest,
     AiJobProgressRequest,

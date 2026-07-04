@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, staff_required
 from app.db.session import get_db
-from app.schemas.api import AftercareTemplatePatch, AftercareTemplateWrite
+from app.schemas.aftercare import AftercareTemplatePatch, AftercareTemplateWrite
 from app.services.aftercare_templates import (
     aftercare_template_payload,
     create_aftercare_template,

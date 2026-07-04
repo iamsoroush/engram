@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, staff_required
 from app.db.session import get_db
-from app.schemas.api import FeedbackCreate
+from app.schemas.feedback import FeedbackCreate
 from app.services import feedback
 
 feedback_api = APIRouter(prefix="/api/v1", tags=["feedback"])
