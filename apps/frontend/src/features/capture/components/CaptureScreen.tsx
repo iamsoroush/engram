@@ -12,7 +12,8 @@ import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
-import { AiCreatedPatientPanel, CaptureTimelineIcon, AiSpark, PatientConflictResolver, captureConflictSuggestion } from "./CaptureBadges";
+import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion } from "./CaptureBadges";
+import { NextLinedUpBar, SessionReviewRegion, SessionSafetyPanel } from "./CaptureRegions";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
@@ -446,55 +447,22 @@ export function CaptureScreen({
         </div>
       </Card>
       {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
-        <div className="next-lined-up" role="note">
-          <span className="next-lined-up-copy">
-            {t("capture.nextInYourList")} <strong dir={textDirection(nextLinedUpPatient.patientName)}>{nextLinedUpPatient.patientName}</strong>
-          </span>
-          <span className="next-lined-up-actions">
-            {activeSession.items.length && onAssignActiveToNext ? (
-              <Button size="sm" type="button" onClick={onAssignActiveToNext}>
-                {t("capture.assignThisVisit")}
-              </Button>
-            ) : null}
-            {onStartNextVisit ? (
-              <Button size="sm" variant="secondary" type="button" onClick={onStartNextVisit}>
-                {t("capture.startTheirVisit")}
-              </Button>
-            ) : null}
-          </span>
-        </div>
+        <NextLinedUpBar
+          patientName={nextLinedUpPatient.patientName}
+          hasCaptures={Boolean(activeSession.items.length)}
+          onAssignActiveToNext={onAssignActiveToNext}
+          onStartNextVisit={onStartNextVisit}
+        />
       ) : null}
       {/* Session-level safety panel — highest priority, so it sits ABOVE the context card and the
           verify region. Opt-out: every detected flag is shown by default; the × rejects a wrong one.
-          NOT a verify-bar blocker (not in verifyRegionRef, not counted). Flag body is report-language
-          clinical content (dir auto, never translated); only the chrome routes through appT. */}
-      {keptSafetyFlags.length ? (
-        <section className="session-safety-panel" aria-label={t("capture.safety.label")}>
-          <div className="session-safety-head">
-            <span className="session-safety-label">{t("capture.safety.label")}</span>
-            <span className="session-safety-hint">{t("capture.safety.hint")}</span>
-          </div>
-          {keptSafetyFlags.map((flag) => (
-            <div className={`session-safety-flag safety-${flag.kind}`} key={flag.key}>
-              <span className="session-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
-              <p className="session-safety-text" dir={textDirection(flag.text)}>
-                {flag.text}
-              </p>
-              {!isHistorical && !readOnly && activeSession ? (
-                <button
-                  className="session-safety-remove"
-                  type="button"
-                  aria-label={t("capture.safety.reject")}
-                  title={t("capture.safety.reject")}
-                  onClick={() => onRejectSafetyFlag(activeSession.id, flag.key)}
-                >
-                  ✕
-                </button>
-              ) : null}
-            </div>
-          ))}
-        </section>
-      ) : null}
+          NOT a verify-bar blocker (not in verifyRegionRef, not counted). Renders null when empty. */}
+      <SessionSafetyPanel
+        flags={keptSafetyFlags}
+        sessionId={activeSession?.id ?? ""}
+        canEdit={!isHistorical && !readOnly && Boolean(activeSession)}
+        onReject={onRejectSafetyFlag}
+      />
       {!isHistorical && activeSession?.patientId && sessionContext ? (
         <SessionContextCard
           context={sessionContext}
@@ -507,26 +475,16 @@ export function CaptureScreen({
         />
       ) : null}
       {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (
-        <div className="session-verify-region" ref={verifyRegionRef}>
-          {patientConflicts.length ? (
-            <section className="session-patient-conflicts" aria-label={t("capture.patientNeedsConfirmation")}>
-              <span className="session-patient-conflicts-label">{t("capture.patientNeedsConfirmation")}</span>
-              {patientConflicts.map((conflict) => (
-                <PatientConflictResolver
-                  key={conflict.captureId}
-                  suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
-                  basisCaptureId={conflict.captureId}
-                  onApply={onAssignPatient ? (draft) => onAssignPatient(activeSession.id, draft) : undefined}
-                  onChooseAnother={onOpenResolver}
-                  onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
-                />
-              ))}
-            </section>
-          ) : null}
-          {aiPatientAction && onCompleteAiCreatedPatient ? (
-            <AiCreatedPatientPanel action={aiPatientAction} session={activeSession} onComplete={onCompleteAiCreatedPatient} />
-          ) : null}
-        </div>
+        <SessionReviewRegion
+          session={activeSession}
+          aiPatientAction={aiPatientAction}
+          onCompleteAiCreatedPatient={onCompleteAiCreatedPatient}
+          patientConflicts={patientConflicts}
+          onAssignPatient={onAssignPatient}
+          onOpenResolver={onOpenResolver}
+          onDismissConflict={(captureId) => setDismissedConflicts((current) => new Set(current).add(captureId))}
+          regionRef={verifyRegionRef}
+        />
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
         <div className="report-heading">

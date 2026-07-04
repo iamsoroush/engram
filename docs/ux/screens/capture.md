@@ -223,9 +223,9 @@ Shared rules: [states](../states.md).
 
 ## Main Components
 
-- `Shell`, `CaptureActions`, `CaptureScreen`
-- `SessionVerifyBar`, `PatientConflictResolver` + `AiCreatedPatientPanel` (CaptureBadges)
-- `SessionContextCard` (+ `LineupCard`), the `session-safety-panel`
+- `Shell`, `CaptureActions`, `CaptureScreen` (composes region components from `CaptureRegions`)
+- `SessionVerifyBar`; `SessionReviewRegion` composes `PatientConflictResolver` + `AiCreatedPatientPanel` (CaptureBadges)
+- `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
 - `LiveReportView` + `TreatmentsList`, the `sources-drawer`, `ReportFeedbackBar`
 - `AiUsageNotice`
 - `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
