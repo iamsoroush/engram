@@ -329,55 +329,55 @@ class RunCaptureEnrichmentTests(unittest.TestCase):
             "enrichmentContext": {"preferredLanguage": "auto"} if enrichment else None,
         }
 
-    @patch("ai_engine.processing.transcription_is_configured", return_value=True)
-    @patch("ai_engine.processing.caption_image_content", return_value={"caption": "A clinical caption.", "confidence": 0.9, "outOfContext": None, "pairing": {"region": "cheek", "laterality": "left", "view": None, "phase": "before", "isProductLabel": False}, "uncertainties": []})
+    @patch("ai_engine.jobs.capture.transcription_is_configured", return_value=True)
+    @patch("ai_engine.jobs.capture.caption_image_content", return_value={"caption": "A clinical caption.", "confidence": 0.9, "outOfContext": None, "pairing": {"region": "cheek", "laterality": "left", "view": None, "phase": "before", "isProductLabel": False}, "uncertainties": []})
     def test_pro_photo_is_captioned(self, _caption, _configured):
         fake = FakeBackendClient(self._payload("photo"))
-        with patch("ai_engine.processing.BackendClient", return_value=fake):
+        with patch("ai_engine.jobs.capture.BackendClient", return_value=fake):
             run_capture_processing_job("job-1", celery_task_id=None, retry_count=0)
         self.assertEqual(fake.completed[0], "caption")
         self.assertEqual(fake.completed[1]["text"], "A clinical caption.")
         self.assertEqual(fake.completed[1]["pairing"]["region"], "cheek")
 
-    @patch("ai_engine.processing.transcription_is_configured", return_value=True)
+    @patch("ai_engine.jobs.capture.transcription_is_configured", return_value=True)
     def test_note_is_raw_passthrough_no_gateway(self, _configured):
         # Notes never call the gateway: the job completes with the RAW text under `note_text`.
-        with patch("ai_engine.processing.caption_image_content") as caption:
+        with patch("ai_engine.jobs.capture.caption_image_content") as caption:
             fake = FakeBackendClient(self._payload("note", metadata={"detail": "raw note text"}))
-            with patch("ai_engine.processing.BackendClient", return_value=fake):
+            with patch("ai_engine.jobs.capture.BackendClient", return_value=fake):
                 run_capture_processing_job("job-1", celery_task_id=None, retry_count=0)
             caption.assert_not_called()
         self.assertEqual(fake.completed[0], "note_text")
         self.assertEqual(fake.completed[1]["text"], "raw note text")
 
-    @patch("ai_engine.processing.transcription_is_configured", return_value=True)
-    @patch("ai_engine.processing.caption_image_content", return_value={"caption": "ignored"})
+    @patch("ai_engine.jobs.capture.transcription_is_configured", return_value=True)
+    @patch("ai_engine.jobs.capture.caption_image_content", return_value={"caption": "ignored"})
     def test_basic_photo_has_no_caption(self, caption, _configured):
         # No enrichmentContext (Basic tenant) → never calls the gateway and writes NO caption
         # (blank), so the UI offers a manual "Add caption" instead of a placeholder.
         fake = FakeBackendClient(self._payload("photo", enrichment=False))
-        with patch("ai_engine.processing.BackendClient", return_value=fake):
+        with patch("ai_engine.jobs.capture.BackendClient", return_value=fake):
             run_capture_processing_job("job-1", celery_task_id=None, retry_count=0)
         caption.assert_not_called()
         self.assertEqual(fake.completed[0], "caption")
         self.assertEqual(fake.completed[1]["text"], "")
 
-    @patch("ai_engine.processing.transcription_is_configured", return_value=True)
-    @patch("ai_engine.processing.caption_image_content", return_value=None)
+    @patch("ai_engine.jobs.capture.transcription_is_configured", return_value=True)
+    @patch("ai_engine.jobs.capture.caption_image_content", return_value=None)
     def test_empty_caption_yields_no_caption(self, _caption, _configured):
         # An empty gateway response leaves the photo without a caption (manual add), not a placeholder.
         fake = FakeBackendClient(self._payload("photo"))
-        with patch("ai_engine.processing.BackendClient", return_value=fake):
+        with patch("ai_engine.jobs.capture.BackendClient", return_value=fake):
             run_capture_processing_job("job-1", celery_task_id=None, retry_count=0)
         self.assertEqual(fake.completed[0], "caption")
         self.assertEqual(fake.completed[1]["text"], "")
 
-    @patch("ai_engine.processing.transcription_is_configured", return_value=True)
-    @patch("ai_engine.processing.caption_image_content", return_value={"caption": "ignored"})
+    @patch("ai_engine.jobs.capture.transcription_is_configured", return_value=True)
+    @patch("ai_engine.jobs.capture.caption_image_content", return_value={"caption": "ignored"})
     def test_fixture_photo_skips_enrichment(self, caption, _configured):
         payload = self._payload("photo", metadata={"original_filename": "photo_01_pre_correction_left_cheek.jpg"})
         fake = FakeBackendClient(payload)
-        with patch("ai_engine.processing.BackendClient", return_value=fake):
+        with patch("ai_engine.jobs.capture.BackendClient", return_value=fake):
             run_capture_processing_job("job-1", celery_task_id=None, retry_count=0)
         caption.assert_not_called()
         self.assertEqual(
