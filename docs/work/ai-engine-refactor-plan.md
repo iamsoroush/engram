@@ -2,9 +2,11 @@
 
 **Status:** reviewed by the user 2026-07-04 — decisions recorded in the final section; not started.
 Plan only — no source changes made.
-**Scope:** `apps/ai_engine` (the worker) + AI-pipeline design. Peer of
-[backend-refactor-plan.md](backend-refactor-plan.md) (which owns `apps/backend/app/services/ai_jobs/`
-dispatch-side structure) and [frontend-refactor-plan.md](frontend-refactor-plan.md). Seam ownership
+**Scope:** `apps/ai_engine` (the worker) + AI-pipeline design. Peer of the backend
+structural-refactor (routers/schemas split — landed; see
+[technical-decisions.md](../technical-decisions.md) "One Router Module Per Domain" and
+[backend/README.md](../backend/README.md) "Code layout"), which owns `apps/backend/app/services/ai_jobs/`
+dispatch-side structure, and [frontend-refactor-plan.md](frontend-refactor-plan.md). Seam ownership
 for cross-cutting changes: §5.
 **Fold destinations (when built):** module map + prompt-versioning + structured-output policy →
 `docs/ai_engine/processing.md` and `docs/ai_engine/README.md`; treatment-key + overlay-extension
