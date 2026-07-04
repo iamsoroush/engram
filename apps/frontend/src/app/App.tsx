@@ -15,7 +15,7 @@ import type {
   SmartListKey,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
-import { Card, Skeleton, Toast } from "../shared/ui/primitives";
+import { Card, Skeleton } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import { AppLangProvider, toLang, type Translator } from "../shared/i18n";
 import {
@@ -122,6 +122,7 @@ import { ApiProvider, useApi } from "./providers/ApiProvider";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { CapabilitiesProvider, useCapabilities } from "./providers/CapabilitiesProvider";
 import { SyncProvider, useSync, useRegisterSyncBridge, type SyncBridge } from "./providers/SyncProvider";
+import { ToastProvider, useToast } from "./providers/ToastProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
 // reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
@@ -193,7 +194,8 @@ function AppInner() {
   // screen changes, so the target naturally reverts to the active session.
   const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
-  const [toast, setToast] = React.useState("");
+  // Toast is owned by ToastProvider (seam A4) — App raises them via setToast; the provider renders it.
+  const { setToast } = useToast();
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
   // Round-trip: the in-progress capture visit stashed when the clinician jumps to the patient
   // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
@@ -266,11 +268,6 @@ function AppInner() {
     });
   }, [activeSession, assignmentSessionId, auth, pendingCaptureKind, screen, selectedSessionId]);
 
-  React.useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2200);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
 
   React.useEffect(() => {
     const syncScreenFromLocation = () => {
@@ -1538,7 +1535,6 @@ function AppInner() {
       scheduleSessionProcessingRefresh: (sessionId) => scheduleSessionProcessingRefresh(sessionId),
       scheduleMemoryRefresh: () => scheduleMemoryRefresh(),
     },
-    toast: setToast,
     navigateActiveSession: () => navigateScreen("active-session"),
   };
   // useRegisterSyncBridge re-points a stable ref at this object every render, so the engine always
@@ -2019,7 +2015,6 @@ function AppInner() {
           <span>{appT("sync.returnReceipt", { count: sync.offlineReceipt })}</span>
         </div>
       ) : null}
-      <Toast message={toast} />
       </>
     </AppLangProvider>
   );
@@ -2027,18 +2022,20 @@ function AppInner() {
 
 // Composition root (frontend-refactor plan §2). Assembles the shared-infrastructure provider seams
 // around the app body. Increments 1–3 mounted Api/Auth/Capabilities; increment 4 adds SyncProvider
-// (seam B — the offline outbox engine). Increment 5 will add the session store here too.
+// (seam B — the offline outbox engine) and ToastProvider (seam A4). Increment 5 adds the session store.
 export function App() {
   return (
-    <ApiProvider>
-      <AuthProvider>
-        <CapabilitiesProvider>
-          <SyncProvider>
-            <AppInner />
-          </SyncProvider>
-        </CapabilitiesProvider>
-      </AuthProvider>
-    </ApiProvider>
+    <ToastProvider>
+      <ApiProvider>
+        <AuthProvider>
+          <CapabilitiesProvider>
+            <SyncProvider>
+              <AppInner />
+            </SyncProvider>
+          </CapabilitiesProvider>
+        </AuthProvider>
+      </ApiProvider>
+    </ToastProvider>
   );
 }
 

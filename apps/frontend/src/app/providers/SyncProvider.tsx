@@ -19,6 +19,7 @@ import { indexedDbStoragePort } from "../outbox/storagePort";
 import type { ApiPort, SessionSink } from "../outbox/types";
 import { useApi } from "./ApiProvider";
 import { useAuth } from "./AuthProvider";
+import { useToast } from "./ToastProvider";
 
 // Seam B (frontend-refactor plan §4, increment 4). The offline-first outbox engine lifted out of the
 // App god-component into shared infrastructure. SyncProvider owns the sync UI state (online / backend
@@ -34,7 +35,6 @@ import { useAuth } from "./AuthProvider";
  *  every render; the engine reads them through a ref, so it never captures a stale closure. */
 export type SyncBridge = {
   session: SessionSink;
-  toast: (message: string) => void;
   navigateActiveSession: () => void;
 };
 
@@ -66,6 +66,7 @@ const SyncContext = React.createContext<SyncContextValue | null>(null);
 export function SyncProvider({ children }: { children: React.ReactNode }) {
   const apiFetch = useApi();
   const { auth, authRef, appT } = useAuth();
+  const { setToast } = useToast();
 
   const [pendingCount, setPendingCount] = React.useState(0);
   const [pendingOperationCount, setPendingOperationCount] = React.useState(0);
@@ -136,7 +137,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           setBackendReachable,
           setSyncError,
           setStorage,
-          toast: (message) => bridgeRef.current?.toast(message),
+          toast: setToast,
         },
         env: {
           getAuth: () => authRef.current,
@@ -283,7 +284,6 @@ export function useRegisterSyncBridge(bridge: SyncBridge): void {
         scheduleSessionProcessingRefresh: (sessionId) => bridgeRef.current.session.scheduleSessionProcessingRefresh(sessionId),
         scheduleMemoryRefresh: () => bridgeRef.current.session.scheduleMemoryRefresh(),
       },
-      toast: (message) => bridgeRef.current.toast(message),
       navigateActiveSession: () => bridgeRef.current.navigateActiveSession(),
     });
     return () => registerSyncBridge(null);
