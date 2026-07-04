@@ -64,14 +64,14 @@ import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import { clearLocalCaptureData } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
-import { replaceScreenLocation, screenFromLocation } from "./navigation";
-import { useBackLevel, resetBackLevels } from "../shared/lib/backStack";
+import { useBackLevel } from "../shared/lib/backStack";
 import { makeEmptyLocalSession, mergeSessionUpdate, resolveRestoredSession } from "./sessionState";
 import { ApiProvider, useApi } from "./providers/ApiProvider";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { CapabilitiesProvider, useCapabilities } from "./providers/CapabilitiesProvider";
 import { SyncProvider, useSync, useRegisterSyncBridge, type SyncBridge } from "./providers/SyncProvider";
 import { SessionStoreProvider, useSessionStore } from "./providers/SessionStoreProvider";
+import { NavigationProvider, useNavigation } from "./providers/NavigationProvider";
 import { ToastProvider, useToast } from "./providers/ToastProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
@@ -133,7 +133,18 @@ function AppInner() {
     assignPatientToSession,
     loadCapturesForSession,
   } = useSessionStore();
-  const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
+  // Seam D (frontend-refactor plan §2, increment 7): navigation + history + return-context. App
+  // destructures the omnibus back into the local names its render body + navigation helpers use.
+  const {
+    screen,
+    navigateScreen,
+    shouldRestoreLastScreen,
+    clinicalMemoryReturnContext,
+    setClinicalMemoryReturnContext,
+    captureReturnSession,
+    setCaptureReturnSession,
+    accountReturnRef,
+  } = useNavigation();
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
@@ -155,22 +166,7 @@ function AppInner() {
   const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   // Toast is owned by ToastProvider (seam A4) — App raises them via setToast; the provider renders it.
   const { setToast } = useToast();
-  const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
-  // Round-trip: the in-progress capture visit stashed when the clinician jumps to the patient
-  // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
-  const [captureReturnSession, setCaptureReturnSession] = React.useState<CaptureSession | null>(null);
   const workspaceHydratedRef = React.useRef(false);
-  const accountReturnRef = React.useRef<Screen>("active-session");
-
-
-  const navigateScreen = React.useCallback((nextScreen: Screen) => {
-    // A hard screen switch replaceState()s the current entry (possibly a sub-level's synthetic one)
-    // and unmounts any open in-screen level, so drop the back-stack first (see backStack.ts).
-    resetBackLevels();
-    setScreen(nextScreen);
-    replaceScreenLocation(nextScreen);
-    if (nextScreen === "active-session") setSelectedSessionId("");
-  }, []);
 
   // Sync/workspace refs are App-local (they belong to the outbox + workspace-persistence machinery,
   // extracted in later increments), so reset them here whenever auth clears — covering logout and a
@@ -218,16 +214,6 @@ function AppInner() {
   }, [activeSession, assignmentSessionId, auth, pendingCaptureKind, screen, selectedSessionId]);
 
 
-  React.useEffect(() => {
-    const syncScreenFromLocation = () => {
-      const nextScreen = screenFromLocation();
-      setScreen(nextScreen);
-      if (nextScreen === "active-session") setSelectedSessionId("");
-    };
-    window.addEventListener("hashchange", syncScreenFromLocation);
-    return () => window.removeEventListener("hashchange", syncScreenFromLocation);
-  }, []);
-
   const loadBackendSessions = sync.loadBackendSessions;
 
   /**
@@ -259,7 +245,9 @@ function AppInner() {
         setSelectedSessionId(workspace.selectedSessionId);
         setAssignmentSessionId(workspace.assignmentSessionId);
         setPendingCaptureKind(workspace.pendingCaptureKind);
-        if (!window.location.hash && ["active-session", "patients", "search"].includes(workspace.screen)) {
+        // Navigation-race rule (seam D): an explicit initial hash always wins over restore-last-screen;
+        // only restore the persisted screen when the load carried no hash.
+        if (shouldRestoreLastScreen && ["active-session", "patients", "search"].includes(workspace.screen)) {
           navigateScreen(workspace.screen as Screen);
         }
       }
@@ -1071,7 +1059,9 @@ export function App() {
           <CapabilitiesProvider>
             <SyncProvider>
               <SessionStoreProvider>
-                <AppInner />
+                <NavigationProvider>
+                  <AppInner />
+                </NavigationProvider>
               </SessionStoreProvider>
             </SyncProvider>
           </CapabilitiesProvider>
