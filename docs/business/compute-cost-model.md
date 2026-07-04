@@ -13,7 +13,7 @@
 > **50 clinics**. From COGS we derive a **minimum profitable monthly per-clinic price**.
 > **Pre-PMF — every number is a tunable assumption, not a fact.** Change the **bold input cells** and
 > the formulas recompute. Method for token sizing: **tokens ≈ characters ÷ 4**, grounded in the real
-> job payloads/prompts (`apps/ai_engine/ai_engine/processing.py`,
+> job payloads/prompts (`apps/ai_engine/ai_engine/jobs/`,
 > `apps/backend/app/services/{ai_jobs.py, patient_memory_intelligence.py, capabilities.py}`).
 >
 > **v2 changes:** (1) **therapy is capture-style, not ambient** — short in-session + post-session
@@ -374,7 +374,7 @@ natural **tier** axis (e.g. "premium transcription") that also recovers its extr
 - **AI gateway** (P3) is a thin OpenAI-compatible redirector (a sample runs at `194.5.193.5:8081/docs`);
   it adds **no per-token cost**, only the fixed $25 server, and its provider-bound bandwidth is within the
   server's included allowance.
-- **Tokens ≈ chars ÷ 4**, sized from real prompts (`processing.py`) and input builders
+- **Tokens ≈ chars ÷ 4**, sized from real prompts (`ai_engine/jobs/`) and input builders
   (`build_patient_memory_job_input`, `build_session_processing_input`). Image-caption input is a vision-model
   estimate (~1.5k tok/photo); adjust if your gateway tokenizes images differently.
 - **Excluded by scope:** retries/failed jobs (small uplift — capped exponential backoff), dev/staging infra,

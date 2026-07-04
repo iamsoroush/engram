@@ -60,7 +60,7 @@ one ~$9.9/seat — so $10 covers even heavy use; queue-collapse dispatch (§5) d
 ## 4. How it's metered & enforced (as built)
 
 - **Real spend, not estimates.** Every gateway call already returns `usage`; the worker now captures
-  it per job (`_MeteredClient` in `apps/ai_engine/ai_engine/processing.py`) and ships it on the
+  it per job (`_MeteredClient` in `apps/ai_engine/ai_engine/core/gateway.py`) and ships it on the
   completion callback. Transcription is priced per audio-minute (duration via ffprobe); LLM/vision per
   token. The backend computes cost from `pricing.py` and accumulates into **`ai_usage_counters`**
   (per tenant/seat/calendar-month; cost in micro-dollars).

@@ -357,7 +357,7 @@ Every job completes sensibly with no gateway, so Basic tenants, dev stacks, and 
   completes with valid output (`source: "mock-deterministic"`).
 
 The deterministic QA fixtures under `test_data/` are recognized by filename/content
-(`TEST_CAPTURE_TEXT_BY_FILENAME` in `processing.py`); uploading them produces predictable
+(`TEST_CAPTURE_TEXT_BY_FILENAME` in `core/fixtures.py`); uploading them produces predictable
 transcripts, captions, report sections, and rendered markdown so ingestion → processing → report
 rendering can be tested end to end without AI.
 
