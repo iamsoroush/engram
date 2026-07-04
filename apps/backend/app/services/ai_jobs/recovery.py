@@ -270,15 +270,16 @@ def recover_all_ai_jobs(db: DbSession, limit: int = 100) -> dict[str, Any]:
         elif job.patient_id:
             dispatch_patient_memory_job(db, job)
 
-    # Trailing driver of the quiet-period synthesis debounce: fire the single coalesced synthesis for
-    # visits that have gone quiet. Best-effort — never let it break job recovery.
+    # Catch-up safety net for queue-collapse dispatch: re-trigger synthesis for visits left with an
+    # uncontributed capture and no active report job (e.g. a completion callback that never fired).
+    # Best-effort — never let it break job recovery.
     synthesized = 0
     try:
-        from app.services.ai_jobs.reports import sweep_debounced_session_synthesis
+        from app.services.ai_jobs.reports import sweep_pending_session_synthesis
 
-        synthesized = sweep_debounced_session_synthesis(db)
+        synthesized = sweep_pending_session_synthesis(db)
     except Exception:  # pragma: no cover - defensive
-        logger.exception("Debounced synthesis sweep failed")
+        logger.exception("Pending synthesis sweep failed")
 
     return {"recovered": recovered, "skipped": skipped, "synthesized": synthesized}
 

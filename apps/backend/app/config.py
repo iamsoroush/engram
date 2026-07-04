@@ -49,10 +49,10 @@ class Settings(BaseSettings):
     # --- Fair-use AI usage limits (see docs/business/ai-usage-limits.md) --------------------------
     # The monthly AI budget per SEAT (USD). When a clinic's real metered spend for the period exceeds
     # seats × this budget, background AI enrichment PAUSES (capture is never blocked; jobs queue and
-    # resume next cycle). Set to $10/seat while synthesis runs per-capture (see
-    # `synthesis_debounce_seconds`); that is ~67% of the $15 Pro price — deliberately generous for now,
-    # to be tightened toward ~40% once the synthesis cost is optimized. `ai_price_per_seat_usd` is kept
-    # only as a reference for that implied-share calculation. Tunable per environment.
+    # resume next cycle). Set to $10/seat; that is ~67% of the $15 Pro price — deliberately generous for
+    # now, to be tightened toward ~40% as synthesis cost drops (queue-collapse dispatch + prompt-cache
+    # reuse). `ai_price_per_seat_usd` is kept only as a reference for that implied-share calculation.
+    # Tunable per environment.
     ai_price_per_seat_usd: float = 15.0
     ai_budget_usd_per_seat: float = 10.0
     # Per-session SOFT cap on AI captures (a proxy that pauses further per-capture enrichment for a
@@ -61,13 +61,6 @@ class Settings(BaseSettings):
     ai_session_soft_cap_captures_therapy: int = 25
     # Warn the clinic when metered spend reaches this fraction of the monthly budget.
     ai_usage_warn_threshold: float = 0.80
-    # Trailing/quiet-period debounce for the per-capture report synthesis: coalesce a visit's captures
-    # into ~one synthesis run (measured ~8.8× cost cut, zero UX loss — the deterministic baseline is
-    # always current). A session's synthesis is dispatched only once its newest capture is this many
-    # seconds old (the Celery-beat recovery sweep drives the trailing dispatch).
-    # DEFAULT 0 = DISABLED — synthesis runs immediately per capture (the previous live behavior). The
-    # debounce is implemented and ready; enable it (e.g. 45) later as a price optimization.
-    synthesis_debounce_seconds: int = 0
     # Dev/testing override: force a tiny per-seat AI budget (USD) so limit states are reachable without
     # hundreds of real captures. 0 / unset = use the computed budget. NEVER set in production.
     ai_usage_test_budget_per_seat_usd: float = 0.0

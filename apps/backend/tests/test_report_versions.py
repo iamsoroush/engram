@@ -98,6 +98,17 @@ class CaptureSetHashTests(unittest.TestCase):
         after, _ = session_capture_set(_Db([_Result(scalars=[c1])]), s)
         self.assertNotEqual(before, after)
 
+    def test_hash_changes_when_marked_out_of_context(self):
+        # Out-of-context membership is part of the key (D1): a mark-relevant / mark-out-of-context
+        # toggle changes the synthesized input, so cache-hit-before-dispatch must not collide the two.
+        s = _session()
+        c1 = _cap(s, "alpha", minute=1)
+        in_context, items = session_capture_set(_Db([_Result(scalars=[c1])]), s)
+        self.assertIs(items[0]["outOfContext"], False)
+        c1.capture_metadata = {**c1.capture_metadata, "out_of_context": {"present": True}}
+        out_of_context, _ = session_capture_set(_Db([_Result(scalars=[c1])]), s)
+        self.assertNotEqual(in_context, out_of_context)
+
 
 class RecordTests(unittest.TestCase):
     def test_records_a_new_version(self):

@@ -61,32 +61,51 @@ current content signature (`session_report_content_signature`), the deterministi
 the floor and is left alone. After the rebuild the session settles to `needs_review` /
 `unassigned` and completeness is derived (no manual verify).
 
-## Pro report synthesis — dispatch gating + debounce
+## Pro report synthesis — queue-collapse dispatch + cache-hit-before-dispatch
 
 The `session_organize` job is the Pro single-pass LLM report synthesis (prose + treatments +
 safety flags + aftercare — the dominant AI cost). It runs *after* the deterministic baseline as a
 quiet refinement (`mark_processing=False` — the visible report never flashes to `processing`).
-`maybe_dispatch_session_synthesis` dispatches only when **all** of these hold
-(`session_synthesis_enabled` + guards):
+`maybe_dispatch_session_synthesis` is the single dispatch chokepoint; it dispatches only when **all**
+of these hold:
 
 1. `BACKEND_REPORT_SYNTHESIS_ENABLED` is on (the backend-visible proxy for "a synthesis gateway is
    configured"; default off, so gateway-less environments dispatch zero synthesis),
 2. the tenant has the `LIVE_REPORT_SYNTHESIS` capability,
 3. the vertical is not therapy (it has its own path),
-4. no capture jobs are pending and no report job is already active,
+4. no capture jobs are pending and no report job is already **queued or running**,
 5. some reportable capture is not yet folded in (`report_contribution != added`) — or the caller
-   forces it after a content-changing edit/delete,
-6. the quiet-period **debounce** window has passed: while the newest capture is younger than
-   `BACKEND_SYNTHESIS_DEBOUNCE_SECONDS`, synthesis is held back so a visit's captures coalesce
-   into ~one run (the deterministic baseline is already current, so there is no UX loss). The
-   trailing Celery-beat sweep (`sweep_debounced_session_synthesis`) fires the single run once the
-   visit goes quiet. Default 0 = disabled (immediate per-capture synthesis). See
-   [docs/business/ai-usage-limits.md](../business/ai-usage-limits.md).
+   forces it after a content-changing edit/delete.
+
+**Queue-collapse dispatch (no timer, no debounce).** The first capture synthesizes **immediately** —
+per-capture responsiveness is intact — while redundant *queued* work is eliminated by two invariants:
+
+- **Single-flight + at most one pending job per session.** Guard 4 (`session_has_active_report_job`,
+  a queued OR running `session_organize`) makes a trigger while a job is merely *queued* a no-op: that
+  queued job reads the **full current capture set when it starts** (`worker_job_payload` is built at
+  `/start`, not at enqueue), so captures that land while it waits are absorbed for free. A trigger
+  while a job is *running* is likewise a no-op here; the running job's completion handler re-invokes
+  `maybe_dispatch_session_synthesis`, which dispatches the single pending follow-up covering everything
+  the running job didn't see.
+- Result: a burst of N captures costs **≤ 2 runs** (the in-flight one + one collapsed follow-up)
+  instead of N; a single-capture visit adds zero latency and zero extra cost. `force=True` (content
+  edits / manual regenerate) keeps its meaning — it re-synthesizes past the all-contributed guard.
+
+**Cache-hit before dispatch.** Before creating a synthesis job, `restore_cached_session_synthesis`
+checks the content-addressed `session_report_versions` store for the **current capture-set hash**; a
+hit **restores** that exact synthesized artifact deterministically (no LLM) and skips the dispatch —
+covering edit-then-revert, mark-relevant toggles, and re-add-the-same. Out-of-context membership is
+part of the capture-set hash (D1), so a mark-relevant toggle is a distinct set (correct hit/miss). On
+restore the immutable AI artifact is applied, then the **user-state overlay** on top: the restored
+source captures flip to `added`, the session's kept safety flags (detected − `rejected_safety_flags`)
+are re-projected onto the patient and the reconcile decisions re-applied — exactly as a fresh
+synthesis completion would (ground-truth invariant). See
+[pipeline-versioning](../architecture/pipeline-versioning.md) and
+[docs/business/ai-usage-limits.md](../business/ai-usage-limits.md).
 
 On completion the worker-side output is applied, per-capture `report_contribution` flips to
 `added`, patient safety flags are re-synced (with the safety-reconcile decisions), and the result
-is snapshotted as a content-addressed `session_report_versions` row
-([pipeline-versioning](../architecture/pipeline-versioning.md)).
+is snapshotted as a content-addressed `session_report_versions` row.
 
 ## Fair-use deferral (parking) — `services/ai_usage/`
 
@@ -110,7 +129,10 @@ The AI-engine worker runs Celery beat with one periodic task, `ai_engine.recover
   `BACKEND_AI_JOB_RUNNING_STALE_SECONDS`;
 - respects capture-chain ordering (only chain heads dispatch), and terminally marks jobs whose
   target capture/session was deleted;
-- runs the **debounced-synthesis sweep** (the trailing driver of the quiet-period debounce);
+- runs the **pending-synthesis catch-up sweep** (`sweep_pending_session_synthesis`): a safety net for
+  the queue-collapse dispatch that re-triggers synthesis for a session left with an uncontributed
+  capture and no active report job (e.g. a completion callback that never fired) — not a timer, it
+  never delays a dispatch;
 - runs the **patient-memory quiescence sweep** (`sweep_stale_patient_memory`): stale Pro patient
   memory whose visits have been idle ~30 min is refreshed at the lowest priority, capped per beat.
 
