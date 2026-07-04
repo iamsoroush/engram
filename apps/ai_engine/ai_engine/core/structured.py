@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 from ai_engine.config import settings
 from ai_engine.core.errors import InvalidOutput
+from ai_engine.core.gateway import resolve_escalation_effort, resolve_escalation_model
 
 # invoke(model, effort, correction) -> raw_text. correction is None on the first attempt, else the
 # validation error to append so the model can self-correct on the retry.
@@ -42,13 +43,25 @@ def correction_message(error: str) -> dict[str, Any]:
     }
 
 
-def retry_tier(task: str, ai_models: dict[str, Any] | None, *, model: str, effort: str | None) -> tuple[str, str | None]:
-    """The (model, effort) for the validation-failure retry.
+def escalation_requested(source: dict[str, Any] | None) -> bool:
+    """Whether a backend ``escalate: true`` hint asks this job to run on the escalation tier (§3.1).
 
-    §3.2 retries on the SAME tier; §3.1 overrides this to fire the configured escalation tier — spend
-    more exactly where the cheap tier just demonstrably failed. Kept as one seam so that swap is local.
+    The correction-triggered emission (a user action proved the last output wrong) is backend-owned and
+    lands later; the worker just reads the hint and resolves the tier. ``source`` is the job payload.
     """
-    return model, effort
+    return isinstance(source, dict) and source.get("escalate") is True
+
+
+def retry_tier(task: str, ai_models: dict[str, Any] | None, *, model: str, effort: str | None) -> tuple[str, str | None]:
+    """The (model, effort) for the escalation tier — the "try harder" lever (§3.1).
+
+    Fires on the validation-failure retry (and on the first call when a correction hint escalates).
+    Falls back to the base (model, effort) when no ``escalation`` tier is configured for the task.
+    """
+    return (
+        resolve_escalation_model(task, ai_models, fallback_model=model),
+        resolve_escalation_effort(task, ai_models, fallback_effort=effort),
+    )
 
 
 def call_with_validation_retry(
@@ -59,17 +72,21 @@ def call_with_validation_retry(
     effort: str | None,
     invoke: Invoke,
     parse: Parse,
+    escalate: bool = False,
 ) -> Any:
     """Run a structured-output gateway call, retrying once on invalid output (appending the error).
 
     The caller resolves ``model``/``effort`` (as it does today) and passes ``ai_models`` so the retry can
-    escalate (§3.1). ``invoke`` owns the messages + response_format for ONE call; ``parse`` returns the
-    validated result or ``None``/raises ``InvalidOutput`` on invalid output. When structured outputs are
-    disabled this is a single call with the parser's natural behavior (byte-identical to the pre-§3.2
-    path). Returns the parsed result, or the final parse's natural failure (``None`` / raised
-    ``InvalidOutput``) so the caller keeps its existing fallback.
+    escalate. ``escalate=True`` (a backend correction hint) runs even the FIRST call on the escalation
+    tier — spend more exactly where a correction proved the cheap tier failed. ``invoke`` owns the
+    messages + response_format for ONE call; ``parse`` returns the validated result or ``None``/raises
+    ``InvalidOutput`` on invalid output. When structured outputs are disabled this is a single call with
+    the parser's natural behavior (byte-identical to the pre-§3.2 path). Returns the parsed result, or
+    the final parse's natural failure (``None`` / raised ``InvalidOutput``) so the caller keeps its
+    existing fallback.
     """
-    raw = invoke(model, effort, None)
+    first_model, first_effort = retry_tier(task, ai_models, model=model, effort=effort) if escalate else (model, effort)
+    raw = invoke(first_model, first_effort, None)
     if not structured_outputs_enabled():
         return parse(raw)
     result, error = _safe_parse(parse, raw)

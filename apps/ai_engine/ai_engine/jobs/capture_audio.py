@@ -71,6 +71,7 @@ def transcribe_audio_content(
     *,
     model: str | None = None,
     ai_models: dict[str, Any] | None = None,
+    escalate: bool = False,
 ) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway (§3.2 structured output)."""
     base64_flac = audio_to_flac_mono_16khz_base64(content)
@@ -100,7 +101,7 @@ def transcribe_audio_content(
 
     return call_with_validation_retry(
         task="transcription", ai_models=ai_models, model=resolved_model, effort=None,
-        invoke=invoke, parse=_parse_transcription,
+        invoke=invoke, parse=_parse_transcription, escalate=escalate,
     )
 
 
@@ -112,6 +113,7 @@ def completed_audio_metadata(
     *,
     model: str | None = None,
     ai_models: dict[str, Any] | None = None,
+    escalate: bool = False,
 ) -> CaptureProcessingOutput:
     """Return completed audio metadata using real transcription."""
     metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
@@ -121,7 +123,7 @@ def completed_audio_metadata(
     elif transcription_is_configured():
         if content is None:
             raise SourceMissing("Audio capture source file is missing")
-        structured = transcribe_audio_content(content, transcription_context, model=model, ai_models=ai_models)
+        structured = transcribe_audio_content(content, transcription_context, model=model, ai_models=ai_models, escalate=escalate)
     else:
         raise GatewayUnavailable("Audio transcription gateway is not configured")
     text = structured["transcript"]

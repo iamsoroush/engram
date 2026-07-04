@@ -169,3 +169,37 @@ def resolve_reasoning_effort(task: str, ai_models: dict[str, Any] | None, *, def
             if isinstance(effort, str) and effort.strip():
                 return effort.strip()
     return default
+
+
+def _escalation(task: str, ai_models: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The optional per-task escalation tier config (`aiModels[task].escalation`), if present (§3.1)."""
+    if isinstance(ai_models, dict):
+        selected = ai_models.get(task)
+        if isinstance(selected, dict) and isinstance(selected.get("escalation"), dict):
+            return selected["escalation"]
+    return None
+
+
+def resolve_escalation_model(task: str, ai_models: dict[str, Any] | None, *, fallback_model: str) -> str:
+    """Resolve the escalation-tier model (`aiModels[task].escalation.model`), else the base model (§3.1).
+
+    The escalation tier is the "try harder" lever — a stronger model spent only where the cheap tier
+    just failed (a validation-failure retry, or a backend-signalled correction). Backward-compatible: a
+    bare string or `{model, reasoningEffort}` entry (no `escalation`) keeps the base model.
+    """
+    escalation = _escalation(task, ai_models)
+    if escalation:
+        model = escalation.get("model")
+        if isinstance(model, str) and model.strip():
+            return model.strip()
+    return fallback_model
+
+
+def resolve_escalation_effort(task: str, ai_models: dict[str, Any] | None, *, fallback_effort: str | None) -> str | None:
+    """Resolve the escalation-tier reasoning effort (`aiModels[task].escalation.reasoningEffort`), else base."""
+    escalation = _escalation(task, ai_models)
+    if escalation:
+        effort = escalation.get("reasoningEffort")
+        if isinstance(effort, str) and effort.strip():
+            return effort.strip()
+    return fallback_effort

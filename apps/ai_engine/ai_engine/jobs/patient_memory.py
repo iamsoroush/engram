@@ -17,6 +17,7 @@ from ai_engine.core.gateway import gateway_client, resolve_model, transcription_
 from ai_engine.core.structured import (
     call_with_validation_retry,
     correction_message,
+    escalation_requested,
     response_format,
     structured_outputs_enabled,
 )
@@ -67,7 +68,7 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
 
     parsed = call_with_validation_retry(
         task="patient_memory", ai_models=ai_models, model=model, effort=None,
-        invoke=invoke, parse=parse_patient_memory_output,
+        invoke=invoke, parse=parse_patient_memory_output, escalate=escalation_requested(payload),
     )
     if parsed is None:
         return _fallback_output()

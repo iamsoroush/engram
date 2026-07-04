@@ -54,6 +54,7 @@ def _request_caption(
     model: str,
     detail: str,
     ai_models: dict[str, Any] | None,
+    escalate: bool = False,
 ) -> dict[str, Any] | None:
     """One structured caption pass at a given image detail level (§3.2 structured output + retry)."""
     client = gateway_client("caption")
@@ -77,7 +78,8 @@ def _request_caption(
         return response.choices[0].message.content or ""
 
     return call_with_validation_retry(
-        task="caption", ai_models=ai_models, model=model, effort=None, invoke=invoke, parse=parse_caption_output,
+        task="caption", ai_models=ai_models, model=model, effort=None, invoke=invoke,
+        parse=parse_caption_output, escalate=escalate,
     )
 
 
@@ -88,6 +90,7 @@ def caption_image_content(
     *,
     model: str | None = None,
     ai_models: dict[str, Any] | None = None,
+    escalate: bool = False,
 ) -> dict[str, Any] | None:
     """Caption a clinical image through the gateway; None when the model returns no usable caption.
 
@@ -98,12 +101,12 @@ def caption_image_content(
     """
     resolved_model = resolve_model("caption", ai_models, override=model)
     standard_bytes, standard_mime = downscale_image_for_caption(content, media_type)
-    parsed = _request_caption(standard_bytes, standard_mime, enrichment_context, model=resolved_model, detail="low", ai_models=ai_models)
+    parsed = _request_caption(standard_bytes, standard_mime, enrichment_context, model=resolved_model, detail="low", ai_models=ai_models, escalate=escalate)
     if parsed is None:
         return None
     if parsed.get("pairing", {}).get("isProductLabel") is True:
         label_bytes, label_mime = downscale_image_for_caption(content, media_type, max_edge=CAPTION_PRODUCT_LABEL_MAX_EDGE)
-        high_detail = _request_caption(label_bytes, label_mime, enrichment_context, model=resolved_model, detail="high", ai_models=ai_models)
+        high_detail = _request_caption(label_bytes, label_mime, enrichment_context, model=resolved_model, detail="high", ai_models=ai_models, escalate=escalate)
         if high_detail is not None:
             high_detail["pairing"] = {**parsed.get("pairing", {}), **high_detail.get("pairing", {}), "isProductLabel": True}
             return high_detail

@@ -18,6 +18,7 @@ from ai_engine.core.media import audio_to_flac_mono_16khz_base64
 from ai_engine.core.structured import (
     call_with_validation_retry,
     correction_message,
+    escalation_requested,
     response_format,
     structured_outputs_enabled,
 )
@@ -75,7 +76,8 @@ def completed_qa_revise_output(payload: dict[str, Any], audio: bytes) -> dict[st
         return response.choices[0].message.content or ""
 
     parsed = call_with_validation_retry(
-        task="qa_draft", ai_models=ai_models, model=model, effort=None, invoke=invoke, parse=parse_qa_revise_output,
+        task="qa_draft", ai_models=ai_models, model=model, effort=None, invoke=invoke,
+        parse=parse_qa_revise_output, escalate=escalation_requested(payload),
     )
     if parsed is None:
         return _fallback_output()
