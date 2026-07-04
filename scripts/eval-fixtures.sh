@@ -17,10 +17,10 @@ set -euo pipefail
 
 STAGING="${EVAL_FIXTURES_DIR:-$HOME/notari-eval-fixtures}"
 BUCKET="${EVAL_FIXTURES_S3_BUCKET:-notari-eval-fixtures}"
-NETWORK="${EVAL_FIXTURES_S3_NETWORK:-notari-shared}"
+NETWORK="${EVAL_FIXTURES_S3_NETWORK:-engram-shared}"
 S3_HOST="${EVAL_FIXTURES_S3_HOST:-minio:9000}"
-ACCESS_KEY="${EVAL_FIXTURES_S3_ACCESS_KEY:-notari-dev}"
-SECRET_KEY="${EVAL_FIXTURES_S3_SECRET_KEY:-notari-dev-secret}"
+ACCESS_KEY="${EVAL_FIXTURES_S3_ACCESS_KEY:-engram-dev}"
+SECRET_KEY="${EVAL_FIXTURES_S3_SECRET_KEY:-engram-dev-secret}"
 MC_IMAGE="${EVAL_FIXTURES_MC_IMAGE:-minio/mc}"
 CONTAINER="${EVAL_FIXTURES_CONTAINER:-engram-main-ai-engine-1}"
 JOBS="transcription caption matching"
