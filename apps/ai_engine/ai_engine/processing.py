@@ -1,19 +1,18 @@
 import json
 import logging
 import re
-from datetime import datetime, timezone
 from time import sleep
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any
 
 from ai_engine.config import settings
 
-# ``processing`` is a transitional re-export shim (Axis-1 increment 1): the shared worker
-# infrastructure now lives under ``ai_engine.core``, but evals (``eval/*``) and unit tests still
-# import these names from ``ai_engine.processing`` and patch them here. The imports below rebind the
-# moved names into this module so ``from ai_engine.processing import X`` and
-# ``patch("ai_engine.processing.X")`` keep working until the shim is deleted (increment 5). Job
-# bodies still defined below resolve these dependencies in this namespace, so patching the shim
-# still intercepts their calls.
+# ``processing`` is a transitional re-export shim (Axis-1 increments 1–2): the shared worker
+# infrastructure now lives under ``ai_engine.core`` and the job runners under ``ai_engine.jobs``, but
+# evals (``eval/*``) and unit tests still import these names from ``ai_engine.processing`` and patch
+# them here. The imports below rebind the moved names into this module so
+# ``from ai_engine.processing import X`` keeps working until the shim is deleted (increment 5). Any
+# job body still defined below resolves its dependencies in this namespace, so
+# ``patch("ai_engine.processing.X")`` still intercepts those calls.
 from ai_engine.core.backend_client import BackendClient  # noqa: F401
 from ai_engine.core.domain import domain_framing
 from ai_engine.core.fixtures import (  # noqa: F401
@@ -35,6 +34,7 @@ from ai_engine.core.gateway import (  # noqa: F401
     resolve_model,
     resolve_reasoning_effort,
     set_pending_audio_seconds,
+    transcription_is_configured,
 )
 from ai_engine.core.media import (  # noqa: F401
     CAPTION_JPEG_QUALITY,
@@ -52,50 +52,22 @@ from ai_engine.core.text import (  # noqa: F401
     normalize_digits_to_latin,
     transcription_language_directive,
 )
+from ai_engine.core.util import clamp_confidence, utc_now  # noqa: F401
+from ai_engine.jobs.capture_note import raw_note_text  # noqa: F401
+from ai_engine.jobs.captures_common import (  # noqa: F401
+    NOT_DETECTED_PATIENT,
+    CaptureProcessingOutput,
+    DetectedPatientOutput,
+    capture_detected_patient,
+    capture_processing_output,
+    completed_metadata,
+    output_key_for_capture,
+    partial_metadata,
+    placeholder_text_for_capture,
+)
 
 logger = logging.getLogger(__name__)
 
-
-class DetectedPatientOutput(TypedDict):
-    """Future-ready patient detection result for capture processors."""
-
-    status: Literal["detected", "not_detected", "uncertain"]
-    full_name: str | None
-    national_id: str | None
-    confidence: float | None
-    evidence: str | None
-    source_text: str | None
-
-
-class CaptureProcessingOutput(TypedDict, total=False):
-    """Stable capture-processing output shape written into capture metadata."""
-
-    status: str
-    text: str
-    generated_by: str
-    job_id: str
-    job_type: str
-    generated_at: str
-    source_artifact_ids: list[str]
-    detected_patient: NotRequired[DetectedPatientOutput]
-    language: NotRequired[str]
-    patient_information: NotRequired[dict[str, Any]]
-    clinical_summary: NotRequired[str | None]
-    uncertainties: NotRequired[list[str]]
-    intents: NotRequired[dict[str, Any] | None]
-    pairing: NotRequired[dict[str, Any]]
-    confidence: NotRequired[float]
-    display: NotRequired[str]
-
-
-NOT_DETECTED_PATIENT: DetectedPatientOutput = {
-    "status": "not_detected",
-    "full_name": None,
-    "national_id": None,
-    "confidence": None,
-    "evidence": None,
-    "source_text": None,
-}
 
 TRANSCRIPTION_LANGUAGES = {"fa", "en", "mixed", "unknown"}
 
@@ -111,87 +83,6 @@ PATIENT_INFORMATION_FIELDS = (
     "evidence",
     "confidence",
 )
-
-
-def utc_now() -> datetime:
-    """Return the current timezone-aware UTC time."""
-    return datetime.now(timezone.utc)
-
-
-def output_key_for_capture(capture_type: str) -> str:
-    """Return the metadata field written by a completed capture job."""
-    if capture_type == "audio":
-        return "transcript"
-    if capture_type == "photo":
-        return "caption"
-    # Notes are a pure passthrough (no decoration): the job marks the note processed with its RAW
-    # text under `note_text`, preserving chain ordering + report_contribution wiring. The report
-    # itself reads the raw `detail`, so this envelope only carries provenance.
-    return "note_text"
-
-
-def placeholder_text_for_capture(capture: dict[str, Any]) -> str:
-    """Build deterministic placeholder output until real AI processors land."""
-    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
-    filename = str(metadata.get("original_filename") or "").strip()
-    if filename in TEST_CAPTURE_TEXT_BY_FILENAME:
-        return TEST_CAPTURE_TEXT_BY_FILENAME[filename]
-    detail = str(metadata.get("detail") or "").strip()
-    capture_type = capture.get("type")
-    if capture_type == "audio":
-        raise RuntimeError("Audio transcription gateway is not configured")
-    if capture_type == "photo":
-        return "Caption placeholder. Image capture processing completed successfully."
-    if detail:
-        normalized_detail = " ".join(detail.split())
-        if "Patient prefers subtle correction" in normalized_detail and "follow-up photo in 2 weeks" in normalized_detail:
-            return TEST_CAPTURE_TEXT_BY_FILENAME["text_note_01.txt"]
-        return detail
-    return "Text placeholder. Text capture processing completed successfully."
-
-
-def capture_detected_patient(capture: dict[str, Any], text: str) -> DetectedPatientOutput | None:
-    """Return schema-ready patient detection output without performing detection."""
-    if capture.get("type") != "audio":
-        return None
-    # TODO(ai-integration): Replace this deterministic stub with real patient
-    # detection, preserving the same status/full_name/national_id/confidence
-    # and evidence/source_text fields for later session assignment.
-    return {**NOT_DETECTED_PATIENT, "source_text": text}
-
-
-def completed_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CaptureProcessingOutput:
-    """Return metadata for a completed placeholder capture processor."""
-    text = placeholder_text_for_capture(capture)
-    output = capture_processing_output(job, text)
-    detected_patient = capture_detected_patient(capture, text)
-    if detected_patient is not None:
-        output["detected_patient"] = detected_patient
-    return output
-
-
-def partial_metadata(job: dict[str, Any], capture: dict[str, Any]) -> CaptureProcessingOutput:
-    """Return deterministic in-progress capture output."""
-    capture_type = capture.get("type")
-    label = "Transcribing" if capture_type == "audio" else "Reading image" if capture_type == "photo" else "Structuring note"
-    text = f"{label} audio..." if capture_type == "audio" else f"{label} placeholder output..."
-    output: CaptureProcessingOutput = {
-        "status": "processing",
-        "text": text,
-        "generated_by": "ai-engine",
-        "job_id": job["id"],
-        "job_type": job["jobType"],
-        "generated_at": utc_now().isoformat(),
-        "source_artifact_ids": job.get("inputArtifactIds") or [],
-    }
-    if capture_type == "audio":
-        output["detected_patient"] = {**NOT_DETECTED_PATIENT}
-    return output
-
-
-def transcription_is_configured() -> bool:
-    """Return whether a real audio transcription gateway is configured."""
-    return bool(settings.transcription_base_url.strip())
 
 
 def empty_patient_information(*, source_text: str | None = None) -> dict[str, Any]:
@@ -233,11 +124,6 @@ def structured_transcription_from_text(text: str, *, language: str = "en") -> di
         "uncertainties": [],
         "intents": None,
     }
-
-
-def clamp_confidence(value: Any) -> float:
-    """Clamp a model-provided confidence into [0.0, 1.0], defaulting to 0.0."""
-    return max(0.0, min(float(value), 1.0)) if isinstance(value, int | float) else 0.0
 
 
 def normalize_intents(raw: Any) -> dict[str, Any] | None:
@@ -605,19 +491,6 @@ def caption_image_content(
     return parsed
 
 
-def capture_processing_output(job: dict[str, Any], text: str) -> CaptureProcessingOutput:
-    """Build the stable completed-capture output envelope for a given generated text."""
-    return {
-        "status": "completed",
-        "text": text,
-        "generated_by": "ai-engine",
-        "job_id": job["id"],
-        "job_type": job["jobType"],
-        "generated_at": utc_now().isoformat(),
-        "source_artifact_ids": job.get("inputArtifactIds") or [],
-    }
-
-
 def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any]) -> CaptureProcessingOutput:
     """Build the completed photo-caption envelope from the structured caption result.
 
@@ -645,13 +518,6 @@ def caption_output_metadata(job: dict[str, Any], caption_result: dict[str, Any])
     if isinstance(display, str) and display.strip() and display.strip() != (caption_result.get("caption") or "").strip():
         output["display"] = display
     return output
-
-
-def raw_note_text(capture: dict[str, Any]) -> str | None:
-    """Return the captured note's raw text (the passthrough's processed text), or None when empty."""
-    metadata = capture.get("metadata") if isinstance(capture.get("metadata"), dict) else {}
-    detail = str(metadata.get("detail") or "").strip()
-    return detail or None
 
 
 def completed_audio_metadata(

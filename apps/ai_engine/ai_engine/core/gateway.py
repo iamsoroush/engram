@@ -17,6 +17,15 @@ from ai_engine.config import settings
 logger = logging.getLogger(__name__)
 
 
+def transcription_is_configured() -> bool:
+    """Return whether a real audio transcription gateway is configured.
+
+    Doubles as the "is any gateway configured" gate every AI job checks before spending — a blank
+    ``transcription_base_url`` means gateway-less (deterministic fallbacks / skip sentinels).
+    """
+    return bool(settings.transcription_base_url.strip())
+
+
 def gateway_settings_for(task: str) -> tuple[str, str, str]:
     """Resolve (base_url, api_key, model) for an AI task, falling back to the transcription gateway.
 
