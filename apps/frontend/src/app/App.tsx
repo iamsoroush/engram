@@ -1,5 +1,4 @@
 import React from "react";
-import { flushSync } from "react-dom";
 import type {
   AftercareTemplate,
   AuthSession,
@@ -10,15 +9,13 @@ import type {
   PatientMemoryFilter,
   PatientMemoryListResponse,
   PatientSummary,
-  PendingOperation,
   Persona,
   RolePermissions,
   SessionContext,
   SmartListKey,
-  SyncHealth,
 } from "../domain/appTypes";
 import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
-import { Card, Skeleton, Toast } from "../shared/ui/primitives";
+import { Card, Skeleton } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import { AppLangProvider, toLang, type Translator } from "../shared/i18n";
 import {
@@ -29,7 +26,6 @@ import {
   postFeedback,
   rejectSafetyFlag,
   setAftercareDismissed,
-  unassignSessionPatient,
   checkDuplicatePatient,
   createAftercareTemplate,
   createPatient,
@@ -59,13 +55,11 @@ import {
   fetchLotRecall,
   fetchSession,
   fetchSessionCaptures,
-  fetchSessions,
   markCaptureRelevant,
   type RegisterClinicInput,
   resolveCaptureFileUrl,
   saveSessionForProcessing,
   searchPatients,
-  storeBackendMappings,
   updateCaptureCaption,
   updateCaptureNote,
   updateCaptureTitle,
@@ -74,16 +68,11 @@ import {
   type PatientEditDraft,
   updateSessionTitle,
   updateTenantSettings,
-  uploadCapture,
   verifyAiPatientCreation,
 } from "../services/api/client";
-import { standardizeCaptureDraft } from "../features/capture/audio";
 import {
   isLocalSessionId,
-  makeLocalCapture,
   mergeCaptureItemsPreservingPreview,
-  mergeSessionItems,
-  sessionWithLocalPreview,
   sessionsFromPending,
   suggestedAftercareTemplateIds,
   workspaceTreatments,
@@ -112,23 +101,12 @@ import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
 import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import {
-  bindPendingSession,
   clearLocalCaptureData,
-  loadIdMapping,
-  loadPendingCapture,
   loadPendingCaptures,
-  loadPendingOperations,
-  normalizePendingCapture,
   removePendingCapture,
   removePendingOperation,
-  savePendingCapture,
-  savePendingOperation,
-  saveSyncedCaptureCache,
   updatePendingCapture,
-  updatePendingOperation,
 } from "../services/storage/captureStorage";
-import { exportPendingCaptures } from "../services/storage/exportCaptures";
-import { estimateStorageStatus, OK_STORAGE_STATUS, type StorageStatus } from "../services/storage/storageStatus";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
 import { replaceScreenLocation, screenFromLocation } from "./navigation";
 import { useBackLevel, resetBackLevels } from "../shared/lib/backStack";
@@ -143,6 +121,8 @@ import {
 import { ApiProvider, useApi } from "./providers/ApiProvider";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { CapabilitiesProvider, useCapabilities } from "./providers/CapabilitiesProvider";
+import { SyncProvider, useSync, useRegisterSyncBridge, type SyncBridge } from "./providers/SyncProvider";
+import { ToastProvider, useToast } from "./providers/ToastProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
 // reception (assistant) and admins coordinate → Clinical Memory (worklist, patients, needs-input).
@@ -186,17 +166,15 @@ function AppInner() {
   // Capability seam (A3): tier/role affordances have one home. Replaces the scattered
   // `auth.tenant.tier !== "basic"` checks + `onFetchX = isPro ? cb : undefined` prop-gating below.
   const { isBasic, canUseQa, canUseSmartLists } = useCapabilities();
+  // Seam B (increment 4): the offline outbox engine + its sync UI state (online/reachable/pending
+  // counts/syncing/storage) live in SyncProvider. App drives it via `sync.*` and registers the
+  // session bridge below so the engine can read/write session state that still lives here.
+  const sync = useSync();
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
   const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
   const [activeSession, setActiveSession] = React.useState<CaptureSession | null>(null);
   const [selectedSessionId, setSelectedSessionId] = React.useState("");
-  const [pendingCount, setPendingCount] = React.useState(0);
-  const [pendingOperationCount, setPendingOperationCount] = React.useState(0);
-  const [syncing, setSyncing] = React.useState(false);
-  const [online, setOnline] = React.useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
-  const [backendReachable, setBackendReachable] = React.useState<boolean | null>(null);
-  const [syncError, setSyncError] = React.useState("");
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -210,25 +188,18 @@ function AppInner() {
   // Per-visit share, opened from the session screen (FB6) — curates THIS visit's report.
   const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[]; preferredAftercareId?: string } | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
-  const [storage, setStorage] = React.useState<StorageStatus>(OK_STORAGE_STATUS);
-  const [storageGuardOpen, setStorageGuardOpen] = React.useState(false);
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
   // E9 — the patient whose file is open in Clinical Memory. While set (and on the patients screen),
   // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
   // screen changes, so the target naturally reverts to the active session.
   const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
   const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
-  const [toast, setToast] = React.useState("");
-  // Offline return receipt: how many captures were queued during an offline stretch, surfaced once
-  // as a single transient confirmation after reconnect drains them — so the sync isn't silent.
-  const [offlineReceipt, setOfflineReceipt] = React.useState(0);
-  const offlineBacklogRef = React.useRef(0);
-  const hadOfflineBacklogRef = React.useRef(false);
+  // Toast is owned by ToastProvider (seam A4) — App raises them via setToast; the provider renders it.
+  const { setToast } = useToast();
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
   // Round-trip: the in-progress capture visit stashed when the clinician jumps to the patient
   // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
   const [captureReturnSession, setCaptureReturnSession] = React.useState<CaptureSession | null>(null);
-  const processingRef = React.useRef(false);
   const workspaceHydratedRef = React.useRef(false);
   const activeSessionRef = React.useRef<CaptureSession | null>(null);
   const sessionsRef = React.useRef<CaptureSession[]>([]);
@@ -257,10 +228,10 @@ function AppInner() {
   // failed token refresh, which AuthProvider's clearAuth can no longer reach.
   React.useEffect(() => {
     if (!auth) {
-      processingRef.current = false;
+      sync.resetProcessing();
       workspaceHydratedRef.current = false;
     }
-  }, [auth]);
+  }, [auth, sync]);
 
   // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
   // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
@@ -282,12 +253,7 @@ function AppInner() {
     if (!auth || auth.user.persona === "patient-preview") return;
     void hydrateFromStorage();
     void navigator.storage?.persist?.();
-    void refreshStorage();
-  }, [auth]);
-
-  React.useEffect(() => {
-    if (auth) return;
-    void refreshPendingCount();
+    void sync.refreshStorage();
   }, [auth]);
 
   React.useEffect(() => {
@@ -302,21 +268,6 @@ function AppInner() {
     });
   }, [activeSession, assignmentSessionId, auth, pendingCaptureKind, screen, selectedSessionId]);
 
-  React.useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2200);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  React.useEffect(() => {
-    const updateOnline = () => setOnline(navigator.onLine);
-    window.addEventListener("online", updateOnline);
-    window.addEventListener("offline", updateOnline);
-    return () => {
-      window.removeEventListener("online", updateOnline);
-      window.removeEventListener("offline", updateOnline);
-    };
-  }, []);
 
   React.useEffect(() => {
     const syncScreenFromLocation = () => {
@@ -328,87 +279,19 @@ function AppInner() {
     return () => window.removeEventListener("hashchange", syncScreenFromLocation);
   }, []);
 
-  React.useEffect(() => {
-    const warnIfPending = (event: BeforeUnloadEvent) => {
-      if (!pendingCount && !pendingOperationCount) return;
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warnIfPending);
-    return () => window.removeEventListener("beforeunload", warnIfPending);
-  }, [pendingCount, pendingOperationCount]);
-
-  React.useEffect(() => {
-    const retryWhenOnline = () => void processOutbox();
-    window.addEventListener("online", retryWhenOnline);
-    return () => window.removeEventListener("online", retryWhenOnline);
-  }, []);
-
-  const refreshStorage = React.useCallback(async () => {
-    setStorage(await estimateStorageStatus());
-  }, []);
-
-  const refreshPendingCount = async () => {
-    const [pending, operations] = await Promise.all([loadPendingCaptures(), loadPendingOperations()]);
-    setPendingCount(pending.length);
-    setPendingOperationCount(operations.length);
-    void refreshStorage();
-    return pending;
-  };
-
-  // Export queued (unsynced) captures to disk — the durability escape hatch (Epic G).
-  const exportQueuedCaptures = React.useCallback(async () => {
-    const pending = await loadPendingCaptures();
-    if (!pending.length) {
-      setToast(appT("capture.toastNoQueuedExport"));
-      return;
-    }
-    try {
-      const count = await exportPendingCaptures(pending, new Date().toISOString());
-      setToast(appT("capture.toastExportedQueued", { count }));
-    } catch {
-      setToast(appT("capture.toastCouldNotExportQueued"));
-    }
-  }, []);
-
-  const queueOperation = async (operation: Omit<PendingOperation, "retryCount" | "status" | "createdAt" | "updatedAt">) => {
-    const now = Date.now();
-    await savePendingOperation({
-      ...operation,
-      retryCount: 0,
-      status: "pending",
-      createdAt: now,
-      updatedAt: now,
-    });
-    await refreshPendingCount();
-  };
-
-  const loadBackendSessions = React.useCallback(async () => {
-    const loadedSessions = await fetchSessions(apiFetch);
-    try {
-      const patients = await searchPatients(apiFetch, "");
-      const patientNameById = new Map(patients.map((patient) => [patient.id, patient.displayName]));
-      return loadedSessions.map((session) =>
-        session.patientId && !session.patientName
-          ? { ...session, patientName: patientNameById.get(session.patientId) || `Patient ${session.patientId.slice(0, 8)}` }
-          : session,
-      );
-    } catch {
-      return loadedSessions;
-    }
-  }, [apiFetch]);
+  const loadBackendSessions = sync.loadBackendSessions;
 
   /**
    * Rebuilds the visible session list from durable local captures first, then
    * layers backend sessions on top so offline work is never hidden by a failed load.
    */
   const hydrateFromStorage = async () => {
-    const pending = await refreshPendingCount();
+    const pending = await sync.refreshPendingCount();
     const localSessions = sessionsFromPending(pending);
     const workspace = loadWorkspaceState(authRef.current?.tenant.id);
     try {
       const loadedSessions = await loadBackendSessions();
-      setBackendReachable(true);
+      sync.setBackendReachable(true);
       const nextSessions = [
         ...loadedSessions.map((session) => {
           const localSession = localSessions.find((local) => local.id === session.id);
@@ -432,7 +315,7 @@ function AppInner() {
         }
       }
     } catch {
-      setBackendReachable(false);
+      sync.setBackendReachable(false);
       setSessions(localSessions);
       if (workspace) {
         setActiveSession(resolveRestoredSession(workspace.activeSession, localSessions));
@@ -444,7 +327,7 @@ function AppInner() {
     } finally {
       workspaceHydratedRef.current = true;
     }
-    if (pending.length) window.setTimeout(() => void processOutbox(), 0);
+    if (pending.length) window.setTimeout(() => void sync.processOutbox(), 0);
   };
 
   const updateItemStatus = (itemId: string, status: CaptureStatus) => {
@@ -487,15 +370,6 @@ function AppInner() {
         : `AI matched this visit to ${displayName}.`,
     );
   }, []);
-
-  const rebuildLocalPendingSessions = async () => {
-    const pending = await loadPendingCaptures();
-    const localSessions = sessionsFromPending(pending);
-    setSessions((current) => [
-      ...localSessions,
-      ...current.filter((session) => !localSessions.some((localSession) => localSession.id === session.id)),
-    ]);
-  };
 
   const refreshVisibleSession = React.useCallback(
     async (sessionId: string) => {
@@ -616,255 +490,10 @@ function AppInner() {
     [loadBackendSessions],
   );
 
-  const resolveBackendSessionId = async (operation: PendingOperation, tenantId: string) => {
-    if (operation.backendSessionId) return operation.backendSessionId;
-    if (!operation.localSessionId) return undefined;
-    if (!isLocalSessionId(operation.localSessionId)) return operation.localSessionId;
-    return (await loadIdMapping(`${tenantId}:session:${operation.localSessionId}`))?.backendId;
-  };
-
-  const syncPendingOperation = async (operation: PendingOperation, tenantId: string) => {
-    const backendSessionId = await resolveBackendSessionId(operation, tenantId);
-    if (!backendSessionId) return false;
-
-    await updatePendingOperation(operation.id, (current) => ({
-      ...current,
-      status: "syncing",
-      updatedAt: Date.now(),
-      lastError: undefined,
-    }));
-
-    if (operation.type === "sessionTitle") {
-      const title = typeof operation.payload.title === "string" ? operation.payload.title : "";
-      if (title.trim()) {
-        const updated = await updateSessionTitle(apiFetch, backendSessionId, title.trim());
-        applySessionUpdate(backendSessionId, updated);
-      }
-    }
-
-    if (operation.type === "patientAssignment") {
-      if (operation.payload.unassign === true) {
-        if (backendSessionId) {
-          const unassigned = await unassignSessionPatient(apiFetch, backendSessionId, operation.id);
-          applySessionUpdate(backendSessionId, unassigned);
-        }
-      } else {
-        const draft = {
-          patientId: typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined,
-          displayName: String(operation.payload.displayName || "").trim(),
-          nationalId: typeof operation.payload.nationalId === "string" ? operation.payload.nationalId : undefined,
-        };
-        let patientId = operation.backendPatientId || (draft.patientId && !isLocalAssignmentPatient(draft.patientId) ? draft.patientId : undefined);
-        if (!patientId && draft.displayName) {
-          const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
-          const normalizedName = draft.displayName.toLowerCase();
-          const exact = matches.find(
-            (patient) =>
-              patient.displayName.trim().toLowerCase() === normalizedName ||
-              (draft.nationalId && patient.nationalId === draft.nationalId),
-          );
-          patientId = (exact || (await createPatient(apiFetch, draft, operation.id))).id;
-        }
-        if (patientId) {
-          const basisCaptureId = typeof operation.payload.basisCaptureId === "string" ? operation.payload.basisCaptureId : undefined;
-          const assigned = await assignSessionPatient(apiFetch, backendSessionId, patientId, operation.id, basisCaptureId);
-          applySessionUpdate(backendSessionId, assigned);
-        }
-      }
-    }
-
-    if (operation.type === "sessionProcessing") {
-      const processingSession = await saveSessionForProcessing(apiFetch, backendSessionId);
-      applySessionUpdate(backendSessionId, processingSession);
-      scheduleSessionProcessingRefresh(backendSessionId);
-    }
-
-    await removePendingOperation(operation.id);
-    return true;
-  };
-
-  const processPendingOperations = async (tenantId: string) => {
-    const operations = await loadPendingOperations();
-    let failed = false;
-    for (const operation of operations) {
-      if (operation.tenantId && operation.tenantId !== tenantId) continue;
-      try {
-        const completed = await syncPendingOperation(operation, tenantId);
-        if (!completed) continue;
-      } catch (error) {
-        if (isNotFoundError(error)) {
-          // The op targets a patient/session that no longer exists (deleted/merged). Retrying would
-          // 404 forever — drop it and self-heal the stale reference instead of stranding the outbox.
-          await removePendingOperation(operation.id);
-          const opSessionId = operation.backendSessionId || operation.localSessionId;
-          const opPatientId =
-            operation.backendPatientId ||
-            (typeof operation.payload.patientId === "string" ? operation.payload.patientId : undefined);
-          await selfHealStalePatient(opSessionId, opPatientId);
-          continue;
-        }
-        await updatePendingOperation(operation.id, (current) => ({
-          ...current,
-          status: "failed",
-          retryCount: current.retryCount + 1,
-          updatedAt: Date.now(),
-          lastError: error instanceof Error ? error.message : appT("capture.syncFailed"),
-        }));
-        setSyncError(appT("capture.syncNeedsRetry"));
-        setBackendReachable(false);
-        failed = true;
-      }
-    }
-    return !failed;
-  };
-
-  /**
-   * Serially uploads locally saved captures for the active tenant.
-   *
-   * The outbox is intentionally processed one item at a time so a failed upload
-   * leaves later captures untouched and keeps local session previews consistent.
-   */
-  const processOutbox = async () => {
-    const currentAuth = authRef.current;
-    const activeTenantId = currentAuth?.tenant.id;
-    if (processingRef.current || !currentAuth || !activeTenantId || currentAuth.user.persona === "patient-preview") return;
-    // `navigator.onLine` is unreliable — it returns false-negatives after sleep / Wi-Fi / VPN
-    // changes and often never recovers, which used to strand captures in "waiting to upload".
-    // Treat it as a UI hint only and STILL attempt the upload: a genuinely-offline fetch fails
-    // fast and is caught + retried below, so a wrong `onLine` can no longer block syncing.
-    if (!navigator.onLine) setOnline(false);
-    processingRef.current = true;
-    setSyncing(true);
-    setSyncError("");
-    try {
-      const pending = await loadPendingCaptures();
-      let captureFailed = false;
-      for (const pendingCapture of pending) {
-        if (!authRef.current || authRef.current.tenant.id !== activeTenantId) break;
-        const capture = (await loadPendingCapture(pendingCapture.id)) || pendingCapture;
-        if (capture.tenantId && capture.tenantId !== activeTenantId) {
-          // A capture only uploads for the tenant it was made under. After tier/clinic switching this
-          // strands it as "waiting to upload" under the wrong tenant — surface why instead of hiding it.
-          console.warn(
-            `[outbox] capture ${capture.item.id} is for tenant ${capture.tenantId}, not the active tenant ${activeTenantId} — skipping. Log in under that clinic/tier to upload it.`,
-          );
-          continue;
-        }
-        const backendSessionId = capture.backendSessionId || capture.sessionId;
-        await updatePendingCapture(capture.id, (current) => ({
-          ...normalizePendingCapture(current),
-          tenantId: current.tenantId || activeTenantId,
-          backendSessionId,
-          sessionId: backendSessionId,
-        }));
-        updateItemStatus(capture.item.id, "syncing");
-        try {
-          const uploadDraft = await standardizeCaptureDraft(capture.draft);
-          const result = await uploadCapture(apiFetch, capture.clientCaptureId, uploadDraft, backendSessionId, capture.intoNew);
-          const remainingPending = await loadPendingCaptures();
-          const stillPendingForLocalSession = remainingPending.some(
-            (pendingCapture) => pendingCapture.id !== capture.id && pendingCapture.localSessionId === capture.localSessionId,
-          );
-          const currentSession = sessionsRef.current.find((session) => session.id === capture.localSessionId || session.id === result.session.id);
-          let mergedSession = mergeSessionItems(currentSession || activeSessionRef.current, result.session, capture.item.id);
-          if (mergedSession.patientId && !result.session.patientId && !isLocalSessionId(mergedSession.id)) {
-            try {
-              const assignedSession = await assignSessionPatient(apiFetch, mergedSession.id, mergedSession.patientId);
-              mergedSession = mergeSessionUpdate(mergedSession, assignedSession, mergedSession.items);
-            } catch {
-              // Keep the local patient context visible; assignment can be retried from the patient control.
-            }
-          }
-          upsertSession(mergedSession, stillPendingForLocalSession ? [] : [capture.localSessionId]);
-          setActiveSession((current) =>
-            current?.id === capture.localSessionId || current?.id === result.session.id
-              ? mergeSessionUpdate(mergeSessionItems(current, result.session, capture.item.id), mergedSession, mergedSession.items)
-              : current,
-          );
-          setSelectedSessionId((current) => (current === capture.localSessionId ? mergedSession.id : current));
-          setToast(appT("capture.toastCaptureTransferred"));
-          if (result.item.status === "uploaded" || result.item.status === "processing") scheduleCaptureProcessingRefresh(result.session.id);
-          scheduleMemoryRefresh();
-          try {
-            await updatePendingCapture(capture.id, (current) => ({
-              ...normalizePendingCapture(current),
-              draft: uploadDraft,
-              tenantId: activeTenantId,
-              backendSessionId: result.session.id,
-              backendCaptureId: result.item.id,
-              sessionId: result.session.id,
-              intoNew: false,
-            }));
-            await storeBackendMappings(capture, result, activeTenantId);
-            await saveSyncedCaptureCache(result.item, uploadDraft.file);
-            await bindPendingSession(capture.localSessionId, result.session.id);
-            await removePendingCapture(capture.id);
-            await refreshPendingCount();
-          } catch {
-            setToast(appT("capture.toastCaptureTransferred"));
-          }
-        } catch (uploadError) {
-          // Was swallowed silently — log the real reason so a perpetually-stuck capture is diagnosable.
-          console.warn(`[outbox] upload failed for capture ${capture.item.id} (retry ${capture.retryCount + 1}):`, uploadError);
-          await updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
-          updateItemStatus(capture.item.id, "saved");
-          await rebuildLocalPendingSessions();
-          setBackendReachable(false);
-          setSyncError(appT("capture.syncUploadFailed"));
-          captureFailed = true;
-          setToast(appT("capture.toastSavedDeviceWillOrganize"));
-          continue;
-        }
-      }
-      const operationsHealthy = await processPendingOperations(activeTenantId);
-      if (operationsHealthy && !captureFailed) setBackendReachable(true);
-    } finally {
-      processingRef.current = false;
-      setSyncing(false);
-      await refreshPendingCount();
-    }
-  };
-
-  // Robust periodic retry: while there is pending work, re-attempt on a FIXED interval regardless
-  // of transient sync/online state. processOutbox() self-guards against overlap (processingRef), so
-  // a tick during an in-flight sync is a no-op. Using setInterval (not a setTimeout re-armed only
-  // when `syncing` toggles) guarantees stuck "waiting to upload" items are always retried — even
-  // after an early-return that never flipped `syncing`.
-  React.useEffect(() => {
-    if (!auth || auth.user.persona === "patient-preview" || (!pendingCount && !pendingOperationCount)) return;
-    const retryTimer = window.setInterval(() => void processOutbox(), 15000);
-    return () => window.clearInterval(retryTimer);
-  }, [auth, pendingCount, pendingOperationCount]);
-
-  /**
-   * Saves a capture to IndexedDB before attempting network transfer.
-   *
-   * The optimistic UI update happens only after local persistence succeeds,
-   * which keeps the visible feed aligned with recoverable browser state.
-   */
-  const saveDraft = async (draft: CaptureDraft, intoNew = false) => {
-    let pending;
-    let visibleSession: CaptureSession;
-    try {
-      const safeDraft = await standardizeCaptureDraft(draft);
-      pending = makeLocalCapture(safeDraft, activeSession, intoNew, authRef.current?.tenant.id);
-      visibleSession = sessionWithLocalPreview(pending.session, pending.item.id, safeDraft.file);
-      await savePendingCapture(pending);
-      flushSync(() => {
-        setActiveSession(visibleSession);
-        upsertSession(visibleSession);
-        navigateScreen("active-session");
-      });
-    } catch {
-      setToast(draft.kind === "audio" ? appT("capture.toastAudioConversionFailed") : appT("capture.toastDeviceStorageFailed"));
-      return;
-    }
-
-    void saveSyncedCaptureCache(pending.item, pending.draft.file);
-    setToast(appT("capture.toastSavedDevice"));
-    void refreshPendingCount();
-    if (authRef.current?.tenant.id) void processOutbox();
-  };
+  // The outbox engine (upload / operation replay / retry interval / optimistic saveDraft) lives in
+  // SyncProvider (seam B); App calls it via `sync.*`. The engine reads/writes session state through
+  // the bridge registered below.
+  const saveDraft = sync.saveDraft;
 
   const openCaptureDialog = (kind: CaptureDraft["kind"]) => {
     if (kind === "note") setTextOpen(true);
@@ -882,9 +511,9 @@ function AppInner() {
   const beginCapture = (kind: CaptureDraft["kind"]) => {
     // Durability hard-stop (Epic G): when durable storage is full we can't guarantee a new
     // capture survives, so pause capturing and offer the export escape hatch instead.
-    if (storage.level === "full") {
-      void refreshStorage();
-      setStorageGuardOpen(true);
+    if (sync.storage.level === "full") {
+      void sync.refreshStorage();
+      sync.setStorageGuardOpen(true);
       return;
     }
     // On a patient's file → capture *for that patient* (start their visit + open the recorder),
@@ -984,8 +613,7 @@ function AppInner() {
 
   const clearLocalPendingCaptures = async () => {
     if (!window.confirm(appT("capture.confirmClearLocal"))) return;
-    processingRef.current = false;
-    setSyncing(false);
+    sync.resetProcessing();
     await clearLocalCaptureData();
     clearWorkspaceState();
     setActiveSession(null);
@@ -993,9 +621,8 @@ function AppInner() {
     setSelectedSessionId("");
     setAssignmentSessionId("");
     setPendingCaptureKind(null);
-    setPendingCount(0);
-    setPendingOperationCount(0);
     setToast(appT("capture.toastPendingCleared"));
+    // hydrate refreshes the pending counts (owned by SyncProvider) once the caches are re-read.
     void hydrateFromStorage();
   };
 
@@ -1036,7 +663,7 @@ function AppInner() {
     setActiveSession((current) => (current?.id === sessionId ? markProcessing(current) : current));
     if (isLocalSessionId(sessionId)) {
       if (authRef.current?.tenant.id) {
-        await queueOperation({
+        await sync.queueOperation({
           id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
           type: "sessionProcessing",
           localSessionId: sessionId,
@@ -1045,7 +672,7 @@ function AppInner() {
         });
         setToast(appT("capture.toastSavedDeviceWillOrganize"));
       }
-      void processOutbox();
+      void sync.processOutbox();
       return;
     }
     try {
@@ -1058,7 +685,7 @@ function AppInner() {
       scheduleSessionProcessingRefresh(sessionId);
     } catch {
       if (authRef.current?.tenant.id) {
-        await queueOperation({
+        await sync.queueOperation({
           id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
           type: "sessionProcessing",
           backendSessionId: sessionId,
@@ -1066,7 +693,7 @@ function AppInner() {
           payload: { reportTemplateKey: "default" },
         });
         setToast(appT("capture.toastSavedWillOrganize"));
-        void processOutbox();
+        void sync.processOutbox();
         return;
       }
       setToast(appT("capture.toastSavedDeviceWillOrganize"));
@@ -1091,7 +718,7 @@ function AppInner() {
             ),
         );
         if (authRef.current?.tenant.id) {
-          await queueOperation({
+          await sync.queueOperation({
             id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
             type: "sessionTitle",
             localSessionId: sessionId,
@@ -1111,7 +738,7 @@ function AppInner() {
         setToast(appT("capture.toastTitleUpdated"));
       } catch {
         if (authRef.current?.tenant.id) {
-          await queueOperation({
+          await sync.queueOperation({
             id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
             type: "sessionTitle",
             backendSessionId: sessionId,
@@ -1119,7 +746,7 @@ function AppInner() {
             payload: { title },
           });
           setToast(appT("capture.toastTitleSavedDevice"));
-          void processOutbox();
+          void sync.processOutbox();
           return;
         }
         setToast(appT("capture.toastCouldNotUpdateTitle"));
@@ -1426,7 +1053,7 @@ function AppInner() {
         setActiveSession((current) => (current?.id === sessionId ? clearPatient(current) : current));
         setAssignmentSessionId("");
         if (authRef.current?.tenant.id) {
-          await queueOperation({
+          await sync.queueOperation({
             id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
             type: "patientAssignment",
             localSessionId: sessionId,
@@ -1436,7 +1063,7 @@ function AppInner() {
           });
         }
         setToast(appT("memory.toastVisitUnassigned"));
-        void processOutbox();
+        void sync.processOutbox();
         return;
       }
       const localPatient: PatientSummary = draft.patientId && !isLocalAssignmentPatient(draft.patientId)
@@ -1465,7 +1092,7 @@ function AppInner() {
       };
       const enqueueAssignment = async (patient: PatientSummary) => {
         if (!authRef.current?.tenant.id) return;
-        await queueOperation({
+        await sync.queueOperation({
           id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
           type: "patientAssignment",
           localSessionId: sessionId,
@@ -1486,7 +1113,7 @@ function AppInner() {
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
         setToast(successMessage);
-        void processOutbox();
+        void sync.processOutbox();
         return;
       }
 
@@ -1526,7 +1153,7 @@ function AppInner() {
         applyLocalAssignment(localPatient);
         await enqueueAssignment(localPatient);
         setToast(successMessage);
-        void processOutbox();
+        void sync.processOutbox();
       }
     },
     [apiFetch, ensurePatient, selfHealStalePatient],
@@ -1871,55 +1498,48 @@ function AppInner() {
 
   const handleLogout = async () => {
     // AuthProvider.logout() clears auth locally then best-effort revokes the backend session; App
-    // clears the session/sync workspace and returns to capture.
+    // clears the session workspace and returns to capture (SyncProvider owns the sync state).
     setSessions([]);
     setActiveSession(null);
     setSelectedSessionId("");
-    setSyncing(false);
     navigateScreen("active-session");
-    void refreshPendingCount();
+    void sync.refreshPendingCount();
     await logout();
   };
 
   const selectedSession = sessions.find((session) => session.id === selectedSessionId);
-  const syncHealth: SyncHealth = {
-    online,
-    backendReachable,
-    pendingCaptures: pendingCount,
-    pendingOperations: pendingOperationCount,
-    syncing,
-    lastError: syncError || undefined,
-  };
-  // Offline = no connection OR the backend is known-unreachable. Used to gate the only sync
-  // indicators we show (header + per-capture "Trying to sync"); everything else stays badge-free.
-  const offline = !online || backendReachable === false;
+  // Sync health + offline flag + offline-return receipt are owned by SyncProvider (seam B).
+  const { syncHealth, offline } = sync;
   const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
   // A historical visit review (opened over Clinical Memory) gets its own history entry so Back
   // returns to the memory list instead of exiting the area (item: in-screen history levels).
   useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
 
-  // Offline return receipt (declared after `offline`/`pendingCount` to avoid a TDZ in the deps):
-  // remember the PEAK captures queued while offline, then confirm them once — after reconnect drains
-  // the backlog to zero — with a single transient banner, instead of the sync landing silently.
-  React.useEffect(() => {
-    if (offline && pendingCount > 0) {
-      offlineBacklogRef.current = Math.max(offlineBacklogRef.current, pendingCount);
-      hadOfflineBacklogRef.current = true;
-    }
-  }, [offline, pendingCount]);
-  React.useEffect(() => {
-    if (!offline && hadOfflineBacklogRef.current && !syncing && pendingCount === 0) {
-      setOfflineReceipt(offlineBacklogRef.current);
-      offlineBacklogRef.current = 0;
-      hadOfflineBacklogRef.current = false;
-    }
-  }, [offline, syncing, pendingCount]);
-  React.useEffect(() => {
-    if (!offlineReceipt) return;
-    const timer = window.setTimeout(() => setOfflineReceipt(0), 5200);
-    return () => window.clearTimeout(timer);
-  }, [offlineReceipt]);
+  // Register the outbox engine's session bridge (seam B). Session state + actions still live here in
+  // increment 4; the engine reads/writes them through this. In increment 5 SessionStore registers the
+  // identical bridge instead. Placed after every referenced session helper is defined (no TDZ) and
+  // before any early return, so the hook order is stable.
+  const syncBridge: SyncBridge = {
+    session: {
+      getSessions: () => sessionsRef.current,
+      getActiveSession: () => activeSessionRef.current,
+      setSessions: (update) => setSessions(update),
+      setActiveSession: (update) => setActiveSession(update),
+      setSelectedSessionId: (update) => setSelectedSessionId(update),
+      upsertSession: (session, removeIds) => upsertSession(session, removeIds),
+      updateItemStatus: (itemId, statusValue) => updateItemStatus(itemId, statusValue),
+      applySessionUpdate: (sessionId, updated) => applySessionUpdate(sessionId, updated),
+      selfHealStalePatient: (sessionId, deadPatientId) => selfHealStalePatient(sessionId, deadPatientId),
+      scheduleCaptureProcessingRefresh: (sessionId) => scheduleCaptureProcessingRefresh(sessionId),
+      scheduleSessionProcessingRefresh: (sessionId) => scheduleSessionProcessingRefresh(sessionId),
+      scheduleMemoryRefresh: () => scheduleMemoryRefresh(),
+    },
+    navigateActiveSession: () => navigateScreen("active-session"),
+  };
+  // useRegisterSyncBridge re-points a stable ref at this object every render, so the engine always
+  // sees the latest session callbacks (a fresh object here is correct — freshness is the point).
+  useRegisterSyncBridge(syncBridge);
 
   const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
     setClinicalMemoryReturnContext(returnContext || null);
@@ -2207,7 +1827,7 @@ function AppInner() {
         onUpdatePatient={editPatientDetails}
         onFetchPatient={fetchAssignedPatientDetails}
         onCreatePatient={createNewPatient}
-        onExportCaptures={exportQueuedCaptures}
+        onExportCaptures={sync.exportQueuedCaptures}
         onSearchPatients={searchPatientsForAssignment}
         onSmartSearch={smartSearchPatients}
         onDuplicateCheck={duplicateCheckPatient}
@@ -2253,7 +1873,7 @@ function AppInner() {
         onLogin={handlePasswordLogin}
         onPersonaLogin={handlePersonaLogin}
         onRegister={handleRegister}
-        pendingCount={pendingCount}
+        pendingCount={syncHealth.pendingCaptures}
       />
     );
   }
@@ -2379,40 +1999,43 @@ function AppInner() {
           setAudioOpen(false);
         }}
         open={audioOpen}
-        storageWarning={storage.level === "warn" ? storage : null}
+        storageWarning={sync.storage.level === "warn" ? sync.storage : null}
       />
-      {storageGuardOpen ? (
+      {sync.storageGuardOpen ? (
         <StorageGuardDialog
-          onClose={() => setStorageGuardOpen(false)}
-          onExport={exportQueuedCaptures}
-          pendingCount={pendingCount}
-          storage={storage}
+          onClose={() => sync.setStorageGuardOpen(false)}
+          onExport={sync.exportQueuedCaptures}
+          pendingCount={syncHealth.pendingCaptures}
+          storage={sync.storage}
         />
       ) : null}
-      {offlineReceipt > 0 ? (
+      {sync.offlineReceipt > 0 ? (
         <div className="offline-return-receipt" role="status" aria-live="polite">
           <span className="offline-return-receipt-icon" aria-hidden="true">✓</span>
-          <span>{appT("sync.returnReceipt", { count: offlineReceipt })}</span>
+          <span>{appT("sync.returnReceipt", { count: sync.offlineReceipt })}</span>
         </div>
       ) : null}
-      <Toast message={toast} />
       </>
     </AppLangProvider>
   );
 }
 
 // Composition root (frontend-refactor plan §2). Assembles the shared-infrastructure provider seams
-// around the app body. Increment 1 mounts ApiProvider (seam A1); later increments add Auth,
-// Capabilities, Sync, and the session store here as they are extracted from AppInner.
+// around the app body. Increments 1–3 mounted Api/Auth/Capabilities; increment 4 adds SyncProvider
+// (seam B — the offline outbox engine) and ToastProvider (seam A4). Increment 5 adds the session store.
 export function App() {
   return (
-    <ApiProvider>
-      <AuthProvider>
-        <CapabilitiesProvider>
-          <AppInner />
-        </CapabilitiesProvider>
-      </AuthProvider>
-    </ApiProvider>
+    <ToastProvider>
+      <ApiProvider>
+        <AuthProvider>
+          <CapabilitiesProvider>
+            <SyncProvider>
+              <AppInner />
+            </SyncProvider>
+          </CapabilitiesProvider>
+        </AuthProvider>
+      </ApiProvider>
+    </ToastProvider>
   );
 }
 

@@ -1,16 +1,19 @@
 # Frontend refactor plan — dissolving the `App.tsx` orchestrator
 
-**Status (2026-07-04):** increments **1–3 are built and merged** to main (`535a4dd` — Api/Auth/
-Capabilities provider seams out of App.tsx; tsc + 52 unit tests + i18n guard + hermetic e2e green).
-Increments **4–8 are deferred to a focused follow-up**: increment 4 (`SyncProvider`, the flagged
-riskiest extraction) is not safely separable from increment 5 (`SessionStore`) — the outbox engine
-writes session state at ~219 call sites, and its riskiest behaviors (offline/retry/storage-guard/
-operation-queue) have no e2e coverage today. The follow-up must **co-design Sync + Store and add
-offline characterization tests first**, then proceed 4→8.
-Dev-infra notes for that agent: deterministic e2e-stack runs need the `docker-compose.e2e.yml`
-(P0, gateway-less) or `docker-compose.e2e-ai.yml` (P1, mock gateway) overlays layered onto the
-stack. (The MinIO credential mismatch this note used to warn about is fixed — shared MinIO root is
-now `engram-dev`, matching every default; 2026-07-04.)
+**Status (2026-07-04):** increments **1–3 merged to main** (`535a4dd` — Api/Auth/Capabilities seams).
+**Increment 4 + seam A4 landed** on branch `p2/frontend-decomp-4-8` (pending merge): the offline
+outbox engine is out of App behind `SyncProvider`/`useSync()` (seam B), backed by a framework-agnostic
+`app/outbox/` engine with a **10-test offline characterization suite** (fake storage adapter) + a
+hermetic offline e2e; `ToastProvider` (seam A4) is the shared toast seam. App.tsx 2455 → 2081 lines.
+The Sync+Store co-design (the two are inseparable — see below) is recorded in
+`frontend-sync-store-codesign.md`. Gates green on 4 + A4: tsc, 62 unit tests, i18n:guard, vite build,
+41 hermetic e2e (the passing `capture-offline-sync.spec.ts` is the automated form of the manual offline
+smoke). **Remaining: increments 5–8.** Increment 5 (`SessionStore`) is designed and its Sync seam +
+Toast enabler are in place — see `frontend-sync-store-codesign.md` for the scatter-gather move plan and
+the `useSessionStore()` omnibus-destructure approach that keeps the render body untouched.
+Dev-infra notes: deterministic e2e-stack runs need the `docker-compose.e2e.yml` (P0, gateway-less) or
+`docker-compose.e2e-ai.yml` (P1, mock gateway) overlays layered onto the stack. (The MinIO credential
+mismatch this note used to warn about is fixed — shared MinIO root is now `engram-dev`, 2026-07-04.)
 
 **Fold destination:** the target architecture (§2) folds into `docs/architecture.md` (frontend section)
 and `docs/frontend/overview.md` once the seams land; the sequencing/checklist below is process-only and

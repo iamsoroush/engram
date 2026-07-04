@@ -19,9 +19,15 @@ apps/frontend/src/app/App.tsx
 - `src/app`: root orchestration, hash navigation, and session state helpers. `App.tsx` is a thin
   composition root that mounts the shared-infrastructure provider seams before the app body:
   `src/app/providers` holds `ApiProvider` (memoized auth-aware `apiFetch` via `useApi()`),
-  `AuthProvider` (the auth session + lifecycle via `useAuth()`), and `CapabilitiesProvider`
-  (tier/role affordances via `useCapabilities()`). Cross-cutting deps are consumed through these
-  hooks rather than threaded as props.
+  `AuthProvider` (the auth session + lifecycle via `useAuth()`), `CapabilitiesProvider`
+  (tier/role affordances via `useCapabilities()`), `ToastProvider` (the transient toast via
+  `useToast()`), and `SyncProvider` (the offline-first outbox engine via `useSync()`). Cross-cutting
+  deps are consumed through these hooks rather than threaded as props.
+- `src/app/outbox`: the framework-agnostic outbox engine (`createOutboxEngine`) that `SyncProvider`
+  drives — serial capture upload, dependent-operation replay, retry, and the optimistic `saveDraft`.
+  It touches no React/IndexedDB directly (injected ports), so it is unit-tested against a fake storage
+  adapter (`outboxEngine.test.ts`). The durable stores + upload flow are unchanged; see
+  [sync outbox](sync-outbox.md).
 - `src/domain`: frontend session/capture/auth types and UX status mapping.
 - `src/features/auth`: login and patient-preview gates.
 - `src/features/capture`: capture dialogs, active session workspace, capture metadata, audio helpers, and local capture modeling.

@@ -206,6 +206,13 @@ export function isLocalSessionId(sessionId: string) {
   return sessionId.startsWith("local-session-");
 }
 
+// A patient id that only exists client-side (offline-created, AI-mock, or the current-session
+// placeholder) — it has no backend row yet, so the outbox must resolve/create a real one before
+// assigning. Shared by the outbox engine and the session-action layer.
+export function isLocalAssignmentPatient(patientId: string) {
+  return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
+}
+
 export function backendSessionIdFromCurrent(currentSession: CaptureSession | null, intoNew: boolean) {
   if (intoNew || !currentSession || isLocalSessionId(currentSession.id)) return undefined;
   return currentSession.id;
