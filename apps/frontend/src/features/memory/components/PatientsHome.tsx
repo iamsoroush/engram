@@ -19,112 +19,82 @@ import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, Pa
 import { PatientDecisionListSheet, SummaryReviewSheet, StorageReviewSheet, PatientRecapSheet, ChoosePatientResolver, AssignPatientResolver } from "./MemorySheets";
 import { PatientTimelineDetail } from "./PatientTimeline";
 import { SmartListsTab } from "./SmartListsTab";
+import { useMemoryApi } from "../useMemoryApi";
+import { useAuth } from "../../../app/providers/AuthProvider";
+import { useCapabilities } from "../../../app/providers/CapabilitiesProvider";
+import { useToast } from "../../../app/providers/ToastProvider";
+import { useSync } from "../../../app/providers/SyncProvider";
+import { useActiveSession, useMemoryRefreshSignal, useSessionActions, useSessions } from "../../../app/providers/SessionStoreProvider";
 
 export const PATIENT_PAGE_SIZE = 25;
 export function PatientsHome({
-  activeSession,
-  auth,
   initialPatientId,
   initialTab,
   onBackToVisit,
-  sessions,
-  syncHealth,
   onOpenSession,
   onContinueSession,
-  onGetPatientMemory,
-  onUpdatePatient,
-  onFetchPatient,
-  onCreatePatient,
-  onListPatientMemory,
-  onSearchPatients,
-  onConfirmSummary,
-  onAssignPatient,
-  onExportCaptures,
-  onSmartSearch,
-  onDuplicateCheck,
-  onLoadSessionCaptures,
-  onLoadSession,
-  shareIncludeBrands,
-  shareLanguage,
-  onResolveFile,
-  onLoadLastVisit,
-  onListAftercareTemplates,
-  onCreateShare,
-  onRevokeShare,
-  onOpenQaChannel,
-  onFetchSmartListCounts,
-  onFetchSmartList,
-  onFetchLotLedger,
-  onFetchLotRecall,
-  onToast,
-  onLoadAssignmentSuggestion,
-  onListWorklist,
-  onLineUpPatient,
-  onMarkWorklistSeen,
-  onCancelWorklistEntry,
-  onListClinicMembers,
-  onStartVisit,
   onViewingPatientChange,
-  tier,
-  memoryRefreshSignal = 0,
+  onStartVisit,
 }: {
-  activeSession: CaptureSession | null;
-  auth?: AuthSession | null;
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
   /** When set, the clinician arrived from an in-progress visit; the timeline's back returns there. */
   onBackToVisit?: () => void;
-  sessions: CaptureSession[];
-  syncHealth: SyncHealth;
-  tier?: string | null;
-  // Bumped by App on the post-capture refresh ladder so patient memory re-fetches (updating→ready).
-  memoryRefreshSignal?: number;
   onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
   onContinueSession: (sessionId: string) => void;
-  onGetPatientMemory?: (patientId: string) => Promise<PatientMemoryDetailResponse>;
-  onUpdatePatient?: (patientId: string, draft: PatientEditDraft) => Promise<void>;
-  onFetchPatient?: (patientId: string) => Promise<StructuredPatientInformation | null>;
-  onCreatePatient?: (draft: PatientAssignmentDraft) => Promise<PatientSummary | null>;
-  onListPatientMemory?: (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }) => Promise<PatientMemoryListResponse>;
-  onSearchPatients?: (query: string) => Promise<PatientSummary[]>;
-  // E9 multi-seat worklist (AES-903).
-  onListWorklist?: (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) => Promise<WorklistResponse>;
-  onLineUpPatient?: (input: { patientId: string; clinicianUserId: string; note?: string }) => Promise<WorklistEntry>;
-  onMarkWorklistSeen?: (entryId: string, sessionId?: string) => Promise<WorklistEntry>;
-  onCancelWorklistEntry?: (entryId: string) => Promise<WorklistEntry>;
-  onListClinicMembers?: () => Promise<ClinicMember[]>;
+  /** Reports which patient's file is open (or null), so the footer can capture for them. */
+  onViewingPatientChange?: (patient: { id: string; name: string } | null) => void;
   /** AES-903 — start a fresh visit assigned to the patient (worklist quick action); marks the
    *  entry seen + navigates to the capture screen. */
   onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
-  /** Reports which patient's file is open (or null), so the footer can capture for them. */
-  onViewingPatientChange?: (patient: { id: string; name: string } | null) => void;
-  onConfirmSummary?: (sessionId: string, summary: string) => Promise<void>;
-  onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => Promise<void>;
-  onExportCaptures?: () => Promise<void> | void;
-  // Aesthetics-Basic deterministic services
-  onSmartSearch?: (query: string) => Promise<SmartPatientSearchResponse>;
-  onDuplicateCheck?: (body: { displayName?: string; nationalId?: string; phone?: string }) => Promise<DuplicateCheckResponse>;
-  onLoadSessionCaptures?: (sessionId: string) => Promise<CaptureItem[]>;
-  /** Load a session (report model + extracted treatments) for the share's synthesized summary. */
-  onLoadSession?: (sessionId: string) => Promise<CaptureSession>;
-  shareIncludeBrands?: boolean;
-  shareLanguage?: string | null;
-  onResolveFile?: (endpoint: string) => Promise<string>;
-  onLoadLastVisit?: (patientId: string) => Promise<LastVisitInfo>;
-  onListAftercareTemplates?: () => Promise<AftercareTemplate[]>;
-  onCreateShare?: (input: CreatePatientShareInput) => Promise<PatientShare>;
-  onRevokeShare?: (id: string) => Promise<PatientShare>;
-  // Pro: open (or reuse) the patient's Q&A channel and return its tokenized public link (AES-402).
-  onOpenQaChannel?: (patientId: string) => Promise<QaThreadSummary>;
-  // Pro smart lists + lot/product recall (AES-501 / AES-502). Present only for Pro (the Lists tab).
-  onFetchSmartListCounts?: () => Promise<SmartListCounts>;
-  onFetchSmartList?: (key: SmartListKey) => Promise<SmartListResponse>;
-  onFetchLotLedger?: () => Promise<LotLedger>;
-  onFetchLotRecall?: (query: { lot?: string; product?: string }) => Promise<LotRecallResult>;
-  onToast?: (message: string) => void;
-  onLoadAssignmentSuggestion?: (sessionId: string) => Promise<AssignmentSuggestionResponse>;
 }) {
   const t = useT();
+  // Seam consumption (frontend-refactor plan §3, increment 6): the ~38 apiFetch-bound / session /
+  // capability / toast callback props this screen used to receive collapse into the feature hook
+  // (useMemoryApi) + the store/capability/sync/toast context, aliased back to the local names the body
+  // already uses so the render body is unchanged. Navigation + route params stay as props above
+  // (they move to the router seam in increment 7). The Pro-only binders are `undefined` for Basic
+  // (capability gating now lives inside useMemoryApi, seam A3).
+  const memoryApi = useMemoryApi();
+  const { auth } = useAuth();
+  const { tier } = useCapabilities();
+  const { setToast: onToast } = useToast();
+  const sessions = useSessions();
+  const activeSession = useActiveSession();
+  const memoryRefreshSignal = useMemoryRefreshSignal();
+  const { syncHealth, exportQueuedCaptures: onExportCaptures } = useSync();
+  const {
+    assignPatientToSession: onAssignPatient,
+    confirmSessionSummary: onConfirmSummary,
+    fetchAssignedPatientDetails: onFetchPatient,
+    editPatientDetails: onUpdatePatient,
+    createNewPatient: onCreatePatient,
+    searchPatientsForAssignment: onSearchPatients,
+  } = useSessionActions();
+  const onGetPatientMemory = memoryApi.getPatientMemoryDetail;
+  const onListPatientMemory = memoryApi.listPatientMemory;
+  const onSmartSearch = memoryApi.smartSearchPatients;
+  const onDuplicateCheck = memoryApi.duplicateCheckPatient;
+  const onLoadSessionCaptures = memoryApi.loadSessionCaptures;
+  const onLoadSession = memoryApi.loadSession;
+  const onResolveFile = memoryApi.resolveSourceFile;
+  const onLoadLastVisit = memoryApi.loadLastVisit;
+  const onListAftercareTemplates = memoryApi.listAftercareTemplates;
+  const onCreateShare = memoryApi.createShare;
+  const onRevokeShare = memoryApi.revokeShare;
+  const onLoadAssignmentSuggestion = memoryApi.loadAssignmentSuggestion;
+  const onListWorklist = memoryApi.listWorklist;
+  const onLineUpPatient = memoryApi.lineUpPatient;
+  const onMarkWorklistSeen = memoryApi.markWorklistSeen;
+  const onCancelWorklistEntry = memoryApi.cancelWorklistEntry;
+  const onListClinicMembers = memoryApi.listClinicMembers;
+  const onOpenQaChannel = memoryApi.openQaChannel;
+  const onFetchSmartListCounts = memoryApi.fetchSmartListCounts;
+  const onFetchSmartList = memoryApi.fetchSmartList;
+  const onFetchLotLedger = memoryApi.fetchLotLedger;
+  const onFetchLotRecall = memoryApi.fetchLotRecall;
+  const shareIncludeBrands = Boolean(auth?.tenant.shareIncludeBrands);
+  const shareLanguage = auth?.tenant.reportLanguage || null;
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
@@ -521,7 +491,7 @@ export function PatientsHome({
           onClose={() => setRecapPatient(null)}
         />
       ) : null}
-      {sharePatient && onCreateShare && onLoadLastVisit && onListAftercareTemplates && onResolveFile && onLoadSessionCaptures ? (
+      {sharePatient ? (
         <SharePatientSheet
           patientId={sharePatient.id}
           patientName={sharePatient.name}
@@ -592,7 +562,7 @@ export function PatientsHome({
           onReviewSummary={(sessionId) => setSummaryReviewSessionId(sessionId)}
           onLoadSessionCaptures={onLoadSessionCaptures}
           onResolveFile={onResolveFile}
-          onShare={onCreateShare && onLoadLastVisit ? (visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits }) : undefined}
+          onShare={(visits) => setSharePatient({ id: selectedPatient.id, name: selectedPatient.name, visits })}
           currentUserId={myUserId}
           onOpenQaChannel={onOpenQaChannel}
           onToast={onToast}
@@ -653,22 +623,20 @@ export function PatientsHome({
 
       {activeTab === "today" ? (
         <div className="clinical-tab-panel" role="tabpanel">
-          {onListWorklist && onLineUpPatient && onMarkWorklistSeen && onCancelWorklistEntry && onListClinicMembers ? (
-            <WorklistSection
-              auth={auth ?? null}
-              onListWorklist={onListWorklist}
-              onLineUpPatient={onLineUpPatient}
-              onMarkWorklistSeen={onMarkWorklistSeen}
-              onCancelWorklistEntry={onCancelWorklistEntry}
-              onListClinicMembers={onListClinicMembers}
-              onSearchPatients={onSearchPatients}
-              onStartVisit={onStartVisit}
-              onPeekPatient={(patientId, patientName, worklistEntryId, canStartVisit) =>
-                setRecapPatient({ id: patientId, name: patientName || t("patients.fallbackName"), entryId: worklistEntryId, canStart: canStartVisit })
-              }
-              refreshSignal={memoryRefreshSignal}
-            />
-          ) : null}
+          <WorklistSection
+            auth={auth ?? null}
+            onListWorklist={onListWorklist}
+            onLineUpPatient={onLineUpPatient}
+            onMarkWorklistSeen={onMarkWorklistSeen}
+            onCancelWorklistEntry={onCancelWorklistEntry}
+            onListClinicMembers={onListClinicMembers}
+            onSearchPatients={onSearchPatients}
+            onStartVisit={onStartVisit}
+            onPeekPatient={(patientId, patientName, worklistEntryId, canStartVisit) =>
+              setRecapPatient({ id: patientId, name: patientName || t("patients.fallbackName"), entryId: worklistEntryId, canStart: canStartVisit })
+            }
+            refreshSignal={memoryRefreshSignal}
+          />
           <ClinicalSection
             title={t("patients.section.activeSession")}
             badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session, t) : undefined}
@@ -788,13 +756,11 @@ export function PatientsHome({
                 ))}
               </div>
             ) : null}
-            {onCreatePatient ? (
-              <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
-                <span aria-hidden="true">+</span> {t("patients.newPatient")}
-              </button>
-            ) : null}
+            <button className="patients-create-button" onClick={() => setCreatingPatient((value) => !value)} type="button">
+              <span aria-hidden="true">+</span> {t("patients.newPatient")}
+            </button>
           </div>
-          {creatingPatient && onCreatePatient ? (
+          {creatingPatient ? (
             <section className="patient-edit-card" aria-label={t("patients.createPatientAriaLabel")}>
               {onDuplicateCheck ? (
                 <RegisterPatientForm

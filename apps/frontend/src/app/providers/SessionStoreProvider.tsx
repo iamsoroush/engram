@@ -1069,6 +1069,11 @@ export function useActiveSession(): CaptureSession | null {
   return useSessionStateContext().activeSession;
 }
 
+/** The post-capture memory-refresh signal (bumped over the processing delay ladder). */
+export function useMemoryRefreshSignal(): number {
+  return useSessionStateContext().memoryRefreshSignal;
+}
+
 /**
  * The whole store as one object (state + actions) — for App's composition root, which destructures it
  * back into the local names its render body + navigation helpers already use. Feature screens should

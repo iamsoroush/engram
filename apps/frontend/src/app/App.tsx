@@ -5,41 +5,27 @@ import type {
   CaptureDraft,
   DevTier,
   LineupCard,
-  PatientMemoryFilter,
-  PatientMemoryListResponse,
   Persona,
   RolePermissions,
   SessionContext,
-  SmartListKey,
 } from "../domain/appTypes";
 import type { CaptureSession, Screen } from "../domain/types";
 import { Card, Skeleton } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import { AppLangProvider, toLang, type Translator } from "../shared/i18n";
 import {
-  checkDuplicatePatient,
   createAftercareTemplate,
   createPatientShare,
   deleteAftercareTemplate,
-  fetchAssignmentSuggestion,
-  cancelWorklistEntry,
   createSession,
-  createWorklistEntry,
-  fetchClinicMembers,
   fetchLastVisit,
   fetchSessionContext,
   fetchWorklist,
   listAftercareTemplates,
   markWorklistEntrySeen,
   revokePatientShare,
-  searchPatientsSmart,
   updateAftercareTemplate,
-  fetchPatientMemory,
   fetchPatientMemoryDetail,
-  fetchSmartListCounts,
-  fetchSmartList,
-  fetchLotLedger,
-  fetchLotRecall,
   fetchSession,
   fetchSessionCaptures,
   type RegisterClinicInput,
@@ -144,25 +130,7 @@ function AppInner() {
     memoryRefreshSignal,
     sessionSink,
     upsertSession,
-    saveSession,
-    renameSession,
-    renameCapture,
-    editCaptureSourceText,
-    editCaptureNote,
-    removeCaptureFromSession,
-    markCaptureRelevantInSession,
-    confirmCarriedForwardDose,
-    rateReport,
-    fetchCaptureById,
-    dismissAftercareTemplate,
-    rejectSafetyFlagFromSession,
     assignPatientToSession,
-    searchPatientsForAssignment,
-    fetchAssignedPatientDetails,
-    completeAiCreatedPatient,
-    editPatientDetails,
-    createNewPatient,
-    confirmSessionSummary,
     loadCapturesForSession,
   } = useSessionStore();
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
@@ -512,37 +480,6 @@ function AppInner() {
     setWorklistRefresh((v) => v + 1);
   }, [activeSession, nextLinedUpPatient, assignPatientToSession, apiFetch]);
 
-  const listPatientMemory = React.useCallback(
-    (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }): Promise<PatientMemoryListResponse> =>
-      fetchPatientMemory(apiFetch, params),
-    [apiFetch],
-  );
-
-  // Smart lists + lot/product recall (Pro; AES-501 / AES-502). Pro-gated server-side; wired only for
-  // Pro below so Basic never renders the Lists tab.
-  const fetchSmartListCountsCb = React.useCallback(() => fetchSmartListCounts(apiFetch), [apiFetch]);
-  const fetchSmartListCb = React.useCallback((key: SmartListKey) => fetchSmartList(apiFetch, key), [apiFetch]);
-  const fetchLotLedgerCb = React.useCallback(() => fetchLotLedger(apiFetch), [apiFetch]);
-  const fetchLotRecallCb = React.useCallback((query: { lot?: string; product?: string }) => fetchLotRecall(apiFetch, query), [apiFetch]);
-
-  // E9 multi-seat (AES-903): the soft worklist + clinic directory.
-  const listWorklist = React.useCallback(
-    (options?: { scope?: "mine" | "clinic"; status?: "waiting" | "seen" | "cancelled" | "all"; clinicianId?: string }) =>
-      fetchWorklist(apiFetch, options),
-    [apiFetch],
-  );
-  const lineUpPatient = React.useCallback(
-    (input: { patientId: string; clinicianUserId: string; note?: string }) => createWorklistEntry(apiFetch, input),
-    [apiFetch],
-  );
-  const markWorklistSeen = React.useCallback(
-    (entryId: string, sessionId?: string) => markWorklistEntrySeen(apiFetch, entryId, sessionId),
-    [apiFetch],
-  );
-  const cancelWorklist = React.useCallback((entryId: string) => cancelWorklistEntry(apiFetch, entryId), [apiFetch]);
-  const listClinicMembers = React.useCallback(() => fetchClinicMembers(apiFetch), [apiFetch]);
-
-
   const resolveSourceFile = React.useCallback((endpoint: string) => resolveCaptureFileUrl(apiFetch, endpoint), [apiFetch]);
 
   // Stable callbacks for the aesthetics-Basic surfaces. These feed child effects (smart search,
@@ -578,8 +515,6 @@ function AppInner() {
       cancelled = true;
     };
   }, [getPatientMemoryDetail, isBasic, patientId]);
-  const smartSearchPatients = React.useCallback((query: string) => searchPatientsSmart(apiFetch, query), [apiFetch]);
-  const duplicateCheckPatient = React.useCallback((body: { displayName?: string; nationalId?: string; phone?: string }) => checkDuplicatePatient(apiFetch, body), [apiFetch]);
   const loadSessionCaptures = React.useCallback((sessionId: string) => fetchSessionCaptures(apiFetch, sessionId), [apiFetch]);
   const loadSession = React.useCallback((sessionId: string) => fetchSession(apiFetch, sessionId), [apiFetch]);
   const loadLastVisitForPatient = React.useCallback((patientId: string) => fetchLastVisit(apiFetch, patientId), [apiFetch]);
@@ -603,7 +538,6 @@ function AppInner() {
   }, [apiFetch, auth]);
   const createShare = React.useCallback((input: Parameters<typeof createPatientShare>[1]) => createPatientShare(apiFetch, input), [apiFetch]);
   const revokeShare = React.useCallback((id: string) => revokePatientShare(apiFetch, id), [apiFetch]);
-  const loadAssignmentSuggestion = React.useCallback((sessionId: string) => fetchAssignmentSuggestion(apiFetch, sessionId), [apiFetch]);
   const createAftercare = React.useCallback((draft: Parameters<typeof createAftercareTemplate>[1]) => createAftercareTemplate(apiFetch, draft), [apiFetch]);
   const updateAftercare = React.useCallback((id: string, draft: Parameters<typeof updateAftercareTemplate>[2]) => updateAftercareTemplate(apiFetch, id, draft), [apiFetch]);
   const deleteAftercare = React.useCallback((id: string) => deleteAftercareTemplate(apiFetch, id), [apiFetch]);
@@ -898,27 +832,8 @@ function AppInner() {
             setToast(appT("capture.toastAddNext"));
           }}
           assignmentOpen={assignmentSessionId === selectedSession.id}
-          onAssignPatient={assignPatientToSession}
-          onSearchPatients={searchPatientsForAssignment}
-          onCompleteAiCreatedPatient={completeAiCreatedPatient}
-          onFetchPatient={fetchAssignedPatientDetails}
           onCloseAssignment={() => setAssignmentSessionId((current) => (current === selectedSession.id ? "" : selectedSession.id))}
           onOpenResolver={() => setAssignmentSessionId(selectedSession.id)}
-          onSaveSession={saveSession}
-          onResolveFile={resolveSourceFile}
-          onUpdateTitle={renameSession}
-          onRenameCapture={renameCapture}
-          onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
-          onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
-          onUpdateNote={editCaptureNote}
-          onDeleteCapture={removeCaptureFromSession}
-          onMarkRelevant={markCaptureRelevantInSession}
-          onConfirmCarriedForward={confirmCarriedForwardDose}
-          onRateReport={rateReport}
-          onFetchCapture={fetchCaptureById}
-          tier={auth?.tenant.tier}
-          reportLanguage={auth?.tenant.reportLanguage}
-          offline={offline}
         />
       );
     }
@@ -929,10 +844,6 @@ function AppInner() {
           assignmentOpen={Boolean(activeSession && assignmentSessionId === activeSession.id)}
           onBack={clinicalMemoryReturnContext ? returnToClinicalMemory : undefined}
           backLabel={clinicalMemoryBackLabel}
-          onAssignPatient={assignPatientToSession}
-          onSearchPatients={searchPatientsForAssignment}
-          onCompleteAiCreatedPatient={completeAiCreatedPatient}
-          onFetchPatient={fetchAssignedPatientDetails}
           onCloseAssignment={() => {
             if (activeSession) {
               setAssignmentSessionId((current) => (current === activeSession.id ? "" : activeSession.id));
@@ -946,21 +857,7 @@ function AppInner() {
           onOpenResolver={() => {
             if (activeSession) setAssignmentSessionId(activeSession.id);
           }}
-          onSaveSession={saveSession}
-          onResolveFile={resolveSourceFile}
           onStartNewSession={startNewSession}
-          onUpdateTitle={renameSession}
-          onRenameCapture={renameCapture}
-          onUpdateCaptureCaption={(sessionId, captureId, caption) => editCaptureSourceText(sessionId, captureId, caption, "caption")}
-          onUpdateCaptureTranscript={(sessionId, captureId, transcript) => editCaptureSourceText(sessionId, captureId, transcript, "transcript")}
-          onUpdateNote={editCaptureNote}
-          onDeleteCapture={removeCaptureFromSession}
-          onMarkRelevant={markCaptureRelevantInSession}
-          onConfirmCarriedForward={confirmCarriedForwardDose}
-          onRateReport={rateReport}
-          onFetchCapture={fetchCaptureById}
-          tier={auth?.tenant.tier}
-          reportLanguage={auth?.tenant.reportLanguage}
           sessionContext={sessionContext}
           lineupCard={sessionLineupCard}
           onOpenVisit={(sessionId) => openMemorySession(sessionId)}
@@ -968,9 +865,6 @@ function AppInner() {
           onShareVisit={openSessionShare}
           onUseAsNote={composeNoteFromText}
           aftercareTemplates={aftercareTemplates}
-          onDismissAftercare={dismissAftercareTemplate}
-          onRejectSafetyFlag={rejectSafetyFlagFromSession}
-          offline={offline}
           sessionOrdinal={activeSessionOrdinal}
           currentUserId={auth?.user.id ?? null}
           readOnly={activeSession ? isSessionReadOnly(activeSession, auth) : false}
@@ -990,51 +884,13 @@ function AppInner() {
     }
     return (
       <PatientsHome
-        activeSession={activeSession}
-        auth={auth}
         initialPatientId={clinicalMemoryReturnContext?.patientId}
         onBackToVisit={captureReturnSession ? returnToActiveCapture : undefined}
         initialTab={clinicalMemoryReturnContext?.tab}
-        onAssignPatient={assignPatientToSession}
         onContinueSession={continueMemorySession}
-        onConfirmSummary={confirmSessionSummary}
         onOpenSession={openMemorySession}
-        onListPatientMemory={listPatientMemory}
-        onListWorklist={listWorklist}
-        onLineUpPatient={lineUpPatient}
-        onMarkWorklistSeen={markWorklistSeen}
-        onCancelWorklistEntry={cancelWorklist}
-        onListClinicMembers={listClinicMembers}
         onStartVisit={startVisitForPatient}
         onViewingPatientChange={setViewedPatient}
-        onGetPatientMemory={getPatientMemoryDetail}
-        onUpdatePatient={editPatientDetails}
-        onFetchPatient={fetchAssignedPatientDetails}
-        onCreatePatient={createNewPatient}
-        onExportCaptures={sync.exportQueuedCaptures}
-        onSearchPatients={searchPatientsForAssignment}
-        onSmartSearch={smartSearchPatients}
-        onDuplicateCheck={duplicateCheckPatient}
-        onLoadSessionCaptures={loadSessionCaptures}
-        onLoadSession={loadSession}
-        shareIncludeBrands={Boolean(auth?.tenant.shareIncludeBrands)}
-        shareLanguage={auth?.tenant.reportLanguage || null}
-        onResolveFile={resolveSourceFile}
-        onLoadLastVisit={loadLastVisitForPatient}
-        onListAftercareTemplates={listAftercare}
-        onCreateShare={createShare}
-        onRevokeShare={revokeShare}
-        onOpenQaChannel={canUseQa ? (patientId) => openQaChannel(apiFetch, patientId) : undefined}
-        onFetchSmartListCounts={canUseSmartLists ? fetchSmartListCountsCb : undefined}
-        onFetchSmartList={canUseSmartLists ? fetchSmartListCb : undefined}
-        onFetchLotLedger={canUseSmartLists ? fetchLotLedgerCb : undefined}
-        onFetchLotRecall={canUseSmartLists ? fetchLotRecallCb : undefined}
-        onToast={setToast}
-        onLoadAssignmentSuggestion={loadAssignmentSuggestion}
-        sessions={sessions}
-        syncHealth={syncHealth}
-        tier={auth?.tenant.tier}
-        memoryRefreshSignal={memoryRefreshSignal}
       />
     );
   };
