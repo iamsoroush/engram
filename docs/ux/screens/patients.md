@@ -306,7 +306,7 @@ Two patient-level memory artifacts are generated from the patient's visits and s
 Both are tier-aware. The tone reads like a calm assistant in either tier; only the depth differs:
 
 - **Pro** (`tenant.tier = pro`) is AI-maintained: a synthesized brief with titled prose sections — `Snapshot`, `Story so far`, `Worth remembering`, `Right now` — and a warm one-line card summary. A ✨ provenance mark accompanies these artifacts (and only these), pulsing while they refresh.
-- **Basic** is deterministic and carries **no ✨**: a structural recap built from capture facts (visit counts, dates, capture types) plus any verbatim typed notes. It never paraphrases or guesses a topic from audio — Basic has transcription but no summarization, so audio visits read as e.g. `1 audio note (2m 14s). Transcript saved — open the visit to read it.`
+- **Basic** is deterministic and carries **no ✨**: a structural recap built from capture facts (visit counts, dates, capture types) plus any verbatim typed notes. It never paraphrases or guesses a topic from audio — Basic runs **no AI at all** (no transcription; audio is a playable voice memo), so audio visits read as e.g. `1 audio note (2m 14s) — voice memo; open the visit to play it.`
 
 Backend source: `GET /api/v1/patients/{patientId}/memory` returns `history` (`mode`, `status`, `snapshot`, `sections`, `visits`, `source`); the flat list and detail rows carry `summary` + `memoryStatus`.
 

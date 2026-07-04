@@ -161,7 +161,8 @@ one**, so that one person doesn't split into several records.
 As a **doctor**, I want a **structural** patient recap (visit counts, dates, capture types, verbatim
 typed notes) with **no ✨**, so that Basic memory is honest and never guesses.
 - **Acceptance:** as [screens/patients.md](screens/patients.md) Basic memory — never paraphrases audio;
-  audio visits read "Transcript saved — open the visit." No AI.
+  audio visits read as a voice memo (`Voice memo · 2m 14s` — open the visit to play it; Basic has
+  no transcription, AES-101). No AI.
 
 ### AES-207 — AI patient memory, history & recall (Pro) 〔Pro · Dr/As · exists/new〕
 As a **doctor**, I want an **AI patient history** (Snapshot · Story so far · Worth remembering · Right
