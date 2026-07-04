@@ -23,6 +23,23 @@ consumes named Celery tasks and reports lifecycle state through protected backen
 endpoints. Processors are pure functions of their backend-built payloads — new AI jobs slot in
 behind the same boundary without moving backend ownership into the worker.
 
+## Package layout
+
+The worker package (`ai_engine/`) is split by concern:
+
+- `core/` — shared infrastructure: `gateway` (metered OpenAI-compatible client + model/effort/escalation
+  resolution), `backend_client`, `media`, `text`, `domain` (the vertical-agnostic seam), `fixtures`,
+  `errors` (typed exceptions → retry-reason codes), `structured` (schema-enforced calls + validation retry).
+- `contracts/` — typed pydantic output models, one module per payload family, each owning its
+  `OUTPUT_VERSION` and the tolerant parse/coercion for that family + its gateway `json_schema`.
+- `prompts/` — one versioned module per prompt (`PROMPT_VERSION` + `build(context)`); shared framing in
+  `prompts/_shared`. A hash-pin test forbids silent wording changes.
+- `jobs/` — one module per job; thin runners that compose `core` + `contracts` + `prompts`.
+- `processing.py` — a transitional re-export shim kept alive for eval/test imports.
+
+Every completed job envelope stamps `schemaVersion` (its contract `OUTPUT_VERSION`) and `promptVersion`
+(its prompt's version) as provenance the backend/eval can key regressions on.
+
 ## Caution: AI jobs must be vertical-agnostic
 
 The platform is multi-vertical (aesthetics, therapy, dermatology, …). **A job/processor must never
@@ -33,10 +50,10 @@ procedure/clinical-domain assumptions baked into a prompt or processor.
   descriptor into each job's context/payload — `label` plus optional `vocabulary` / `captionFindings`
   hints (see `app/services/verticals.py:domain_descriptor`, fed in via `build_transcription_context`,
   `build_capture_enrichment_context`, and the patient-memory payload).
-- **The worker reads it and falls back to neutral.** Prompt builders call
-  `core.domain.domain_framing(context)`, which returns a neutral `"clinic"` label and no vocabulary
-  when `domain` is absent — so a worker is correct for *any* vertical, including ones with no
-  descriptor yet.
+- **The worker reads it and falls back to neutral.** The `prompts/` builders call
+  `domain_framing(context)` (re-exported through `prompts/_shared` from `core.domain`), which returns a
+  neutral `"clinic"` label and no vocabulary when `domain` is absent — so a worker is correct for *any*
+  vertical, including ones with no descriptor yet.
 - **Vertical-specific wording is allowed only when it is OPTIONAL and data-driven** — i.e. read from
   the passed `domain` with a neutral default — never embedded in the worker. To add or change a
   vertical's framing/vocabulary, extend `domain_descriptor`, not the prompts.

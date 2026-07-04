@@ -309,20 +309,46 @@ API-only knob — no user-facing picker), and surfaced to the worker in every jo
 worker resolves: payload `aiModels[task]` → env `AI_ENGINE_<TASK>_MODEL` → env
 `AI_ENGINE_TRANSCRIPTION_MODEL` (`resolve_model` / `gateway_settings_for`). A task entry may be a
 bare model string or `{model, reasoningEffort}` — reasoning effort is the quality/stability knob for
-structured synthesis (`resolve_reasoning_effort`; there is **no temperature**). Because the backend
-reads the override when it builds the payload at job start, a change takes effect on the **next
-request** with no restart. Gateway URL/key stay in env only (`AI_ENGINE_<TASK>_BASE_URL` /
-`_API_KEY`, blank → the shared `transcription_*` gateway); secrets are never stored in the DB.
+structured synthesis (`resolve_reasoning_effort`; there is **no temperature**). A task entry may also
+carry an optional **escalation tier** `{model, reasoningEffort, escalation: {model?, reasoningEffort?}}`
+— the "try harder" lever the worker spends only where the cheap tier just failed (a validation-failure
+retry; or a backend `escalate: true` correction hint, deferred). `resolve_escalation_model` /
+`resolve_escalation_effort` read it; a bare string / `{model, reasoningEffort}` entry keeps the base
+tier. Because the backend reads the override when it builds the payload at job start, a change takes
+effect on the **next request** with no restart. Gateway URL/key stay in env only
+(`AI_ENGINE_<TASK>_BASE_URL` / `_API_KEY`, blank → the shared `transcription_*` gateway); secrets are
+never stored in the DB.
+
+## Typed contracts, structured outputs & prompt versioning
+
+- **Typed contracts (`ai_engine/contracts/`).** Each job's output is a pydantic model (one module per
+  payload family) that owns the tolerant parse/coercion and an `OUTPUT_VERSION`. Every completed
+  envelope stamps that as `schemaVersion`. Tolerance is deliberate (malformed intents dropped
+  field-by-field, caption plain-text fallback, safety-first reconcile) and pinned by parity tests.
+- **Structured outputs (`ai_engine/core/structured.py`, §3.2).** Every JSON-emitting task sends
+  `response_format=json_schema` (the gateway enforces it OpenAI-style for both OpenAI and Gemini
+  models) and does ONE validation-failure retry appending the error so the model self-corrects, before
+  falling back to its existing path (transcription re-raises `InvalidOutput` → retryable; caption /
+  memory / qa fall back to their deterministic default). `qa_draft` emits plain text, so it stays
+  schema-free. Kept behind the `AI_ENGINE_STRUCTURED_OUTPUTS_ENABLED` kill-switch (default on); the
+  typed contract stays the validation layer (defense in depth) so the fence-strip tolerance is retained.
+  A per-model-family gateway conformance test (`tests/test_structured_output_conformance.py`, gateway-
+  gated) is the pre-rollout check.
+- **Prompt versioning (`ai_engine/prompts/`).** Every completed envelope also stamps `promptVersion`
+  (the prompt module's `PROMPT_VERSION`); a hash-pin test fails on wording changes without a version
+  bump, so an eval regression is attributable to a specific prompt diff. Per pipeline-versioning **D1**,
+  cache keys ignore prompt version — provenance is recorded, never keyed on.
 
 ## Vertical-agnostic prompts (all jobs)
 
 No processor hardcodes a vertical. The backend resolves the tenant's vertical to a `domain`
 descriptor (`label` + optional `vocabulary` / `captionFindings` —
 `app/services/verticals.py:domain_descriptor`) and includes it in each job's context/payload. Each
-prompt builder reads it via `processing.domain_framing()`, which falls back to a neutral `"clinic"`
-with no vocabulary when the descriptor is absent — so the same worker serves aesthetics, therapy, and
-future verticals. Add a vertical's wording by extending `domain_descriptor`, never by editing the
-prompts. See the [README caution](README.md#caution-ai-jobs-must-be-vertical-agnostic).
+`prompts/` builder reads it via `domain_framing()` (re-exported through `prompts/_shared`), which falls
+back to a neutral `"clinic"` with no vocabulary when the descriptor is absent — so the same worker
+serves aesthetics, therapy, and future verticals. Add a vertical's wording by extending
+`domain_descriptor`, never by editing the prompts. See the
+[README caution](README.md#caution-ai-jobs-must-be-vertical-agnostic).
 
 ## Retry + recovery
 
