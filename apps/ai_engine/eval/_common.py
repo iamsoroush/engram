@@ -15,10 +15,12 @@ its own job-specific gate function + judge rubric + scenario cases and composes 
 """
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import pathlib
 import re
+import subprocess
 from typing import Any
 
 from ai_engine.processing import (  # noqa: E402
@@ -256,3 +258,74 @@ def exit_code(*, self_tests_ok: bool, safety_fail: int, quality_fail: int = 0, j
     if STRICT_QUALITY:
         blocking_failed = blocking_failed or quality_fail > 0 or not judge_smoke_ok
     return 1 if blocking_failed else 0
+
+
+# --- Machine-readable scorecard -------------------------------------------------------------------
+#
+# Each ``*_eval.py`` calls ``write_scorecard`` once at the end of ``main()``; ``run_all.py`` merges the
+# per-module files into ``eval/out/scorecard.json``. The schema is deliberately FLAT metrics + tags so a
+# scorecard imports cleanly into an experiment tracker (MLflow-class) later: top-level tags (module,
+# git_sha, models_under_test, judge_model, gateway, timestamp), a flat numeric ``metrics`` block (one
+# scalar per key — the trendable series), and a per-case ``cases`` list for drill-down.
+
+OUT_DIR = HERE / "out"
+
+
+def _git_sha() -> str:
+    """Best-effort short commit sha for tagging a scorecard (CI env first, then git, then ``unknown``)."""
+    for env_key in ("GITHUB_SHA", "GIT_SHA"):
+        sha = os.environ.get(env_key, "").strip()
+        if sha:
+            return sha[:12]
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=str(HERE), timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return "unknown"
+
+
+def env_models(*env_keys: str) -> list[str]:
+    """The non-empty ``AI_ENGINE_*_MODEL`` values among ``env_keys``, de-duplicated — a scorecard tag
+    recording which model(s) produced a run, so a swap is visible as a step in the time series."""
+    models: list[str] = []
+    for key in env_keys:
+        value = os.environ.get(key, "").strip()
+        if value and value not in models:
+            models.append(value)
+    return models
+
+
+def write_scorecard(
+    module: str,
+    *,
+    metrics: dict[str, Any],
+    cases: list[dict[str, Any]] | None = None,
+    models_under_test: list[str] | None = None,
+) -> pathlib.Path:
+    """Emit this module's scorecard to ``eval/out/<module>.json`` and return the path.
+
+    Args:
+        module: the module's short name (e.g. ``"treatments_eval"``) — the scorecard's identity + filename.
+        metrics: flat numeric metrics (the trendable series), e.g. ``{"safety_pass": 10, "safety_fail": 0}``.
+        cases: optional per-case records ``{"id", "safety": pass|fail|known-gap, "judge": {dim: score}, "reasons"}``.
+        models_under_test: the model tag(s) for this run (see ``env_models``).
+    """
+    record = {
+        "module": module,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "git_sha": _git_sha(),
+        "gateway": gateway_configured(),
+        "judge_model": JUDGE_MODEL,
+        "models_under_test": models_under_test or [],
+        "metrics": metrics,
+        "cases": cases or [],
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / f"{module}.json"
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path

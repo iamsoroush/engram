@@ -16,11 +16,13 @@ gateway it exits non-zero if any eval fails. Add a new job's eval by dropping a 
 """
 from __future__ import annotations
 
+import json
 import pathlib
 import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
+OUT_DIR = HERE / "out"
 
 # Ordered so the scorecard reads capture → understand → remember. A new eval is picked up by name.
 EVALS = [
@@ -34,6 +36,46 @@ EVALS = [
     "patient_memory_eval.py",
     "patient_matching_eval.py",
 ]
+
+
+def merge_scorecards(present: list[str], results: dict[str, int]) -> pathlib.Path | None:
+    """Merge every module's ``eval/out/<module>.json`` into one ``eval/out/scorecard.json``.
+
+    Each ``*_eval.py`` emits its own per-module scorecard via ``_common.write_scorecard``; this collects
+    them into a single run-level file (flat per-module metrics + tags) that a trend job / experiment
+    tracker consumes. Returns the merged path, or None if no module emitted a scorecard.
+    """
+    modules: dict[str, dict] = {}
+    for name in present:
+        stem = name[:-3] if name.endswith(".py") else name
+        path = OUT_DIR / f"{stem}.json"
+        if not path.exists():
+            continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        record["exit_code"] = results.get(name)
+        modules[stem] = record
+    if not modules:
+        return None
+    sample = next(iter(modules.values()))
+    merged = {
+        "git_sha": sample.get("git_sha"),
+        "timestamp": sample.get("timestamp"),
+        "gateway": sample.get("gateway"),
+        "judge_model": sample.get("judge_model"),
+        "summary": {
+            "evals_run": len(present),
+            "evals_green": sum(1 for name in present if results.get(name) == 0),
+            "modules_with_scorecard": len(modules),
+        },
+        "modules": modules,
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / "scorecard.json"
+    path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 def main() -> int:
@@ -53,6 +95,10 @@ def main() -> int:
         print(f"  TODO  {name}  (not yet written — see docs/ai_engine/evals.md)")
     failed = [name for name, code in results.items() if code != 0]
     print(f"\n{len(present) - len(failed)}/{len(present)} evals green; {len(missing)} TODO.")
+
+    merged = merge_scorecards(present, results)
+    if merged is not None:
+        print(f"Machine-readable scorecard: {merged}")
     return 1 if failed else 0
 
 

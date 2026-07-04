@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Minimal Farsi golden-set eval for Pro treatment extraction (the clinical-trust gate).
+"""Farsi golden-set eval for Pro treatment extraction (the clinical-trust gate).
 
-Opt-in eval that runs the real single-pass synthesis (``synthesize_session_report``) against the
-configured gateway over ~12 real-style Farsi dictation cases — corrections, additions, carry-forward,
-lot-on-label — and asserts the extracted ``treatments[]`` CORE fields. It reports pass/fail per case.
+Runs the real single-pass synthesis (``synthesize_session_report``) against the configured gateway over
+~12 real-style Farsi dictation cases — corrections, additions, carry-forward, lot-on-label — and asserts
+the extracted ``treatments[]`` CORE fields. Shares the two-tier harness in ``_common.py`` (tolerant
+Persian matching, ``knownGap`` xfail, the exit-code policy, and the machine-readable scorecard):
+
+* **Safety gates** — deterministic matchers over the treatments array. HARD pass/fail.
 
 Run it where a gateway is reachable::
 
-    docker exec engram_build_<stack>-ai-engine-1 python /app/eval/treatments_eval.py
-    # or locally, with AI_ENGINE_TRANSCRIPTION_BASE_URL / *_MODEL pointing at an OpenAI-compatible gateway
+    docker exec engram-main-ai-engine-1 python /app/eval/treatments_eval.py
 
-No gateway configured/reachable → the script SKIPS (exit 0) and says so; it never blocks CI. With a
-gateway it exits non-zero if any case fails, so it can gate "dose extraction is trusted clinically".
+No gateway → the gateway cases SKIP; deterministic gate self-tests still run. Exit is SAFETY only.
 
 The deterministic correction/carry-forward/supersede POST-processing is unit-tested separately
 (backend ``tests/test_treatment_synthesis.py`` + ai_engine ``tests/test_report_synthesis.py``); this
@@ -19,20 +20,32 @@ eval measures the LLM extraction itself, which the unit tests cannot.
 """
 from __future__ import annotations
 
+import pathlib
 import re
 import sys
 from typing import Any
+
+sys.path.insert(0, "/app")
+sys.path.insert(0, "/app/eval")
+sys.path.insert(0, ".")
+try:
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+except NameError:
+    pass
+
+from _common import (  # noqa: E402
+    contains,
+    env_models,
+    exit_code,
+    gateway_configured,
+    write_scorecard,
+)
+from ai_engine.processing import synthesize_session_report  # noqa: E402
 
 # A Persian report's DESCRIPTIVE treatment fields (area/product/unit) must be in Persian script, not
 # an English category like "filler"/"botox"/"unit". Brand/lot/quantityText stay verbatim (not checked).
 PERSIAN_RE = re.compile(r"[؀-ۿ]")
 LATIN_WORD_RE = re.compile(r"[A-Za-z]{2,}")
-
-# Allow running as a bare script (python eval/treatments_eval.py) from the ai_engine package root.
-sys.path.insert(0, ".")
-sys.path.insert(0, "/app")
-
-from ai_engine.processing import synthesize_session_report, transcription_is_configured  # noqa: E402
 
 DOMAIN = {
     "label": "aesthetics clinic",
@@ -156,22 +169,26 @@ def _language_problems(treatments: list[dict[str, Any]]) -> list[str]:
 
 
 def _match_item(actual: dict[str, Any], expected: dict[str, Any]) -> list[str]:
-    """Return a list of failure reasons (empty = the item matched)."""
+    """Return a list of failure reasons (empty = the item matched). Tolerant Persian matching via
+    ``_common.contains`` (ZWNJ/digit/letter-form folding); quantity stays an exact numeric compare."""
     problems: list[str] = []
     product_text = f"{_norm(actual.get('product'))} {_norm(actual.get('brand'))} {_norm(actual.get('area'))} {_norm(actual.get('quantityText'))}"
-    if "product" in expected and not any(_norm(token) in product_text for token in expected["product"]):
+    if "product" in expected and not any(contains(product_text, token) for token in expected["product"]):
         problems.append(f"product≈{expected['product']} not in {product_text!r}")
     if "quantity" in expected and actual.get("quantity") != expected["quantity"]:
         problems.append(f"quantity {actual.get('quantity')}≠{expected['quantity']}")
-    if "unit" in expected and not any(_norm(token) in _norm(actual.get("unit")) or _norm(token) in _norm(actual.get("quantityText")) for token in expected["unit"]):
+    if "unit" in expected and not any(
+        contains(actual.get("unit"), token) or contains(actual.get("quantityText"), token) for token in expected["unit"]
+    ):
         problems.append(f"unit≈{expected['unit']} not in {actual.get('unit')!r}/{actual.get('quantityText')!r}")
     if expected.get("lot_present") and not actual.get("lot"):
         problems.append("lot expected but missing")
     return problems
 
 
-def _check(case: dict[str, Any], output: dict[str, Any]) -> tuple[bool, list[str]]:
-    treatments = output.get("treatments") or []
+def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
+    """Apply the deterministic treatment gates to a synthesis output; return failures (empty == pass)."""
+    treatments = [t for t in (output.get("treatments") or []) if isinstance(t, dict)]
     expect = case["expect"]
     notes: list[str] = []
     if "count" in expect and len(treatments) != expect["count"]:
@@ -186,48 +203,179 @@ def _check(case: dict[str, Any], output: dict[str, Any]) -> tuple[bool, list[str
         notes.extend(_language_problems(treatments))
     brand_token = case.get("brand_separated")
     if brand_token and not any(
-        _norm(brand_token) in _norm(t.get("brand")) and _norm(brand_token) not in _norm(t.get("product")) for t in treatments
+        contains(t.get("brand"), brand_token) and not contains(t.get("product"), brand_token) for t in treatments
     ):
         notes.append(f"brand '{brand_token}' not split into the brand field (product leaked it)")
     # Greedily match each expected item to some actual treatment.
     for expected_item in expect.get("items", []):
         if not any(not _match_item(actual, expected_item) for actual in treatments):
             notes.append(f"no treatment matched {expected_item}")
-    return (not notes), notes
+    return notes
 
 
-def main() -> int:
-    if not transcription_is_configured():
-        print("SKIP: no AI gateway configured (AI_ENGINE_TRANSCRIPTION_BASE_URL empty). Golden-set eval needs a gateway.")
-        return 0
-    passed = 0
-    failed = 0
+# --- Deterministic gate self-tests (synthetic OUTPUT dicts, no gateway) ---------------------------
+
+def _output(treatments: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"treatments": treatments}
+
+
+GATE_SELF_TESTS: list[dict[str, Any]] = [
+    {
+        "name": "single grounded fa treatment passes",
+        "output": _output([{"product": "ژل", "quantity": 2, "unit": "سی‌سی", "area": "گونه چپ"}]),
+        "case": {"lang_fa": True, "expect": {"count": 1, "items": [{"product": ["ژل"], "quantity": 2, "unit": ["سی‌سی"]}]}},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "wrong count FAILS the count gate",
+        "output": _output([{"product": "ژل", "quantity": 2, "unit": "سی‌سی"}]),
+        "case": {"expect": {"count": 2, "items": []}},
+        "expectGatesPass": False,
+        "expectReasonContains": "count",
+    },
+    {
+        "name": "wrong quantity FAILS the item match",
+        "output": _output([{"product": "ژل", "quantity": 3, "unit": "سی‌سی"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["ژل"], "quantity": 2}]}},
+        "expectGatesPass": False,
+        "expectReasonContains": "no treatment matched",
+    },
+    {
+        "name": "missing carriedForward FAILS",
+        "output": _output([{"product": "بوتاکس", "quantity": 20, "unit": "واحد"}]),
+        "case": {"expect": {"count": 1, "items": [], "carriedForward": True}},
+        "expectGatesPass": False,
+        "expectReasonContains": "carriedForward",
+    },
+    {
+        "name": "missing supersede FAILS",
+        "output": _output([{"product": "ژل", "quantity": 3, "unit": "سی‌سی"}]),
+        "case": {"expect": {"count": 1, "items": [], "supersede": True}},
+        "expectGatesPass": False,
+        "expectReasonContains": "supersedesCaptureId",
+    },
+    {
+        "name": "English descriptive field FAILS the report-language gate",
+        "output": _output([{"product": "filler", "quantity": 2, "unit": "cc", "area": "left cheek"}]),
+        "case": {"lang_fa": True, "expect": {"count": 1, "items": []}},
+        "expectGatesPass": False,
+        "expectReasonContains": "report language",
+    },
+    {
+        "name": "brand leaked into product FAILS the brand-split gate",
+        "output": _output([{"product": "ژل ژوویدرم", "brand": "", "quantity": 1, "unit": "سی‌سی"}]),
+        "case": {"brand_separated": "ژوویدرم", "expect": {"count": 1, "items": []}},
+        "expectGatesPass": False,
+        "expectReasonContains": "brand field",
+    },
+    {
+        "name": "brand correctly split PASSES",
+        "output": _output([{"product": "ژل", "brand": "ژوویدرم", "quantity": 1, "unit": "سی‌سی", "lot": "ABC123"}]),
+        "case": {"brand_separated": "ژوویدرم", "expect": {"count": 1, "items": [{"product": ["ژل"], "lot_present": True}]}},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "missing lot FAILS the lot_present item check",
+        "output": _output([{"product": "ژل", "quantity": 1, "unit": "سی‌سی"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["ژل"], "lot_present": True}]}},
+        "expectGatesPass": False,
+        "expectReasonContains": "no treatment matched",
+    },
+    {
+        "name": "consult-only (zero treatments) PASSES count 0",
+        "output": _output([]),
+        "case": {"expect": {"count": 0, "items": []}},
+        "expectGatesPass": True,
+    },
+]
+
+
+# --- Runners --------------------------------------------------------------------------------------
+
+
+def run_gate_self_tests() -> bool:
+    print("--- safety-gate self-tests (deterministic, no gateway) ---")
+    ok = True
+    for index, case in enumerate(GATE_SELF_TESTS, start=1):
+        problems = run_gates(case["output"], case["case"])
+        passed = not problems
+        as_expected = passed == case["expectGatesPass"]
+        if as_expected and not case["expectGatesPass"]:
+            needle = case.get("expectReasonContains")
+            if needle and not any(needle in problem for problem in problems):
+                as_expected = False
+        ok = ok and as_expected
+        detail = "gates pass" if passed else f"gates fail: {'; '.join(problems)}"
+        print(f"  [{index}] {'OK  ' if as_expected else 'BUG '} {case['name']}  → {detail}")
+    print(f"  self-tests: {'all matchers behave correctly' if ok else 'HARNESS BUG — a matcher misbehaved'}")
+    return ok
+
+
+def run_cases() -> tuple[int, int, int, list[dict[str, Any]]]:
+    """Run the synthetic Farsi dictation cases on the gateway. Returns (pass, fail, known_gap, records)."""
+    print("\n--- treatment extraction cases (synthetic Farsi dictations → gateway) ---")
+    safety_pass = safety_fail = known_gap = 0
+    records: list[dict[str, Any]] = []
     for index, case in enumerate(CASES, start=1):
         try:
             output = synthesize_session_report(_payload(case["captures"], case.get("prior")))
-        except Exception as exc:  # gateway/network error — report and stop (can't eval without it).
-            print(f"ERROR: gateway call failed on case {index} ({case['name']}): {exc!r}")
-            print("SKIP: gateway unreachable — eval not run. Re-run where the synthesis gateway is reachable.")
-            return 0
+        except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop scoring.
+            print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
+            print("  SKIP: gateway unreachable — remaining cases not scored.")
+            break
         if output is None:
-            print(f"[{index:2}] FAIL  {case['name']}: synthesis returned no usable output (malformed/empty)")
-            failed += 1
+            print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output (malformed/empty)")
+            safety_fail += 1
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
             continue
-        ok, notes = _check(case, output)
+        problems = run_gates(output, case)
         treatments = output.get("treatments") or []
         summary = "; ".join(
             f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}{'(cf)' if t.get('carriedForward') else ''}{'(sup)' if t.get('supersedesCaptureId') else ''}"
             for t in treatments
-        )
-        if ok:
-            print(f"[{index:2}] PASS  {case['name']}  → {summary or '(no treatments)'}")
-            passed += 1
+        ) or "(no treatments)"
+        known = case.get("knownGap")
+        if problems and known:
+            known_gap += 1
+            print(f"  [{index}] KNOWN-GAP {case['name']}: {', '.join(problems)}  → {summary}\n             ↳ {known}")
+            records.append({"id": case["name"], "safety": "known-gap", "judge": {}, "reasons": problems})
+        elif problems:
+            safety_fail += 1
+            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}")
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": problems})
         else:
-            print(f"[{index:2}] FAIL  {case['name']}  → {summary or '(no treatments)'}  | {', '.join(notes)}")
-            failed += 1
-    total = passed + failed
-    print(f"\nGolden set: {passed}/{total} passed.")
-    return 0 if failed == 0 else 1
+            safety_pass += 1
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
+            records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
+    return safety_pass, safety_fail, known_gap, records
+
+
+def main() -> int:
+    self_tests_ok = run_gate_self_tests()
+    if not gateway_configured():
+        print("\nSKIP: no AI gateway configured. Extraction cases not run; deterministic self-tests above stand.")
+        write_scorecard(
+            "treatments_eval",
+            metrics={"self_tests_ok": int(self_tests_ok), "safety_pass": 0, "safety_fail": 0, "known_gap": 0, "cases_total": 0},
+            models_under_test=env_models("AI_ENGINE_REPORT_SYNTHESIS_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL"),
+        )
+        return 0 if self_tests_ok else 1
+
+    safety_pass, safety_fail, known_gap, records = run_cases()
+
+    print(f"\n{'=' * 8} TREATMENTS SCORECARD {'=' * 8}")
+    print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
+    print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail / {known_gap} known-gap")
+    write_scorecard(
+        "treatments_eval",
+        metrics={
+            "self_tests_ok": int(self_tests_ok), "safety_pass": safety_pass, "safety_fail": safety_fail,
+            "known_gap": known_gap, "cases_total": safety_pass + safety_fail + known_gap,
+        },
+        cases=records,
+        models_under_test=env_models("AI_ENGINE_REPORT_SYNTHESIS_MODEL", "AI_ENGINE_TRANSCRIPTION_MODEL"),
+    )
+    return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail)
 
 
 if __name__ == "__main__":

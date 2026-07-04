@@ -42,6 +42,7 @@ from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
     DEFAULT_MIN_SCORE,
     contains,
+    env_models,
     exit_code,
     gateway_configured,
     judge,
@@ -49,6 +50,7 @@ from _common import (  # noqa: E402
     load_fixtures,
     min_score,
     quality_line,
+    write_scorecard,
 )
 from ai_engine.processing import transcribe_audio_content  # noqa: E402
 
@@ -318,9 +320,15 @@ def run_fixtures() -> tuple[int, int]:
 
 
 def main() -> int:
+    models = env_models("AI_ENGINE_TRANSCRIPTION_MODEL")
     self_tests_ok = run_gate_self_tests()
     if not gateway_configured():
         print("\nSKIP: no AI gateway configured. Extraction fixtures + judge not run; self-tests above stand.")
+        write_scorecard(
+            "patient_matching_eval",
+            metrics={"self_tests_ok": int(self_tests_ok), "safety_pass": 0, "safety_fail": 0, "cases_total": 0},
+            models_under_test=models,
+        )
         return 0 if self_tests_ok else 1
 
     judge_smoke_ok = run_judge_smoke()
@@ -331,6 +339,13 @@ def main() -> int:
     print(f"  judge smoke:  {'PASS' if judge_smoke_ok else 'MISS (advisory)'}")
     print(f"  safety gates: {safety_pass} pass / {safety_fail} fail  (real fixtures)")
     print("  note: the deterministic auto-assign gate itself is backend-unit-tested; this covers the LLM input to it.")
+    write_scorecard(
+        "patient_matching_eval",
+        metrics={"self_tests_ok": int(self_tests_ok), "judge_smoke_ok": int(judge_smoke_ok),
+                 "safety_pass": safety_pass, "safety_fail": safety_fail,
+                 "cases_total": safety_pass + safety_fail},
+        models_under_test=models,
+    )
     return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, judge_smoke_ok=judge_smoke_ok)
 
 

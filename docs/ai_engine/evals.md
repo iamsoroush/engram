@@ -5,16 +5,18 @@ scores it, so a prompt/model change is judged on a whole **scorecard** — not e
 time (CLAUDE.md §4: re-implementing an AI job must not regress the suite; a **new** AI job must ship
 its own eval, with golden-set scenarios agreed with the user first).
 
-Runner: `apps/ai_engine/eval/run_all.py` → one consolidated scorecard.
+Runner: `apps/ai_engine/eval/run_all.py` → a printed consolidated scorecard **plus** a machine-readable
+one under `eval/out/` (see [Machine-readable scorecard](#machine-readable-scorecard)).
 
 ```sh
 docker exec engram-main-ai-engine-1 python /app/eval/run_all.py
 # or with staged real fixtures:  scripts/eval-fixtures.sh run
 ```
 
-No gateway → each eval **SKIPs (exit 0)** — the suite is green but the scorecard says "skipped".
-With a gateway it exits non-zero if any eval fails. A new job's eval is added by dropping a
-`*_eval.py` in `apps/ai_engine/eval/` and listing it in `run_all.py`.
+No gateway → each eval runs its **deterministic self-tests only** and is green (exit 0) unless a
+matcher/harness regressed; the gateway tier is skipped. With a gateway it exits non-zero if any eval
+fails. A new job's eval is added by dropping a `*_eval.py` in `apps/ai_engine/eval/` and listing it in
+`run_all.py`.
 
 > Code comments referencing the retired `eval-epic.md` map here: *§1b (feedback harvester)* →
 > [Feedback → golden-set harvest](#feedback--golden-set-harvest); *§2a (fixture `.json` format)* →
@@ -40,13 +42,35 @@ even with no gateway) and gateway **judge smoke cases** (synthetic reference/can
 the rubric separates clean output from romanized / wrong-dose output). A fixture dropped in later is
 scored on top with no code change.
 
-**`knownGap` (xfail):** a real fixture may set `"knownGap": "<reason>"` when it fails due to a
-*documented model limitation* (not a harness bug). It is reported loudly (`KNOWN-GAP …`) but not
-counted as a blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always
-with a reason + the intended fix.
+**`knownGap` (xfail):** a case may set `"knownGap": "<reason>"` when it fails due to a *documented
+model limitation* (not a harness bug). It is reported loudly (`KNOWN-GAP …`) but not counted as a
+blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always with a reason
++ the intended fix.
 
-The shared harness (tolerant Persian matching, the judge, the fixture store, the exit-code policy)
-is `eval/_common.py`; treatments + aftercare predate it and stay self-contained.
+The shared harness (tolerant Persian matching, the judge, the fixture store, the `knownGap` xfail, the
+exit-code policy, and the machine-readable scorecard) is `eval/_common.py`. **Every module uses it** —
+each `*_eval.py` runs deterministic gate self-tests over synthetic output dicts (proving its matchers
+catch what they must), then the gateway/fixture cases, and returns the shared `exit_code()`.
+
+## Machine-readable scorecard
+
+Alongside the printed summary, each `*_eval.py` calls `_common.write_scorecard()` once at the end of
+`main()`, writing `eval/out/<module>.json`; `run_all.py` merges them into `eval/out/scorecard.json`
+(both gitignored run artifacts — trend history is archived to object storage, never git). The schema is
+deliberately **flat metrics + tags** so a scorecard imports cleanly into an experiment tracker
+(MLflow-class) later:
+
+- **tags** (top level): `module`, `git_sha`, `timestamp`, `gateway`, `judge_model`, `models_under_test`.
+- **`metrics`**: one flat scalar per key — the trendable series (`self_tests_ok`, `safety_pass`,
+  `safety_fail`, `known_gap`, `quality_pass`/`quality_fail` and `judge_smoke_ok` where a judge tier
+  exists, `cases_total`).
+- **`cases`**: per-case drill-down (`id`, `safety`: `pass`/`fail`/`known-gap`, `judge` dimension
+  scores, `reasons`).
+
+The merged `scorecard.json` carries a run-level `summary` (`evals_run`, `evals_green`,
+`modules_with_scorecard`) and each module's record under `modules`. A gateway-less run still emits a
+full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which is what the CI gate
+(below) uploads as an artifact.
 
 ## Coverage — the nine modules `run_all.py` runs
 
@@ -168,13 +192,24 @@ Golden-set cases are seeded from **real production failures, harvested — not r
 Harvest read: `GET /api/v1/feedback?kind=correction&aiOutputType=transcript` (newest-first,
 tenant-scoped) — each row is a candidate eval case; the agent authors the matcher/judge from it.
 
-## CI reality
+## CI ladder
 
-`.github/workflows/eval.yml` runs the suite on a GitHub-hosted runner against the production gateway
-(`gw.engram.ir`), pulling fixtures from S3 when the `EVAL_FIXTURES_S3_*` secrets are configured. It
-is **manual-only** (`workflow_dispatch`; the on-push trigger for `apps/ai_engine/**` is present but
-commented out) and **non-blocking by design**: a regression or unreachable gateway emits a
-`::warning::` and the job stays green — the eval is non-deterministic and costs money, so CI treats
-it as a signal, not a merge gate. The real gate is the CLAUDE.md §4 rule: an agent changing an AI
-job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Known
-open item: a majority-vote wrapper for the flaky single-call synthesis evals.
+Two workflows, split by cost and determinism:
+
+- **Stage 1 — deterministic PR gate (blocking).** `.github/workflows/ai-eval-gate.yml` runs on every
+  `pull_request` touching `apps/ai_engine/**`. It runs `run_all.py` with **no gateway configured**, so
+  every module runs only its deterministic gate self-tests + matcher/parser self-tests — pure Python,
+  **zero gateway spend, zero LLM flake**. A harness bug or matcher regression fails the job and blocks
+  the PR; the merged `scorecard.json` is uploaded as an artifact. This is the workflow meant to be a
+  **required** status check in branch protection (job name: *AI eval self-tests (no gateway)*).
+- **Gateway run — signal, not gate.** `.github/workflows/eval.yml` runs the suite against the
+  production gateway (`gw.engram.ir`), pulling fixtures from S3 when the `EVAL_FIXTURES_S3_*` secrets
+  are configured. It is **manual-only** (`workflow_dispatch`; the on-push trigger for
+  `apps/ai_engine/**` is present but commented out) and **non-blocking by design**: a regression or
+  unreachable gateway emits a `::warning::` and the job stays green — the gateway run is
+  non-deterministic and costs money, so CI treats it as a signal.
+
+Beyond CI, the real gate on model/prompt behavior is the CLAUDE.md §4 rule: an agent changing an AI
+job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Known open item:
+a majority-vote wrapper for the flaky single-call synthesis evals (a future promotion of the gateway
+run toward a merge gate).
