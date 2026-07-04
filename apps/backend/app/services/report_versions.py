@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.models import Capture, CaptureStatus, Session, SessionReportVersion
+from app.services.session_processing import capture_is_out_of_context
 
 # AI-artifact keys restored from a version onto the session's extracted_metadata. The user-state
 # overlay keys (below) are deliberately EXCLUDED so a restore never overrides a user decision.
@@ -55,12 +56,15 @@ def _capture_content(capture: Capture) -> str:
     return ""
 
 
-def session_capture_set(db: DbSession, session: Session) -> tuple[str, list[dict[str, str]]]:
+def session_capture_set(db: DbSession, session: Session) -> tuple[str, list[dict[str, Any]]]:
     """Deterministic content-address of the session's current non-deleted captures, ordered.
 
     Used IDENTICALLY at record + lookup time, so an undo that returns to a prior capture set produces
     the same hash by construction (a changed out-of-context/edit state just yields a different hash → a
-    safe recompute, never a wrong restore). Returns (hash, [{captureId, contentHash}]).
+    safe recompute, never a wrong restore). Out-of-context membership is part of the key (D1): a
+    "Mark relevant" / mark-out-of-context toggle changes the synthesized input, so it must change the
+    hash — otherwise a cache-hit-before-dispatch would restore a report over the wrong capture set.
+    Returns (hash, [{captureId, contentHash, outOfContext}]).
     """
     captures = list(
         db.execute(
@@ -73,7 +77,11 @@ def session_capture_set(db: DbSession, session: Session) -> tuple[str, list[dict
     )
     captures.sort(key=lambda c: ((c.captured_at or c.created_at or _FLOOR), str(c.id)))
     items = [
-        {"captureId": str(c.id), "contentHash": hashlib.sha256(_capture_content(c).encode("utf-8")).hexdigest()}
+        {
+            "captureId": str(c.id),
+            "contentHash": hashlib.sha256(_capture_content(c).encode("utf-8")).hexdigest(),
+            "outOfContext": capture_is_out_of_context(c),
+        }
         for c in captures
     ]
     set_hash = hashlib.sha256(json.dumps(items, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()

@@ -49,8 +49,8 @@ __all__ = [
     "regenerate_session_report",
     "regenerate_session_report_if_idle",
     "maybe_dispatch_session_synthesis",
-    "session_synthesis_within_debounce",
-    "sweep_debounced_session_synthesis",
+    "restore_cached_session_synthesis",
+    "sweep_pending_session_synthesis",
 ]
 
 
@@ -153,19 +153,31 @@ def session_has_pending_capture_jobs(db: DbSession, *, tenant_id: uuid.UUID, ses
 
 
 def session_has_active_report_job(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
-    """Whether a session-level live-report job is already queued/running (avoid duplicates)."""
-    row = db.execute(
-        select(AiJob.id)
-        .where(
+    """Whether a session synthesis job is already in flight — queued, running, OR failed-but-still-
+    pending an automatic retry.
+
+    Single-flight extends across a failure: a failed-retryable job will be re-dispatched by the
+    recovery beat and re-reads the **full current capture set** at `/start`, so a new settle must NOT
+    spawn a second job to cover captures the failed job hasn't seen yet — its retry already will
+    (they merge into that one job). A **terminal** failure (``retryable=False``, e.g. the session was
+    deleted) does not block: it will never retry, so it must not wedge the session.
+    """
+    rows = db.execute(
+        select(AiJob).where(
             AiJob.tenant_id == tenant_id,
             AiJob.session_id == session_id,
             AiJob.capture_id.is_(None),
             AiJob.job_type == AiJobType.session_organize,
-            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running]),
+            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running, AiJobStatus.failed]),
         )
-        .limit(1)
-    ).scalar_one_or_none()
-    return row is not None
+    ).scalars()
+    for job in rows:
+        if job.status in (AiJobStatus.queued, AiJobStatus.running):
+            return True
+        # failed: blocks only while it will still be auto-retried (mirrors recovery.ai_job_retryable).
+        if (job.result_metadata or {}).get("retryable", True) is not False:
+            return True
+    return False
 
 
 def _reportable_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:
@@ -188,36 +200,6 @@ def session_has_reportable_capture(db: DbSession, *, tenant_id: uuid.UUID, sessi
 def reportable_session_captures(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> list[Capture]:
     """Public accessor for a session's reportable captures (processed, in-context)."""
     return _reportable_captures(db, tenant_id=tenant_id, session_id=session_id)
-
-
-def session_newest_capture_at(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID):
-    """Timestamp of the session's most recent (non-deleted) capture, or None."""
-    from sqlalchemy import func
-
-    return db.execute(
-        select(func.max(Capture.created_at)).where(
-            Capture.tenant_id == tenant_id,
-            Capture.session_id == session_id,
-            Capture.status != CaptureStatus.deleted,
-        )
-    ).scalar_one_or_none()
-
-
-def session_synthesis_within_debounce(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
-    """Whether the session is still inside the quiet-period debounce window (newest capture too recent).
-
-    The per-capture report synthesis is coalesced into ~one run per visit: while captures are still
-    arriving (newest capture younger than ``synthesis_debounce_seconds``), synthesis is held back —
-    the deterministic baseline is already current, so there is no UX loss. The trailing Celery-beat
-    sweep dispatches the single synthesis once the visit goes quiet. Disabled when the setting is 0.
-    """
-    window = int(settings.synthesis_debounce_seconds or 0)
-    if window <= 0:
-        return False
-    newest = session_newest_capture_at(db, tenant_id=tenant_id, session_id=session_id)
-    if newest is None:
-        return False
-    return (utc_now() - newest).total_seconds() < window
 
 
 def session_has_uncontributed_capture(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> bool:
@@ -380,6 +362,48 @@ def regenerate_session_report_if_idle(
     )
 
 
+def restore_cached_session_synthesis(db: DbSession, *, session: Session) -> bool:
+    """Cache-hit-before-dispatch: restore a stored report_version for the current capture set (no LLM).
+
+    Every settle would otherwise dispatch a fresh `session_organize`. But the content-addressed
+    `session_report_versions` store already holds the synthesized artifacts for every capture set the
+    session has been in; when the CURRENT set recurs (edit-then-revert, a mark-relevant toggle back, an
+    undo/re-add), we restore that exact version deterministically and skip the paid re-synthesis. Returns
+    True on a hit (caller must NOT dispatch), False on a miss (caller dispatches synthesis).
+
+    Restore preserves the ground-truth invariant: the immutable AI artifact is restored, then the
+    user-state overlay is applied on top — the session's kept safety flags (detected − ``rejected_safety_flags``)
+    are re-projected onto the patient and the cross-visit reconcile decisions re-applied, exactly as a
+    fresh synthesis completion would. The restored source captures are flipped to `added` so the freshness
+    strip reads current and the next settle does not needlessly re-trigger.
+    """
+    from app.models import Patient
+    from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
+    from app.services.report_versions import find_report_version_for_current_set, restore_report_version
+
+    version = find_report_version_for_current_set(db, session)
+    if version is None:
+        return False
+    restore_report_version(session, version)
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    source_ids = metadata.get("source_capture_ids")
+    mark_session_report_contributions(
+        db,
+        session=session,
+        generated_at=utc_now().isoformat(),
+        source_capture_ids=source_ids if isinstance(source_ids, list) else None,
+    )
+    if session.patient_id is not None and isinstance(metadata.get("safety_flags"), list):
+        patient = db.get(Patient, session.patient_id)
+        if patient is not None:
+            sync_patient_safety_flags(patient, session)
+            reconciliation = metadata.get("safety_reconciliation")
+            if isinstance(reconciliation, dict):
+                apply_safety_reconciliation(patient, reconciliation)
+    session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
+    return True
+
+
 def maybe_dispatch_session_synthesis(
     db: DbSession,
     *,
@@ -388,17 +412,28 @@ def maybe_dispatch_session_synthesis(
     created_by_user_id: uuid.UUID | None = None,
     force: bool = False,
 ) -> None:
-    """Dispatch the Pro single-pass report synthesis (revived `session_organize`) once data settles.
+    """Dispatch (or cache-hit-restore) the Pro single-pass report synthesis once data settles.
 
     Runs AFTER the deterministic baseline, only for a synthesis-enabled tenant with an uncontributed
-    reportable capture, and is debounced via the existing guards (no pending capture jobs, no active
-    report job) so a settle burst coalesces to one synthesis. The job is a quiet refinement — it does
-    not flip the session to `processing`, so the baseline report stays visible while it runs.
+    reportable capture (or a forced content change). Queue-collapse dispatch — no timer, no debounce:
+
+    - **Single-flight + at most one pending job per session.** ``session_has_active_report_job`` (a
+      queued OR running `session_organize`) short-circuits, so a trigger while a job is merely *queued*
+      is a no-op — that queued job reads the full CURRENT capture set when it starts (see
+      ``worker_job_payload``), absorbing captures that land while it waits. A trigger while a job is
+      *running* is likewise a no-op here; the job's completion handler re-invokes this function, which
+      then dispatches the single pending follow-up covering everything the running job didn't see. A
+      burst of N captures therefore costs ≤ 2 runs (the in-flight one + one collapsed follow-up), while
+      the first capture still synthesizes immediately.
+    - **Cache-hit before dispatch.** If the current capture set already has a stored report_version
+      (edit-then-revert, mark-relevant toggle, re-add), it is restored deterministically instead of
+      paying for a re-synthesis. See ``restore_cached_session_synthesis``.
 
     ``force`` re-synthesizes even when every capture is already contributed — required after a
     CONTENT-CHANGING edit (a capture's text changed) or removal (a capture deleted), where the existing
     captures are all "contributed" yet the synthesized treatments/safety_flags must be recomputed for
-    the new set. The pending-jobs / active-report-job debounce guards still apply.
+    the new set. The pending-jobs / active-report-job guards still apply; a forced trigger whose set
+    matches a stored version still cache-hits (deterministic and cheaper than an identical re-run).
     """
     if not session_synthesis_enabled(db, tenant_id):
         return
@@ -408,16 +443,14 @@ def maybe_dispatch_session_synthesis(
         return
     if not force and not session_has_uncontributed_capture(db, tenant_id=tenant_id, session_id=session_id):
         return
-    # Quiet-period debounce: while a visit is still actively capturing, hold synthesis back so a whole
-    # visit's captures coalesce into ~one run (the deterministic baseline stays current meanwhile). The
-    # trailing Celery-beat sweep (`sweep_debounced_session_synthesis`) dispatches once the visit is
-    # quiet. `force` (manual "Generate report" / content edits) bypasses the debounce.
-    if not force and session_synthesis_within_debounce(db, tenant_id=tenant_id, session_id=session_id):
-        return
     session = db.execute(
         select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
     ).scalar_one_or_none()
     if session is None:
+        return
+    # Cache-hit before dispatch: a recurring capture set is restored deterministically (no LLM).
+    if restore_cached_session_synthesis(db, session=session):
+        db.commit()
         return
     job = create_session_report_job(
         db,
@@ -432,21 +465,20 @@ def maybe_dispatch_session_synthesis(
     dispatch_session_processing_job(db, job)
 
 
-def sweep_debounced_session_synthesis(db: DbSession, *, limit: int = 100) -> int:
-    """Trailing driver of the quiet-period synthesis debounce (runs on the Celery-beat recovery loop).
+def sweep_pending_session_synthesis(db: DbSession, *, limit: int = 100) -> int:
+    """Catch-up driver of the queue-collapse synthesis dispatch (Celery-beat recovery loop).
 
-    Dispatches the single coalesced synthesis for sessions that have gone quiet (newest capture older
-    than ``synthesis_debounce_seconds``) but still carry an uncontributed capture. ``maybe_dispatch``
-    re-checks every guard (enabled / no pending capture jobs / no active report job / uncontributed /
-    now past the debounce window), so this only fires the one run per settled visit. Returns the count
-    of sessions for which a synthesis was dispatched. No-op when debounce is disabled.
+    The primary path dispatches synthesis inline on every settle and re-dispatches the single pending
+    follow-up from the running job's completion handler, so this is only a SAFETY NET — it re-triggers
+    synthesis for sessions left with an uncontributed reportable capture and no active report job (e.g.
+    a completion callback that never fired after a crash). It is NOT a debounce/timer: it never delays a
+    dispatch. ``maybe_dispatch_session_synthesis`` re-checks every guard and does the
+    cache-hit-before-dispatch, so a healthy session is a no-op here. Returns the count of sessions for
+    which a synthesis was newly dispatched.
     """
     from datetime import timedelta
 
-    window = int(settings.synthesis_debounce_seconds or 0)
-    if window <= 0:
-        return 0
-    lookback = utc_now() - timedelta(seconds=max(window * 40, 3600))
+    lookback = utc_now() - timedelta(hours=6)
     sessions = list(
         db.execute(
             select(Session)
@@ -457,14 +489,13 @@ def sweep_debounced_session_synthesis(db: DbSession, *, limit: int = 100) -> int
     )
     dispatched = 0
     for session in sessions:
+        if session_has_pending_capture_jobs(db, tenant_id=session.tenant_id, session_id=session.id):
+            continue
         if session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id):
             continue
         if not session_has_uncontributed_capture(db, tenant_id=session.tenant_id, session_id=session.id):
             continue
-        if session_synthesis_within_debounce(db, tenant_id=session.tenant_id, session_id=session.id):
-            continue  # still actively capturing — leave it for a later sweep
-        before = session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id)
         maybe_dispatch_session_synthesis(db, tenant_id=session.tenant_id, session_id=session.id)
-        if not before and session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id):
+        if session_has_active_report_job(db, tenant_id=session.tenant_id, session_id=session.id):
             dispatched += 1
     return dispatched
