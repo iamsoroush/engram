@@ -32,7 +32,7 @@ moves. That is the "co-design, separate landing" contract.
 
 ## Ports
 
-```
+```text
 StoragePort   (app/outbox/*, wraps services/storage/captureStorage + exportCaptures)
   loadPendingCaptures / loadPendingCapture / savePendingCapture / updatePendingCapture /
   removePendingCapture / loadPendingOperations / savePendingOperation / updatePendingOperation /
@@ -79,14 +79,25 @@ out of Sync — they live in `SessionStore` (increment 5) and call `useSync().qu
 
 ## Commit split
 
-- **Increment 4 (Sync):** add `app/outbox/` (types + `outboxEngine.ts` + `storagePort.ts`) and
-  `app/providers/SyncProvider.tsx`; move all outbox/online/storage-guard state + effects out of
-  `AppInner` behind `useSync()`. `AppInner` still owns `sessions`/`activeSession` `useState` and
-  implements `SessionSink` from them. Add `outboxEngine.test.ts` (fake adapter). Full gate.
-- **Increment 5 (Store):** add `app/providers/SessionStoreProvider.tsx` exposing
+- **Increment 4 (Sync) — LANDED** (`app/outbox/` + `app/providers/SyncProvider.tsx`): all outbox/
+  online/storage-guard state + effects moved out of `AppInner` behind `useSync()`; `AppInner` still
+  owns `sessions`/`activeSession` `useState` and implements `SessionSink` from them via a bridge
+  (`useRegisterSyncBridge`). `outboxEngine.test.ts` (10 tests, fake adapter) +
+  `tests/e2e/capture-offline-sync.spec.ts` pin the behavior. App.tsx 2455 → 2081 lines.
+- **Seam A4 (Toast) — LANDED** (`app/providers/ToastProvider.tsx`): the shared enabler for the store
+  (the session actions raise toasts). `useToast()`; SyncProvider toasts through it directly.
+- **Increment 5 (Store) — REMAINING:** add `app/providers/SessionStoreProvider.tsx` exposing
   `useSessions()`/`useActiveSession()`/`useSessionActions()`; move `sessions`/`activeSession`/
-  `selectedSessionId` + the session/patient actions out of `AppInner`. Re-point the `SessionSink`
-  Sync consumes at the store. Add reducer unit tests. Full gate.
+  `selectedSessionId`/`assignmentSessionId`/`memoryRefreshSignal` + the refs + the non-navigating
+  session/patient action layer out of `AppInner`. **Note for the next agent:** the actions are
+  *interleaved* in `AppInner` with capture-screen display effects (`sessionContext`, `sessionLineupCard`,
+  `aftercareTemplates`, `nextLinedUpPatient`) that STAY in App — so this is a scatter-gather move, not a
+  single contiguous cut. The lowest-risk shape: the store exposes one `useSessionStore()` omnibus that
+  `AppInner` destructures back into the same local names, so the large render body + navigation helpers
+  need no changes. Then re-point App's `SyncBridge.session` (currently built from App's refs/setters) at
+  the store's. Keep the navigating helpers (`startNewSession`, `startVisitForPatient`, `openMemorySession`,
+  `continueMemorySession`, `returnToActiveCapture`, `openPatientHistory`) in App — they belong to the
+  router seam (increment 7). Add reducer/self-heal unit tests. Full gate.
 
 Render-cadence (plan §2 fork): keep `useState` + relocated refs (behavior-preserving). Apply the
 split-context pattern (stable actions context separate from volatile state) in increment 5 where it
