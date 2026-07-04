@@ -36,6 +36,7 @@ except NameError:
 from _common import (  # noqa: E402
     DEFAULT_MIN_SCORE,
     STRICT_QUALITY,
+    capture_prompt_version,
     contains,
     env_models,
     exit_code,
@@ -64,7 +65,7 @@ def _photo(capture_id: str, caption: str) -> dict[str, Any]:
     return {"captureId": capture_id, "type": "photo", "caption": caption}
 
 
-def _payload(captures: list[dict[str, Any]]) -> dict[str, Any]:
+def _payload(captures: list[dict[str, Any]], language: str = "fa") -> dict[str, Any]:
     return {
         "job": {"id": "eval-job", "jobType": "session_organize"},
         "session": {"reportTemplateKey": "default"},
@@ -72,7 +73,7 @@ def _payload(captures: list[dict[str, Any]]) -> dict[str, Any]:
         "aiModels": {},
         "sessionProcessingContext": {
             "domain": DOMAIN,
-            "reportLanguage": "fa",
+            "reportLanguage": language,
             "captures": {
                 "audio": [c for c in captures if c["type"] == "audio"],
                 "photos": [c for c in captures if c["type"] == "photo"],
@@ -129,6 +130,15 @@ def run_gates(output: dict[str, Any], expect: dict[str, Any], photo_ids: set[str
     for capture_id in _image_capture_ids(output):
         if capture_id not in photo_ids:
             problems.append(f"image block refs unknown captureId {capture_id!r} (real photos: {sorted(photo_ids) or '∅'})")
+
+    if expect.get("imageRefsUnique"):
+        seen: set[str] = set()
+        for capture_id in _image_capture_ids(output):
+            if capture_id not in photo_ids:
+                continue  # ghost refs are already caught by the unknown-captureId gate above
+            if capture_id in seen:
+                problems.append(f"image captureId {capture_id!r} referenced more than once")
+            seen.add(capture_id)
 
     for section_id in expect.get("sectionsNonEmpty", []):
         if not by_id.get(section_id):
@@ -219,6 +229,27 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expect": {},
         "expectGatesPass": False,
         "expectReasonContains": "unknown captureId",
+    },
+    {
+        "name": "same real photo referenced by two image blocks FAILS imageRefsUnique",
+        "output": _output([{"id": "media", "title": "تصاویر", "blocks": [
+            {"type": "image", "captureId": "p1", "caption": "گونه چپ"},
+            {"type": "image", "captureId": "p1", "caption": "گونه چپ دوباره"},
+        ]}]),
+        "photo_ids": {"p1", "p2"},
+        "expect": {"imageRefsUnique": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "referenced more than once",
+    },
+    {
+        "name": "each real photo referenced at most once PASSES imageRefsUnique",
+        "output": _output([{"id": "media", "title": "تصاویر", "blocks": [
+            {"type": "image", "captureId": "p1", "caption": "گونه چپ"},
+            {"type": "image", "captureId": "p2", "caption": "گونه راست"},
+        ]}]),
+        "photo_ids": {"p1", "p2"},
+        "expect": {"imageRefsUnique": True},
+        "expectGatesPass": True,
     },
     {
         "name": "non-empty treatment section FAILS when expected empty (consult-only)",
@@ -319,6 +350,74 @@ CASES: list[dict[str, Any]] = [
         "expect": {"sectionsNonEmpty": ["treatment-performed"], "noLatinWords": True, "surfacesAny": [["چپ"]]},
         "judge": True,
     },
+    {
+        # MULTI-PHOTO: three real photos (one a product label) — every image block must reference a real
+        # captureId AT MOST ONCE (no duplicate refs, no ghosts). `allowLatin` admits the product lot code.
+        "name": "multi-photo visit → each real photo referenced at most once, no ghosts",
+        "captures": [
+            _audio("c1", "دو سی‌سی فیلر توی گونه راست و چپ تزریق شد و از هر دو طرف عکس گرفتیم"),
+            _photo("ph1", "نمای روبه‌روی گونه راست"),
+            _photo("ph2", "نمای روبه‌روی گونه چپ"),
+            _photo("ph3", "برچسب محصول: ژل هیالورونیک اسید، شماره سری ABC123"),
+        ],
+        "expect": {
+            "sectionsNonEmpty": ["treatment-performed"],
+            "noLatinWords": True,
+            "allowLatin": ["ABC123"],
+            "imageRefsUnique": True,
+        },
+        "judge": True,
+    },
+    {
+        # CROSS-CAPTURE CORRECTION: the dose is dictated (۲۰) then corrected in a later capture (۲۴). The
+        # prose must state the FINAL dose only. 20 is not a substring of 24, so the digit tokens don't
+        # collide under the tolerant matcher.
+        "name": "cross-capture dose correction → prose states the final dose only",
+        "captures": [
+            _audio("c1", "بیست واحد بوتاکس روی پیشانی تزریق شد"),
+            _audio("c2", "ببخشید، دوز درست بیست و چهار واحد شد، همون بیست و چهار واحد ثبت بشه"),
+        ],
+        "expect": {
+            "sectionsNonEmpty": ["treatment-performed"],
+            "containsFa": ["۲۴"],
+            "forbiddenAnywhere": ["۲۰"],
+        },
+        "judge": True,
+    },
+    {
+        # EN report language: English prose is Latin by design, so NO noLatinWords here. Assert English
+        # content via surfacesAny (the tolerant substring check) + key sections non-empty. `judge` is off
+        # because the judge's nativeScript rubric assumes Persian script and would spuriously penalize
+        # legitimately-English prose graded against a Farsi reference.
+        "name": "en report language → English prose, key sections complete",
+        "language": "en",
+        "captures": [_audio("c1", "بیست واحد بوتاکس روی پیشانی و یک سی‌سی ژل توی گونه چپ تزریق شد")],
+        "expect": {
+            "sectionsNonEmpty": ["visit-summary", "treatment-performed"],
+            "surfacesAny": [["botox", "botulinum"], ["forehead"], ["cheek"]],
+        },
+        "judge": False,
+    },
+    {
+        # LONG VISIT: a realistically long multi-treatment visit (5 audio captures + a photo). Completeness
+        # — the key sections carry content and the several treated areas all surface in the report.
+        "name": "long multi-treatment visit (5+ captures) → key sections complete, areas surface",
+        "captures": [
+            _audio("c1", "بیست واحد بوتاکس روی پیشانی تزریق شد"),
+            _audio("c2", "یک سی‌سی ژل توی گونه چپ تزریق شد"),
+            _audio("c3", "نیم سی‌سی فیلر توی خط خنده سمت راست"),
+            _audio("c4", "مزوتراپی موی سر هم انجام شد"),
+            _audio("c5", "برای لب پایین هم نیم سی‌سی فیلر تزریق شد"),
+            _photo("ph1", "نمای روبه‌روی صورت بعد از تزریق"),
+        ],
+        "expect": {
+            "sectionsNonEmpty": ["visit-summary", "treatment-performed"],
+            "noLatinWords": True,
+            "surfacesAny": [["پیشانی"], ["گونه"], ["لب"]],
+            "imageRefsUnique": True,
+        },
+        "judge": True,
+    },
 ]
 
 
@@ -343,14 +442,19 @@ def run_gate_self_tests() -> bool:
     return ok
 
 
-def run_cases() -> tuple[int, int, int, int]:
-    """Run the synthetic-transcript synthesis cases on the gateway. Returns (s_pass, s_fail, q_pass, q_fail)."""
+def run_cases() -> tuple[int, int, int, int, str | None]:
+    """Run the synthetic-transcript synthesis cases on the gateway.
+
+    Returns ``(s_pass, s_fail, q_pass, q_fail, prompt_version)`` — ``prompt_version`` is the first
+    output's prompt-version stamp if any output carried one (see ``capture_prompt_version``), else None.
+    """
     print("\n--- synthesis cases (synthetic transcripts → gateway) ---")
     safety_pass = safety_fail = quality_pass = quality_fail = 0
+    prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
         photo_ids = {c["captureId"] for c in case["captures"] if c["type"] == "photo"}
         try:
-            output = synthesize_session_report(_payload(case["captures"]))
+            output = synthesize_session_report(_payload(case["captures"], case.get("language", "fa")))
         except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop.
             print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
             print("  SKIP: gateway unreachable — cases not scored.")
@@ -359,6 +463,7 @@ def run_cases() -> tuple[int, int, int, int]:
             print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output")
             safety_fail += 1
             continue
+        prompt_version = prompt_version or capture_prompt_version(output)
 
         problems = run_gates(output, case["expect"], photo_ids)
         non_empty = [s["id"] for s in output["sections"] if s.get("blocks")]
@@ -388,7 +493,7 @@ def run_cases() -> tuple[int, int, int, int]:
                 quality_fail += 1
                 tag = "QUALITY FAIL"
             print(f"             {tag} ({quality_line(result['scores'], DEFAULT_MIN_SCORE)}) — {result.get('rationale')}")
-    return safety_pass, safety_fail, quality_pass, quality_fail
+    return safety_pass, safety_fail, quality_pass, quality_fail, prompt_version
 
 
 def main() -> int:
@@ -404,7 +509,7 @@ def main() -> int:
         )
         return 0 if self_tests_ok else 1
 
-    safety_pass, safety_fail, quality_pass, quality_fail = run_cases()
+    safety_pass, safety_fail, quality_pass, quality_fail, prompt_version = run_cases()
 
     print(f"\n{'=' * 8} REPORT-SECTIONS SCORECARD {'=' * 8}")
     print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
@@ -417,6 +522,7 @@ def main() -> int:
                  "quality_pass": quality_pass, "quality_fail": quality_fail,
                  "cases_total": safety_pass + safety_fail},
         models_under_test=models,
+        prompt_version=prompt_version,
     )
     return exit_code(self_tests_ok=self_tests_ok, safety_fail=safety_fail, quality_fail=quality_fail)
 

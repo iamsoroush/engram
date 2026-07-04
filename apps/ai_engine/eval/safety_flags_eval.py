@@ -31,6 +31,7 @@ except NameError:
     pass
 
 from _common import (  # noqa: E402
+    capture_prompt_version,
     contains,
     env_models,
     exit_code,
@@ -46,6 +47,14 @@ def _audio(capture_id: str, transcript: str) -> dict[str, Any]:
     return {"captureId": capture_id, "type": "audio", "transcript": transcript}
 
 
+def _note(capture_id: str, text: str) -> dict[str, Any]:
+    return {"captureId": capture_id, "type": "note", "text": text}
+
+
+def _photo(capture_id: str, caption: str) -> dict[str, Any]:
+    return {"captureId": capture_id, "type": "photo", "caption": caption}
+
+
 def _payload(captures: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "job": {"id": "eval-job", "jobType": "session_organize"},
@@ -56,7 +65,11 @@ def _payload(captures: list[dict[str, Any]]) -> dict[str, Any]:
             "domain": DOMAIN,
             "reportLanguage": "fa",
             "aftercareTemplates": [],
-            "captures": {"audio": captures, "photos": [], "text": []},
+            "captures": {
+                "audio": [c for c in captures if c["type"] == "audio"],
+                "photos": [c for c in captures if c["type"] == "photo"],
+                "text": [c for c in captures if c["type"] == "note"],
+            },
             "referencePriorVisitTreatments": [],
         },
     }
@@ -110,6 +123,38 @@ CASES: list[dict[str, Any]] = [
         "captures": [_audio("c1", "هیچ آلرژی شناخته‌شده‌ای نداره. بیست واحد بوتاکس زدم")],
         "expect": [],
         "expectNone": True,
+    },
+    # (b) Negation/temporal edge cases — each must yield NO flag (grounding/no-invention guard).
+    {
+        "name": "resolved allergy (new test negative) is NOT a flag",
+        "captures": [_audio("c1", "قبلاً به پنی‌سیلین حساسیت داشت ولی تست جدید منفی بود")],
+        "expect": [],
+        "expectNone": True,
+    },
+    {
+        "name": "family history (not the patient) is NOT a flag",
+        "captures": [_audio("c1", "مادرش آلرژی داره")],
+        "expect": [],
+        "expectNone": True,
+    },
+    {
+        "name": "hypothetical contraindication (patient is not pregnant) is NOT a flag",
+        "captures": [_audio("c1", "اگر باردار بود بوتاکس نمی‌زدیم، ولی باردار نیست")],
+        "expect": [],
+        "expectNone": True,
+    },
+    # (c) Over-extraction guard — an aesthetic preference/complaint must not become a safety flag.
+    {
+        "name": "aesthetic preference/complaint is NOT a safety flag",
+        "captures": [_audio("c1", "بیمار می‌گه از حالت لبش راضی نیست و می‌خواد طبیعی‌تر بشه")],
+        "expect": [],
+        "expectNone": True,
+    },
+    # (d) Flag-from-text capture — an allergy stated in a NOTE (not audio) must still surface a flag.
+    {
+        "name": "allergy in a note capture → allergy flag (any capture type, not audio-only)",
+        "captures": [_note("c1", "فرم رضایت: بیمار به لیدوکائین حساسیت دارد")],
+        "expect": [{"kind": "allergy", "contains": "لیدوکائین"}],
     },
 ]
 
@@ -220,11 +265,16 @@ def run_gate_self_tests() -> bool:
     return ok
 
 
-def run_cases() -> tuple[int, int, int, list[dict[str, Any]]]:
-    """Run the synthetic Farsi safety cases on the gateway. Returns (pass, fail, known_gap, records)."""
+def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
+    """Run the synthetic Farsi safety cases on the gateway.
+
+    Returns ``(pass, fail, known_gap, records, prompt_version)`` — ``prompt_version`` is the first
+    usable output's prompt-version stamp (``None`` until jobs emit one; see ``capture_prompt_version``).
+    """
     print("\n--- safety-flag cases (synthetic Farsi dictations → gateway) ---")
     safety_pass = safety_fail = known_gap = 0
     records: list[dict[str, Any]] = []
+    prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
         try:
             output = synthesize_session_report(_payload(case["captures"]))
@@ -237,6 +287,7 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]]]:
             safety_fail += 1
             records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
             continue
+        prompt_version = prompt_version or capture_prompt_version(output)
         problems = run_gates(output, case)
         flags = output.get("safetyFlags") or []
         summary = "; ".join(f"{f.get('kind')}={f.get('text')}" for f in flags) or "(none)"
@@ -253,7 +304,7 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]]]:
             safety_pass += 1
             print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
             records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
-    return safety_pass, safety_fail, known_gap, records
+    return safety_pass, safety_fail, known_gap, records, prompt_version
 
 
 def main() -> int:
@@ -267,13 +318,14 @@ def main() -> int:
         )
         return 0 if self_tests_ok else 1
 
-    safety_pass, safety_fail, known_gap, records = run_cases()
+    safety_pass, safety_fail, known_gap, records, prompt_version = run_cases()
 
     print(f"\n{'=' * 8} SAFETY-FLAGS SCORECARD {'=' * 8}")
     print(f"  self-tests:    {'PASS' if self_tests_ok else 'FAIL (harness bug)'}")
     print(f"  safety gates:  {safety_pass} pass / {safety_fail} fail / {known_gap} known-gap")
     write_scorecard(
         "safety_flags_eval",
+        prompt_version=prompt_version,
         metrics={
             "self_tests_ok": int(self_tests_ok), "safety_pass": safety_pass, "safety_fail": safety_fail,
             "known_gap": known_gap, "cases_total": safety_pass + safety_fail + known_gap,

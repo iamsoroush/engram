@@ -60,10 +60,14 @@ Alongside the printed summary, each `*_eval.py` calls `_common.write_scorecard()
 deliberately **flat metrics + tags** so a scorecard imports cleanly into an experiment tracker
 (MLflow-class) later:
 
-- **tags** (top level): `module`, `git_sha`, `timestamp`, `gateway`, `judge_model`, `models_under_test`.
+- **tags** (top level): `module`, `git_sha`, `timestamp`, `gateway`, `judge_model`, `models_under_test`,
+  and a `run_config` block `{model, reasoningEffort, promptVersion}` — the attributes a trend needs to
+  explain a step (a model swap, an effort change, a prompt bump). All three are **tolerant** (absent →
+  null, never an error), so the schema is stable whether or not the jobs already stamp a `promptVersion`
+  in their output envelope (`_common.capture_prompt_version` reads it the moment they do).
 - **`metrics`**: one flat scalar per key — the trendable series (`self_tests_ok`, `safety_pass`,
-  `safety_fail`, `known_gap`, `quality_pass`/`quality_fail` and `judge_smoke_ok` where a judge tier
-  exists, `cases_total`).
+  `safety_fail`, `known_gap`, `advisory` where an advisory-deterministic tier exists,
+  `quality_pass`/`quality_fail` and `judge_smoke_ok` where a judge tier exists, `cases_total`).
 - **`cases`**: per-case drill-down (`id`, `safety`: `pass`/`fail`/`known-gap`, `judge` dimension
   scores, `reasons`).
 
@@ -76,15 +80,15 @@ full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which 
 
 | Module | Job / seam | What it gates | Fixtures |
 | --- | --- | --- | --- |
-| `transcription_eval.py` | Audio transcription | Native script (no romanization), verbatim dose/brand/lot, digit handling, negation/laterality/allergy preserved | **Real audio** (9 clips, live) + self-tests + judge smoke |
-| `caption_eval.py` | Image caption | Neutral **objective** description — never a diagnosis; lot read off a label; language | Harness green (self-tests + judge smoke); **real photos `p01`–`p05` TODO** — scored the moment they land, no code change |
-| `treatments_eval.py` | Synthesis — `treatments[]` | area/product/brand split, quantity/unit verbatim, corrections vs additions, carry-forward, lot | Synthetic Farsi dictations (~12 cases) |
-| `aftercare_conflict_eval.py` | Synthesis — `aftercareSelections` | Protocol completeness (per performed procedure) + dictation-vs-protocol **conflict** attribution, per-procedure | Synthetic Farsi cases |
-| `safety_flags_eval.py` | Synthesis — `safetyFlags` | Right `kind` for stated allergy/contraindication/consent, grounded native-script text, **no invention** (clean visit / negation → no flags) | Synthetic Farsi cases |
-| `safety_reconcile_eval.py` | Cross-visit safety reconcile | Dedup same-concept, keep distinct, supersede annotated (not dropped), never merge kinds, **never drop a distinct allergy** | Synthetic candidate sets |
-| `report_sections_eval.py` | Synthesis — sections (prose half) | Grounded prose (no invention), image blocks reference real captureIds only, empty sections stay empty, native-script, all fixed ids present | Synthetic Farsi transcripts + self-tests |
-| `patient_memory_eval.py` | Patient memory | Story/delta accuracy over multi-visit briefs, no invented flags, no name-repeat (advisory), grounded recall of dose/brand | Synthetic multi-session fixtures + self-tests |
-| `patient_matching_eval.py` | Matching's **LLM seam** (transcription input) | Spoken name extracted **faithfully** (a near-miss must not be "corrected" to an existing patient) + assignment `basis` never over-escalated to `explicit` | **Real audio** (6 clips, live; `m02` near-miss = `knownGap`) + self-tests + judge smoke |
+| `transcription_eval.py` | Audio transcription | Native script (no romanization), verbatim dose/brand/lot, digit handling, negation/laterality/allergy preserved; a confusable dose **minimal pair** gated both ways (`numbers` + `numbersForbidden`) | **Real audio** (9 live clips + the `t10`–`t14` edge batch pending) + self-tests + judge smoke |
+| `caption_eval.py` | Image caption | Neutral **objective** description — never a diagnosis; lot read off a label; an invented lot caught deterministically (`forbiddenPattern`); language; before/after `phase` | Harness green (self-tests + judge smoke); **real photos `p01`–`p06` pending** — scored the moment they land, no code change |
+| `treatments_eval.py` | Synthesis — `treatments[]` (+ real-clip synthesis path) | area/product/brand split, quantity/unit + **`quantityText` verbatim**, corrections vs additions, carry-forward, lot; **distractors** (plan/prior-visit/declined) not extracted; multi-capture correction | Synthetic Farsi dictations + **real full-visit clips `s01`–`s04`** (transcribe→synthesize, treatments+aftercare) when recorded |
+| `aftercare_conflict_eval.py` | Synthesis — `aftercareSelections` | Protocol completeness (per performed procedure) + dictation-vs-protocol **conflict** attribution; **restating** a protocol is `applies` not a conflict; an irrelevant protocol is not selected | Synthetic Farsi cases |
+| `safety_flags_eval.py` | Synthesis — `safetyFlags` | Right `kind` for stated allergy/contraindication/consent, grounded native-script text, **no invention** (clean visit / negation / **family-history / hypothetical / resolved / preference** → no flags); a flag from **any capture type** (note/photo, not only audio) | Synthetic Farsi cases |
+| `safety_reconcile_eval.py` | Cross-visit safety reconcile | Dedup same-concept (incl. cross-script), keep distinct (drug-family, added-severity), never merge kinds, **never drop a distinct allergy**; supersede is the ideal — a bare **keep** is reported as an **advisory**, only a *dropped* distinct flag fails | Synthetic candidate sets (incl. a realistic-scale panel) |
+| `report_sections_eval.py` | Synthesis — sections (prose half) | Grounded prose (no invention), image blocks reference real captureIds only + **each at most once** (`imageRefsUnique`), empty sections stay empty, native-script, all ids present; cross-capture correction → final fact only; `en` reportLanguage | Synthetic Farsi + `en` transcripts + self-tests |
+| `patient_memory_eval.py` | Patient memory | Story/delta accuracy over multi-visit briefs, no invented flags, no name-repeat (advisory, counted), grounded recall of dose/brand; **flags persist** over a long history, a **superseded** fact isn't restated, dose **trend** recalled | Synthetic multi-session fixtures (incl. 6–8-visit history) + self-tests |
+| `patient_matching_eval.py` | Matching's **LLM seam** (transcription input) | Spoken name extracted **faithfully** (a near-miss must not be "corrected"; a similar-name pair not swapped; a mid-dictation mention still caught) + assignment `basis` never over-escalated to `explicit` | **Real audio** (6 live clips + `m07`–`m09` pending; `m02` near-miss = `knownGap`) + self-tests + judge smoke |
 
 The deterministic post-processing these jobs feed (correction/supersede/carry-forward, search
 ranking, the exact-vs-fuzzy **auto-assign decision** itself) is unit-tested in `tests/`
@@ -93,9 +97,13 @@ the evals measure the **LLM behaviour** unit tests can't.
 
 Durable real-audio lessons baked into the matchers: models normalize spoken number words to digits
 («بیست»→«20») — dose gates accept either via `containsAny`; a lot VALUE is read reliably while the
-surrounding label word drifts — gates check the value, not the word; flash-class models
-intermittently auto-correct a near-miss name to a known patient — the `m02` `knownGap`, resolved by
-running the matching path on a pro-class model.
+surrounding label word drifts — gates check the value, not the word; flash-class models intermittently
+auto-correct a near-miss name to a known patient — the `m02` `knownGap`. That gap **stays open by
+decision, not oversight**: the matching seam rides the bulk-transcription model (`gemini-3.1-flash-lite`,
+the highest-volume call), a pro-class model only fixes it there at whole-pipeline cost, and the
+deterministic backend gate never auto-assigns a fuzzy near-miss regardless — so it is deferred until the
+seam can take a pro model independently. See
+[technical-decisions.md](../technical-decisions.md) → *Matching Seam Runs on the Transcription Model*.
 
 ### Coverage gaps
 
@@ -103,8 +111,10 @@ running the matching path on a pro-class model.
   AI job must ship its own eval, so this is the outstanding debt. Golden-set scenarios (question
   types, tone, escalation cases, voice-edit revise-vs-replace splits) **need user consultation
   first** — do not design the set unilaterally.
-- Caption real photos (`p01`–`p05`) are recorded-when-available (see the workflow below); the
-  harness is green without them but the job is only synthetically covered until they land.
+- Caption real photos (`p01`–`p06`), the transcription edge batch (`t10`–`t14`), the full-visit
+  synthesis clips (`s01`–`s04`), and matching (`m07`–`m09`) are recorded-when-available (see
+  `fixtures/RECORDING_CHECKLIST.md`); the harness is green without them, and each is scored the moment
+  it lands with no code change (the synthesis clips flow through `treatments_eval`'s fixture-driven path).
 
 ## Expectations format (the fixture `.json`)
 
@@ -202,14 +212,22 @@ Two workflows, split by cost and determinism:
   **zero gateway spend, zero LLM flake**. A harness bug or matcher regression fails the job and blocks
   the PR; the merged `scorecard.json` is uploaded as an artifact. This is the workflow meant to be a
   **required** status check in branch protection (job name: *AI eval self-tests (no gateway)*).
-- **Gateway run — signal, not gate.** `.github/workflows/eval.yml` runs the suite against the
-  production gateway (`gw.engram.ir`), pulling fixtures from S3 when the `EVAL_FIXTURES_S3_*` secrets
-  are configured. It is **manual-only** (`workflow_dispatch`; the on-push trigger for
-  `apps/ai_engine/**` is present but commented out) and **non-blocking by design**: a regression or
-  unreachable gateway emits a `::warning::` and the job stays green — the gateway run is
-  non-deterministic and costs money, so CI treats it as a signal.
+- **Stage 2 — scheduled gateway run + trend (signal, not gate).** `.github/workflows/eval.yml` runs the
+  suite against the production gateway (`gw.engram.ir`), pulling fixtures from S3 when the
+  `EVAL_FIXTURES_S3_*` secrets are configured. It fires on a **schedule** (Mon/Wed/Fri 03:00 UTC), on
+  `workflow_dispatch`, and — as a **tripwire** — on `push` to `main` touching `apps/ai_engine/**`. It is
+  **non-blocking by design**: a regression or unreachable gateway emits a `::warning::` and the job
+  stays green (the gateway run is non-deterministic and costs money, so CI treats it as a signal), and
+  **judge-scored quality stays advisory** (`EVAL_STRICT_QUALITY` unset — only deterministic gates warn).
+  Each run **archives the merged `scorecard.json` to the eval bucket under `scorecards/<date>-<sha>.json`**
+  and renders `scripts/eval-trend.py` (the bucket's series → a per-module safety pass-rate table +
+  per-dimension judge-mean drift + active-knownGap ages) into the **job summary**. That trend is what
+  makes the advisory judge tier actionable: a model/prompt swap on the gateway shows up as a step in a
+  dimension mean without ever flaking a build — the bucket-backed v1 of the eventual MLflow-class tracker
+  (the `run_config` scorecard tag is designed to import into it cleanly).
 
 Beyond CI, the real gate on model/prompt behavior is the CLAUDE.md §4 rule: an agent changing an AI
-job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Known open item:
-a majority-vote wrapper for the flaky single-call synthesis evals (a future promotion of the gateway
-run toward a merge gate).
+job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Next on the
+ladder (not yet built): **Stage 3**, a merge gate for AI-job PRs over the synthetic-gateway modules with
+a majority-of-3 flake policy for the single-call synthesis evals — promoted once Stage-2 trend data
+shows a stable baseline.

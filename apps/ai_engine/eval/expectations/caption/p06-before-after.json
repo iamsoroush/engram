@@ -1,0 +1,15 @@
+{
+  "_note": "A before/after treatment-area pair: the BEFORE frame of a paired capture. The model must label the phase correctly (pairing.phase) and stay objective — no diagnosis, no outcome judgement ('improved'), and it is clinical media so it must NOT be flagged out-of-context. This is the 'before' member; the 'after' frame is captured/scored as its own fixture.",
+  "seen": "قاب «قبل» از یک جفت عکس قبل/بعدِ ناحیه درمان (مثلاً گونه).",
+  "expect": {
+    "phase": "before",
+    "isProductLabel": false,
+    "noDiagnosis": true,
+    "notOutOfContext": true,
+    "noLatinWords": true
+  },
+  "judge": {
+    "dimensions": ["objectiveNotDiagnostic", "nativeScript", "groundedNoInvention"],
+    "minScore": 0.7
+  }
+}

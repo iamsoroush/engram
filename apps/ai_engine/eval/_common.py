@@ -300,12 +300,42 @@ def env_models(*env_keys: str) -> list[str]:
     return models
 
 
+def env_reasoning_effort() -> str | None:
+    """The configured synthesis reasoning effort, if any (a scorecard run-config tag). None when unset.
+
+    GPT-5-class models take a ``reasoning_effort`` quality knob instead of temperature; recording it
+    next to the model makes an effort change visible in the trend the same way a model swap is.
+    """
+    value = os.environ.get("AI_ENGINE_REPORT_SYNTHESIS_REASONING_EFFORT", "").strip()
+    return value or None
+
+
+def capture_prompt_version(output: Any) -> str | None:
+    """Best-effort read of a job output's prompt-version stamp — ``None`` when absent, never raises.
+
+    The AI jobs are gaining a ``promptVersion`` (a.k.a. ``prompt_version``) field in their output
+    envelope so a prompt change is attributable in the trend. This reader is deliberately TOLERANT: a
+    missing field, a non-dict output, or ``None`` all yield ``None`` (no failure) — so the scorecard
+    captures the version the moment jobs start emitting it, with zero coupling before then.
+    """
+    if not isinstance(output, dict):
+        return None
+    value = output.get("promptVersion")
+    if value is None:
+        value = output.get("prompt_version")
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        text = str(value).strip()
+        return text or None
+    return None
+
+
 def write_scorecard(
     module: str,
     *,
     metrics: dict[str, Any],
     cases: list[dict[str, Any]] | None = None,
     models_under_test: list[str] | None = None,
+    prompt_version: str | None = None,
 ) -> pathlib.Path:
     """Emit this module's scorecard to ``eval/out/<module>.json`` and return the path.
 
@@ -314,6 +344,13 @@ def write_scorecard(
         metrics: flat numeric metrics (the trendable series), e.g. ``{"safety_pass": 10, "safety_fail": 0}``.
         cases: optional per-case records ``{"id", "safety": pass|fail|known-gap, "judge": {dim: score}, "reasons"}``.
         models_under_test: the model tag(s) for this run (see ``env_models``).
+        prompt_version: the job's prompt-version stamp for this run, if the output carried one (see
+            ``capture_prompt_version``). ``None`` when absent — the run-config tag records it as null.
+
+    The ``run_config`` tag captures ``{model, reasoningEffort, promptVersion}`` for the run — the
+    attributes a trend needs to explain a step (a model swap, an effort change, a prompt bump). All
+    three are TOLERANT: a null value is expected and never an error, so the schema is stable whether or
+    not the jobs already stamp a prompt version.
     """
     record = {
         "module": module,
@@ -322,6 +359,11 @@ def write_scorecard(
         "gateway": gateway_configured(),
         "judge_model": JUDGE_MODEL,
         "models_under_test": models_under_test or [],
+        "run_config": {
+            "model": (models_under_test or [None])[0],
+            "reasoningEffort": env_reasoning_effort(),
+            "promptVersion": prompt_version,
+        },
         "metrics": metrics,
         "cases": cases or [],
     }
