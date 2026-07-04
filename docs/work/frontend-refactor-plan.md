@@ -1,5 +1,17 @@
 # Frontend refactor plan — dissolving the `App.tsx` orchestrator
 
+**Status (2026-07-04):** increments **1–3 are built and merged** to main (`535a4dd` — Api/Auth/
+Capabilities provider seams out of App.tsx; tsc + 52 unit tests + i18n guard + hermetic e2e green).
+Increments **4–8 are deferred to a focused follow-up**: increment 4 (`SyncProvider`, the flagged
+riskiest extraction) is not safely separable from increment 5 (`SessionStore`) — the outbox engine
+writes session state at ~219 call sites, and its riskiest behaviors (offline/retry/storage-guard/
+operation-queue) have no e2e coverage today. The follow-up must **co-design Sync + Store and add
+offline characterization tests first**, then proceed 4→8.
+Dev-infra notes for that agent: the shared MinIO root credential is `notari-dev` (dev-stack.sh's
+`engram-dev` default is stale — pass `MINIO_ROOT_USER=notari-dev MINIO_ROOT_PASSWORD=notari-dev-secret`
+to `up`), and deterministic e2e-stack runs need the `docker-compose.e2e.yml` (P0, gateway-less) or
+`docker-compose.e2e-ai.yml` (P1, mock gateway) overlays layered onto the stack.
+
 **Fold destination:** the target architecture (§2) folds into `docs/architecture.md` (frontend section)
 and `docs/frontend/overview.md` once the seams land; the sequencing/checklist below is process-only and
 this doc is **deleted** when the last increment merges. Per `docs/work/README.md`, this doc may describe
