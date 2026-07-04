@@ -5,43 +5,30 @@ import type {
   CaptureDraft,
   DevTier,
   LineupCard,
-  PatientAssignmentDraft,
   PatientMemoryFilter,
   PatientMemoryListResponse,
-  PatientSummary,
   Persona,
   RolePermissions,
   SessionContext,
   SmartListKey,
 } from "../domain/appTypes";
-import type { CaptureItem, CaptureSession, CaptureStatus, Screen } from "../domain/types";
+import type { CaptureSession, Screen } from "../domain/types";
 import { Card, Skeleton } from "../shared/ui/primitives";
 import { currentUserRoles, isSessionReadOnly } from "../shared/lib/multiseat";
 import { AppLangProvider, toLang, type Translator } from "../shared/i18n";
 import {
-  assignSessionPatient,
-  confirmCarriedForward,
-  dismissAiPatientAction,
-  isNotFoundError,
-  postFeedback,
-  rejectSafetyFlag,
-  setAftercareDismissed,
   checkDuplicatePatient,
   createAftercareTemplate,
-  createPatient,
   createPatientShare,
   deleteAftercareTemplate,
-  deleteCapture,
   fetchAssignmentSuggestion,
   cancelWorklistEntry,
   createSession,
   createWorklistEntry,
-  fetchCapture,
   fetchClinicMembers,
   fetchLastVisit,
   fetchSessionContext,
   fetchWorklist,
-  getPatient,
   listAftercareTemplates,
   markWorklistEntrySeen,
   revokePatientShare,
@@ -55,22 +42,12 @@ import {
   fetchLotRecall,
   fetchSession,
   fetchSessionCaptures,
-  markCaptureRelevant,
   type RegisterClinicInput,
   resolveCaptureFileUrl,
-  saveSessionForProcessing,
-  searchPatients,
-  updateCaptureCaption,
-  updateCaptureNote,
-  updateCaptureTitle,
-  updateCaptureTranscript,
-  updatePatient,
-  type PatientEditDraft,
-  updateSessionTitle,
   updateTenantSettings,
-  verifyAiPatientCreation,
 } from "../services/api/client";
 import {
+  isLocalAssignmentPatient,
   isLocalSessionId,
   mergeCaptureItemsPreservingPreview,
   sessionsFromPending,
@@ -95,33 +72,20 @@ import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
-import { metadataRecord } from "../features/capture/metadata";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
 import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
-import {
-  clearLocalCaptureData,
-  loadPendingCaptures,
-  removePendingCapture,
-  removePendingOperation,
-  updatePendingCapture,
-} from "../services/storage/captureStorage";
+import { clearLocalCaptureData } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
 import { replaceScreenLocation, screenFromLocation } from "./navigation";
 import { useBackLevel, resetBackLevels } from "../shared/lib/backStack";
-import {
-  makeEmptyLocalSession,
-  markReportStaleForCaptureChange,
-  markReportStaleForPatientChange,
-  mergeSessionUpdate,
-  PROCESSING_REFRESH_DELAYS,
-  resolveRestoredSession,
-} from "./sessionState";
+import { makeEmptyLocalSession, mergeSessionUpdate, resolveRestoredSession } from "./sessionState";
 import { ApiProvider, useApi } from "./providers/ApiProvider";
 import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { CapabilitiesProvider, useCapabilities } from "./providers/CapabilitiesProvider";
 import { SyncProvider, useSync, useRegisterSyncBridge, type SyncBridge } from "./providers/SyncProvider";
+import { SessionStoreProvider, useSessionStore } from "./providers/SessionStoreProvider";
 import { ToastProvider, useToast } from "./providers/ToastProvider";
 
 // E9 — where a freshly signed-in user lands. Doctors capture-first → the Session workspace;
@@ -134,11 +98,6 @@ function defaultScreenForAuth(auth: AuthSession): Screen {
   return "active-session";
 }
 
-function sessionNeedsProcessingRefresh(session: CaptureSession | null) {
-  if (!session) return false;
-  if (session.processingStatus?.state === "processing" || session.report?.status === "generating") return true;
-  return session.items.some((item) => item.status === "uploaded" || item.status === "processing" || item.status === "uploading");
-}
 
 function AppInner() {
   const apiFetch = useApi();
@@ -170,11 +129,44 @@ function AppInner() {
   // counts/syncing/storage) live in SyncProvider. App drives it via `sync.*` and registers the
   // session bridge below so the engine can read/write session state that still lives here.
   const sync = useSync();
+  // Seam C (frontend-refactor plan §4, increment 5): the capture/session domain store. App destructures
+  // the omnibus back into the local names its render body + navigation helpers already use; feature
+  // screens consume the narrower useSessions()/useActiveSession()/useSessionActions() seams instead.
+  const {
+    sessions,
+    setSessions,
+    activeSession,
+    setActiveSession,
+    selectedSessionId,
+    setSelectedSessionId,
+    assignmentSessionId,
+    setAssignmentSessionId,
+    memoryRefreshSignal,
+    sessionSink,
+    upsertSession,
+    saveSession,
+    renameSession,
+    renameCapture,
+    editCaptureSourceText,
+    editCaptureNote,
+    removeCaptureFromSession,
+    markCaptureRelevantInSession,
+    confirmCarriedForwardDose,
+    rateReport,
+    fetchCaptureById,
+    dismissAftercareTemplate,
+    rejectSafetyFlagFromSession,
+    assignPatientToSession,
+    searchPatientsForAssignment,
+    fetchAssignedPatientDetails,
+    completeAiCreatedPatient,
+    editPatientDetails,
+    createNewPatient,
+    confirmSessionSummary,
+    loadCapturesForSession,
+  } = useSessionStore();
   const [screen, setScreen] = React.useState<Screen>(() => screenFromLocation());
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
-  const [sessions, setSessions] = React.useState<CaptureSession[]>([]);
-  const [activeSession, setActiveSession] = React.useState<CaptureSession | null>(null);
-  const [selectedSessionId, setSelectedSessionId] = React.useState("");
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -193,7 +185,6 @@ function AppInner() {
   // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
   // screen changes, so the target naturally reverts to the active session.
   const [viewedPatient, setViewedPatient] = React.useState<{ id: string; name: string } | null>(null);
-  const [assignmentSessionId, setAssignmentSessionId] = React.useState("");
   // Toast is owned by ToastProvider (seam A4) — App raises them via setToast; the provider renders it.
   const { setToast } = useToast();
   const [clinicalMemoryReturnContext, setClinicalMemoryReturnContext] = React.useState<ClinicalMemoryReturnContext | null>(null);
@@ -201,18 +192,8 @@ function AppInner() {
   // timeline from the session, so "← Back to this visit" restores it exactly (no lost place).
   const [captureReturnSession, setCaptureReturnSession] = React.useState<CaptureSession | null>(null);
   const workspaceHydratedRef = React.useRef(false);
-  const activeSessionRef = React.useRef<CaptureSession | null>(null);
-  const sessionsRef = React.useRef<CaptureSession[]>([]);
   const accountReturnRef = React.useRef<Screen>("active-session");
-  const aiPatientToastIdsRef = React.useRef(new Set<string>());
 
-  React.useEffect(() => {
-    activeSessionRef.current = activeSession;
-  }, [activeSession]);
-
-  React.useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
 
   const navigateScreen = React.useCallback((nextScreen: Screen) => {
     // A hard screen switch replaceState()s the current entry (possibly a sub-level's synthetic one)
@@ -330,104 +311,11 @@ function AppInner() {
     if (pending.length) window.setTimeout(() => void sync.processOutbox(), 0);
   };
 
-  const updateItemStatus = (itemId: string, status: CaptureStatus) => {
-    setActiveSession((session) =>
-      session
-        ? {
-            ...session,
-            items: session.items.map((item) => (item.id === itemId ? { ...item, status } : item)),
-          }
-        : session,
-    );
-    setSessions((current) =>
-      current.map((session) => ({
-        ...session,
-        items: session.items.map((item) => (item.id === itemId ? { ...item, status } : item)),
-      })),
-    );
-  };
-
-  const upsertSession = (session: CaptureSession, removeIds: string[] = []) => {
-    setSessions((current) => [
-      session,
-      ...current.filter((currentSession) => currentSession.id !== session.id && !removeIds.includes(currentSession.id)),
-    ]);
-  };
-
-  const notifyAiPatientAction = React.useCallback((session: CaptureSession) => {
-    const action = metadataRecord(session.extractedMetadata?.ai_patient_action);
-    const patientId = typeof action.patientId === "string" ? action.patientId : session.patientId;
-    const basisCaptureId = typeof action.basisCaptureId === "string" ? action.basisCaptureId : "";
-    const actionName = typeof action.action === "string" ? action.action : "";
-    if (!patientId || !actionName) return;
-    const toastId = `${session.id}:${actionName}:${patientId}:${basisCaptureId}`;
-    if (aiPatientToastIdsRef.current.has(toastId)) return;
-    aiPatientToastIdsRef.current.add(toastId);
-    const displayName = typeof action.displayName === "string" ? action.displayName : session.patientName || "patient";
-    setToast(
-      actionName === "created_and_assigned"
-        ? `AI created and assigned ${displayName}.`
-        : `AI matched this visit to ${displayName}.`,
-    );
-  }, []);
-
-  const refreshVisibleSession = React.useCallback(
-    async (sessionId: string) => {
-      const [captures, updatedSession] = await Promise.all([fetchSessionCaptures(apiFetch, sessionId), fetchSession(apiFetch, sessionId)]);
-      setSessions((current) =>
-        current.map((session) => {
-          if (session.id !== sessionId) return session;
-          const items = mergeCaptureItemsPreservingPreview(session.items, captures);
-          const merged = mergeSessionUpdate(session, updatedSession, items);
-          notifyAiPatientAction(merged);
-          return merged;
-        }),
-      );
-      setActiveSession((current) =>
-        current?.id === sessionId
-          ? (() => {
-              const items = mergeCaptureItemsPreservingPreview(current.items, captures);
-              const merged = mergeSessionUpdate(current, updatedSession, items);
-              notifyAiPatientAction(merged);
-              return merged;
-            })()
-          : current,
-      );
-    },
-    [apiFetch, notifyAiPatientAction],
-  );
-
-  const scheduleCaptureProcessingRefresh = React.useCallback(
-    (sessionId: string) => {
-      PROCESSING_REFRESH_DELAYS.forEach((delay) => {
-        window.setTimeout(() => {
-          void refreshVisibleSession(sessionId).catch(() => undefined);
-        }, delay);
-      });
-    },
-    [refreshVisibleSession],
-  );
-
-  // Patient summary/history regenerate (mock AI job) after a capture/assignment; bump a signal over
-  // the same delay ladder so Clinical Memory re-fetches and animates the updating→ready transition.
-  const [memoryRefreshSignal, setMemoryRefreshSignal] = React.useState(0);
-  const scheduleMemoryRefresh = React.useCallback(() => {
-    PROCESSING_REFRESH_DELAYS.forEach((delay) => {
-      window.setTimeout(() => setMemoryRefreshSignal((value) => value + 1), delay);
-    });
-  }, []);
 
   // Fair-use monthly AI usage/limit. Fetched on login and re-fetched over the same signal that fires
   // after captures/processing, so the calm usage surfaces (Settings card + capture notice) stay current.
   const { state: aiUsage, refresh: refreshAiUsage } = useAiUsage(apiFetch, `${auth?.tenant.id ?? ""}:${memoryRefreshSignal}`);
 
-  React.useEffect(() => {
-    if (!activeSession?.id || isLocalSessionId(activeSession.id) || !sessionNeedsProcessingRefresh(activeSession)) return;
-    const refreshTimer = window.setTimeout(() => {
-      void refreshVisibleSession(activeSession.id).catch(() => undefined);
-    }, 15000);
-    return () => window.clearTimeout(refreshTimer);
-  }, [activeSession, refreshVisibleSession]);
 
   // When a patient is determined for the active session (manual assign OR AI match), fetch the
   // deterministic session context — last-visit digest + cross-visit photo strip + key facts — so the
@@ -470,25 +358,6 @@ function AppInner() {
     };
   }, [apiFetch, isBasic, patientId, activeSessionId]);
 
-  const scheduleSessionProcessingRefresh = React.useCallback(
-    (sessionId: string) => {
-      PROCESSING_REFRESH_DELAYS.forEach((delay) => {
-        window.setTimeout(() => {
-        void loadBackendSessions()
-          .then((loadedSessions) => {
-            const updated = loadedSessions.find((session) => session.id === sessionId);
-            if (!updated) return;
-            setSessions((current) =>
-              current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)),
-            );
-            setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
-          })
-          .catch(() => undefined);
-        }, delay);
-      });
-    },
-    [loadBackendSessions],
-  );
 
   // The outbox engine (upload / operation replay / retry interval / optimistic saveDraft) lives in
   // SyncProvider (seam B); App calls it via `sync.*`. The engine reads/writes session state through
@@ -626,538 +495,6 @@ function AppInner() {
     void hydrateFromStorage();
   };
 
-  const saveSession = async (sessionId: string) => {
-    const markProcessing = (session: CaptureSession): CaptureSession => ({
-      ...session,
-      status: "processing",
-      report: {
-        schemaVersion: session.report?.schemaVersion,
-        status: "generating",
-        format: session.report?.format || "markdown",
-        title: session.report?.title || session.label,
-        body: "",
-        sections: [{ id: "body", title: "Body", body: "" }],
-        structuredModel: session.report?.structuredModel || session.reportModel || null,
-        patientInformation: session.report?.patientInformation || null,
-        patientInformationSource: session.report?.patientInformationSource || null,
-        template: session.report?.template || null,
-        source: session.report?.source || null,
-        generatedAt: session.report?.generatedAt || null,
-        updatedAt: new Date().toISOString(),
-        isStale: false,
-      },
-      processingStatus: {
-        schemaVersion: session.processingStatus?.schemaVersion,
-        state: "processing",
-        label: appT("capture.generatingReport"),
-        detail: appT("capture.generatingReportDetail"),
-        stage: "report",
-        progress: session.processingStatus?.progress ?? null,
-        canEdit: false,
-        canReview: false,
-        source: session.processingStatus?.source || null,
-        updatedAt: new Date().toISOString(),
-      },
-    });
-    setSessions((current) => current.map((session) => (session.id === sessionId ? markProcessing(session) : session)));
-    setActiveSession((current) => (current?.id === sessionId ? markProcessing(current) : current));
-    if (isLocalSessionId(sessionId)) {
-      if (authRef.current?.tenant.id) {
-        await sync.queueOperation({
-          id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
-          type: "sessionProcessing",
-          localSessionId: sessionId,
-          tenantId: authRef.current.tenant.id,
-          payload: { reportTemplateKey: "default" },
-        });
-        setToast(appT("capture.toastSavedDeviceWillOrganize"));
-      }
-      void sync.processOutbox();
-      return;
-    }
-    try {
-      const processingSession = await saveSessionForProcessing(apiFetch, sessionId);
-      setSessions((current) =>
-        current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, processingSession) : session)),
-      );
-      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, processingSession) : current));
-      setToast(appT("capture.toastReportGenerating"));
-      scheduleSessionProcessingRefresh(sessionId);
-    } catch {
-      if (authRef.current?.tenant.id) {
-        await sync.queueOperation({
-          id: `${authRef.current.tenant.id}:sessionProcessing:${sessionId}`,
-          type: "sessionProcessing",
-          backendSessionId: sessionId,
-          tenantId: authRef.current.tenant.id,
-          payload: { reportTemplateKey: "default" },
-        });
-        setToast(appT("capture.toastSavedWillOrganize"));
-        void sync.processOutbox();
-        return;
-      }
-      setToast(appT("capture.toastSavedDeviceWillOrganize"));
-    }
-  };
-
-  const renameSession = React.useCallback(
-    async (sessionId: string, title: string) => {
-      if (isLocalSessionId(sessionId)) {
-        const updateSession = (session: CaptureSession) => ({ ...session, label: title });
-        setSessions((current) => current.map((session) => (session.id === sessionId ? updateSession(session) : session)));
-        setActiveSession((current) => (current?.id === sessionId ? updateSession(current) : current));
-        const pending = await loadPendingCaptures();
-        await Promise.all(
-          pending
-            .filter((capture) => capture.localSessionId === sessionId)
-            .map((capture) =>
-              updatePendingCapture(capture.id, (current) => ({
-                ...current,
-                session: updateSession(current.session),
-              })),
-            ),
-        );
-        if (authRef.current?.tenant.id) {
-          await sync.queueOperation({
-            id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
-            type: "sessionTitle",
-            localSessionId: sessionId,
-            tenantId: authRef.current.tenant.id,
-            payload: { title },
-          });
-        }
-        setToast(appT("capture.toastTitleUpdated"));
-        return;
-      }
-      try {
-        const updated = await updateSessionTitle(apiFetch, sessionId, title);
-        setSessions((current) =>
-          current.map((session) => (session.id === sessionId ? { ...session, ...updated, items: session.items } : session)),
-        );
-        setActiveSession((current) => (current?.id === sessionId ? { ...current, ...updated, items: current.items } : current));
-        setToast(appT("capture.toastTitleUpdated"));
-      } catch {
-        if (authRef.current?.tenant.id) {
-          await sync.queueOperation({
-            id: `${authRef.current.tenant.id}:sessionTitle:${sessionId}`,
-            type: "sessionTitle",
-            backendSessionId: sessionId,
-            tenantId: authRef.current.tenant.id,
-            payload: { title },
-          });
-          setToast(appT("capture.toastTitleSavedDevice"));
-          void sync.processOutbox();
-          return;
-        }
-        setToast(appT("capture.toastCouldNotUpdateTitle"));
-      }
-    },
-    [apiFetch],
-  );
-
-  const renameCapture = React.useCallback(
-    async (sessionId: string, captureId: string, title: string) => {
-      const updateLocalItem = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId
-          ? { ...session, items: session.items.map((item) => (item.id === captureId ? { ...item, title } : item)) }
-          : session;
-      if (captureId.startsWith("local-capture-")) {
-        setSessions((current) => current.map(updateLocalItem));
-        setActiveSession((current) => (current?.id === sessionId ? updateLocalItem(current) : current));
-        await updatePendingCapture(captureId, (current) => ({
-          ...current,
-          item: { ...current.item, title },
-          session: updateLocalItem(current.session),
-        }));
-        setToast(appT("capture.toastCaptureRenamed"));
-        return;
-      }
-      const updated = await updateCaptureTitle(apiFetch, captureId, title);
-      const mergeCaptureTitleUpdate = (item: typeof updated) => ({
-        ...item,
-        ...updated,
-        sourceUrl: item.sourceUrl || updated.sourceUrl,
-        contentType: item.contentType || updated.contentType,
-      });
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === sessionId
-            ? { ...session, items: session.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
-            : session,
-        ),
-      );
-      setActiveSession((current) =>
-        current?.id === sessionId
-          ? { ...current, items: current.items.map((item) => (item.id === captureId ? mergeCaptureTitleUpdate(item) : item)) }
-          : current,
-      );
-      setToast(appT("capture.toastCaptureRenamed"));
-    },
-    [apiFetch],
-  );
-
-  const editCaptureSourceText = React.useCallback(
-    async (sessionId: string, captureId: string, text: string, field: "caption" | "transcript") => {
-      const editedAt = new Date().toISOString();
-      const editorName = auth?.user.displayName || auth?.user.email || "You";
-      const updateItem = (item: CaptureItem): CaptureItem => {
-        if (item.id !== captureId) return item;
-        const currentText = item.metadata?.[field] && typeof item.metadata[field] === "object"
-          ? (item.metadata[field] as Record<string, unknown>)
-          : {};
-        const aiField = field === "caption" ? "ai_caption" : "ai_transcript";
-        const shouldPreserveAiText = item.metadata?.[field] && currentText.source !== "staff_edit" && !item.metadata?.[aiField];
-        const nextMetadata = {
-          ...(item.metadata || {}),
-          ...(shouldPreserveAiText ? { [aiField]: item.metadata?.[field] } : {}),
-          [field]: {
-            ...currentText,
-            text,
-            source: "staff_edit",
-            edited_at: editedAt,
-            edited_by_name: editorName,
-            edited_by_email: auth?.user.email,
-          },
-        };
-        return {
-          ...item,
-          caption: field === "caption" ? text : item.caption,
-          transcript: field === "transcript" ? text : item.transcript,
-          metadata: nextMetadata,
-        };
-      };
-      const updateSession = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(updateItem) }) : session;
-
-      if (captureId.startsWith("local-capture-")) {
-        setSessions((current) => current.map(updateSession));
-        setActiveSession((current) => (current?.id === sessionId ? updateSession(current) : current));
-        await updatePendingCapture(captureId, (current) => ({
-          ...current,
-          item: updateItem(current.item),
-          session: updateSession(current.session),
-        }));
-        setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
-        const currentItem = activeSession?.id === sessionId ? activeSession.items.find((item) => item.id === captureId) : null;
-        return currentItem ? updateItem(currentItem) : null;
-      }
-
-      const updated = field === "caption"
-        ? await updateCaptureCaption(apiFetch, captureId, text)
-        : await updateCaptureTranscript(apiFetch, captureId, text);
-      const mergeCaptionUpdate = (item: CaptureItem): CaptureItem =>
-        item.id === captureId
-          ? {
-              ...item,
-              ...updated,
-              sourceUrl: item.sourceUrl || updated.sourceUrl,
-              contentType: item.contentType || updated.contentType,
-            }
-          : item;
-      const updateBackendSession = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId ? markReportStaleForCaptureChange({ ...session, items: session.items.map(mergeCaptionUpdate) }) : session;
-      setSessions((current) => current.map(updateBackendSession));
-      setActiveSession((current) => (current?.id === sessionId ? updateBackendSession(current) : current));
-      setToast(field === "caption" ? appT("capture.toastCaptionUpdated") : appT("capture.toastTranscriptUpdated"));
-      return updated;
-    },
-    [activeSession?.id, activeSession?.items, apiFetch, auth?.user.displayName, auth?.user.email],
-  );
-
-  const removeCaptureFromSession = React.useCallback(
-    async (sessionId: string, captureId: string) => {
-      const removeLocalItem = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId
-          ? markReportStaleForCaptureChange({ ...session, items: session.items.filter((item) => item.id !== captureId) })
-          : session;
-      if (captureId.startsWith("local-capture-")) {
-        setSessions((current) => current.map(removeLocalItem));
-        setActiveSession((current) => (current?.id === sessionId ? removeLocalItem(current) : current));
-        await removePendingCapture(captureId);
-        setToast(appT("capture.toastCaptureDeleted"));
-        return;
-      }
-      const updated = await deleteCapture(apiFetch, captureId);
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === sessionId
-            ? mergeSessionUpdate(session, updated, session.items.filter((item) => item.id !== captureId))
-            : session,
-        ),
-      );
-      setActiveSession((current) =>
-        current?.id === sessionId
-          ? mergeSessionUpdate(current, updated, current.items.filter((item) => item.id !== captureId))
-          : current,
-      );
-      // Deleting a capture regenerates the Pro live report; poll for the refreshed result.
-      scheduleCaptureProcessingRefresh(sessionId);
-      setToast(appT("capture.toastCaptureDeletedUpdating"));
-    },
-    [apiFetch, scheduleCaptureProcessingRefresh],
-  );
-
-  const markCaptureRelevantInSession = React.useCallback(
-    async (sessionId: string, captureId: string) => {
-      if (captureId.startsWith("local-capture-")) return;
-      const updated = await markCaptureRelevant(apiFetch, captureId);
-      const applyItem = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId
-          ? { ...session, items: session.items.map((item) => (item.id === captureId ? { ...item, ...updated } : item)) }
-          : session;
-      setSessions((current) => current.map(applyItem));
-      setActiveSession((current) => (current?.id === sessionId ? applyItem(current) : current));
-      // Marking relevant re-folds the capture into the Pro live report; poll for the refresh.
-      scheduleCaptureProcessingRefresh(sessionId);
-      setToast(appT("capture.toastMarkedRelevant"));
-    },
-    [apiFetch, scheduleCaptureProcessingRefresh],
-  );
-
-  const applySessionUpdate = React.useCallback((sessionId: string, updated: CaptureSession) => {
-    setSessions((current) =>
-      current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)),
-    );
-    setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
-  }, []);
-
-  // Q3: clinician confirms a carried-forward dose; the report can then read Complete.
-  const confirmCarriedForwardDose = React.useCallback(
-    async (sessionId: string, key: string) => {
-      try {
-        const updated = await confirmCarriedForward(apiFetch, sessionId, key);
-        applySessionUpdate(sessionId, updated);
-        setToast(appT("capture.toastDoseConfirmed"));
-      } catch {
-        setToast(appT("capture.toastCouldNotConfirmDose"));
-      }
-    },
-    [apiFetch, applySessionUpdate],
-  );
-
-  // Report thumbs rating → the AI-quality feedback harvester (eval golden-set; eval-epic §1b).
-  // Fire-and-forget: a quiet "noted" toast, never blocks; failures are swallowed in postFeedback.
-  const rateReport = React.useCallback(
-    (sessionId: string, rating: number) => {
-      void postFeedback(apiFetch, { kind: "rating", aiOutputType: "report", rating, sessionId });
-    },
-    [apiFetch],
-  );
-
-  // Resolve a citation's source capture by id when it isn't in the open session (a carried-forward
-  // claim cites a prior visit) — for "tap a claim → its source capture".
-  const fetchCaptureById = React.useCallback((captureId: string) => fetchCapture(apiFetch, captureId), [apiFetch]);
-
-  // Aftercare opt-out: remove an auto-included clinic template from this visit (or re-add it).
-  const dismissAftercareTemplate = React.useCallback(
-    async (sessionId: string, templateId: string, dismissed: boolean) => {
-      try {
-        const updated = await setAftercareDismissed(apiFetch, sessionId, templateId, dismissed);
-        applySessionUpdate(sessionId, updated);
-      } catch {
-        setToast(appT("capture.toastCouldNotUpdateAftercare"));
-      }
-    },
-    [apiFetch, applySessionUpdate],
-  );
-
-  // Safety-flag opt-out: reject (×) an auto-kept safety flag this visit. Persisted, survives
-  // re-synthesis, and removes the flag from the patient's cross-visit store (backend re-syncs).
-  const rejectSafetyFlagFromSession = React.useCallback(
-    async (sessionId: string, flagKey: string) => {
-      try {
-        const updated = await rejectSafetyFlag(apiFetch, sessionId, flagKey);
-        applySessionUpdate(sessionId, updated);
-      } catch {
-        setToast(appT("capture.toastCouldNotUpdateSafetyFlag"));
-      }
-    },
-    [apiFetch, applySessionUpdate],
-  );
-
-  const ensurePatient = React.useCallback(
-    async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
-      if (draft.patientId) {
-        return {
-          id: draft.patientId,
-          displayName: draft.displayName,
-          nationalId: draft.nationalId || null,
-        };
-      }
-      const matches = await searchPatients(apiFetch, draft.nationalId || draft.displayName);
-      const normalizedName = draft.displayName.trim().toLowerCase();
-      const normalizedNationalId = draft.nationalId?.trim();
-      const exact = matches.find(
-        (patient) =>
-          patient.displayName.trim().toLowerCase() === normalizedName ||
-          (normalizedNationalId && patient.nationalId === normalizedNationalId),
-      );
-      return exact || createPatient(apiFetch, draft);
-    },
-    [apiFetch],
-  );
-
-  // Stale-client self-heal: a patient a session/panel still references was deleted or merged away, so
-  // a patient-scoped call 404s. Rather than freeze (the known incident: deleting a merged patient left
-  // the AI-created "verify" panel PATCHing a dead id → 404 forever), clear the stale reference across
-  // the caches, dismiss the verify panel for good, drop any queued assignment to that dead id so the
-  // outbox stops looping, and tell the user calmly. Safe to call from any 404 catch.
-  const selfHealStalePatient = React.useCallback(
-    async (sessionId: string | undefined, deadPatientId?: string) => {
-      const stripPatient = (session: CaptureSession): CaptureSession =>
-        markReportStaleForPatientChange(session, {
-          ...session,
-          patientId: undefined,
-          patientName: undefined,
-          assignmentSource: undefined,
-        });
-      // Drop a queued assignment to the vanished patient so the outbox stops retrying the 404.
-      if (sessionId && authRef.current?.tenant.id) {
-        await removePendingOperation(`${authRef.current.tenant.id}:patientAssignment:${sessionId}`).catch(() => {});
-      }
-      // Neutralize the AI-created-patient action server-side so the verify panel dismisses permanently.
-      if (sessionId && !isLocalSessionId(sessionId)) {
-        try {
-          const cleared = await dismissAiPatientAction(apiFetch, sessionId);
-          applySessionUpdate(sessionId, cleared);
-        } catch (error) {
-          // The session itself is gone too — evict it from the caches entirely.
-          if (isNotFoundError(error)) {
-            setSessions((current) => current.filter((session) => session.id !== sessionId));
-            setActiveSession((current) => (current?.id === sessionId ? null : current));
-            setSelectedSessionId((current) => (current === sessionId ? "" : current));
-          }
-        }
-      }
-      // Clear the stale patient reference from cached session(s) — the server already SET NULL the FK.
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === sessionId || (deadPatientId && session.patientId === deadPatientId) ? stripPatient(session) : session,
-        ),
-      );
-      setActiveSession((current) =>
-        current && (current.id === sessionId || (deadPatientId && current.patientId === deadPatientId)) ? stripPatient(current) : current,
-      );
-      setAssignmentSessionId((current) => (current === sessionId ? "" : current));
-      setToast(appT("memory.toastPatientRecordGone"));
-    },
-    [apiFetch, applySessionUpdate],
-  );
-
-  const assignPatientToSession = React.useCallback(
-    async (sessionId: string, draft: PatientAssignmentDraft, options?: { successMessage?: string }) => {
-      if (draft.unassign) {
-        const clearPatient = (session: CaptureSession) =>
-          markReportStaleForPatientChange(session, { ...session, patientId: undefined, patientName: undefined, assignmentSource: undefined });
-        setSessions((current) => current.map((session) => (session.id === sessionId ? clearPatient(session) : session)));
-        setActiveSession((current) => (current?.id === sessionId ? clearPatient(current) : current));
-        setAssignmentSessionId("");
-        if (authRef.current?.tenant.id) {
-          await sync.queueOperation({
-            id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
-            type: "patientAssignment",
-            localSessionId: sessionId,
-            backendSessionId: isLocalSessionId(sessionId) ? undefined : sessionId,
-            tenantId: authRef.current.tenant.id,
-            payload: { unassign: true },
-          });
-        }
-        setToast(appT("memory.toastVisitUnassigned"));
-        void sync.processOutbox();
-        return;
-      }
-      const localPatient: PatientSummary = draft.patientId && !isLocalAssignmentPatient(draft.patientId)
-        ? { id: draft.patientId, displayName: draft.displayName, nationalId: draft.nationalId || null }
-        : {
-            id: draft.patientId || `local-patient-${createClientSideId()}`,
-            displayName: draft.displayName,
-            nationalId: draft.nationalId || null,
-          };
-      const successMessage = options?.successMessage || `Visit assigned to ${draft.displayName}.`;
-      const applyLocalAssignment = (patient: PatientSummary) => {
-        const enriched = {
-          patientId: patient.id,
-          patientName: patient.displayName,
-          assignmentSource: "staff",
-        };
-        setSessions((current) =>
-          current.map((session) =>
-            session.id === sessionId ? markReportStaleForPatientChange(session, { ...session, ...enriched }) : session,
-          ),
-        );
-        setActiveSession((current) =>
-          current?.id === sessionId ? markReportStaleForPatientChange(current, { ...current, ...enriched }) : current,
-        );
-        setAssignmentSessionId("");
-      };
-      const enqueueAssignment = async (patient: PatientSummary) => {
-        if (!authRef.current?.tenant.id) return;
-        await sync.queueOperation({
-          id: `${authRef.current.tenant.id}:patientAssignment:${sessionId}`,
-          type: "patientAssignment",
-          localSessionId: sessionId,
-          backendSessionId: isLocalSessionId(sessionId) ? undefined : sessionId,
-          localPatientId: patient.id.startsWith("local-patient-") ? patient.id : undefined,
-          backendPatientId: patient.id.startsWith("local-patient-") || isLocalAssignmentPatient(patient.id) ? undefined : patient.id,
-          tenantId: authRef.current.tenant.id,
-          payload: {
-            patientId: patient.id,
-            displayName: patient.displayName,
-            nationalId: patient.nationalId || undefined,
-            basisCaptureId: draft.basisCaptureId,
-          },
-        });
-      };
-
-      if (isLocalSessionId(sessionId) || !navigator.onLine) {
-        applyLocalAssignment(localPatient);
-        await enqueueAssignment(localPatient);
-        setToast(successMessage);
-        void sync.processOutbox();
-        return;
-      }
-
-      try {
-        const patient = await ensurePatient(draft);
-        if (isLocalSessionId(sessionId) || isLocalAssignmentPatient(patient.id)) {
-          applyLocalAssignment(patient);
-          await enqueueAssignment(patient);
-          setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
-          return;
-        }
-        const assigned = await assignSessionPatient(apiFetch, sessionId, patient.id, undefined, draft.basisCaptureId);
-        const enriched = {
-          ...assigned,
-          patientId: patient.id,
-          patientName: patient.displayName,
-          assignmentSource: "staff",
-        };
-        setSessions((current) =>
-          current.map((session) =>
-            session.id === sessionId ? markReportStaleForPatientChange(session, mergeSessionUpdate(session, enriched)) : session,
-          ),
-        );
-        setActiveSession((current) =>
-          current?.id === sessionId ? markReportStaleForPatientChange(current, mergeSessionUpdate(current, enriched)) : current,
-        );
-        setAssignmentSessionId("");
-        setToast(options?.successMessage || `Visit assigned to ${patient.displayName}.`);
-      } catch (error) {
-        // The chosen patient was deleted/merged: queuing the assignment would 404 forever in the
-        // outbox — self-heal the stale reference and let the user pick again instead.
-        if (isNotFoundError(error)) {
-          await selfHealStalePatient(sessionId, localPatient.id);
-          return;
-        }
-        // Otherwise treat as a transient/offline failure: keep the local assignment and queue it.
-        applyLocalAssignment(localPatient);
-        await enqueueAssignment(localPatient);
-        setToast(successMessage);
-        void sync.processOutbox();
-      }
-    },
-    [apiFetch, ensurePatient, selfHealStalePatient],
-  );
 
   // AES-301/903 — file the current unassigned visit onto the doctor's next lined-up patient.
   const assignActiveVisitToNext = React.useCallback(async () => {
@@ -1175,74 +512,6 @@ function AppInner() {
     setWorklistRefresh((v) => v + 1);
   }, [activeSession, nextLinedUpPatient, assignPatientToSession, apiFetch]);
 
-  const searchPatientsForAssignment = React.useCallback((query: string) => searchPatients(apiFetch, query), [apiFetch]);
-  const fetchAssignedPatientDetails = React.useCallback(
-    (patientId: string) => (isLocalAssignmentPatient(patientId) ? Promise.resolve(null) : getPatient(apiFetch, patientId).catch(() => null)),
-    [apiFetch],
-  );
-  const completeAiCreatedPatient = React.useCallback(
-    async (
-      sessionId: string,
-      patientId: string,
-      draft: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string },
-      action: Record<string, unknown>,
-    ) => {
-      try {
-        const patient = await updatePatient(apiFetch, patientId, {
-          displayName: draft.displayName,
-          nationalId: draft.nationalId || null,
-          phone: draft.phone || null,
-          dateOfBirth: draft.dateOfBirth || null,
-          sex: draft.sex || null,
-          notes: draft.notes || null,
-        });
-        const verifiedSession = await verifyAiPatientCreation(apiFetch, sessionId, {
-          ...action,
-          displayName: patient.displayName,
-          patientId: patient.id,
-        });
-        const enriched = { ...verifiedSession, patientId: patient.id, patientName: patient.displayName };
-        setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, enriched) : session)));
-        setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, enriched) : current));
-        setToast(appT("memory.toastAiPatientVerified"));
-      } catch (error) {
-        // The AI-created patient was deleted/merged out from under the panel: self-heal instead of
-        // leaving the verify panel frozen on a dead id (the known incident).
-        if (isNotFoundError(error)) {
-          await selfHealStalePatient(sessionId, patientId);
-          return;
-        }
-        throw error;
-      }
-    },
-    [apiFetch, selfHealStalePatient],
-  );
-  const editPatientDetails = React.useCallback(
-    async (patientId: string, draft: PatientEditDraft) => {
-      const patient = await updatePatient(apiFetch, patientId, draft);
-      if (draft.displayName) {
-        setSessions((current) =>
-          current.map((session) => (session.patientId === patientId ? { ...session, patientName: patient.displayName } : session)),
-        );
-        setActiveSession((current) => (current?.patientId === patientId ? { ...current, patientName: patient.displayName } : current));
-      }
-      setToast(appT("memory.toastPatientDetailsUpdated"));
-    },
-    [apiFetch],
-  );
-  const createNewPatient = React.useCallback(
-    async (draft: PatientAssignmentDraft): Promise<PatientSummary | null> => {
-      try {
-        const patient = await createPatient(apiFetch, draft);
-        setToast(appT("memory.toastPatientCreated"));
-        return patient;
-      } catch {
-        setToast(appT("memory.toastCouldNotCreatePatient"));
-        return null;
-      }
-    },
-    [apiFetch],
-  );
   const listPatientMemory = React.useCallback(
     (params: { query?: string; filter: PatientMemoryFilter; limit?: number; offset?: number; clinicianId?: string }): Promise<PatientMemoryListResponse> =>
       fetchPatientMemory(apiFetch, params),
@@ -1273,44 +542,6 @@ function AppInner() {
   const cancelWorklist = React.useCallback((entryId: string) => cancelWorklistEntry(apiFetch, entryId), [apiFetch]);
   const listClinicMembers = React.useCallback(() => fetchClinicMembers(apiFetch), [apiFetch]);
 
-  const confirmSessionSummary = React.useCallback(
-    async (sessionId: string, summary: string) => {
-      // Completion is now auto-derived (captures processed + patient assigned + report current),
-      // so confirming a summary just records the edited summary locally — there is no manual verify.
-      const applyConfirmedSummary = (session: CaptureSession): CaptureSession => {
-        const now = new Date().toISOString();
-        return {
-          ...session,
-          summary,
-          reviewReason: "",
-          updatedAt: now,
-          summaries: {
-            schemaVersion: session.summaries?.schemaVersion,
-            status: session.summaries?.status || "processed",
-            short: summary,
-            clinical: session.summaries?.clinical || null,
-            patientHistory: session.summaries?.patientHistory || summary,
-            source: session.summaries?.source || "staff",
-            generatedAt: session.summaries?.generatedAt || now,
-            updatedAt: now,
-          },
-        };
-      };
-      setSessions((current) => current.map((session) => (session.id === sessionId ? applyConfirmedSummary(session) : session)));
-      setActiveSession((current) => (current?.id === sessionId ? applyConfirmedSummary(current) : current));
-      setToast(appT("memory.toastSummaryAdded"));
-    },
-    [],
-  );
-
-  const loadCapturesForSession = React.useCallback(
-    async (sessionId: string) => {
-      const captures = await fetchSessionCaptures(apiFetch, sessionId);
-      setSessions((current) => current.map((session) => (session.id === sessionId ? { ...session, items: captures } : session)));
-      return captures;
-    },
-    [apiFetch],
-  );
 
   const resolveSourceFile = React.useCallback((endpoint: string) => resolveCaptureFileUrl(apiFetch, endpoint), [apiFetch]);
 
@@ -1377,39 +608,6 @@ function AppInner() {
   const updateAftercare = React.useCallback((id: string, draft: Parameters<typeof updateAftercareTemplate>[2]) => updateAftercareTemplate(apiFetch, id, draft), [apiFetch]);
   const deleteAftercare = React.useCallback((id: string) => deleteAftercareTemplate(apiFetch, id), [apiFetch]);
 
-  // AES-101 — edit a (Basic) note's text inline. Persisted as a staff-edited note metadata field so
-  // it survives reloads; local (unsynced) notes update their pending capture in place.
-  const editCaptureNote = React.useCallback(
-    async (sessionId: string, captureId: string, text: string) => {
-      const editedAt = new Date().toISOString();
-      const editorName = authRef.current?.user.displayName || authRef.current?.user.email || "You";
-      const applyItem = (item: CaptureItem): CaptureItem =>
-        item.id === captureId
-          ? {
-              ...item,
-              detail: text,
-              metadata: { ...(item.metadata || {}), note: { text, source: "staff_edit", edited_at: editedAt, edited_by_name: editorName } },
-            }
-          : item;
-      const applySession = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId ? { ...session, items: session.items.map(applyItem) } : session;
-      if (captureId.startsWith("local-capture-")) {
-        setSessions((current) => current.map(applySession));
-        setActiveSession((current) => (current?.id === sessionId ? applySession(current) : current));
-        await updatePendingCapture(captureId, (current) => ({ ...current, item: applyItem(current.item), session: applySession(current.session) }));
-        setToast(appT("memory.toastNoteUpdated"));
-        return;
-      }
-      const updated = await updateCaptureNote(apiFetch, captureId, text);
-      const merge = (item: CaptureItem): CaptureItem => (item.id === captureId ? { ...item, ...updated, detail: text } : item);
-      const mergeSession = (session: CaptureSession): CaptureSession =>
-        session.id === sessionId ? { ...session, items: session.items.map(merge) } : session;
-      setSessions((current) => current.map(mergeSession));
-      setActiveSession((current) => (current?.id === sessionId ? mergeSession(current) : current));
-      setToast(appT("memory.toastNoteUpdated"));
-    },
-    [apiFetch],
-  );
 
   // Auth sign-in/register/switch are owned by AuthProvider; App wraps them only to land on the
   // role-appropriate default screen (or, for register, to also navigate while letting the form map
@@ -1516,29 +714,15 @@ function AppInner() {
   // returns to the memory list instead of exiting the area (item: in-screen history levels).
   useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
 
-  // Register the outbox engine's session bridge (seam B). Session state + actions still live here in
-  // increment 4; the engine reads/writes them through this. In increment 5 SessionStore registers the
-  // identical bridge instead. Placed after every referenced session helper is defined (no TDZ) and
-  // before any early return, so the hook order is stable.
+  // Register the outbox engine's session bridge (seam B). Session state + the SessionSink now live in
+  // SessionStore (seam C, increment 5); App wires the store's sink into the bridge and keeps ownership
+  // of navigation (the router seam, increment 7). Placed before any early return so hook order is stable.
   const syncBridge: SyncBridge = {
-    session: {
-      getSessions: () => sessionsRef.current,
-      getActiveSession: () => activeSessionRef.current,
-      setSessions: (update) => setSessions(update),
-      setActiveSession: (update) => setActiveSession(update),
-      setSelectedSessionId: (update) => setSelectedSessionId(update),
-      upsertSession: (session, removeIds) => upsertSession(session, removeIds),
-      updateItemStatus: (itemId, statusValue) => updateItemStatus(itemId, statusValue),
-      applySessionUpdate: (sessionId, updated) => applySessionUpdate(sessionId, updated),
-      selfHealStalePatient: (sessionId, deadPatientId) => selfHealStalePatient(sessionId, deadPatientId),
-      scheduleCaptureProcessingRefresh: (sessionId) => scheduleCaptureProcessingRefresh(sessionId),
-      scheduleSessionProcessingRefresh: (sessionId) => scheduleSessionProcessingRefresh(sessionId),
-      scheduleMemoryRefresh: () => scheduleMemoryRefresh(),
-    },
+    session: sessionSink,
     navigateActiveSession: () => navigateScreen("active-session"),
   };
   // useRegisterSyncBridge re-points a stable ref at this object every render, so the engine always
-  // sees the latest session callbacks (a fresh object here is correct — freshness is the point).
+  // sees the latest navigation callback (a fresh object here is correct — freshness is the point).
   useRegisterSyncBridge(syncBridge);
 
   const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
@@ -2030,7 +1214,9 @@ export function App() {
         <AuthProvider>
           <CapabilitiesProvider>
             <SyncProvider>
-              <AppInner />
+              <SessionStoreProvider>
+                <AppInner />
+              </SessionStoreProvider>
             </SyncProvider>
           </CapabilitiesProvider>
         </AuthProvider>
@@ -2039,9 +1225,6 @@ export function App() {
   );
 }
 
-function isLocalAssignmentPatient(patientId: string) {
-  return patientId.startsWith("mock-") || patientId.startsWith("local-patient-") || patientId === "current-session-patient";
-}
 
 function captureContextLabel(session: CaptureSession | null, screen: Screen, viewedPatient: { id: string; name: string } | null, t: Translator) {
   // On a patient's file the footer captures for *them* (a new visit) — make that explicit. The patient
@@ -2053,9 +1236,6 @@ function captureContextLabel(session: CaptureSession | null, screen: Screen, vie
   return t("capture.capturingForToday", { name: patient });
 }
 
-function createClientSideId() {
-  return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
 
 /**
  * This session's 1-based chronological rank among its patient's sessions (so the capture header can
