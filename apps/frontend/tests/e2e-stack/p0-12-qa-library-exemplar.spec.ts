@@ -65,10 +65,13 @@ test.describe("P0-12 Q&A library + retrieval-grounded draft", () => {
       )
       .toBe(true);
 
-    // The provenance chip is visible in the inbox UI.
+    // The provenance chip is visible in the inbox UI. The thread has no treating doctor (the
+    // patient has no visits), so it lives under the CLINIC scope — the default "Mine" scope is
+    // correctly empty (the API poll above used scope=all for the same reason).
     await staff.locator('[data-testid="qa-tab-inbox"]').click();
     const inbox = staff.locator('[data-testid="qa-inbox"]');
-    await expect(inbox.getByText("Exemplar Patient")).toBeVisible({ timeout: 15_000 });
+    await inbox.getByRole("button", { name: "Clinic" }).click();
+    await expect(inbox.getByText("Exemplar Patient").first()).toBeVisible({ timeout: 15_000 });
     await expect(inbox.locator('[data-testid="qa-draft-provenance"]').first()).toBeVisible();
 
     // Approve + send the doctor-verified reply (the draft already carries the template guidance).
