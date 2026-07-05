@@ -61,6 +61,16 @@ export function isNotFoundError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+/**
+ * True when an error is an auth/permission failure (401/403). A 401 surfacing to a caller means
+ * the apiFetch refresh path already failed; a 403 means the token's membership/role can't do this
+ * (e.g. a stored session referencing a tenant that no longer exists). Retrying won't fix either —
+ * only signing in again will — so the outbox must not present these as connectivity problems.
+ */
+export function isAuthError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
 export async function loginWithPersona(persona: Persona, tier: DevTier = "pro") {
   const response = await fetch(`${API_BASE}/auth/dev-login`, {
     method: "POST",
@@ -175,7 +185,7 @@ export async function uploadCapture(apiFetch: ApiFetch, clientCaptureId: string,
     method: "POST",
     body: form,
   });
-  if (!response.ok) throw new Error("Capture upload failed");
+  if (!response.ok) throw new ApiError("Capture upload failed", response.status);
   return normalizeUploadResult((await response.json()) as { session: Record<string, unknown>; item: Record<string, unknown> });
 }
 

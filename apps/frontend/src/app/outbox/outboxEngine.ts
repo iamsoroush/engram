@@ -1,6 +1,6 @@
 import type { CaptureDraft, PendingCapture, PendingOperation } from "../../domain/appTypes";
 import type { CaptureSession } from "../../domain/types";
-import { isNotFoundError } from "../../services/api/client";
+import { isAuthError, isNotFoundError } from "../../services/api/client";
 import {
   isLocalAssignmentPatient,
   isLocalSessionId,
@@ -185,8 +185,15 @@ export function createOutboxEngine({ storage, api, session, status, env }: Outbo
           updatedAt: env.now(),
           lastError: error instanceof Error ? error.message : env.t("capture.syncFailed"),
         }));
-        status.setSyncError(env.t("capture.syncNeedsRetry"));
-        status.setBackendReachable(false);
+        if (isAuthError(error)) {
+          // 401/403: the stored sign-in can't perform this — a connectivity framing ("trying to
+          // sync") would be a lie and the retry loop can't fix it. Say so; everything stays local
+          // and syncs automatically after the user signs in again.
+          status.setSyncError(env.t("capture.syncAuthNeeded"));
+        } else {
+          status.setSyncError(env.t("capture.syncNeedsRetry"));
+          status.setBackendReachable(false);
+        }
         failed = true;
       }
     }
@@ -285,10 +292,18 @@ export function createOutboxEngine({ storage, api, session, status, env }: Outbo
           await storage.updatePendingCapture(capture.id, (current) => ({ ...current, retryCount: current.retryCount + 1 }));
           session.updateItemStatus(capture.item.id, "saved");
           await rebuildLocalPendingSessions();
-          status.setBackendReachable(false);
-          status.setSyncError(env.t("capture.syncUploadFailed"));
+          if (isAuthError(uploadError)) {
+            // 401/403: not a connectivity problem — the stored sign-in is invalid for this clinic
+            // (e.g. a token from a wiped/other database) or the role can't capture. Tell the truth
+            // instead of "trying to sync"; captures stay local and sync after a fresh sign-in.
+            status.setSyncError(env.t("capture.syncAuthNeeded"));
+            status.toast(env.t("capture.toastSyncAuthNeeded"));
+          } else {
+            status.setBackendReachable(false);
+            status.setSyncError(env.t("capture.syncUploadFailed"));
+            status.toast(env.t("capture.toastSavedDeviceWillOrganize"));
+          }
           captureFailed = true;
-          status.toast(env.t("capture.toastSavedDeviceWillOrganize"));
           continue;
         }
       }

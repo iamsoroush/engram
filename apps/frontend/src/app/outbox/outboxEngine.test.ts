@@ -254,6 +254,38 @@ describe("outbox engine — capture upload", () => {
     expect(status.record.backendReachable[status.record.backendReachable.length - 1]).toBe(true);
   });
 
+  it("presents a 403 upload as an auth problem, not connectivity — and still heals after re-login", async () => {
+    const storage = makeFakeStorage();
+    const session = makeSessionSink();
+    const status = makeStatusSink();
+    let failNext = true;
+    const forbidden = new ApiError("Capture upload failed", 403);
+    const uploadCapture = vi.fn(async () => {
+      if (failNext) throw forbidden;
+      return { session: makeBackendSession("backend-sess-1", "backend-cap-1"), item: makeBackendSession("backend-sess-1", "backend-cap-1").items[0] };
+    });
+    const engine = createOutboxEngine({
+      storage: storage.port,
+      api: makeApi({ uploadCapture }),
+      session: session.sink,
+      status: status.sink,
+      env: makeEnv(),
+    });
+
+    // 403: capture stays queued locally, but the user sees the auth message and the backend is
+    // NOT declared unreachable (it answered — it refused).
+    await engine.saveDraft(noteDraft());
+    await new Promise((r) => setTimeout(r, 0));
+    expect(storage.captures.size).toBe(1);
+    expect(status.record.syncError).toContain("capture.syncAuthNeeded");
+    expect(status.record.backendReachable).not.toContain(false);
+
+    // After a fresh sign-in the same queued capture syncs untouched.
+    failNext = false;
+    await engine.processOutbox();
+    expect(storage.captures.size).toBe(0);
+  });
+
   it("skips a capture made under a different tenant instead of stranding the run", async () => {
     const storage = makeFakeStorage();
     const session = makeSessionSink();
