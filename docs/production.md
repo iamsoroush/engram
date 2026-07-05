@@ -180,6 +180,27 @@ Manual equivalent of a deploy:
 docker compose -f docker-compose.prod.yml -f docker-compose.prod.tls.yml --env-file .env.prod up -d --build
 ```
 
+### Iran deployment specifics (sanctions/filtering)
+
+Deploying from inside Iran hits several blocks — all handled, but know they exist (mirrors are flaky
+and change; swap them if one breaks):
+
+- **Docker Hub blocked** → `registry-mirrors` in `/etc/docker/daemon.json` (set by the Ansible prep:
+  `focker.ir` primary, `docker.arvancloud.ir` fallback — Docker falls back across them).
+- **PyPI/Fastly flaky** → `PIP_INDEX_URL` (an Iranian pip mirror, e.g. `mirror-pypi.runflare.com/simple`)
+  is a build arg on the backend/ai-engine images, set in `.env.prod`.
+- **Ubuntu apt** → the default archive is usually reachable; the ArvanCloud apt mirror was often stale,
+  so prep leaves the defaults.
+- **GitHub private/unreachable from the host** → deliver code by **rsync** + `SKIP_GIT_PULL=1` (above).
+- **TLS via DNS-01 (not HTTP-01):** Let's Encrypt's inbound HTTP/TLS-ALPN **multi-perspective** validation
+  is unreliable from Iran (some LE vantage points can't route in). So `scripts/issue-cert.sh` (run by
+  `bootstrap.sh` before the stack starts) issues the LE cert through the **ArvanCloud DNS API** (acme.sh
+  `dns_arvan`) using `ARVAN_API_KEY` from `.env.prod`, installs it to `deploy/certs/` (git-ignored,
+  mounted into Caddy as `/certs`), and Caddy serves it **statically** (`tls /certs/…`) instead of
+  auto-ACME. acme.sh's cron auto-renews and reloads Caddy. The Arvan key must have **DNS access to the
+  domain** — verify with `GET napi.arvancloud.ir/cdn/4.0/domains?search=<domain>` (`Authorization:
+  Apikey <key>`); an empty `data:[]` means the key is for the wrong Arvan account/organization.
+
 Plain HTTP (dev/staging only, no TLS — set `PROD_FRONTEND_PORT=80`):
 
 ```sh

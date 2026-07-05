@@ -10,6 +10,11 @@
 # Required env: CADDY_SITE_ADDRESS (the hostname Caddy serves + auto-certs).
 
 {$CADDY_SITE_ADDRESS} {
+	# TLS: static cert issued out-of-band by acme.sh via DNS-01 (Arvan DNS API), mounted at /certs.
+	# Let's Encrypt's HTTP-01/TLS-ALPN-01 multi-perspective validation is unreliable from Iran (some LE
+	# vantage points can't route inbound), so we don't let Caddy auto-ACME. acme.sh (host) renews + reloads.
+	tls /certs/{$CADDY_SITE_ADDRESS}.crt /certs/{$CADDY_SITE_ADDRESS}.key
+
 	encode zstd gzip
 
 	# Uploads (audio/photo) — must match the frontend nginx client_max_body_size.

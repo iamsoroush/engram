@@ -51,3 +51,4 @@ apps/frontend/tsconfig.tsbuildinfo
 # contracts, evaluator verdicts, decision log). Durable outcomes get reconciled
 # into docs/ at close-out; the scaffolding itself stays untracked.
 .loop/
+deploy/certs/

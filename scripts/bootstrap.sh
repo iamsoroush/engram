@@ -75,6 +75,9 @@ else
     read -rsp "AI gateway API key (AI_ENGINE_TRANSCRIPTION_API_KEY): " GATEWAY_API_KEY; echo
   fi
   [ -n "${GATEWAY_API_KEY:-}" ] || die "GATEWAY_API_KEY is required to create a fresh .env.prod."
+  if [ -z "${ARVAN_API_KEY:-}" ]; then
+    read -rsp "ArvanCloud API key for DNS-01 TLS certs (blank = self-signed placeholder): " ARVAN_API_KEY; echo
+  fi
 
   safe() { openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | cut -c1-"${1:-40}"; }
   PG_PASS="$(safe 40)"; MINIO_PASS="$(safe 40)"; MINIO_USER="engram-prod"
@@ -87,6 +90,11 @@ else
 CADDY_SITE_ADDRESS=$DOMAIN
 PROD_FRONTEND_PORT=127.0.0.1:8080
 PROD_VITE_API_URL=
+# TLS cert via DNS-01 (ArvanCloud DNS API) — Let's Encrypt inbound validation is unreliable from Iran.
+ARVAN_API_KEY=$ARVAN_API_KEY
+ACME_EMAIL=admin@$DOMAIN
+# In-country Docker build: PyPI/Fastly is flaky from Iran → Iranian pip mirror.
+PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
 
 POSTGRES_DB=engram
 POSTGRES_USER=engram
@@ -136,14 +144,21 @@ EOF
   log ".env.prod created (chmod 600). BACK UP ITS SECRETS — lose BACKUP_ENCRYPTION_KEY and encrypted backups are unrecoverable."
 fi
 
-# --- 4. pre-deploy reminder + best-effort DNS sanity -------------------------------------------
-log "reminder: '$DOMAIN' must already resolve to THIS server (A record, DNS-only) and ports 80/443 must be open, or Caddy can't get a TLS cert."
-if command -v dig >/dev/null; then
-  resolved="$(dig +short "$DOMAIN" | tail -n1 || true)"
-  here="$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || true)"
-  if [ -n "$resolved" ] && [ -n "$here" ] && [ "$resolved" != "$here" ]; then
-    log "WARNING: $DOMAIN resolves to '$resolved' but this host looks like '$here'. Cert issuance may fail until DNS matches."
-  fi
+# --- 4. TLS cert (DNS-01) — issue BEFORE the stack starts so Caddy has a cert to serve ---------
+# From Iran, Let's Encrypt's inbound HTTP/TLS-ALPN validation is unreliable (multi-perspective checks
+# fail), so certs are issued via DNS-01 through the ArvanCloud DNS API. Caddy serves the static cert
+# from deploy/certs/ (it does NOT auto-ACME). Runs when ARVAN_API_KEY is set. See scripts/issue-cert.sh.
+log "reminder: '$DOMAIN' must resolve to THIS server (A record) so your users can reach it."
+if grep -q '^ARVAN_API_KEY=.\+' "$ENV_FILE"; then
+  log "issuing/refreshing the TLS cert via DNS-01 (Arvan) before bringing the stack up"
+  "$REPO_ROOT/scripts/issue-cert.sh"
+else
+  log "WARNING: ARVAN_API_KEY not set — generating a SELF-SIGNED placeholder cert so Caddy can start"
+  log "         (browsers will warn). Set ARVAN_API_KEY in .env.prod and re-run for a trusted cert."
+  mkdir -p "$REPO_ROOT/deploy/certs"
+  openssl req -x509 -newkey rsa:2048 -nodes -days 90 \
+    -keyout "$REPO_ROOT/deploy/certs/$DOMAIN.key" -out "$REPO_ROOT/deploy/certs/$DOMAIN.crt" \
+    -subj "/CN=$DOMAIN" >/dev/null 2>&1 || true
 fi
 
 # --- 5. deploy ---------------------------------------------------------------------------------

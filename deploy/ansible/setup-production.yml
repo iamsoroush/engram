@@ -42,13 +42,15 @@
         groups: docker
         append: true
 
-    - name: Configure Docker registry mirror (ArvanCloud) + log rotation
+    # Docker Hub is blocked from Iran; Iranian mirrors are flaky and change, so list a couple and let
+    # Docker fall back across them (focker.ir worked when docker.arvancloud.ir was out of sync).
+    - name: Configure Docker registry mirrors (Iran) + log rotation
       ansible.builtin.copy:
         dest: /etc/docker/daemon.json
         mode: "0644"
         content: |
           {
-            "registry-mirrors": ["https://docker.arvancloud.ir"],
+            "registry-mirrors": ["https://focker.ir", "https://docker.arvancloud.ir"],
             "log-driver": "json-file",
             "log-opts": { "max-size": "10m", "max-file": "3" }
           }
