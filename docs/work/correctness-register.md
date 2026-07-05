@@ -37,7 +37,7 @@ Owner files: `services/ai_jobs/{intents,orchestration,recovery}.py`, the assignm
 `patients.py`, `prompts/transcription.py` (+ its eval), minimal chip variants inside existing
 resolver components + i18n.
 
-- The original incident cluster (Fixes 1–7 as specified in the Track-E brief): rename semantic,
+- The original incident cluster — full owner-approved spec in [redteam/incident-cluster.md](redteam/incident-cluster.md): rename semantic,
   echo-suppression correction detection, never-silent, «درستش»/«اصلاح بشه» explicit
   classification, meta-only capture exclusion flag (apply side in E2), orphan archive, dead-zone
   create+assign fallback.
