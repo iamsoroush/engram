@@ -89,9 +89,10 @@ situations** and on an **uploaded QA gallery** the clinic curates. That requires
 
 ## Appendix — golden-set scenario proposals (moved from eval-improvement-plan.md)
 
-> **PROPOSED — awaiting user approval** (CLAUDE.md §4). To be finalized against this epic's final
-> payload shape (retrieval exemplars added). Non-text fixtures (the `qa_revise` voice clips) are
-> **recorded by the user/clinician on request — never auto-generated**.
+> **APPROVED by the owner 2026-07-05** (CLAUDE.md §4 consultation closed) — both sets as written,
+> including the retrieval-grounded extensions; the shipped `qa_draft_eval.py` / `qa_revise_eval.py`
+> implement them. Non-text fixtures (the `qa_revise` voice clips) are **recorded by the
+> user/clinician on request — never auto-generated**.
 
 Shared framing (from the shipped jobs): both are **suggestions** the doctor reviews before anything
 reaches the patient. `qa_draft` writes a warm 2–4-sentence reply grounded in `patientQuestion` +
