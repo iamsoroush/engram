@@ -25,7 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Iterable
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
@@ -232,6 +232,18 @@ def _sessions_with_captures(tenant_id: uuid.UUID):
     )
 
 
+def _not_archived_patient(tenant_id: uuid.UUID, patient_id_column):
+    """Row predicate: the row's patient is not archived (M-P8).
+
+    The single decision that keeps insights consistent with the panel / smart lists / memory list,
+    all of which exclude archived patients. Rows with no patient (unassigned) are kept — they are a
+    separate axis, not an archived identity."""
+    archived = select(Patient.id).where(
+        Patient.tenant_id == tenant_id, Patient.status != PatientStatus.active
+    )
+    return or_(patient_id_column.is_(None), patient_id_column.notin_(archived))
+
+
 def _load_visits(db: DbSession, tenant_id: uuid.UUID, start: datetime, end: datetime) -> list[VisitRow]:
     """Real visits (a session with ≥1 non-deleted capture) whose clinical date falls in ``[start,end)``."""
     when = func.coalesce(Session.captured_at, Session.created_at)
@@ -246,6 +258,7 @@ def _load_visits(db: DbSession, tenant_id: uuid.UUID, start: datetime, end: date
         ).where(
             Session.tenant_id == tenant_id,
             Session.id.in_(_sessions_with_captures(tenant_id)),
+            _not_archived_patient(tenant_id, Session.patient_id),
             when >= start,
             when < end,
         )
@@ -299,6 +312,7 @@ def _last_visit_per_patient(db: DbSession, tenant_id: uuid.UUID) -> dict[uuid.UU
             Session.tenant_id == tenant_id,
             Session.patient_id.isnot(None),
             Session.id.in_(_sessions_with_captures(tenant_id)),
+            _not_archived_patient(tenant_id, Session.patient_id),
         ).group_by(Session.patient_id)
     ).all()
     return {pid: _aware(last) for pid, last in rows if pid is not None and last is not None}

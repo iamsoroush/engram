@@ -33,8 +33,13 @@ from app.services.patient_memory_intelligence import (
     stored_history,
     tenant_tier,
 )
+from app.services.patient_memory_intelligence import (
+    memory_matches_tier,
+    memory_status_reason,
+)
 from app.services.patient_safety import patient_safety_flags_payload
 from app.services.patients import get_patient, patient_payload
+from app.services.treatment_overlay import effective_treatments
 from app.services.session_contracts import session_is_complete
 from app.services.session_processing import capture_is_out_of_context
 from app.services.sessions import parse_uuid
@@ -239,6 +244,8 @@ def _row_payload(
     latest_capture_count: int,
     all_complete: bool,
     needs_input_items: list[dict[str, Any]],
+    tier: str,
+    memory_reason: str | None = None,
 ) -> dict[str, Any]:
     latest_visit_at = _session_sort_date(latest_session) if latest_session else None
     updated_at = max(
@@ -247,10 +254,13 @@ def _row_payload(
         if value is not None
     )
     summary = _summary_parts(latest_session, session_count, latest_capture_count)
-    # Prefer the persisted (mock) tier-aware memory summary; fall back to the rule-based chain
-    # whenever no memory has been generated yet, so the card is never empty.
-    stored_summary = persisted_summary(patient)
-    stored_source = memory_source(patient)
+    # Prefer the persisted tier-aware memory summary; fall back to the rule-based chain whenever no
+    # memory has been generated yet, so the card is never empty. Gate on tier (M-P12): a tier flip's
+    # leftover content (a Pro AI summary on a now-Basic tenant, or vice-versa) is NOT served — fall
+    # back to the rule-based summary until the memory is rebuilt for the current tier.
+    serve_stored = memory_matches_tier(patient, tier)
+    stored_summary = persisted_summary(patient) if serve_stored else None
+    stored_source = memory_source(patient) if serve_stored else None
     latest_metadata = None
     if latest_session is not None:
         latest_metadata = {
@@ -272,6 +282,10 @@ def _row_payload(
         "ruleBasedSummary": summary["rule_based_summary"],
         "metadataSentence": summary["metadata_sentence"],
         "memoryStatus": memory_status(patient),
+        # A machine-readable reason for a stuck `updating` (M-P6): `usage_limit` when a fair-use-parked
+        # capture job froze the rebuild, so the UI shows the usage-limit state instead of a static
+        # spinner. None for an ordinary in-flight rebuild.
+        "memoryStatusReason": memory_reason,
         "memoryUpdatedAt": memory_updated_at(patient),
         "latestSessionMetadata": latest_metadata,
         "latestSessionId": str(latest_session.id) if latest_session else None,
@@ -415,11 +429,24 @@ def list_patient_memory(
     tier = tenant_tier(db, principal.tenant_id)
     memory_changed = False
     items = []
+    from app.services.ai_jobs.orchestration import LINEUP_DISPATCH_PRIORITY, maybe_refresh_stale_patient_memory
+
     for patient in patients:
         patient_sessions = sessions_by_patient.get(patient.id, [])
-        # Basic memory is deterministic — finalized lazily once its imitated latency passes. Pro
-        # memory is written by the async patient_memory AI job; a read only finalizes Pro as a
-        # safety net when nothing is in flight (see can_finalize_on_read).
+        # M-P1: the list read kicks a real Pro AI rebuild when a visit changed since the last build
+        # (mirrors the detail read-trigger) so the list never has to fabricate content. Self-gates to
+        # Pro + dedups; Basic no-ops. Line-up priority — below an opened patient, above the sweep.
+        maybe_refresh_stale_patient_memory(
+            db,
+            tenant_id=principal.tenant_id,
+            patient=patient,
+            sessions=patient_sessions,
+            created_by_user_id=principal.user_id,
+            priority=LINEUP_DISPATCH_PRIORITY,
+        )
+        # Basic memory is deterministic — finalized lazily once its imitated latency passes. For Pro
+        # this is only a safety net that DE-SPINS a stuck `updating` (never fabricates content over a
+        # real AI memory — M-P1), and only when nothing is in flight (see can_finalize_on_read).
         if can_finalize_on_read(db, tenant_id=principal.tenant_id, patient=patient, tier=tier) and finalize_patient_memory_if_due(
             db, patient, patient_sessions, tier
         ):
@@ -443,6 +470,8 @@ def list_patient_memory(
                 all_complete=bool(patient_sessions)
                 and all(session_is_complete(session) for session in patient_sessions),
                 needs_input_items=_needs_input_items(str(patient.id), patient_sessions),
+                tier=tier,
+                memory_reason=memory_status_reason(db, tenant_id=principal.tenant_id, patient=patient),
             )
         )
     if memory_filter == "needs-input":
@@ -575,10 +604,10 @@ def _treatment_phrase(treatment: dict[str, Any]) -> str | None:
 
 
 def _session_treatment_phrases(session: Session, limit: int = 2) -> list[str]:
-    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
-    raw = metadata.get("treatments")
+    # Read the OVERLAID treatments (M-P4): a clinician-corrected dose/product/area must reach the
+    # line-up card's "since last visit" recap, not the raw AI artifact (the AES-1101 safety class).
     phrases: list[str] = []
-    for item in raw if isinstance(raw, list) else []:
+    for item in effective_treatments(session):
         if isinstance(item, dict) and (phrase := _treatment_phrase(item)):
             phrases.append(phrase)
         if len(phrases) >= limit:
@@ -706,6 +735,8 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
         ),
         all_complete=bool(sessions) and all(session_is_complete(session) for session in sessions),
         needs_input_items=_needs_input_items(str(patient.id), list(sessions)),
+        tier=tier,
+        memory_reason=memory_status_reason(db, tenant_id=principal.tenant_id, patient=patient),
     )
     timeline_sessions = []
     for session in sessions:
@@ -742,8 +773,9 @@ def get_patient_memory_detail(db: DbSession, principal: CurrentPrincipal, patien
     ]
     # The "patient history" brief: prefer the persisted one (Pro AI job output, or a finalized Basic
     # brief); fall back to generating it on read when none is stored yet. Status mirrors the memory
-    # lifecycle so the frontend can animate updating→ready.
-    stored = stored_history(patient)
+    # lifecycle so the frontend can animate updating→ready. Gate on tier (M-P12): don't serve a prior
+    # tier's stored history after a tier flip — regenerate for the current tier instead.
+    stored = stored_history(patient) if memory_matches_tier(patient, tier) else None
     history = dict(stored) if stored is not None else generate_patient_memory(patient, list(sessions), tier)["history"]
     history["status"] = memory_status(patient)
     history["updatedAt"] = memory_updated_at(patient)

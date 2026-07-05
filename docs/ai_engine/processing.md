@@ -264,9 +264,11 @@ history.
 
 - **Incremental input.** The payload (`build_patient_memory_job_input`) carries the patient's
   *prior* memory plus compact per-visit briefs (each session's distilled summary + capture
-  counts/types **+ that visit's `treatments[]`** from synthesis, so recall is grounded —
-  "last visit: Voluma 0.3 mL, left cheek"), not raw transcripts — so cost stays ~flat as visits
-  grow. It also includes a `deterministicFallback` (the backend's deterministic generator output).
+  counts/types **+ that visit's overlaid `treatments[]`** — `effective_treatments`, so a
+  clinician-corrected dose/lot grounds recall — "last visit: Voluma 0.3 mL, left cheek"), not raw
+  transcripts — so cost stays ~flat as visits grow. The patient's **name is deliberately NOT sent**
+  to the model (it is shown beside the text; a rename must never strand a baked-in name). It also
+  includes a `deterministicFallback` (the backend's deterministic generator output).
 - **Worker** (`completed_patient_memory_output`): when a gateway is configured it asks the model for
   strict JSON (`summary` + `history{snapshot, sections, visits}` + a compact `card{storySoFar,
   rightNow, flags}`) and validates it; if the gateway is absent or the response is unusable it
@@ -278,10 +280,12 @@ history.
   (`cross_visit_synthesis`) + self-gating (no capture job in flight, dedup on an in-flight
   `patient_memory` job); the *triggers* are three priority classes (lower Celery/Redis
   `priority_steps` number is served first, so the more-imminently-viewed patient jumps the queue):
-  - **1st class — patient OPENED + stale** (`priority` 0): the detail endpoint / line-up recap calls
-    `maybe_refresh_stale_patient_memory` when memory is **stale** (`patient_memory_is_stale`: a visit
-    changed since the last completed build), kicking the rebuild (`updating → ready`) at the moment a
-    clinician is reading it.
+  - **1st class — patient OPENED + stale** (`priority` 0): the detail endpoint **and the Patients
+    list** call `maybe_refresh_stale_patient_memory` when memory is **stale**, kicking the rebuild
+    (`updating → ready`) at the moment a clinician is reading it. **Staleness** (`patient_memory_is_stale`)
+    fires on any of three signals, matching the build snapshot: a visit's content changed after the
+    build; the built-from **session-id set changed** (a reassignment/de-effect removed a visit — no
+    remaining timestamp moves, so the set is the only signal); or the patient was **renamed**.
   - **2nd class — patient ADDED TO THE LINE-UP + stale** (`priority` 3): `create_worklist_entry`
     fires the same refresh when staff queue a patient, so the brief is ready by the time the clinician
     taps through.
@@ -293,11 +297,22 @@ history.
   All three coalesce to ≤1 job per patient per window; capture/session jobs keep priority 0, so a
   memory backlog never delays interactive processing. See `READ_/LINEUP_/SWEEP_DISPATCH_PRIORITY`.
 - **Completion** (`complete_patient_memory_worker_job` → `apply_patient_memory_output`) writes
-  `patients.memory` (`status:"ready", summary, history, card, source, updated_at`); the read path
-  serves the stored brief, and the detail endpoint layers the **line-up card** on top (see below).
-- **Basic** never runs this job — its summary/history are deterministic, finalized lazily on read. A
-  Pro read only finalizes deterministically as a safety net when nothing is in flight, so Pro memory
-  is never permanently stuck in `updating` (even if a gateway-bound job died).
+  `patients.memory` (`status:"ready", summary, history, card, source, updated_at, built_from_sessions,
+  built_from_name`). **Freshness is stamped from the build-START snapshot** (INV-SNAPSHOT), not
+  completion time: `updated_at`, the session-id set, and the name are frozen when the worker *starts*
+  the job (carried on `result_metadata.memory_snapshot`) — so a visit that changed *while the job
+  ran* leaves `session.updated_at` newer than the memory and it correctly reads as stale.
+- **Reassignment / de-effect invalidates the former patient** (INV-INVALIDATE): when a visit's
+  patient changes (`apply_active_patient_assignment` — the shared staff/AI/capture-delete chokepoint),
+  the former patient's memory is marked `updating`; its removal-aware staleness (the session set no
+  longer matches) then drives the rebuild so the brief stops quoting a visit that is no longer theirs.
+- **Basic** never runs this job — its summary/history are deterministic, finalized lazily on read
+  (freshness stamped from the same inputs snapshot). A **Pro read never fabricates** deterministic
+  content: the safety net only **de-spins** a stuck `updating` back to `ready` while **preserving the
+  prior AI summary/history/card and leaving `updated_at` untouched** — so a real memory is never
+  overwritten with canned text and the memory stays stale until the AI rebuild lands. Persisted
+  summary/history are **tier-gated** (`memory_matches_tier`): after a Basic⇄Pro flip the prior tier's
+  content is not served; an unknown/missing tier resolves to **Basic** (fail-closed).
 
 ### Line-up card (Pro, worklist recap)
 
@@ -307,8 +322,13 @@ AI job's `card` projection — persisted on the patient with a deterministic his
 so it is never blank. **`hero` and `sinceLastVisit` are computed deterministically (no LLM)** at read
 time so they stay fresh against current captures: `hero` is the most recent clear *after*-photo of the
 primary (most-photographed) area, else the latest photo (OOC + product-label shots excluded);
-`sinceLastVisit` is a delta line grounded in the latest visit's `treatments[]`. `status` mirrors the
-memory lifecycle so the card animates `updating → ready`. Basic tenants get no card.
+`sinceLastVisit` is a delta line grounded in the latest visit's **overlaid** `treatments[]`
+(`effective_treatments`, so a corrected dose reaches the recap). `status` mirrors the memory lifecycle
+so the card animates `updating → ready`. Basic tenants get no card.
+
+When a rebuild is frozen because a capture job is **fair-use-parked** (budget exhausted), the memory
+row carries `memoryStatusReason: "usage_limit"` instead of an eternal `updating`, so the UI maps it to
+the usage-limit state.
 
 ## Q&A draft + voice edit (`qa_draft` / `qa_revise`, Pro)
 

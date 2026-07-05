@@ -50,7 +50,10 @@ prior visit's before/after — with **Start visit** (creates a session already a
 patient and marks the entry seen) and `Open full timeline`. `Done` clears an entry; reception can
 remove one. A pure consumer (doctor) with an empty queue sees no box at all, and the capture bar
 always still starts a fresh session — a convenience lane, never a gate. No time slots; not a
-scheduler. Backend: `worklist_entries` + `GET /api/v1/clinic/members`
+scheduler. **Archived patients never appear** and cannot be lined up: the list excludes non-active
+patients, line-up creation rejects an archived patient, and archiving a patient auto-cancels its
+still-waiting entries — so the worklist agrees with the memory list / smart lists / panel, which all
+filter to active patients. Backend: `worklist_entries` + `GET /api/v1/clinic/members`
 ([aes-basic-api §E9](../../backend/aes-basic-api.md)).
 
 Today is session-first. A card may include patient context, but the primary object is the session or visit, not the patient. Do not show generic patient cards that hide the session identity.
@@ -316,11 +319,13 @@ Language: Pro AI copy is written in the tenant's report language (a future dedic
 
 ### Updating → ready state
 
-A new capture (or an assignment change) marks the patient's memory `updating`; it returns to `ready` once the (mock) job settles. The surfaces never blank out:
+A new capture, an **assignment change** (which also refreshes the *former* patient's memory), or a
+**rename** marks the patient's memory `updating`; it returns to `ready` once the job settles. The surfaces never blank out:
 
 - Existing summary/history stays legible while a soft shimmer sweeps the text, an `Organizing memory` cue shows, and the ✨ pulses (Pro).
-- When it settles, the refreshed text fades in. Pro keeps the prior AI text visible during the refresh (never downgraded to the structural fallback); a patient with no memory yet shows the structural fallback first, then upgrades.
+- When it settles, the refreshed text fades in. Pro keeps the prior AI text visible during the refresh (never downgraded to the structural fallback, and a list read never overwrites it with canned text); a patient with no memory yet shows the structural fallback first, then upgrades.
 - Copy stays timeless and never exposes job/AI failure language, per [states](../states.md#assistant-state-language). A stale refresh never becomes a Needs-input item.
+- When the refresh is frozen because a capture job is **fair-use-parked** (budget exhausted), the row carries `memoryStatusReason: "usage_limit"` so the surface shows the usage-limit state (and resumes polling with backoff) instead of an indefinite spinner.
 
 Timeline sessions may expose source captures and review details after the user opens them, but the Clinical Memory main view stays compact.
 

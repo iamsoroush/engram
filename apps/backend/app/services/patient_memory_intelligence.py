@@ -126,14 +126,37 @@ def _clip_sentences(text: str | None, max_sentences: int) -> str:
 
 
 def tenant_tier(db: DbSession, tenant_id: uuid.UUID) -> str:
-    """Return the tenant's intelligence tier ('basic'|'pro'); memory artifacts are AI on Pro only."""
+    """Return the tenant's intelligence tier ('basic'|'pro'); memory artifacts are AI on Pro only.
+
+    Fail-closed (M-P12): an unknown/missing tier resolves to ``basic``, never Pro — a Basic tenant
+    must never be served (or dispatched) a Pro AI memory on account of a bad tier string.
+    """
     tier = db.execute(select(Tenant.tier).where(Tenant.id == tenant_id)).scalar_one_or_none()
-    return tier if tier in {"basic", "pro"} else "pro"
+    return tier if tier in {"basic", "pro"} else "basic"
 
 
 def memory_status(patient: Patient) -> str:
     mem = _memory(patient)
     return "updating" if mem and mem.get("status") == "updating" else "ready"
+
+
+def memory_mode(patient: Patient) -> str | None:
+    """The tier a patient's stored memory was written for ('pro'|'basic'), if any."""
+    mem = _memory(patient)
+    mode = mem.get("mode") if mem else None
+    return mode if mode in {"pro", "basic"} else None
+
+
+def memory_matches_tier(patient: Patient, tier: str) -> bool:
+    """Whether the stored memory was written for the tenant's CURRENT tier (M-P12).
+
+    A tier flip leaves the prior tier's persisted content behind (a Pro AI summary on a now-Basic
+    tenant, or a Basic mock on a now-Pro tenant); callers must not serve mismatched content. Memory
+    with no recorded mode (legacy / not yet built) is treated as matching so the rule-based fallback
+    still shows something.
+    """
+    mode = memory_mode(patient)
+    return mode is None or mode == tier
 
 
 def persisted_summary(patient: Patient) -> str | None:
@@ -191,6 +214,43 @@ def patient_has_pending_capture_jobs(db: DbSession, *, tenant_id: uuid.UUID, pat
     return row is not None
 
 
+def patient_capture_jobs_parked(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> bool:
+    """Whether a blocking capture job for this patient is PARKED by the fair-use budget gate (M-P6).
+
+    A parked job stays ``queued`` (never sent to Celery) with ``ai_usage_deferred`` set, so it keeps
+    ``patient_has_pending_capture_jobs`` True and memory frozen in ``updating`` for as long as the
+    budget is exhausted. Callers surface a usage-limit reason instead of an eternal spinner.
+    """
+    session_ids = [row[0] for row in db.execute(
+        select(Session.id).where(Session.tenant_id == tenant_id, Session.patient_id == patient_id)
+    ).all()]
+    if not session_ids:
+        return False
+    rows = db.execute(
+        select(AiJob.result_metadata).where(
+            AiJob.tenant_id == tenant_id,
+            AiJob.session_id.in_(session_ids),
+            AiJob.capture_id.isnot(None),
+            AiJob.status.in_([AiJobStatus.queued, AiJobStatus.running]),
+        )
+    ).all()
+    return any(isinstance(row[0], dict) and row[0].get("ai_usage_deferred") for row in rows)
+
+
+def memory_status_reason(db: DbSession, *, tenant_id: uuid.UUID, patient: Patient) -> str | None:
+    """A machine-readable reason for a stuck ``updating`` memory the UI can map (M-P6).
+
+    ``"usage_limit"`` when the block is a fair-use-parked capture job (so the frontend shows the
+    usage-limit state and resumes polling with backoff instead of a static spinner). ``None`` for an
+    ordinary in-flight rebuild.
+    """
+    if memory_status(patient) != "updating":
+        return None
+    if patient_capture_jobs_parked(db, tenant_id=tenant_id, patient_id=patient.id):
+        return "usage_limit"
+    return None
+
+
 def can_finalize_on_read(db: DbSession, *, tenant_id: uuid.UUID, patient: Patient, tier: str) -> bool:
     """Whether a read may deterministically finalize an `updating` memory.
 
@@ -215,8 +275,37 @@ def _session_changed_at(session: Session) -> datetime | None:
     return session.updated_at or session.created_at or session.captured_at
 
 
+def _sessions_changed_at(sessions: list[Session]) -> datetime | None:
+    """The newest content-change time across a patient's sessions (None when there are none)."""
+    return max((changed for session in sessions if (changed := _session_changed_at(session))), default=None)
+
+
+def _memory_built_session_ids(patient: Patient) -> set[str] | None:
+    """The set of session ids the current memory was last built from, if recorded (else None)."""
+    mem = _memory(patient)
+    ids = mem.get("built_from_sessions") if isinstance(mem, dict) else None
+    return {str(i) for i in ids} if isinstance(ids, list) else None
+
+
+def memory_build_snapshot(patient: Patient, sessions: list[Session], *, now: datetime | None = None) -> dict[str, Any]:
+    """Freeze the identity of the inputs a memory build reads, at build-START time (INV-SNAPSHOT).
+
+    Carried from payload-build to completion and written verbatim onto the finalized memory, so its
+    freshness means "inputs as of build T", never "completed at T". Records the newest content-change
+    time (``updated_at``), the exact session-id set, and the patient's name at build — the three
+    signals :func:`patient_memory_is_stale` consults to detect a change that landed *after* the build
+    started (an added/edited visit, a reassignment/de-effect that removed one, a rename).
+    """
+    changed = _sessions_changed_at(sessions)
+    return {
+        "updated_at": _iso(changed or now or _now()),
+        "session_ids": sorted(str(session.id) for session in sessions),
+        "display_name": patient.display_name,
+    }
+
+
 def patient_memory_is_stale(patient: Patient, sessions: list[Session]) -> bool:
-    """Whether a visit changed since this patient's memory was last *built* (→ refresh is due).
+    """Whether the patient's memory no longer reflects its inputs (→ a refresh is due).
 
     Drives both triggers that replaced the per-capture dispatch: the read-trigger (patient page /
     line-up opens) and the quiescence sweep. "Built" means a completed memory write — its
@@ -224,14 +313,30 @@ def patient_memory_is_stale(patient: Patient, sessions: list[Session]) -> bool:
     is mid-flight still reads as stale, and the per-patient dedup (not this check) prevents a
     duplicate dispatch. A patient with no visits is never stale; a patient with visits but no
     memory yet always is.
+
+    Three change signals, matching the build snapshot (:func:`memory_build_snapshot`):
+    * a visit's content changed *after* the build (addition/edit) — ``updated_at`` comparison;
+    * the session-id SET changed (a reassignment/de-effect removed one, or one was added) — this is
+      what makes a former patient's memory stale on reassignment (M-P2); removals never move any
+      remaining session's timestamp, so the set is the only signal;
+    * the patient was renamed since the build (M-P9), so cached prose/name is refreshed.
     """
     if not sessions:
         return False
     last_built = _parse_iso(memory_updated_at(patient))
     if last_built is None:
         return True
-    latest_change = max((changed for session in sessions if (changed := _session_changed_at(session))), default=None)
-    return latest_change is not None and latest_change > last_built
+    latest_change = _sessions_changed_at(sessions)
+    if latest_change is not None and latest_change > last_built:
+        return True
+    built_ids = _memory_built_session_ids(patient)
+    if built_ids is not None and built_ids != {str(session.id) for session in sessions}:
+        return True
+    mem = _memory(patient)
+    built_name = mem.get("built_from_name") if isinstance(mem, dict) else None
+    if isinstance(built_name, str) and built_name != (patient.display_name or ""):
+        return True
+    return False
 
 
 # --------------------------------------------------------------------------- content generators
@@ -420,8 +525,17 @@ def finalize_patient_memory_if_due(
     *,
     now: datetime | None = None,
 ) -> bool:
-    """If memory is ``updating`` and past its imitated latency, write canned content and flip to
-    ``ready``. Returns True when it changed (caller should ensure the unit of work commits)."""
+    """Settle a memory stuck in ``updating`` past its imitated latency. Tier-aware.
+
+    Basic memory *is* deterministic, so this writes the canned content and flips to ``ready``,
+    stamping freshness from the inputs snapshot (INV-SNAPSHOT), not completion time.
+
+    Pro memory is written by the async AI job; this is only the read-path SAFETY NET (see
+    ``can_finalize_on_read``). It MUST NEVER fabricate canned content over a real AI memory (M-P1):
+    it only de-spins the status back to ``ready`` while preserving the prior summary/history/card,
+    and it deliberately leaves ``updated_at`` untouched so the memory stays *stale* and the AI
+    rebuild is still due (the read-trigger / line-up / sweep dispatches it). Returns True on change.
+    """
     mem = _memory(patient)
     if not mem or mem.get("status") != "updating":
         return False
@@ -429,15 +543,27 @@ def finalize_patient_memory_if_due(
     ready_at = _parse_iso(mem.get("ready_at"))
     if ready_at is not None and moment < ready_at:
         return False
+    if tier == "pro":
+        # De-spin only — keep every prior content key, drop the updating markers, never re-stamp
+        # updated_at. If no real memory was ever built, the prior content is simply empty and the
+        # read-trigger's ``maybe_refresh_stale_patient_memory`` dispatches the first AI build.
+        preserved = {
+            key: value for key, value in mem.items() if key not in {"status", "updating_since", "ready_at"}
+        }
+        patient.memory = {**preserved, "status": "ready"}
+        return True
     content = generate_patient_memory(patient, sessions, tier, now=moment)
+    snapshot = memory_build_snapshot(patient, sessions, now=moment)
     patient.memory = {
         "status": "ready",
         "mode": content["mode"],
         "summary": content["summary"],
         "history": content["history"],
-        "card": _coerce_card(content.get("card")) if tier == "pro" else None,
+        "card": None,
         "source": content["source"],
-        "updated_at": _iso(moment),
+        "updated_at": snapshot["updated_at"],
+        "built_from_sessions": snapshot["session_ids"],
+        "built_from_name": snapshot["display_name"],
     }
     return True
 
@@ -503,7 +629,9 @@ def build_patient_memory_job_input(
         "language": language,
         "domain": domain,
         "patient": {
-            "displayName": patient.display_name,
+            # The patient's name is deliberately NOT sent to the model (M-P9): memory prose must
+            # never bake in a name that a later rename would strand — it is shown beside the text
+            # in the UI. The prompt reinforces "do not include the name".
             "visitCount": len(ordered),
             "firstSeen": _iso(_session_sort_date(ordered[-1])) if ordered else None,
             "priorMemory": prior_brief,
@@ -601,9 +729,19 @@ def apply_patient_memory_output(
     tier: str,
     *,
     now: datetime | None = None,
+    snapshot: dict[str, Any] | None = None,
 ) -> None:
-    """Write a completed patient-memory job's output onto the patient (status → ready)."""
+    """Write a completed patient-memory job's output onto the patient (status → ready).
+
+    ``snapshot`` is the build-START inputs snapshot (:func:`memory_build_snapshot`), carried on the
+    job. Its ``updated_at`` becomes the memory's freshness (INV-SNAPSHOT / M-P5) — so a visit that
+    changed *while the job ran* leaves ``session.updated_at`` newer than the memory and the memory
+    reads as stale — and its session-id set + name are recorded so a later reassignment/rename marks
+    the memory stale (M-P2 / M-P9). Absent a snapshot (recovery, legacy), freshness falls back to
+    completion time.
+    """
     moment = now or _now()
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
     summary = output.get("summary")
     history = output.get("history")
     source = output.get("source") if isinstance(output.get("source"), str) and output.get("source") else None
@@ -613,6 +751,7 @@ def apply_patient_memory_output(
         fallback = generate_patient_memory(patient, [], tier, now=moment)
         summary, history, source, card = fallback["summary"], fallback["history"], fallback["source"], fallback.get("card")
     coerced_history = _coerce_history(history, tier)
+    updated_at = snapshot.get("updated_at") if isinstance(snapshot.get("updated_at"), str) else _iso(moment)
     patient.memory = {
         "status": "ready",
         "mode": "pro" if tier == "pro" else "basic",
@@ -621,5 +760,7 @@ def apply_patient_memory_output(
         # Line-up card text is a Pro artifact; deterministic-history fallback keeps it populated.
         "card": _coerce_card(card, fallback=card_from_history(coerced_history)) if tier == "pro" else None,
         "source": source or (MOCK_AI_SOURCE if tier == "pro" else MOCK_DETERMINISTIC_SOURCE),
-        "updated_at": _iso(moment),
+        "updated_at": updated_at,
+        "built_from_sessions": snapshot.get("session_ids") if isinstance(snapshot.get("session_ids"), list) else None,
+        "built_from_name": snapshot.get("display_name") if isinstance(snapshot.get("display_name"), str) else None,
     }

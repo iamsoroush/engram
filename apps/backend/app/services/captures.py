@@ -212,6 +212,20 @@ def _archive_orphaned_ai_patient(db: DbSession, principal: CurrentPrincipal, pat
     if has_session is not None or has_capture is not None:
         return False
     patient.status = PatientStatus.archived
+    # Lifecycle invalidation on archive (M-P7 / M-P3 / Q-9 archive half): an archived identity leaves
+    # no live tokens or worklist rows behind. (An orphaned AI patient has no dependents by the guard
+    # above, so these are usually no-ops; kept so archive stays the single revocation chokepoint.)
+    from app.services.patient_surface import revoke_patient_shares_on_archive
+    from app.services.qa import revoke_patient_qa_threads_on_archive
+    from app.services.worklist import cancel_worklist_entries_on_archive
+
+    cancel_worklist_entries_on_archive(db, tenant_id=principal.tenant_id, patient_id=patient.id)
+    revoke_patient_shares_on_archive(
+        db, tenant_id=principal.tenant_id, patient_id=patient.id, actor_user_id=principal.user_id
+    )
+    revoke_patient_qa_threads_on_archive(
+        db, tenant_id=principal.tenant_id, patient_id=patient.id, actor_user_id=principal.user_id
+    )
     audit(
         db,
         tenant_id=principal.tenant_id,

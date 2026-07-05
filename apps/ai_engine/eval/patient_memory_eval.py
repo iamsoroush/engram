@@ -270,6 +270,20 @@ DOSE_TREND = {
     ],
 }
 
+# Moved visits (M-P11): after a wrong→right identity cleanup, the right patient's rebuild receives a
+# priorMemory that already recounts filler visit(s) PLUS new briefs for the SAME visits moved in — the
+# treatment must be recalled ONCE, not double-counted. Dedup is delegated to the model, so this is the
+# golden case that guards it.
+MOVED_VISITS = {
+    "display_name": "الهام قاسمی",
+    "priorMemory": {"summary": "بیمار در فروردین یک سی‌سی فیلر گونه چپ با ولوما گرفت."},
+    "visits": [
+        {"date": "2026-04-10", "brief": "یک سی‌سی فیلر گونه چپ با ولوما.",
+         "treatments": [{"product": "ژل", "brand": "ولوما", "quantity": 1, "unit": "سی‌سی", "area": "گونه چپ"}]},
+        {"date": "2026-06-01", "brief": "پیگیری؛ بیمار راضی بود، درمان جدیدی انجام نشد.", "treatments": []},
+    ],
+}
+
 CASES: list[dict[str, Any]] = [
     {
         "name": "two visits → recalls Voluma 0.3, no name leak, no invented flags",
@@ -335,6 +349,16 @@ CASES: list[dict[str, Any]] = [
         "patient": DOSE_TREND,
         "expect": {"requireCard": True, "noName": ["مینا", "صادقی"], "noLatinWords": True,
                    "containsAny": [["۲۰", "20"], ["۲۴", "24", "از ۲۰ به ۲۴"]]},
+        "judge": True,
+    },
+    {
+        # Moved visits after a wrong→right cleanup (M-P11): the Voluma cheek filler is in BOTH the prior
+        # memory and a new brief for the same visit — it must be recalled, and the judge checks it is not
+        # double-counted as two separate treatments.
+        "name": "moved visits → treatment recalled once, not double-counted",
+        "patient": MOVED_VISITS,
+        "expect": {"requireCard": True, "noName": ["الهام", "قاسمی"], "noLatinWords": True,
+                   "containsAny": [["ولوما", "Voluma"]]},
         "judge": True,
     },
 ]

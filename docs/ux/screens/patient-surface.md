@@ -12,7 +12,13 @@ longer available"** screen (no existence leak, AES-403). A network/server failur
 ## Shared report — `/share/{token}`
 
 A read-only, immutable **curated snapshot** of one visit (AES-401/303): the payload is copied at
-share time, so later edits to the visit never leak. Rendering:
+share time, so later edits to the visit never leak. The snapshot is frozen, but the **link is
+lifecycle-aware**: reassigning or de-effecting the source visit **auto-revokes** every active share
+of it (so a token can never serve one patient's content under another's name), a media read
+re-checks **patient ownership** (not just tenant) and 404s a reassigned/deleted photo, and archiving
+a patient revokes its shares. A share whose source visit changed after it was frozen (a report
+correction / safety-flag addition) is flagged `stale` in the staff share list (needs-attention —
+review/re-share). Rendering:
 
 - Warm clinic header — initials logo, clinic name, a first-name greeting, visit title + date.
 - **Curated before/after photos** with their captions.
@@ -40,7 +46,7 @@ snapshot, so internals cannot appear through a UI bug.
 | Before/after media + captions | curated subset only |
 | "What we did" treatment lines | opt-in; plain words — generic by default, brands only when the clinic's include-brands setting is on ([account.md](account.md)); **never the treatment table** |
 | Assessment | opt-in, default **off** (clinician findings can alarm out of context) |
-| Lot / batch numbers | **always withheld** |
+| Lot / batch numbers | **always withheld** — incl. lot/batch tokens filtered out of an AI-prefilled photo caption server-side at snapshot time |
 | Confidence/uncertainty chips, carried-forward state, evidence/source links, corrections | **always withheld** |
 | National ID / DOB / other visits / raw captures / internal notes | **always withheld** |
 | Report status (`Complete`/`Updating`) | never — the patient gets a finished artifact |

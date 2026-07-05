@@ -410,6 +410,13 @@ def start_worker_job(
         "attempt": job.attempt_count,
         "started_at": now.isoformat(),
     }
+    if job.job_type == AiJobType.patient_memory:
+        # INV-SNAPSHOT / M-P5: freeze the memory build's inputs NOW (at start) and carry them to
+        # completion, so the finished memory's freshness reflects "inputs as of build T" and a visit
+        # that changes while the job runs correctly leaves the memory stale.
+        from app.services.ai_jobs.orchestration import patient_memory_job_snapshot
+
+        job.result_metadata = {**job.result_metadata, "memory_snapshot": patient_memory_job_snapshot(db, job)}
     if job.capture_id:
         capture = db.execute(
             select(Capture).where(Capture.id == job.capture_id, Capture.tenant_id == job.tenant_id)
