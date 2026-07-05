@@ -1648,6 +1648,13 @@ def fail_worker_job(
                 session.status = SessionStatus.failed
             else:
                 session.status = SessionStatus.processing
+    # A terminally-failed Q&A draft/revise must leave a VISIBLE failed state on its target question —
+    # otherwise the inbox shows "Drafting…" forever (the self-heal deliberately skips an in-flight
+    # draft). Delegated to services/qa so the state machine stays in one place (Q-7).
+    if job.job_type in (AiJobType.qa_draft, AiJobType.qa_revise) and not ai_job_retryable(job):
+        from app.services.qa import mark_qa_job_failed
+
+        mark_qa_job_failed(db, job)
     audit(
         db,
         tenant_id=job.tenant_id,

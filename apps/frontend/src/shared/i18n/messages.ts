@@ -1253,8 +1253,11 @@ const en: Dict = {
   "qa.awaitingRouting": "Awaiting routing.",
   "qa.linkAria": "Patient Q&A link",
   "qa.voiceApplyError": "Couldn’t apply your voice note.",
+  "qa.voiceReviseFailed": "Couldn’t apply your voice note — the draft is unchanged. Please edit it by hand or try again.",
   "qa.voiceTimeout": "Voice edit is taking longer than expected — try again.",
   "qa.voiceMicNeeded": "Microphone access is needed to record a voice note.",
+  "qa.draftFailedHint": "Draft didn’t generate — type a reply",
+  "qa.starterReply": "Starter reply — please review",
   // AES-410 — knowledge library + retrieval-grounded drafting
   "qa.tabInbox": "Inbox",
   "qa.tabLibrary": "Library",
@@ -2694,8 +2697,11 @@ const fa: Dict = {
   "qa.awaitingRouting": "در انتظار مسیریابی.",
   "qa.linkAria": "لینک پرسش‌وپاسخ بیمار",
   "qa.voiceApplyError": "اعمال یادداشت صوتی شما ممکن نشد.",
+  "qa.voiceReviseFailed": "اعمال یادداشت صوتی ممکن نشد — پیش‌نویس تغییری نکرد. لطفاً دستی ویرایش کنید یا دوباره تلاش کنید.",
   "qa.voiceTimeout": "ویرایش صوتی بیش از حد انتظار طول کشید — دوباره تلاش کنید.",
   "qa.voiceMicNeeded": "برای ضبط یادداشت صوتی، دسترسی به میکروفون لازم است.",
+  "qa.draftFailedHint": "پیش‌نویس تولید نشد — پاسخ را بنویسید",
+  "qa.starterReply": "پاسخ اولیه — لطفاً بازبینی کنید",
   // AES-410 — کتابخانهٔ دانش + نگارش مبتنی بر بازیابی
   "qa.tabInbox": "صندوق",
   "qa.tabLibrary": "کتابخانه",

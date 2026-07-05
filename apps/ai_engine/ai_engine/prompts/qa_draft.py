@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "2026-07-05.qa_draft.v2"
+PROMPT_VERSION = "2026-07-05.qa_draft.v3"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -27,6 +27,18 @@ def build(payload: dict[str, Any]) -> str:
             "in the context. Reassure when appropriate, reference the aftercare already given, and "
             "tell the patient to contact the clinic if symptoms worsen or they are worried. Sign off "
             f"as {qa.get('doctorName') or 'the clinic'}. Return ONLY the plain-text reply."
+        ),
+        # Unconditional cross-patient guard (Q-3): the doctor's PRIOR ANSWERS come from OTHER patients
+        # (they teach the doctor's VOICE, not facts), as do retrieved exemplars. This rule must render
+        # for EVERY draft — including a new clinic with zero exemplars — not only inside the exemplars
+        # block, or a dose/name from another patient's reply leaks into THIS one.
+        (
+            "CRITICAL cross-patient rule: the doctor's PRIOR ANSWERS and any retrieved exemplars are "
+            "OTHER patients' conversations. NEVER copy a specific dose, product, brand, lot/batch "
+            "number, appointment date, or a person's NAME from them into this reply — those facts "
+            "belong to someone else. Address only THIS patient; use only THIS PATIENT'S CONTEXT for any "
+            "patient-specific fact. If a specific number or product is not in this patient's own context "
+            "or question, give generic guidance and tell them to contact the clinic to confirm specifics."
         ),
     ]
     if exemplars:

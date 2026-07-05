@@ -75,8 +75,56 @@ export function PatientQaPage({ token }: { token: string }) {
   return <QaView token={token} payload={result.payload} onPosted={reload} />;
 }
 
+/** Localized chrome for the public Q&A page, matching the clinic's content language (Q-10). */
+function qaStrings(language: string | null, greetingName: string) {
+  const fa = (language || "").toLowerCase().startsWith("fa");
+  return fa
+    ? {
+        fa: true,
+        subtitle: "پرسش و پاسخ",
+        yourConversation: "گفتگوی شما",
+        empty: "هنوز پرسشی ندارید. از تیم مراقبت خود در پایین بپرسید.",
+        askHeading: "از تیم مراقبت خود بپرسید",
+        intro: "بین ویزیت‌ها سوالی دارید؟ اینجا بفرستید و کلینیک پاسخ می‌دهد. پاسخ‌ها پیش از نمایش، توسط پزشک شما بازبینی می‌شوند.",
+        placeholder: "مثلاً: ورم پیشانی‌ام طبیعی است؟",
+        yourQuestion: "پرسش شما",
+        sending: "در حال ارسال…",
+        send: "ارسال پرسش",
+        sent: "ارسال شد — کلینیک اینجا پاسخ می‌دهد.",
+        sendError: "ارسال پرسش ممکن نشد. لطفاً دوباره تلاش کنید.",
+        footer: greetingName
+          ? `لینک خصوصی برای ${greetingName} · فقط پیام‌های خودتان اینجا دیده می‌شود.`
+          : "لینک خصوصی · فقط پیام‌های خودتان اینجا دیده می‌شود.",
+        youAsked: "شما پرسیدید",
+        verified: "تأییدشده توسط کلینیک",
+        awaiting: "در انتظار پاسخ کلینیک…",
+        closed: "این پرسش توسط کلینیک بسته شد.",
+      }
+    : {
+        fa: false,
+        subtitle: "Questions & answers",
+        yourConversation: "Your conversation",
+        empty: "No questions yet. Ask your care team below.",
+        askHeading: "Ask your care team",
+        intro:
+          "Have a question between visits? Send it here and your clinic will reply. Replies are reviewed by your clinician before you see them.",
+        placeholder: "e.g. Is the swelling on my forehead normal?",
+        yourQuestion: "Your question",
+        sending: "Sending…",
+        send: "Send question",
+        sent: "Sent — your clinic will reply here.",
+        sendError: "Couldn’t send your question. Please try again.",
+        footer: `Private link${greetingName ? ` for ${greetingName}` : ""} · only your own messages appear here.`,
+        youAsked: "You asked",
+        verified: "verified by your clinic",
+        awaiting: "Waiting for your clinic to reply…",
+        closed: "This question was closed by your clinic.",
+      };
+}
+
 function QaView({ token, payload, onPosted }: { token: string; payload: QaThreadPayload; onPosted: () => void }) {
   const greetingName = firstName(payload.patientName);
+  const s = qaStrings(payload.language, greetingName);
   const [draft, setDraft] = React.useState("");
   const [posting, setPosting] = React.useState(false);
   const [justSent, setJustSent] = React.useState(false);
@@ -90,7 +138,7 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
     const { ok } = await askQuestion(token, question);
     setPosting(false);
     if (!ok) {
-      setPostError("Couldn’t send your question. Please try again.");
+      setPostError(s.sendError);
       return;
     }
     setDraft("");
@@ -99,7 +147,7 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
   };
 
   return (
-    <div className="patient-surface">
+    <div className="patient-surface" dir={s.fa ? "rtl" : "ltr"}>
       <div className="ps-shell">
         <header className="ps-head">
           <div className="ps-clinic">
@@ -108,7 +156,7 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
               <div className="ps-clinic-name" dir="auto">
                 {payload.clinic?.name || "Your clinic"}
               </div>
-              <div className="ps-clinic-sub">Questions &amp; answers</div>
+              <div className="ps-clinic-sub" dir="auto">{s.subtitle}</div>
             </div>
           </div>
           {greetingName ? (
@@ -119,43 +167,40 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
         </header>
 
         <main className="ps-body">
-          <section className="ps-sec" aria-label="Your conversation">
-            <h2>Your conversation</h2>
+          <section className="ps-sec" aria-label={s.yourConversation}>
+            <h2 dir="auto">{s.yourConversation}</h2>
             {payload.exchanges.length ? (
               <div className="psqa-thread">
                 {payload.exchanges.map((exchange) => (
-                  <ExchangeView key={exchange.id} exchange={exchange} />
+                  <ExchangeView key={exchange.id} exchange={exchange} s={s} />
                 ))}
               </div>
             ) : (
-              <p className="psqa-empty">No questions yet. Ask your care team below.</p>
+              <p className="psqa-empty" dir="auto">{s.empty}</p>
             )}
           </section>
 
           {/* Composer pinned at the bottom — newest at the end, like a chat thread. */}
-          <section className="ps-sec psqa-ask" aria-label="Ask a question">
-            <h2>Ask your care team</h2>
-            <p className="psqa-intro">
-              Have a question between visits? Send it here and your clinic will reply. Replies are reviewed by your
-              clinician before you see them.
-            </p>
+          <section className="ps-sec psqa-ask" aria-label={s.askHeading}>
+            <h2 dir="auto">{s.askHeading}</h2>
+            <p className="psqa-intro" dir="auto">{s.intro}</p>
             <div className="psqa-composer">
               <textarea
                 dir="auto"
                 value={draft}
-                placeholder="e.g. Is the swelling on my forehead normal?"
+                placeholder={s.placeholder}
                 onChange={(event) => {
                   setDraft(event.target.value);
                   setJustSent(false);
                 }}
-                aria-label="Your question"
+                aria-label={s.yourQuestion}
               />
               <button type="button" className="psqa-send" onClick={submit} disabled={!draft.trim() || posting}>
-                {posting ? "Sending…" : "Send question"}
+                {posting ? s.sending : s.send}
               </button>
-              {justSent ? <div className="psqa-sent">Sent — your clinic will reply here.</div> : null}
+              {justSent ? <div className="psqa-sent" dir="auto">{s.sent}</div> : null}
               {postError ? (
-                <div className="psqa-sent" style={{ color: "#b42318", background: "#fef3f2", borderColor: "#fecdc9" }}>
+                <div className="psqa-sent" dir="auto" style={{ color: "#b42318", background: "#fef3f2", borderColor: "#fecdc9" }}>
                   {postError}
                 </div>
               ) : null}
@@ -165,18 +210,18 @@ function QaView({ token, payload, onPosted }: { token: string; payload: QaThread
 
         <footer className="ps-foot">
           <LockIcon className="ps-ic sm" />
-          <span>Private link{greetingName ? ` for ${greetingName}` : ""} · only your own messages appear here.</span>
+          <span dir="auto">{s.footer}</span>
         </footer>
       </div>
     </div>
   );
 }
 
-function ExchangeView({ exchange }: { exchange: QaExchange }) {
+function ExchangeView({ exchange, s }: { exchange: QaExchange; s: ReturnType<typeof qaStrings> }) {
   return (
     <div className="psqa-exchange">
       <div className="psqa-bubble psqa-q">
-        <div className="psqa-role">You asked</div>
+        <div className="psqa-role" dir="auto">{s.youAsked}</div>
         <div dir="auto">{exchange.question}</div>
         {exchange.askedAt ? <div className="psqa-time">{formatDateTime(exchange.askedAt)}</div> : null}
       </div>
@@ -186,7 +231,7 @@ function ExchangeView({ exchange }: { exchange: QaExchange }) {
             <span dir="auto">{exchange.reply.byline}</span>
             {exchange.reply.verified ? (
               <span className="psqa-verified">
-                <CheckIcon className="ps-ic sm" /> verified by your clinic
+                <CheckIcon className="ps-ic sm" /> {s.verified}
               </span>
             ) : null}
           </div>
@@ -194,9 +239,9 @@ function ExchangeView({ exchange }: { exchange: QaExchange }) {
           {exchange.reply.repliedAt ? <div className="psqa-time">{formatDateTime(exchange.reply.repliedAt)}</div> : null}
         </div>
       ) : exchange.status === "awaiting" ? (
-        <div className="psqa-await">Waiting for your clinic to reply…</div>
+        <div className="psqa-await" dir="auto">{s.awaiting}</div>
       ) : (
-        <div className="psqa-await">This question was closed by your clinic.</div>
+        <div className="psqa-await" dir="auto">{s.closed}</div>
       )}
     </div>
   );

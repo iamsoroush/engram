@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "2026-07-04.qa_revise.v1"
+PROMPT_VERSION = "2026-07-05.qa_revise.v2"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -21,6 +21,14 @@ def build(payload: dict[str, Any]) -> str:
                 "language. Keep the doctor's sign-off. Do NOT invent clinical facts, doses, or products "
                 "not present in the current draft, the spoken note, or the context. "
                 "Return STRICT JSON only: {\"mode\":\"revise\"|\"replace\",\"reply\":\"<final reply text>\"}."
+            ),
+            # Cross-patient guard (Q-3): the PRIOR ANSWERS below are OTHER patients' conversations, kept
+            # only to match the doctor's voice. Never copy a dose, product, brand, lot, date, or a NAME
+            # from them (or anywhere outside the current draft + spoken note) into this reply.
+            (
+                "CRITICAL cross-patient rule: the PRIOR ANSWERS are OTHER patients' conversations — use "
+                "them ONLY for the doctor's tone. NEVER copy a specific dose, product, brand, lot/batch "
+                "number, date, or a person's NAME from them into this reply; those belong to someone else."
             ),
             f"Patient question:\n{qa.get('patientQuestion', '')}",
             f"Current draft reply:\n{qa.get('currentDraft', '')}",

@@ -82,6 +82,19 @@ export function DoctorQaInbox({
     };
   }, [apiFetch, scope, refresh, onChanged, t]);
 
+  // Poll while any pending question is still drafting (Q-7): the initial draft runs in the background
+  // and the inbox otherwise never learns when it lands or terminally fails. One deferred reload per
+  // load settles the state; it stops as soon as nothing is drafting (ready / failed → no reschedule).
+  React.useEffect(() => {
+    if (!loaded) return;
+    const stillDrafting = items.some(
+      (item) => item.pendingQuestion && ["pending", "none"].includes(item.pendingQuestion.draftStatus),
+    );
+    if (!stillDrafting) return;
+    const handle = window.setTimeout(reload, 3000);
+    return () => window.clearTimeout(handle);
+  }, [items, loaded, reload]);
+
   const handleRoutingMode = async (mode: "ai_default" | "manual") => {
     try {
       setSettings(await setQaRoutingMode(apiFetch, mode));
@@ -321,6 +334,11 @@ function QaThreadCard({
   const timeline = buildTimeline(item.messages, item.visits);
   const draftPending = pending?.draftStatus === "pending" || pending?.draftStatus === "none";
   const draftReady = pending?.draftStatus === "ready";
+  // A terminally-failed draft (initial or voice edit) is a visible state, not an endless "drafting…".
+  const draftFailed = pending?.draftStatus === "failed" || pending?.draftStatus === "failed_revise";
+  // The gateway-less deterministic draft is a cautious STARTER, not a real AI reply — mark it so the
+  // doctor reviews rather than trusting it as generated guidance (Q-10).
+  const isStarterDraft = draftReady && pending?.draftSource === "mock-deterministic";
   const lastMessage = item.messages[item.messages.length - 1];
 
   // Re-route only makes sense when the patient has more than one treating doctor to choose between.
@@ -419,13 +437,12 @@ function QaThreadCard({
         <div className="qa-approve">
           <div className="qa-draft-label">
             {t("qa.suggestedReply")}
-            {draftReady ? (
-              <Badge tone="green">{t("qa.aiDraftVerify")}</Badge>
-            ) : draftPending ? (
-              <span className="qa-draft-hint">{t("qa.draftingHint")}</span>
-            ) : (
-              <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>
-            )}
+            <DraftStatusBadge
+              draftReady={draftReady}
+              draftFailed={draftFailed}
+              draftPending={draftPending}
+              isStarterDraft={isStarterDraft}
+            />
             {draftReady && pending?.draftProvenance ? (
               <button
                 type="button"
@@ -490,6 +507,26 @@ function QaThreadCard({
       ) : null}
     </Card>
   );
+}
+
+/** The draft-status marker beside "Suggested reply": ready / starter-fallback / failed / drafting. */
+function DraftStatusBadge({
+  draftReady,
+  draftFailed,
+  draftPending,
+  isStarterDraft,
+}: {
+  draftReady: boolean;
+  draftFailed: boolean;
+  draftPending: boolean;
+  isStarterDraft: boolean;
+}) {
+  const t = useT();
+  if (draftReady && isStarterDraft) return <Badge tone="amber">{t("qa.starterReply")}</Badge>;
+  if (draftReady) return <Badge tone="green">{t("qa.aiDraftVerify")}</Badge>;
+  if (draftFailed) return <span className="qa-draft-hint">{t("qa.draftFailedHint")}</span>;
+  if (draftPending) return <span className="qa-draft-hint">{t("qa.draftingHint")}</span>;
+  return <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>;
 }
 
 function Chevron({ open }: { open: boolean }) {

@@ -266,8 +266,9 @@ not optional cleanup):
   caption, report synthesis = treatments+aftercare+sections+safety, patient memory, patient matching,
   Q&A draft/revise) MUST run the eval suite (`apps/ai_engine/eval/run_all.py`) and not regress it. A
   **new** AI job MUST ship its own eval suite — and you must **consult the user on its golden-set
-  scenarios first** (don't design the eval set unilaterally). Known debt: `qa_draft`/`qa_revise`
-  currently have no evals. See `docs/ai_engine/evals.md`.
+  scenarios first** (don't design the eval set unilaterally). `qa_draft`/`qa_revise` are eval-gated too
+  (`qa_draft_eval.py` / `qa_revise_eval.py`, registered in `run_all.py`; the voice-edit fixtures
+  `r01–r10` are still owner-supplied). See `docs/ai_engine/evals.md`.
 
 ---
 

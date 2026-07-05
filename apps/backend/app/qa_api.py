@@ -281,7 +281,13 @@ def qa_library_set_status(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Exclude (evict) or re-include an indexed exemplar — the manage/exclude list."""
-    return qa_library.set_exemplar_status(db, principal, exemplar_id, request.status)
+    result = qa_library.set_exemplar_status(db, principal, exemplar_id, request.status)
+    # Excluding an exemplar must retroactively drop it from any pending draft it grounded (Q-5) —
+    # otherwise "exclude" implies a removal the draft doesn't deliver. Self-heal re-drafts without it.
+    if request.status == "excluded":
+        qa.invalidate_drafts_for_exemplar(db, tenant_id=principal.tenant_id, exemplar_id=exemplar_id)
+        db.commit()
+    return result
 
 
 @qa_api.post("/patient-qa/messages/{message_id}/save-template")

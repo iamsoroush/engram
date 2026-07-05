@@ -17,8 +17,23 @@
   patient-scoped `AiJob`; target message carried in `result_metadata` — no `ai_jobs` schema change).
   The worker drafts a reply from the treating doctor's prior answers + this patient's context + the
   clinic's **retrieved exemplars** (the knowledge library, below); a gateway-less worker falls back to
-  a deterministic draft (grounded in the top exemplar when one is retrieved). A stale/failed draft is
-  silent and self-healing (re-dispatched on inbox read), never a needs-input item.
+  a deterministic **starter** draft (grounded in the top exemplar when one is retrieved), surfaced to
+  the doctor as a "Starter reply — please review" marker (`draftSource: "mock-deterministic"`) so it is
+  never mistaken for a generated reply. A stale draft is silent and self-healing (re-dispatched on
+  inbox read); a **terminally failed** draft resolves to a visible `failed` (initial) / `failed_revise`
+  (voice edit) state instead of an endless "drafting…", never a needs-input item. Prior answers are
+  cross-tenant-safe: a leading greeting **name** is stripped server-side before grounding, and the
+  prompt forbids copying any dose/product/name from another patient's answer.
+- **Metering + abuse (Q-8):** qa jobs are metered like any AI job, so when the clinic is over its
+  fair-use AI budget drafting **pauses** (the question stays `draft_status: none`; the doctor can still
+  reply by hand; the self-heal resumes once the budget frees). The public `/ask` endpoint is
+  rate-limited per thread (rolling per-window cap) and refuses new questions past a concurrent
+  unanswered-question ceiling — both `429` — so a leaked token neither floods the inbox nor buys
+  unbounded LLM calls.
+- **Draft invalidation (Q-5):** re-routing a thread to a different doctor, or excluding the library
+  exemplar a draft was grounded on, resets the affected pending drafts to `none` (the self-heal
+  re-drafts them for the new doctor / without the exemplar). Patient reassignment invalidates Q&A
+  drafts through the reassignment path (`qa.invalidate_drafts_for_patient`).
 - **Retrieval grounding (AES-410):** the backend builds `retrievedExemplars` into the `qa_draft`
   payload — the top hybrid lexical+embedding matches over the tenant's **knowledge library** (curated
   templates + auto-indexed sent replies; per-tenant scoped in SQL). The worker stays stateless (it
@@ -53,10 +68,10 @@ Manual re-route to any of the patient's treating doctors is always available reg
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/patient-qa/threads` | staff | Body `{ "patientId" }`. Opens (or idempotently reuses) the patient's Q&A channel; auto-routes per policy. Returns the **staff thread payload**. |
+| `POST` | `/patient-qa/threads` | staff | Body `{ "patientId" }`. Opens (or idempotently reuses) the patient's Q&A channel; auto-routes per policy. Re-opening a **revoked** thread rotates its token (the old link stays `404` — Q-9). Returns the **staff thread payload**. |
 | `GET` | `/patient-qa/threads` | staff_or_admin | List threads, newest first. Query: `patientId`. |
 | `GET` | `/patient-qa/threads/{id}` | staff_or_admin | One thread **with** `messages` (incl. each pending question's `draft`) + `treatingDoctors`. |
-| `POST` | `/patient-qa/threads/{id}/route` | staff | Body `{ "doctorUserId" }` — must be an active doctor in the tenant (`400` otherwise). Sets `routingSource: "manual"`. |
+| `POST` | `/patient-qa/threads/{id}/route` | staff | Body `{ "doctorUserId" }` — must be an active doctor in the tenant (`400` otherwise). Sets `routingSource: "manual"`; on a real re-route, invalidates the thread's pending drafts so they re-draft for the new doctor (Q-5). |
 | `POST` | `/patient-qa/threads/{id}/revoke` | staff | Revoke; idempotent. The public link then `404`s. |
 | `GET` | `/patient-qa/patients/{patientId}/treating-doctors` | staff_or_admin | `{ patientId, treatingDoctors:[{ userId, name, sessionCount, lastVisitAt }] }` (the re-route picker source). |
 
@@ -74,7 +89,7 @@ Staff thread payload:
   // on GET one / route / send / dismiss:
   "messages": [
     { "id": "uuid", "role": "patient", "body": "…", "status": "pending|answered|dismissed",
-      "draft": "AI-suggested reply (doctor-only)", "draftStatus": "none|pending|ready|failed", "draftSource": "ai:…|mock-deterministic",
+      "draft": "AI-suggested reply (doctor-only)", "draftStatus": "none|pending|ready|failed|failed_revise", "draftSource": "ai:…|ai-voice:…|mock-deterministic",
       "draftProvenance": { "kind": "template|sent_reply", "exemplarId": "uuid", "label": "…|null" } | null, "createdAt": "iso" },
     { "id": "uuid", "role": "doctor", "body": "sent reply", "status": "sent", "inReplyToId": "uuid", "createdAt": "iso" }
   ],
@@ -92,7 +107,7 @@ Staff thread payload:
 | `POST` | `/patient-qa/messages/{id}/send` | staff | Body `{ "reply"? }` — the approved text (the draft as-is, or an edit; omit to send the current draft). Creates the doctor reply, marks the question answered, and **captures the exchange into patient memory**. `409` if the question is no longer pending. Returns the staff thread payload. |
 | `POST` | `/patient-qa/messages/{id}/dismiss` | staff | Dismiss without replying. |
 | `POST` | `/patient-qa/messages/{id}/voice-edit` | staff | **Voice edit** of the reply: multipart `file` (the spoken note) + `draft` (the current editable text). Stores the audio transiently and enqueues an `AiJobType.qa_revise` job — the AI decides whether the note *revises* the draft or *replaces* it. `409` if the question is no longer pending. Returns `{ messageId, draftStatus: "revising", jobId }`. |
-| `GET` | `/patient-qa/messages/{id}/draft` | staff_or_admin | Poll the question's current draft while a voice edit / initial draft runs: `{ messageId, status, draft, draftStatus, draftSource, draftProvenance, draftMode }` (`draftMode` = `revise` \| `replace` after a voice edit). |
+| `GET` | `/patient-qa/messages/{id}/draft` | staff_or_admin | Poll the question's current draft while a voice edit / initial draft runs: `{ messageId, status, draft, draftStatus, draftSource, draftProvenance, draftMode }`. `draftStatus` ∈ `none\|pending\|ready\|revising\|failed\|failed_revise`; `draftMode` (`revise`\|`replace`) is set **only** for a genuine `ai-voice:` result — a `failed_revise` means the voice note couldn't be applied and the draft is **unchanged** (never a silent "Revised"; Q-1). |
 | `POST` | `/patient-qa/messages/{id}/save-template` | staff | **Save as template** — copy a sent doctor reply into a curated library template. Body `{ "title"? }`. Returns the new library item. |
 
 Inbox payload (thread-centric):
@@ -110,7 +125,8 @@ Inbox payload (thread-centric):
       "pendingQuestion": {                         // the question to approve a reply to (or null)
         "messageId": "uuid", "question": "…", "askedAt": "iso",
         "suggestedReply": "…" | null,              // the AI draft, doctor-only
-        "draftStatus": "ready|pending|failed|none",
+        "draftStatus": "ready|pending|failed|failed_revise|none",
+        "draftSource": "ai:…|ai-voice:…|mock-deterministic|null",   // "mock-deterministic" → starter reply (review)
         "draftProvenance": { "kind": "template|sent_reply", "exemplarId": "uuid", "label": "…|null" } | null
       },
       "messages": [ { "id": "uuid", "role": "patient|doctor", "body": "…", "status": "…", "createdAt": "iso" } ],
@@ -146,7 +162,7 @@ call. Rows: `qa_knowledge_exemplars` ([data-model.md](data-model.md)).
 | `POST` | `/patient-qa/library/templates` | staff | Create a curated template. Body `{ "title"?, "question"?, "answer", "tags"? }`. |
 | `PATCH` | `/patient-qa/library/templates/{id}` | staff | Edit a template (templates only — `400` on a sent-reply row). Body as create. |
 | `DELETE` | `/patient-qa/library/templates/{id}` | staff | Delete a template (`204`). Auto-indexed replies are excluded, not deleted. |
-| `POST` | `/patient-qa/library/{id}/status` | staff | Exclude / re-include an exemplar — the manage/exclude list. Body `{ "status": "active" \| "excluded" }`. |
+| `POST` | `/patient-qa/library/{id}/status` | staff | Exclude / re-include an exemplar — the manage/exclude list. Body `{ "status": "active" \| "excluded" }`. Excluding also drops the exemplar from any pending draft it grounded (Q-5). |
 
 Library item:
 ```jsonc
@@ -170,6 +186,7 @@ Library item:
   "status": "active",
   "clinic": { "name": "Engram Demo Clinic" },
   "patientName": "Sara N.",
+  "language": "fa",                                    // clinic language → the public page localizes its chrome (Q-10)
   "exchanges": [
     {
       "id": "uuid", "question": "Is the swelling normal?", "askedAt": "iso",
@@ -183,4 +200,5 @@ The AI `draft`, routing, and other patients are **never** in this payload.
 
 **`POST /qa/{token}/ask`** — the patient asks a question. Body `{ "question" }`. Creates the question
 and enqueues the reply-draft job; returns `{ id, question, askedAt, status: "awaiting" }`. The reply
-appears only after a doctor approves + sends it.
+appears only after a doctor approves + sends it. **`429`** when the thread has too many unanswered
+questions or the per-window ask rate is exceeded (Q-8 abuse guard).

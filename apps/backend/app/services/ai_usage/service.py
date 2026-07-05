@@ -27,6 +27,11 @@ _CAPTURE_JOB_TYPES = {
     AiJobType.image_capture_process,
 }
 _SYNTHESIS_JOB_TYPES = {AiJobType.session_organize}
+# Post-session patient Q&A jobs (AES-402). Their real gateway spend is metered like any other job (so
+# the fair-use budget accounts for it and the pause applies — Q-8); they are neither a "capture" nor a
+# "synthesis" for the per-job counters, but they DO count as an AI job so a zero-cost fallback is still
+# tallied. Dispatch enforcement lives in ``services.qa`` (it pauses drafting when over budget).
+_QA_JOB_TYPES = {AiJobType.qa_draft, AiJobType.qa_revise}
 
 
 def current_period_key(now: datetime | None = None) -> str:
@@ -64,7 +69,8 @@ def record_job_usage(
     audio_seconds = audio_seconds_from_records(usage_records)
     is_capture = job_type in _CAPTURE_JOB_TYPES
     is_synthesis = job_type in _SYNTHESIS_JOB_TYPES
-    if cost_micros == 0 and not is_capture and not is_synthesis and audio_seconds == 0:
+    is_qa = job_type in _QA_JOB_TYPES
+    if cost_micros == 0 and not is_capture and not is_synthesis and not is_qa and audio_seconds == 0:
         return 0
     period_key = current_period_key()
     stmt = pg_insert(AiUsageCounter).values(

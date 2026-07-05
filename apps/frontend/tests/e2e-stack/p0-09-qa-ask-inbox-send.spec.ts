@@ -51,7 +51,13 @@ test.describe("P0-9 Q&A ask → inbox → send", () => {
     await expect(inbox).toBeVisible({ timeout: 30_000 });
     await inbox.getByRole("button", { name: "Clinic" }).click();
     await expect(inbox.getByText(question)).toBeVisible();
-    await expect(inbox.locator(".qa-reply-input")).not.toHaveValue("");
+    // Failure-state honesty (Q-10): the gateway-less draft is a deterministic STARTER, marked for
+    // review — never surfaced as a real generated AI reply.
+    await expect(inbox.getByText("Starter reply — please review")).toBeVisible();
+    const replyBox = inbox.locator(".qa-reply-input");
+    await expect(replyBox).not.toHaveValue("");
+    // The doctor edits the draft before sending → the delta is harvested as a qa_reply correction (HALF-2).
+    await replyBox.fill(`${await replyBox.inputValue()} Please rest and hydrate today.`);
     await inbox.getByRole("button", { name: "Send", exact: true }).click();
 
     // The reply is now visible to the patient on their private link. Reload-poll so the assertion is
@@ -65,6 +71,11 @@ test.describe("P0-9 Q&A ask → inbox → send", () => {
         { timeout: 20_000 },
       )
       .toBeGreaterThan(0);
+
+    // HALF-2 harvest: the doctor's edit-before-send was recorded as a `qa_reply` correction — a real
+    // production edit becomes an eval-golden-set candidate (the failure-detection harvest).
+    const events = await (await request.get("/api/v1/feedback?aiOutputType=qa_reply", { headers: H })).json();
+    expect(Array.isArray(events) && events.some((e: { kind: string }) => e.kind === "correction")).toBe(true);
 
     await patientCtx.close();
     await staffCtx.close();
