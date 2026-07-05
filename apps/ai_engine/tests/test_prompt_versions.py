@@ -38,12 +38,12 @@ PINNED = {
     transcription: ("2026-07-04.transcription.v1", "cd9e6c4f8398119bae29daa9bdb2f934c3b2286b4a099828d44456735b25b853"),
     caption: ("2026-07-04.caption.v1", "b066644f987c727fac3f4d1e430b6856acaa79bbd7db406b763136ef79f1d634"),
     patient_memory: ("2026-07-04.patient_memory.v1", "2b63775e25bdcf178efdcf2abd2927ada9ec001595597256a954a55f541dc720"),
-    # v2 adds a retrieval-grounding branch (retrievedExemplars). The shared CANONICAL_CONTEXT carries
-    # no exemplars, so build() takes the byte-identical no-exemplar path (hash unchanged from v1); the
-    # exemplar branch is pinned separately in ``test_qa_draft_exemplar_branch_is_pinned`` so it can be
-    # exercised without perturbing the whole-context-serializing prompts (transcription/caption/synthesis).
-    qa_draft: ("2026-07-05.qa_draft.v2", "79a01d6106ceabf49e9735897e95e3e02284adb9e6178fb6ac2d712aa45eaa3d"),
-    qa_revise: ("2026-07-04.qa_revise.v1", "0fdbf0feeda6613b5c15abc846782d3b162af3d05396d11b8466829bdf9a1df1"),
+    # v3 adds an UNCONDITIONAL cross-patient never-copy rule (Q-3) that renders on every path — so the
+    # no-exemplar hash changed from v2. The exemplar branch is pinned separately in
+    # ``test_qa_draft_exemplar_branch_is_pinned``.
+    qa_draft: ("2026-07-05.qa_draft.v3", "a698f8009ef0e8e97bcc7b6848a07a79b149c7a0a25073a11e28cc38f248ef0d"),
+    # v2 adds the same cross-patient never-copy rule to the voice-edit prompt (Q-3).
+    qa_revise: ("2026-07-05.qa_revise.v2", "02a8097f1e7b1384e336c78692790e9ca23b59966cd6bcd1849bbb5c788bb43a"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
     synthesis: ("2026-07-05.synthesis.v2", "c1f531c02ca6747cd7dab246c49a042b251eb6bd96c1cf2c3d56e6eac555232a"),
 }
@@ -77,7 +77,7 @@ class PromptVersionPinTests(unittest.TestCase):
             }
         }
         actual = hashlib.sha256(qa_draft.build(context).encode("utf-8")).hexdigest()
-        self.assertEqual(actual, "2499a4358e9500cf42e66123ac8b360f7767b69c224ef026b7286ec0602f833c")
+        self.assertEqual(actual, "4418230045126ee813c5b6a2a61556b995724d04ac652dc3b1e74038d703f3f9")
 
 
 if __name__ == "__main__":

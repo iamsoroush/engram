@@ -319,12 +319,14 @@ and approves before anything reaches the patient.
 
 - **`qa_draft`** drafts a warm, clinically-cautious reply to a patient's between-visits question,
   grounded in the doctor's prior answers + this patient's context + (AES-410) the clinic's
-  **`retrievedExemplars`** — how this clinic answers similar questions (`qaDraft` payload, prompt v2).
+  **`retrievedExemplars`** — how this clinic answers similar questions (`qaDraft` payload, prompt v3).
   Grounding rules, in strict priority (encoded in `prompts/qa_draft.py`, asserted by the eval): the
-  patient's own context always wins over an exemplar; **never copy a dose/product/lot or other
-  patient-specific fact from an exemplar** into a different patient's reply (take the shape, not
-  another patient's numbers); escalation (red flags → clinic, no reassurance) and never-contradict-the-
-  aftercare keep precedence over any exemplar. Invents no clinical facts.
+  patient's own context always wins over an exemplar; an **unconditional cross-patient rule** (renders
+  even with zero exemplars) forbids copying a dose/product/brand/lot/date/**name** from another
+  patient's prior answer or exemplar into this reply (take the shape, not another patient's specifics);
+  escalation (red flags → clinic, no reassurance) and never-contradict-the-aftercare keep precedence.
+  Prior answers also have a leading greeting **name** stripped backend-side before grounding (Q-3).
+  Invents no clinical facts.
   - **Retrieval is backend-owned; the worker stays stateless.** The backend runs the hybrid
     lexical+embedding retrieval over `qa_knowledge_exemplars` (per-tenant, SQL-scoped) and hands the
     top-k as `retrievedExemplars: [{question, answer, source: template|sent_reply, score}]`. Embeddings
@@ -336,10 +338,13 @@ and approves before anything reaches the patient.
   alongside the current draft), classifies it as a **revision** of the draft or an **entirely new
   reply** (strict JSON `{mode: revise|replace, reply}`), and produces the final text.
 - Both fall back to the backend-provided `deterministicFallback` when no gateway is configured or
-  the output is unusable, so the job always completes and the inbox always has a suggestion. The
-  gateway-less `qa_draft` fallback grounds in the **top retrieved exemplar** when one exists (so even
-  gateway-less the draft is "based on" the clinic's guidance). Model resolution uses the `qa_draft`
-  task label (falls back to the transcription gateway).
+  the output is unusable. For `qa_draft` this is a **starter** reply (grounded in the top retrieved
+  exemplar when one exists), surfaced to the doctor as "Starter reply — please review" (`draftSource:
+  mock-deterministic`), so the inbox always has a suggestion but never mistakes it for a generated one.
+  For `qa_revise` the fallback echoes the current draft **unchanged** — and because that is not a real
+  edit, the completion marks the draft `failed_revise` (draft unchanged, doctor told), never a silent
+  "Revised" (Q-1). Model resolution uses the `qa_draft` task label (falls back to the transcription
+  gateway).
 - **Evals:** both jobs are now eval-gated — `qa_draft_eval.py` (synthetic golden set incl.
   retrieval-grounded cases) and `qa_revise_eval.py` (fixture-driven real audio + self-tests + judge
   smoke). See [evals.md](evals.md).

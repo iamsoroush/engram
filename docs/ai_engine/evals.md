@@ -89,7 +89,7 @@ full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which 
 | `report_sections_eval.py` | Synthesis — sections (prose half) | Grounded prose (no invention), image blocks reference real captureIds only + **each at most once** (`imageRefsUnique`), empty sections stay empty, native-script, all ids present; cross-capture correction → final fact only; `en` reportLanguage | Synthetic Farsi + `en` transcripts + self-tests |
 | `patient_memory_eval.py` | Patient memory | Story/delta accuracy over multi-visit briefs, no invented flags, no name-repeat (advisory, counted), grounded recall of dose/brand; **flags persist** over a long history, a **superseded** fact isn't restated, dose **trend** recalled | Synthetic multi-session fixtures (incl. 6–8-visit history) + self-tests |
 | `patient_matching_eval.py` | Matching's **LLM seam** (transcription input) | Spoken name extracted **faithfully** (a near-miss must not be "corrected"; a similar-name pair not swapped; a mid-dictation mention still caught) + assignment `basis` never over-escalated to `explicit` | **Real audio** (6 live clips + `m07`–`m09` pending; `m02` near-miss = `knownGap`) + self-tests + judge smoke |
-| `qa_draft_eval.py` | Q&A reply draft (AES-402/410) | No invented numbers (a dose the doctor never stated), red-flag cases **forbid reassurance** + require a clinic-contact tail, patient-language native script, sign-off present; **retrieval-grounded** cases — exemplar generic guidance adopted (exemplar-followed) and patient context **overriding** a contradicting exemplar (exemplar-overridden) | Synthetic payloads (`QD-01`…`12` + retrieval cases) + gate self-tests + judge smoke |
+| `qa_draft_eval.py` | Q&A reply draft (AES-402/410) | No invented numbers (a dose the doctor never stated), red-flag cases **forbid reassurance** + require a clinic-contact tail, patient-language native script, sign-off present; **retrieval-grounded** cases — exemplar generic guidance adopted (exemplar-followed) and patient context **overriding** a contradicting exemplar (exemplar-overridden); **cross-patient leak** — a dose that lives ONLY in another patient's exemplar/prior answer must not be copied (`noCrossPatientNumbers`, `QD-X1`) and a stranger's greeting name must not be addressed to this patient (`QD-X2`) | Synthetic payloads (`QD-01`…`12` + retrieval + cross-patient cases) + gate self-tests + judge smoke |
 | `qa_revise_eval.py` | Q&A reply voice-edit (AES-402) | revise-vs-replace **mode** classification, **numbers-preserved** on a revise, escalation tail survives, native script, sign-off; parser fallback on unusable output | **Real audio** (`r01`–`r10` recorded by the clinician, pending) + parser + gate self-tests + judge smoke |
 
 The deterministic post-processing these jobs feed (correction/supersede/carry-forward, search
@@ -193,10 +193,13 @@ Golden-set cases are seeded from **real production failures, harvested — not r
 
 - **Corrections, emitted server-side and non-bypassably** in the existing correction transaction: a
   transcript/caption edit (`services/captures.update_capture`), a treatments-array edit + a
-  carried-forward confirmation (`services/sessions`), and a patient-match reassignment
-  (`services/sessions.assign_session_patient`). Rows carry `kind`
-  (`correction`/`confirmation`/`rating`), `ai_output_type`, the before/after AI-output **text
-  verbatim** (the eval target), and a **PII-scrubbed** `context`
+  carried-forward confirmation (`services/sessions`), a patient-match reassignment
+  (`services/sessions.assign_session_patient`), and **Q&A reply** feedback (`services/qa`): a doctor
+  editing the draft before send or a voice revise/replace is a `correction` (before = the AI draft,
+  after = what shipped); dismissing a drafted question is a `rejection`. `ai_output_type = qa_reply`;
+  retrieval provenance travels in `context`. Rows carry `kind`
+  (`correction`/`confirmation`/`rating`/`rejection`), `ai_output_type`, the before/after AI-output
+  **text verbatim** (the eval target), and a **PII-scrubbed** `context`
   (names/national-id/phone/DOB/match-evidence redacted by `feedback.scrub_context`).
 - **Ratings:** a lightweight thumbs on the report/brief via
   `POST /api/v1/feedback` (`app/feedback_api.py` → `app/services/feedback.py`).

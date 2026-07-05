@@ -192,7 +192,12 @@ function AppInner() {
 
   React.useEffect(() => {
     refreshQaPendingCount();
-  }, [refreshQaPendingCount]);
+    // A new patient question arrives out-of-band (the patient asks on their public link), so the badge
+    // must not wait for the doctor to open the inbox — refresh it on a gentle interval too (Q-11).
+    if (!canUseQa) return;
+    const handle = window.setInterval(refreshQaPendingCount, 60_000);
+    return () => window.clearInterval(handle);
+  }, [refreshQaPendingCount, canUseQa]);
 
   React.useEffect(() => {
     if (!auth || auth.user.persona === "patient-preview") return;

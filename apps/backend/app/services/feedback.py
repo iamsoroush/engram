@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 ALLOWED_KINDS = frozenset({"correction", "confirmation", "rating", "rejection"})
 ALLOWED_OUTPUT_TYPES = frozenset(
-    {"transcript", "caption", "treatment", "patient_match", "report", "brief", "safety_flag"}
+    {"transcript", "caption", "treatment", "patient_match", "report", "brief", "safety_flag", "qa_reply"}
 )
 
 # Keys whose values may carry patient PII; redacted before anything is persisted to `context`.

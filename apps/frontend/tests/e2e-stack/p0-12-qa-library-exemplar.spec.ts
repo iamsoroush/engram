@@ -100,6 +100,29 @@ test.describe("P0-12 Q&A library + retrieval-grounded draft", () => {
     const after = await (await request.get("/api/v1/patient-qa/library?status=excluded", { headers: H })).json();
     expect((after.sentReplies ?? []).some((r: { id: string }) => r.id === indexed.id)).toBe(true);
 
+    // HALF-2 harvest — the rejection path: the patient asks again, the doctor DISMISSES the drafted
+    // question without replying, and that is recorded as a `qa_reply` rejection (the AI reply wasn't
+    // worth sending). Driven via the API so the assertion is stable.
+    await request.post(`/api/v1/qa/${publicToken}/ask`, { data: { question: "Another quick question about my visit?" } });
+    let dismissId = "";
+    await expect
+      .poll(
+        async () => {
+          const inboxJson = await (await request.get("/api/v1/patient-qa/inbox?scope=all", { headers: H })).json();
+          const pend = inboxJson.items?.[0]?.pendingQuestion;
+          if (pend?.draftStatus === "ready") dismissId = String(pend.messageId);
+          return pend?.draftStatus ?? "none";
+        },
+        { timeout: 30_000 },
+      )
+      .toBe("ready");
+    const dismissResp = await request.post(`/api/v1/patient-qa/messages/${dismissId}/dismiss`, { headers: H });
+    expect(dismissResp.ok()).toBeTruthy();
+    const rejections = await (
+      await request.get("/api/v1/feedback?aiOutputType=qa_reply&kind=rejection", { headers: H })
+    ).json();
+    expect(Array.isArray(rejections) && rejections.length > 0).toBe(true);
+
     await staffCtx.close();
   });
 });

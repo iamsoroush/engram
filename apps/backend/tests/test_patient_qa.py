@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 from app.services.qa import (
     CARE_TEAM_BYLINE,
+    DRAFT_NONE,
+    DRAFT_READY,
     Q_ANSWERED,
     Q_DISMISSED,
     Q_PENDING,
@@ -15,6 +17,11 @@ from app.services.qa import (
     _public_thread_projection,
     _qa_draft_fallback,
     _rank_treating_doctors,
+    QA_REPLY_OUTPUT_TYPE,
+    _record_qa_reply_feedback,
+    _reset_pending_draft,
+    _strip_greeting_name,
+    _thread_language,
 )
 
 
@@ -88,9 +95,11 @@ class PublicThreadWithholdingTests(unittest.TestCase):
         payload = _public_thread_projection(
             clinic_name="Engram Demo Clinic",
             patient_name="Sara N.",
+            language="en",
             messages=messages,
             doctor_names={doctor_id: "Dr. Demo"},
         )
+        self.assertEqual(payload["language"], "en")  # Q-10: public page localizes to it
         statuses = [(e["question"], e["status"], bool(e["reply"])) for e in payload["exchanges"]]
         self.assertEqual(
             statuses,
@@ -108,7 +117,7 @@ class PublicThreadWithholdingTests(unittest.TestCase):
     def test_draft_never_leaks(self):
         messages, doctor_id = self._thread_messages()
         payload = _public_thread_projection(
-            clinic_name="Clinic", patient_name="Sara", messages=messages, doctor_names={doctor_id: "Dr. Demo"}
+            clinic_name="Clinic", patient_name="Sara", language="en", messages=messages, doctor_names={doctor_id: "Dr. Demo"}
         )
         import json
 
@@ -119,7 +128,7 @@ class PublicThreadWithholdingTests(unittest.TestCase):
     def test_byline_falls_back_to_care_team(self):
         q = _msg(role=ROLE_PATIENT, status=Q_ANSWERED, body="Q", minute=0)
         reply = _msg(role=ROLE_DOCTOR, status=R_SENT, body="A", in_reply_to_id=q.id, created_by_user_id=None, minute=1)
-        payload = _public_thread_projection(clinic_name="C", patient_name="P", messages=[q, reply], doctor_names={})
+        payload = _public_thread_projection(clinic_name="C", patient_name="P", language="fa", messages=[q, reply], doctor_names={})
         self.assertEqual(payload["exchanges"][0]["reply"]["byline"], CARE_TEAM_BYLINE)
 
 
@@ -163,6 +172,99 @@ class CaptureExchangeIntoMemoryTests(unittest.TestCase):
             patient, question_text="Q", reply_text="A", now=datetime(2026, 6, 13, tzinfo=timezone.utc)
         )
         self.assertTrue(patient.notes.startswith("[Q&A 2026-06-13]"))
+
+
+class StripGreetingNameTests(unittest.TestCase):
+    """Q-3: a stranger's name in a leading greeting must not survive into another patient's grounding."""
+
+    def test_strips_english_greeting_name(self):
+        self.assertEqual(_strip_greeting_name("Hi Maryam, swelling is normal."), "Hi, swelling is normal.")
+
+    def test_strips_persian_greeting_name(self):
+        self.assertEqual(_strip_greeting_name("سلام سارا، ورم طبیعی است."), "سلام، ورم طبیعی است.")
+
+    def test_leaves_non_greeting_text_untouched(self):
+        self.assertEqual(_strip_greeting_name("Swelling is normal for Maryam."), "Swelling is normal for Maryam.")
+
+    def test_handles_none_and_empty(self):
+        self.assertIsNone(_strip_greeting_name(None))
+        self.assertEqual(_strip_greeting_name("   "), "   ")
+
+
+class ThreadLanguageTests(unittest.TestCase):
+    """Q-10: the public Q&A page localizes to the clinic language (configured, else content-inferred)."""
+
+    def test_prefers_tenant_report_language(self):
+        tenant = SimpleNamespace(report_language="fa")
+        self.assertEqual(_thread_language(tenant, []), "fa")
+
+    def test_infers_fa_from_persian_content(self):
+        tenant = SimpleNamespace(report_language=None)
+        messages = [_msg(role=ROLE_PATIENT, status=Q_PENDING, body="ورم طبیعی است؟")]
+        self.assertEqual(_thread_language(tenant, messages), "fa")
+
+    def test_defaults_to_en(self):
+        self.assertEqual(_thread_language(None, [_msg(role=ROLE_PATIENT, status=Q_PENDING, body="Is this normal?")]), "en")
+
+
+class _FakeDb:
+    """Captures ``db.add`` — the qa harvester only stages a row in the caller's transaction."""
+
+    def __init__(self):
+        self.added = []
+
+    def add(self, obj):
+        self.added.append(obj)
+
+
+class RecordQaReplyFeedbackTests(unittest.TestCase):
+    """HALF-2: doctor actions on a draft become ai_feedback_events (qa_reply)."""
+
+    def test_correction_recorded_when_edited(self):
+        db = _FakeDb()
+        _record_qa_reply_feedback(
+            db, tenant_id=uuid.uuid4(), actor_user_id=uuid.uuid4(), patient_id=uuid.uuid4(),
+            kind="correction", before="AI draft", after="doctor edit", context={"source": "send-edit"},
+        )
+        self.assertEqual(len(db.added), 1)
+        self.assertEqual(db.added[0].ai_output_type, QA_REPLY_OUTPUT_TYPE)
+        self.assertEqual(db.added[0].kind, "correction")
+
+    def test_correction_skipped_when_unchanged(self):
+        db = _FakeDb()
+        _record_qa_reply_feedback(
+            db, tenant_id=uuid.uuid4(), actor_user_id=uuid.uuid4(), patient_id=None,
+            kind="correction", before="same text", after="same text", context=None,
+        )
+        self.assertEqual(db.added, [])  # no real edit → no signal
+
+    def test_rejection_recorded(self):
+        db = _FakeDb()
+        _record_qa_reply_feedback(
+            db, tenant_id=uuid.uuid4(), actor_user_id=uuid.uuid4(), patient_id=uuid.uuid4(),
+            kind="rejection", before="drafted reply", after=None, context={"source": "dismiss"},
+        )
+        self.assertEqual(len(db.added), 1)
+        self.assertEqual(db.added[0].kind, "rejection")
+
+
+class ResetPendingDraftTests(unittest.TestCase):
+    """Q-5: invalidation zeroes the draft AND its optimistic-lock job id so a stale job can't clobber."""
+
+    def test_zeroes_all_draft_fields(self):
+        question = SimpleNamespace(
+            draft="signed by old doctor",
+            draft_status=DRAFT_READY,
+            draft_source="ai:model",
+            draft_provenance={"kind": "template", "exemplarId": "x"},
+            draft_job_id=uuid.uuid4(),
+        )
+        _reset_pending_draft(question)
+        self.assertIsNone(question.draft)
+        self.assertEqual(question.draft_status, DRAFT_NONE)
+        self.assertIsNone(question.draft_source)
+        self.assertIsNone(question.draft_provenance)
+        self.assertIsNone(question.draft_job_id)
 
 
 if __name__ == "__main__":

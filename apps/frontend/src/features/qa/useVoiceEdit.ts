@@ -55,8 +55,17 @@ export function useVoiceEdit({
           await new Promise((resolve) => window.setTimeout(resolve, 1500));
           const draft = await fetchQaMessageDraft(apiFetch, messageId);
           if (draft.draftStatus !== "revising") {
-            if (draft.draftStatus === "ready" && draft.draft) onApplied(draft.draft, draft.draftMode || "revise");
-            else onError?.(t("qa.voiceApplyError"));
+            // Only surface "Revised" for a GENUINE voice result — `draftMode` is set solely when the
+            // draft carries an `ai-voice:` source. A deterministic fallback (unusable output / no
+            // gateway) leaves the draft unchanged and surfaces `failed_revise`; never claim success
+            // over an edit that didn't land (Q-1, INV-SILENT).
+            if (draft.draftStatus === "ready" && draft.draft && draft.draftMode) {
+              onApplied(draft.draft, draft.draftMode);
+            } else if (draft.draftStatus === "failed_revise") {
+              onError?.(t("qa.voiceReviseFailed"));
+            } else {
+              onError?.(t("qa.voiceApplyError"));
+            }
             setState("idle");
             return;
           }

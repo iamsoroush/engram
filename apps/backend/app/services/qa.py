@@ -23,8 +23,9 @@ This module is self-contained: all Q&A logic lives here; the only shared-file se
 
 import secrets
 import io
+import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -83,12 +84,23 @@ DRAFT_PENDING = "pending"
 DRAFT_READY = "ready"
 DRAFT_FAILED = "failed"
 DRAFT_REVISING = "revising"  # a voice-edit job is rewriting/revising the current draft
+# A voice edit that could not be applied (unusable model output / no gateway / audio fetch failed):
+# the current draft is UNCHANGED and the doctor must be told so — never a silent success (Q-1, INV-SILENT).
+DRAFT_FAILED_REVISE = "failed_revise"
+# Draft states the self-heal MUST leave alone (a job is in flight or a good draft already exists);
+# ``revising`` is here so an inbox read during a voice edit never dispatches a racing qa_draft (Q-2).
+_DRAFT_INFLIGHT = {DRAFT_PENDING, DRAFT_READY, DRAFT_REVISING}
 
 MAX_QUESTION_CHARS = 4000
 MAX_REPLY_CHARS = 8000
 PRIOR_ANSWERS_LIMIT = 8
 RECENT_VISIT_SUMMARIES = 3
 CARE_TEAM_BYLINE = "Your care team"
+
+# Public-ask abuse limits (Q-8): a leaked token must not flood the inbox or buy unbounded LLM calls.
+MAX_PENDING_QUESTIONS = 5  # concurrent unanswered questions allowed on one thread
+ASK_RATE_WINDOW_SECONDS = 60
+ASK_RATE_MAX_IN_WINDOW = 6  # questions accepted per rolling window on one thread
 
 
 def _utc_now() -> datetime:
@@ -345,6 +357,18 @@ def create_or_get_thread(db: DbSession, principal: CurrentPrincipal, patient_id:
             existing.status = THREAD_ACTIVE
             existing.revoked_at = None
             existing.revoked_by_user_id = None
+            # Rotate the token on re-activation (Q-9): a revoked link was handed out to be dead, so
+            # re-opening the channel must mint a fresh URL — the previously-leaked link stays 404.
+            existing.token = secrets.token_urlsafe(32)
+            audit(
+                db,
+                tenant_id=principal.tenant_id,
+                actor_user_id=principal.user_id,
+                action="qa.thread.reactivate",
+                target_type="qa_thread",
+                target_id=existing.id,
+                details={"token_rotated": True},
+            )
             db.commit()
             db.refresh(existing)
         return staff_thread_payload(db, existing)
@@ -410,8 +434,15 @@ def route_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str, doc
     valid_doctor_ids = {doc["userId"] for doc in _active_doctor_ids(db, principal.tenant_id)}
     if str(target_id) not in valid_doctor_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target is not an active doctor in this clinic")
+    reassigned = thread.assigned_doctor_user_id != target_id
     thread.assigned_doctor_user_id = target_id
     thread.routing_source = ROUTING_MANUAL
+    # A draft is signed with the treating doctor's name and grounded in THAT doctor's prior answers
+    # (qa.py `doctorName` / `_prior_doctor_answers` bake in the old doctor at draft time). Re-routing to
+    # a new doctor must not hand them a reply signed by someone else — invalidate the pending drafts so
+    # the inbox self-heal re-drafts them for the new doctor (Q-5, INV-INVALIDATE).
+    if reassigned:
+        _invalidate_thread_drafts(db, thread)
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -424,6 +455,78 @@ def route_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str, doc
     db.commit()
     db.refresh(thread)
     return staff_thread_payload(db, thread, include_messages=True)
+
+
+# --- Draft invalidation (INV-INVALIDATE; Q-5) -----------------------------------------------------
+
+
+def _reset_pending_draft(question: QaMessage) -> None:
+    """Clear a pending question's draft to a clean ``none`` so the self-heal re-drafts it.
+
+    Zeroes the draft text, status, source, provenance and the optimistic-lock ``draft_job_id`` — the
+    last means any in-flight job for the old draft finds ``draft_job_id != job.id`` on completion and
+    quietly declines to write (never clobbering the re-drafted state).
+    """
+    question.draft = None
+    question.draft_status = DRAFT_NONE
+    question.draft_source = None
+    question.draft_provenance = None
+    question.draft_job_id = None
+
+
+def _invalidate_thread_drafts(db: DbSession, thread: QaThread) -> int:
+    """Invalidate every pending question's draft on a thread (re-route / re-open). Caller commits."""
+    count = 0
+    for question in db.execute(
+        select(QaMessage).where(
+            QaMessage.thread_id == thread.id, QaMessage.role == ROLE_PATIENT, QaMessage.status == Q_PENDING
+        )
+    ).scalars():
+        _reset_pending_draft(question)
+        count += 1
+    return count
+
+
+def invalidate_drafts_for_patient(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> int:
+    """Invalidate all pending Q&A drafts for a patient — call on patient reassignment (INV-INVALIDATE).
+
+    A visit reassigned away changes the patient's grounding (visits, memory, treating doctor); a draft
+    built from the old grounding is stale. Reset the affected pending drafts so the inbox self-heal
+    re-drafts them. Exposed for the reassignment path (``services/sessions.assign_session_patient``),
+    which owns the reassignment transaction; Q&A owns the reset. Caller commits.
+    """
+    threads = db.execute(
+        select(QaThread).where(
+            QaThread.tenant_id == tenant_id, QaThread.patient_id == patient_id, QaThread.status == THREAD_ACTIVE
+        )
+    ).scalars()
+    total = 0
+    for thread in threads:
+        total += _invalidate_thread_drafts(db, thread)
+    return total
+
+
+def invalidate_drafts_for_exemplar(db: DbSession, *, tenant_id: uuid.UUID, exemplar_id: str) -> int:
+    """Invalidate pending drafts grounded on a now-excluded exemplar (Q-5(c)). Caller commits.
+
+    Excluding a library exemplar implies the clinic no longer wants it grounding replies — but a draft
+    already built on it keeps quoting it until re-drafted. Reset every pending draft whose provenance
+    points at this exemplar so the self-heal re-drafts without it.
+    """
+    count = 0
+    for question in db.execute(
+        select(QaMessage).where(
+            QaMessage.tenant_id == tenant_id,
+            QaMessage.role == ROLE_PATIENT,
+            QaMessage.status == Q_PENDING,
+            QaMessage.draft_status != DRAFT_NONE,
+        )
+    ).scalars():
+        provenance = question.draft_provenance if isinstance(question.draft_provenance, dict) else None
+        if provenance and str(provenance.get("exemplarId") or "") == str(exemplar_id):
+            _reset_pending_draft(question)
+            count += 1
+    return count
 
 
 def revoke_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str) -> dict[str, Any]:
@@ -489,6 +592,7 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
                 "askedAt": pending["createdAt"],
                 "suggestedReply": pending["draft"],
                 "draftStatus": pending["draftStatus"],
+                "draftSource": pending["draftSource"],
                 "draftProvenance": pending["draftProvenance"],
             }
             if pending
@@ -606,6 +710,24 @@ def send_reply(db: DbSession, principal: CurrentPrincipal, message_id: str, repl
             )
     except Exception:  # noqa: BLE001 — indexing is an enhancement; the reply must still send.
         pass
+    # HALF-2 harvest: if the doctor edited the AI draft before sending, that delta is an eval signal
+    # (the model got it not-quite-right and a human fixed it). Only when there WAS an AI draft (a
+    # from-scratch reply isn't a correction) and the text actually changed (guarded in the helper).
+    if question.draft:
+        _record_qa_reply_feedback(
+            db,
+            tenant_id=principal.tenant_id,
+            actor_user_id=principal.user_id,
+            patient_id=thread.patient_id,
+            kind="correction",
+            before=question.draft,
+            after=text,
+            context={
+                "source": "send-edit",
+                "draftSource": question.draft_source,
+                "provenance": question.draft_provenance,
+            },
+        )
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -625,8 +747,22 @@ def dismiss_question(db: DbSession, principal: CurrentPrincipal, message_id: str
     simply unanswered — no internal handling leaks to the patient surface)."""
     require_qa_capability(db, principal.tenant_id)
     question = _get_question(db, principal.tenant_id, message_id)
+    thread = _get_thread(db, principal.tenant_id, str(question.thread_id))
     if question.status == Q_PENDING:
         question.status = Q_DISMISSED
+        # HALF-2 harvest: dismissing a question that HAD a ready draft is a rejection signal — the AI
+        # reply was not worth sending. (No draft → nothing for the eval set to learn from.)
+        if question.draft and question.draft_status in {DRAFT_READY, DRAFT_FAILED_REVISE}:
+            _record_qa_reply_feedback(
+                db,
+                tenant_id=principal.tenant_id,
+                actor_user_id=principal.user_id,
+                patient_id=thread.patient_id,
+                kind="rejection",
+                before=question.draft,
+                after=None,
+                context={"source": "dismiss", "draftSource": question.draft_source, "provenance": question.draft_provenance},
+            )
         audit(
             db,
             tenant_id=principal.tenant_id,
@@ -637,7 +773,6 @@ def dismiss_question(db: DbSession, principal: CurrentPrincipal, message_id: str
             details={},
         )
         db.commit()
-    thread = _get_thread(db, principal.tenant_id, str(question.thread_id))
     return staff_thread_payload(db, thread, include_messages=True)
 
 
@@ -656,6 +791,49 @@ def _capture_exchange_into_memory(patient: Patient, *, question_text: str, reply
     patient.notes = f"{existing}\n{entry}".strip() if existing else entry
 
 
+# --- Failure-detection harvest (HALF-2): learn from what the doctor does to a draft ----------------
+
+
+QA_REPLY_OUTPUT_TYPE = "qa_reply"
+
+
+def _record_qa_reply_feedback(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    patient_id: uuid.UUID | None,
+    kind: str,
+    before: str | None,
+    after: str | None,
+    context: dict[str, Any] | None = None,
+) -> None:
+    """Stage an ``ai_feedback_events`` row for a doctor's action on a Q&A reply draft (HALF-2).
+
+    Every meaningful doctor action on a suggested reply is a real eval signal: a manual edit before
+    send, a voice revise/replace, or a dismiss without replying. The AI draft (``before``) and the
+    doctor's outcome (``after``) are the qa golden-set target; retrieval provenance travels in
+    ``context`` for triage. Staged in the caller's transaction like ``audit`` — a ``correction`` is
+    only recorded when the text actually changed; harvesting never raises into the doctor's action.
+    """
+    from app.services import feedback
+
+    if kind == "correction":
+        if not after or (before or "").strip() == (after or "").strip():
+            return  # no real edit → not a correction signal
+    feedback.record_feedback_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        kind=kind,
+        ai_output_type=QA_REPLY_OUTPUT_TYPE,
+        before_value=before,
+        after_value=after,
+        patient_id=patient_id,
+        context=context or {},
+    )
+
+
 # --- Public patient surface (no auth — the token is the capability) -------------------------------
 
 
@@ -666,8 +844,27 @@ def _thread_by_token(db: DbSession, token: str) -> QaThread:
     return thread
 
 
+def _thread_language(tenant: Tenant | None, messages: list[QaMessage]) -> str:
+    """The language the public Q&A page should localize its chrome to (Q-10).
+
+    The clinic's configured report language when set; otherwise inferred from the thread content
+    (Persian script → ``fa``), so a fa clinic's Q&A page never renders English chrome over fa content.
+    """
+    if tenant is not None and tenant.report_language:
+        return tenant.report_language
+    blob = " ".join(m.body for m in messages if isinstance(m.body, str))
+    if any("؀" <= ch <= "ۿ" for ch in blob):
+        return "fa"
+    return "en"
+
+
 def _public_thread_projection(
-    *, clinic_name: str | None, patient_name: str | None, messages: list[QaMessage], doctor_names: dict[uuid.UUID, str | None]
+    *,
+    clinic_name: str | None,
+    patient_name: str | None,
+    language: str,
+    messages: list[QaMessage],
+    doctor_names: dict[uuid.UUID, str | None],
 ) -> dict[str, Any]:
     """Project a thread into the patient-facing payload — questions + verified replies ONLY (AES-403).
 
@@ -710,6 +907,7 @@ def _public_thread_projection(
         "status": THREAD_ACTIVE,
         "clinic": {"name": clinic_name},
         "patientName": patient_name,
+        "language": language,
         "exchanges": exchanges,
     }
 
@@ -731,9 +929,39 @@ def public_thread_payload(db: DbSession, token: str) -> dict[str, Any]:
     return _public_thread_projection(
         clinic_name=tenant.name if tenant else None,
         patient_name=patient.display_name if patient else None,
+        language=_thread_language(tenant, messages),
         messages=messages,
         doctor_names=doctor_names,
     )
+
+
+def _enforce_ask_limits(db: DbSession, thread: QaThread) -> None:
+    """Throttle the public ask endpoint (Q-8): a leaked token can't flood the inbox or LLM budget.
+
+    Two thread-scoped caps (no shared state needed): a concurrent unanswered-question ceiling, and a
+    rolling per-window rate. Both raise ``429`` so the public page can back off. Doctor sends/dismisses
+    clear pending questions, so a legitimately active conversation is never blocked.
+    """
+    if _pending_question_count(db, thread.id) >= MAX_PENDING_QUESTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="There are already several questions awaiting a reply. Please wait for the clinic to respond.",
+        )
+    window_start = _utc_now() - timedelta(seconds=ASK_RATE_WINDOW_SECONDS)
+    recent = int(
+        db.execute(
+            select(func.count(QaMessage.id)).where(
+                QaMessage.thread_id == thread.id,
+                QaMessage.role == ROLE_PATIENT,
+                QaMessage.created_at >= window_start,
+            )
+        ).scalar_one()
+    )
+    if recent >= ASK_RATE_MAX_IN_WINDOW:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many questions in a short time. Please wait a moment and try again.",
+        )
 
 
 def ask_question(db: DbSession, token: str, question_text: str) -> dict[str, Any]:
@@ -743,6 +971,7 @@ def ask_question(db: DbSession, token: str, question_text: str) -> dict[str, Any
     if not text:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A question is required")
     text = text[:MAX_QUESTION_CHARS]
+    _enforce_ask_limits(db, thread)
     question = QaMessage(
         tenant_id=thread.tenant_id,
         thread_id=thread.id,
@@ -774,9 +1003,11 @@ def _ensure_draft_job(db: DbSession, *, thread: QaThread, question: QaMessage) -
     """Create a draft job for a pending question that has none / a failed one. Returns True if it did.
 
     The self-healing driver: a draft that never started (broker was down) or failed is silently
-    re-drafted. A draft already pending or ready is left alone. Caller commits.
+    re-drafted. A draft already pending, ready, or being voice-edited (``revising``) is left alone —
+    dispatching a fresh qa_draft mid voice-edit would race the revise and could clobber it (Q-2).
+    Caller commits.
     """
-    if question.status != Q_PENDING or question.draft_status in {DRAFT_PENDING, DRAFT_READY}:
+    if question.status != Q_PENDING or question.draft_status in _DRAFT_INFLIGHT:
         return False
     _create_and_dispatch_draft_job(db, thread=thread, question=question)
     return True
@@ -788,8 +1019,27 @@ def _dispatch_draft_for_question(db: DbSession, *, thread: QaThread, question: Q
     db.commit()
 
 
+def _enrichment_paused(db: DbSession, tenant_id: uuid.UUID) -> bool:
+    """True when the clinic's metered AI spend has reached its budget (pause qa drafting; Q-8)."""
+    try:
+        from app.services.ai_usage import enrichment_paused
+
+        return enrichment_paused(db, tenant_id)
+    except Exception:  # noqa: BLE001 — a metering hiccup must never block drafting.
+        return False
+
+
 def _create_and_dispatch_draft_job(db: DbSession, *, thread: QaThread, question: QaMessage) -> None:
-    """Create the patient-scoped ``qa_draft`` AiJob (target message in result_metadata) + dispatch it."""
+    """Create the patient-scoped ``qa_draft`` AiJob (target message in result_metadata) + dispatch it.
+
+    Fair-use gate (Q-8): when the clinic is over its metered AI budget, do NOT buy an LLM draft — leave
+    the question at ``draft_status = none`` (the doctor can still reply by hand) so the inbox self-heal
+    re-attempts once the budget frees (new period / top-up / upgrade). qa drafts thus honour the same
+    pause as background enrichment instead of being an uncapped side channel.
+    """
+    if _enrichment_paused(db, thread.tenant_id):
+        question.draft_status = DRAFT_NONE
+        return
     job = AiJob(
         tenant_id=thread.tenant_id,
         patient_id=thread.patient_id,
@@ -845,8 +1095,28 @@ def _patient_qa_context(db: DbSession, patient: Patient | None, *, tenant_id: uu
     }
 
 
+# A leading greeting name in a prior answer is the most common cross-patient leak (Q-3): the draft is
+# grounded on OTHER patients' replies, so "Hi Maryam," / "سلام سارا،" would splice a stranger's name
+# into THIS patient's draft. Strip the name token right after a leading greeting before grounding.
+_GREETING_NAME_RE = re.compile(
+    r"^(\s*(?:hi|hello|hey|dear|سلام|درود|وقت بخیر)\b)[ \t]+([^\s,،.!؛:]+)",
+    re.IGNORECASE,
+)
+
+
+def _strip_greeting_name(text: str | None) -> str | None:
+    """Remove a stranger's name in a leading greeting from a prior-answer fragment (Q-3)."""
+    if not isinstance(text, str) or not text.strip():
+        return text
+    return _GREETING_NAME_RE.sub(r"\1", text, count=1)
+
+
 def _prior_doctor_answers(db: DbSession, *, tenant_id: uuid.UUID, doctor_user_id: uuid.UUID | None) -> list[dict[str, Any]]:
-    """The doctor's prior sent Q&A answers (with their question) to ground the draft's voice."""
+    """The doctor's prior sent Q&A answers (with their question) to ground the draft's voice.
+
+    The answers come from OTHER patients (they teach the doctor's VOICE, not facts), so a leading
+    greeting name is stripped server-side before it can leak into this patient's draft (Q-3).
+    """
     question_alias = aliased(QaMessage)
     statement = (
         select(QaMessage.body, question_alias.body)
@@ -861,7 +1131,10 @@ def _prior_doctor_answers(db: DbSession, *, tenant_id: uuid.UUID, doctor_user_id
     )
     if doctor_user_id is not None:
         statement = statement.where(QaMessage.created_by_user_id == doctor_user_id)
-    return [{"question": question, "answer": answer} for answer, question in db.execute(statement).all()]
+    return [
+        {"question": _strip_greeting_name(question), "answer": _strip_greeting_name(answer)}
+        for answer, question in db.execute(statement).all()
+    ]
 
 
 def _qa_draft_fallback(
@@ -989,14 +1262,17 @@ def complete_qa_draft_worker_job(db: DbSession, *, job: AiJob, output: dict[str,
     # Retrieval provenance was stashed on the job when its payload was built (the top exemplar the
     # draft is grounded in); surface it as the doctor-only "based on: …" chip.
     provenance = metadata.get("qa_provenance") if isinstance(metadata.get("qa_provenance"), dict) else None
-    # If the question is gone or already handled (answered/dismissed), the draft is simply no longer
-    # needed — complete the job quietly rather than resurrecting stale state.
-    if question is not None and question.status == Q_PENDING and draft_text:
+    # Optimistic lock (Q-2): only the job the question currently points at may write its draft. A stale
+    # qa_draft that finishes after a newer qa_draft/qa_revise took over (``draft_job_id`` moved on) must
+    # NOT clobber the fresher state — it completes quietly. If the question is gone or already handled
+    # (answered/dismissed), the draft is likewise no longer needed.
+    owns_draft = question is not None and question.status == Q_PENDING and question.draft_job_id == job.id
+    if owns_draft and draft_text:
         question.draft = draft_text
         question.draft_status = DRAFT_READY
         question.draft_source = output.get("source")
         question.draft_provenance = provenance
-    elif question is not None and question.status == Q_PENDING and not draft_text:
+    elif owns_draft and not draft_text:
         question.draft_status = DRAFT_FAILED
         question.draft_provenance = None
     job.status = AiJobStatus.succeeded
@@ -1105,6 +1381,27 @@ def dispatch_qa_revise_job(db: DbSession, job: AiJob) -> None:
         db.commit()
 
 
+def mark_qa_job_failed(db: DbSession, job: AiJob) -> None:
+    """Mark a terminally-failed qa_draft/qa_revise's target question with a VISIBLE failed state (Q-7).
+
+    Called from ``fail_worker_job`` when a qa job exhausts retries. Without this the question sits at
+    ``pending``/``revising`` forever and the inbox shows "Drafting…" indefinitely (the self-heal skips
+    an in-flight draft). A failed initial draft → ``failed``; a failed voice edit → ``failed_revise``
+    (the current draft is unchanged, so the doctor is told the edit didn't land). Only writes when this
+    job still owns the draft (optimistic lock). Does NOT commit — the caller's transaction does.
+    """
+    metadata = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    message_id = metadata.get("qa_message_id")
+    if not message_id:
+        return
+    question = db.execute(
+        select(QaMessage).where(QaMessage.id == parse_uuid(str(message_id), "qa_message_id"), QaMessage.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    if question is None or question.status != Q_PENDING or question.draft_job_id != job.id:
+        return
+    question.draft_status = DRAFT_FAILED_REVISE if job.job_type == AiJobType.qa_revise else DRAFT_FAILED
+
+
 def get_message_draft(db: DbSession, principal: CurrentPrincipal, message_id: str) -> dict[str, Any]:
     """Lightweight draft state for the inbox to poll while a voice edit (or initial draft) runs."""
     require_qa_capability(db, principal.tenant_id)
@@ -1186,7 +1483,17 @@ def complete_qa_revise_worker_job(db: DbSession, *, job: AiJob, output: dict[str
     reply_text = output.get("reply") or output.get("draft")
     reply_text = reply_text.strip()[:MAX_REPLY_CHARS] if isinstance(reply_text, str) and reply_text.strip() else None
     mode = output.get("mode") if output.get("mode") in {"revise", "replace"} else "revise"
-    if question is not None and question.status == Q_PENDING and reply_text:
+    # A usable voice edit ONLY when the model actually produced it (source ``ai:…``). The deterministic
+    # fallback (no gateway / unusable output / audio fetch failed) echoes the current draft with a
+    # ``mock-deterministic`` source — treating that as a success would falsely badge the reply "Revised"
+    # while the doctor's spoken correction never landed (Q-1, INV-SILENT).
+    source = output.get("source")
+    applied_by_ai = isinstance(source, str) and source.startswith("ai:")
+    before_draft = metadata.get("current_draft") or question.draft if question is not None else None
+    # Optimistic lock (Q-2): only the job the question currently points at may write (a stale revise
+    # that lost the race to a newer job completes quietly).
+    owns_draft = question is not None and question.status == Q_PENDING and question.draft_job_id == job.id
+    if owns_draft and applied_by_ai and reply_text:
         question.draft = reply_text
         question.draft_status = DRAFT_READY
         question.draft_source = f"ai-voice:{mode}"
@@ -1194,9 +1501,22 @@ def complete_qa_revise_worker_job(db: DbSession, *, job: AiJob, output: dict[str
         # `revise` keeps grounding the same draft, so the provenance chip survives.
         if mode == "replace":
             question.draft_provenance = None
-    elif question is not None and question.status == Q_PENDING:
-        # Couldn't produce a revision — leave whatever draft was there, just clear the revising state.
-        question.draft_status = DRAFT_READY if question.draft else DRAFT_FAILED
+        # HALF-2 harvest: a voice edit IS a doctor correcting the AI reply — record the before/after so
+        # the qa golden set learns from real edits (retrieval provenance kept for triage; Q3-scrubbed).
+        _record_qa_reply_feedback(
+            db,
+            tenant_id=job.tenant_id,
+            actor_user_id=job.created_by_user_id,
+            patient_id=job.patient_id,
+            kind="correction",
+            before=before_draft,
+            after=reply_text,
+            context={"source": "voice-edit", "mode": mode, "draftSource": source, "provenance": question.draft_provenance},
+        )
+    elif owns_draft:
+        # Couldn't apply the spoken edit: the draft is UNCHANGED. Surface a visible failure (never a
+        # silent "Revised") — the doctor is told and can edit by hand or retry (Q-1).
+        question.draft_status = DRAFT_FAILED_REVISE
     # The voice note was transient — delete it now that the edit is applied.
     object_key = metadata.get("voice_object_key")
     if object_key:

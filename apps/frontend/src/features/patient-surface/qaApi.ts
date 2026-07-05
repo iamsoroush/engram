@@ -34,6 +34,8 @@ export interface QaThreadPayload {
   status: "active";
   clinic: { name: string | null };
   patientName: string | null;
+  /** The clinic's language (e.g. "fa"), so the page localizes its chrome to match the content. */
+  language: string | null;
   exchanges: QaExchange[];
 }
 

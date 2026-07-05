@@ -26,7 +26,9 @@ export interface QaPendingQuestion {
   question: string;
   askedAt: string | null;
   suggestedReply: string | null;
-  draftStatus: "none" | "pending" | "ready" | "failed" | string;
+  draftStatus: "none" | "pending" | "ready" | "failed" | "failed_revise" | string;
+  /** Draft origin: `ai:<model>` | `ai-voice:<mode>` | `mock-deterministic` (the starter fallback). */
+  draftSource?: string | null;
   /** Which library exemplar grounded this draft, if retrieval found one (AES-410). */
   draftProvenance?: QaDraftProvenance | null;
 }
