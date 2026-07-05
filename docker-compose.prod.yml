@@ -69,6 +69,8 @@ services:
     build:
       context: ./apps/backend
       dockerfile: Dockerfile.prod
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     environment:
       BACKEND_APP_NAME: ${BACKEND_APP_NAME:-Engram API}
       BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost"]}
@@ -124,6 +126,8 @@ services:
     build:
       context: ./apps
       dockerfile: ai_engine/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     environment:
       AI_ENGINE_CELERY_BROKER_URL: ${BACKEND_CELERY_BROKER_URL:-redis://redis:6379/0}
       AI_ENGINE_CELERY_RESULT_BACKEND: ${BACKEND_CELERY_RESULT_BACKEND:-redis://redis:6379/1}
