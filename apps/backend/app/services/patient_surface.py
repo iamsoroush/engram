@@ -10,6 +10,7 @@ cannot leak through the public endpoint. Sharing is an explicit staff action; th
 and may expire. The Pro Q&A payload is a later addition on the same primitive.
 """
 
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ from app.models import (
     Capture,
     CaptureStatus,
     CaptureType,
+    Patient,
     PatientShare,
     Session,
     Tenant,
@@ -35,6 +37,7 @@ from app.schemas.shares import PatientShareCreate
 from app.services.patients import get_patient
 from app.services.reporting import report_template_context
 from app.services.sessions import parse_uuid
+from app.services.treatment_overlay import effective_treatments
 from app.storage import ObjectStore
 
 SHARE_SCHEMA_VERSION = "2026-06-12.patient-share.v1"
@@ -70,6 +73,32 @@ def _effective_status(share: PatientShare) -> str:
     if _is_expired(share):
         return "expired"
     return SHARE_STATUS_ACTIVE
+
+
+# Lot/batch tokens must never reach the patient (the withholding contract, `patient-surface.md`).
+# The AI caption is *mandated* to read lot/batch numbers, and the share sheet prefills captions with
+# it, so the caption channel is filtered server-side at snapshot time (Q-6). Two shapes are removed:
+# a labelled lot ("lot A1234B", «سری ساخت ۱۲۳») and a bare lot-like code (a single token mixing
+# letters and digits, ≥5 chars — e.g. A1234B), which spares plain words, dates, and split doses.
+_LOT_LABEL_RE = re.compile(
+    r"\b(?:lot|batch|lot\s*no|batch\s*no|lot\s*#|batch\s*#)\b\.?\s*[:#]?\s*[A-Za-z0-9][A-Za-z0-9\-/]*",
+    re.IGNORECASE,
+)
+_LOT_LABEL_FA_RE = re.compile(r"(?:لات|بچ|سری\s*ساخت|شماره\s*سری)\s*[:#]?\s*[\w\-/]+")
+_LOT_BARE_RE = re.compile(r"\b(?=[A-Za-z0-9\-]*[A-Za-z])(?=[A-Za-z0-9\-]*\d)[A-Za-z0-9\-]{5,}\b")
+
+
+def _strip_lot_tokens(text: str | None) -> str | None:
+    """Remove lot/batch tokens from a free-text caption (Q-6). Returns None when nothing survives."""
+    if not isinstance(text, str) or not text.strip():
+        return None
+    cleaned = _LOT_LABEL_RE.sub("", text)
+    cleaned = _LOT_LABEL_FA_RE.sub("", cleaned)
+    cleaned = _LOT_BARE_RE.sub("", cleaned)
+    # Tidy the punctuation/space left behind by removals (e.g. "vial, lot A1234B" → "vial").
+    cleaned = re.sub(r"\s*[,،؛;]\s*(?=[,،؛;]|$)", "", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" ,،؛;-–—")
+    return cleaned or None
 
 
 def _curated_media(
@@ -123,7 +152,8 @@ def _curated_media(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="A selected photo does not belong to this patient",
             )
-        curated.append({"captureId": str(capture_uuid), "caption": caption.strip() if isinstance(caption, str) and caption.strip() else None})
+        # Filter lot/batch tokens out of the (AI-prefilled) caption at snapshot time (Q-6).
+        curated.append({"captureId": str(capture_uuid), "caption": _strip_lot_tokens(caption)})
     return curated
 
 
@@ -172,12 +202,10 @@ def _curated_treatment_lines(session: Session | None, *, include_brands: bool) -
     """
     if session is None:
         return []
-    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
-    treatments = metadata.get("treatments")
-    if not isinstance(treatments, list):
-        return []
+    # Read the OVERLAID treatments (M-P4): a clinician-corrected area/product/brand must reach the
+    # patient-facing "what we did" lines, not the raw AI artifact (the AES-1101 safety class).
     lines: list[str] = []
-    for treatment in treatments:
+    for treatment in effective_treatments(session):
         if not isinstance(treatment, dict):
             continue
         area = str(treatment.get("area") or "").strip()
@@ -256,9 +284,31 @@ def create_patient_share(db: DbSession, principal: CurrentPrincipal, request: Pa
     return staff_share_payload(share, include_preview=True)
 
 
-def staff_share_payload(share: PatientShare, *, include_preview: bool = False) -> dict[str, Any]:
-    """Serialize a share for staff (AES-403 per-share preview of exactly what the patient sees)."""
+def _share_is_stale(share: PatientShare, source_updated_at: datetime | None) -> bool:
+    """Whether an active share predates its source visit's latest change (Q-4).
+
+    The snapshot is immutable by design, so a later report correction or safety-flag addition on the
+    source visit leaves the share showing outdated content. This surfaces that (needs-attention),
+    computed lazily from ``session.updated_at`` rather than stored — no correction-site write."""
+    if not _is_publicly_readable(share) or source_updated_at is None or share.created_at is None:
+        return False
+    created = share.created_at if share.created_at.tzinfo else share.created_at.replace(tzinfo=timezone.utc)
+    changed = source_updated_at if source_updated_at.tzinfo else source_updated_at.replace(tzinfo=timezone.utc)
+    return changed > created
+
+
+def staff_share_payload(
+    share: PatientShare,
+    *,
+    include_preview: bool = False,
+    source_updated_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Serialize a share for staff (AES-403 per-share preview of exactly what the patient sees).
+
+    ``source_updated_at`` (the share's source visit's latest change time) drives the ``stale`` /
+    ``staleSince`` needs-attention flags (Q-4); pass it whenever the source session is loaded."""
     content = share.content if isinstance(share.content, dict) else {}
+    stale = _share_is_stale(share, source_updated_at)
     payload = {
         "id": str(share.id),
         "tenantId": str(share.tenant_id),
@@ -270,6 +320,10 @@ def staff_share_payload(share: PatientShare, *, include_preview: bool = False) -
         "status": _effective_status(share),
         "title": content.get("title"),
         "mediaCount": len(content.get("media", []) if isinstance(content.get("media"), list) else []),
+        # Needs-attention (Q-4): the source visit changed after this share was frozen — staff should
+        # review/re-share. Only ever True for an active, publicly-readable share.
+        "stale": stale,
+        "staleSince": _iso(source_updated_at) if stale else None,
         "createdAt": _iso(share.created_at),
         "updatedAt": _iso(share.updated_at),
         "expiresAt": _iso(share.expires_at),
@@ -285,8 +339,18 @@ def list_patient_shares(db: DbSession, principal: CurrentPrincipal, *, patient_i
     statement = select(PatientShare).where(PatientShare.tenant_id == principal.tenant_id)
     if patient_id:
         statement = statement.where(PatientShare.patient_id == parse_uuid(patient_id, "patient_id"))
-    shares = db.execute(statement.order_by(PatientShare.created_at.desc())).scalars()
-    return [staff_share_payload(share) for share in shares]
+    shares = list(db.execute(statement.order_by(PatientShare.created_at.desc())).scalars())
+    # Batch-load each source visit's latest-change time to flag stale (predates a correction) shares.
+    session_ids = {share.session_id for share in shares if share.session_id is not None}
+    source_updated: dict[uuid.UUID, datetime] = {}
+    if session_ids:
+        for sid, updated_at in db.execute(
+            select(Session.id, Session.updated_at).where(
+                Session.tenant_id == principal.tenant_id, Session.id.in_(list(session_ids))
+            )
+        ).all():
+            source_updated[sid] = updated_at
+    return [staff_share_payload(share, source_updated_at=source_updated.get(share.session_id)) for share in shares]
 
 
 def get_patient_share(db: DbSession, tenant_id: uuid.UUID, share_id: str) -> PatientShare:
@@ -304,7 +368,15 @@ def get_patient_share(db: DbSession, tenant_id: uuid.UUID, share_id: str) -> Pat
 
 def get_patient_share_payload(db: DbSession, principal: CurrentPrincipal, share_id: str) -> dict[str, Any]:
     """Return one share with its full curated preview for staff review."""
-    return staff_share_payload(get_patient_share(db, principal.tenant_id, share_id), include_preview=True)
+    share = get_patient_share(db, principal.tenant_id, share_id)
+    source_updated_at = None
+    if share.session_id is not None:
+        source_updated_at = db.execute(
+            select(Session.updated_at).where(
+                Session.id == share.session_id, Session.tenant_id == principal.tenant_id
+            )
+        ).scalar_one_or_none()
+    return staff_share_payload(share, include_preview=True, source_updated_at=source_updated_at)
 
 
 def revoke_patient_share(db: DbSession, principal: CurrentPrincipal, share_id: str) -> dict[str, Any]:
@@ -326,6 +398,82 @@ def revoke_patient_share(db: DbSession, principal: CurrentPrincipal, share_id: s
         db.commit()
         db.refresh(share)
     return staff_share_payload(share)
+
+
+def _revoke_shares(
+    db: DbSession,
+    shares: list[PatientShare],
+    *,
+    tenant_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None,
+    reason: str,
+) -> int:
+    """Revoke the given active shares (shared body for reassignment/archive revocation)."""
+    now = _utc_now()
+    revoked = 0
+    for share in shares:
+        if share.status == SHARE_STATUS_REVOKED:
+            continue
+        share.status = SHARE_STATUS_REVOKED
+        share.revoked_at = now
+        share.revoked_by_user_id = actor_user_id
+        revoked += 1
+        audit(
+            db,
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action="patient_share.revoke",
+            target_type="patient_share",
+            target_id=share.id,
+            details={"reason": reason},
+        )
+    return revoked
+
+
+def revoke_shares_for_session(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    session_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+    reason: str = "reassignment",
+) -> int:
+    """Auto-revoke every active share frozen from a session (M-P3/Q-4).
+
+    Called when the session's patient changes (reassignment/de-effect): a share froze the visit's
+    sections + photos + patient name into an immutable snapshot under a live token, so after A→B the
+    public link would keep serving B's content under A's name. Hard-revoke closes that. The caller
+    commits. Returns how many shares were revoked."""
+    shares = list(
+        db.execute(
+            select(PatientShare).where(
+                PatientShare.tenant_id == tenant_id,
+                PatientShare.session_id == session_id,
+                PatientShare.status == SHARE_STATUS_ACTIVE,
+            )
+        ).scalars()
+    )
+    return _revoke_shares(db, shares, tenant_id=tenant_id, actor_user_id=actor_user_id, reason=reason)
+
+
+def revoke_patient_shares_on_archive(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+) -> int:
+    """Revoke a patient's active shares when the patient is archived (Q-9 archive half). Caller commits."""
+    shares = list(
+        db.execute(
+            select(PatientShare).where(
+                PatientShare.tenant_id == tenant_id,
+                PatientShare.patient_id == patient_id,
+                PatientShare.status == SHARE_STATUS_ACTIVE,
+            )
+        ).scalars()
+    )
+    return _revoke_shares(db, shares, tenant_id=tenant_id, actor_user_id=actor_user_id, reason="patient_archived")
 
 
 def _public_content(share: PatientShare) -> dict[str, Any]:
@@ -388,7 +536,19 @@ def public_share_media(db: DbSession, *, object_store: ObjectStore, token: str, 
             Capture.tenant_id == share.tenant_id,
         )
     ).scalar_one_or_none()
-    if capture is None or capture.source_artifact_id is None:
+    if capture is None or capture.source_artifact_id is None or capture.status == CaptureStatus.deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found")
+    # Q-4: re-check patient OWNERSHIP at read time, not just tenant. A photo shared under patient A's
+    # token whose visit was later reassigned to B (or whose capture was reassigned) must stop
+    # streaming — otherwise B's photo keeps serving under A's link even after reassignment.
+    owner = capture.patient_id
+    if owner is None and capture.session_id is not None:
+        owner = db.execute(
+            select(Session.patient_id).where(
+                Session.id == capture.session_id, Session.tenant_id == share.tenant_id
+            )
+        ).scalar_one_or_none()
+    if owner != share.patient_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found")
     artifact = db.execute(
         select(Artifact).where(Artifact.id == capture.source_artifact_id, Artifact.tenant_id == share.tenant_id)

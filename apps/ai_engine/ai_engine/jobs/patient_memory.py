@@ -84,8 +84,11 @@ def completed_patient_memory_output(payload: dict[str, Any]) -> dict[str, Any]:
         "lang": lang,
         "summary": parsed["summary"],
         "history": history,
-        # Carry the model's compact card through; backend coerces it + falls back deterministically.
-        "card": parsed.get("card") or fallback.get("card"),
+        # Carry the model's compact card through as-is (M-P13/T4): do NOT substitute the deterministic
+        # mock card when the model omits one — that would sit a canned "Memory spans N visits" card
+        # next to the AI summary and contradict it. The backend derives a card from THIS AI history
+        # instead (card_from_history), keeping the line-up recap consistent with the memory.
+        "card": parsed.get("card"),
         "source": f"ai:{model}",
         "model": model,
         "generated_by": "ai-engine",

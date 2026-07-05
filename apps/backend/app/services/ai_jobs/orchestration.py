@@ -30,6 +30,7 @@ from app.services.patient_memory_intelligence import (
     apply_patient_memory_output,
     build_patient_memory_job_input,
     mark_patient_memory_updating,
+    memory_build_snapshot,
     patient_has_active_memory_job,
     patient_has_pending_capture_jobs,
     patient_memory_is_stale,
@@ -86,6 +87,7 @@ __all__ = [
     "LINEUP_DISPATCH_PRIORITY",
     "sweep_stale_patient_memory",
     "patient_memory_job_payload",
+    "patient_memory_job_snapshot",
     "complete_patient_memory_worker_job",
     "enqueue_capture_processing_job",
     "TASK_NAME_BY_JOB_TYPE",
@@ -604,14 +606,43 @@ def patient_memory_job_payload(db: DbSession, job: AiJob, ai_models: dict[str, s
     return {"job": ai_job_payload(job), "aiModels": ai_models, **job_input}
 
 
+def patient_memory_job_snapshot(db: DbSession, job: AiJob) -> dict[str, Any] | None:
+    """Freeze the memory build's inputs at job START (INV-SNAPSHOT / M-P5), stored on the job.
+
+    Computed when the worker starts the job and carried on ``result_metadata`` to completion, so the
+    finished memory's ``updated_at`` means "inputs as of build T" and a visit that changed while the
+    job ran leaves the memory stale. Returns None for a job with no patient (nothing to snapshot)."""
+    patient = db.execute(
+        select(Patient).where(Patient.id == job.patient_id, Patient.tenant_id == job.tenant_id)
+    ).scalar_one_or_none()
+    if patient is None:
+        return None
+    sessions = list(
+        db.execute(
+            select(Session).where(Session.tenant_id == job.tenant_id, Session.patient_id == patient.id)
+        ).scalars()
+    )
+    return memory_build_snapshot(patient, sessions, now=utc_now())
+
+
 def complete_patient_memory_worker_job(db: DbSession, *, job: AiJob, output: dict[str, Any]) -> dict[str, Any]:
     """Persist a completed patient-memory job: write the patient's summary+history (status → ready)."""
     completed_at = utc_now()
     patient = db.execute(
         select(Patient).where(Patient.id == job.patient_id, Patient.tenant_id == job.tenant_id)
     ).scalar_one_or_none()
+    snapshot = (job.result_metadata or {}).get("memory_snapshot") if isinstance(job.result_metadata, dict) else None
     if patient is not None:
-        apply_patient_memory_output(patient, output, tenant_tier(db, job.tenant_id), now=completed_at)
+        apply_patient_memory_output(
+            patient, output, tenant_tier(db, job.tenant_id), now=completed_at, snapshot=snapshot
+        )
+    else:
+        # M-P13/T1: the target patient was archived/merged while the job ran — the output is dropped,
+        # not applied. Log it so a silent "succeeded" is distinguishable from an applied build.
+        logger.warning(
+            "Patient-memory job completed but its patient is gone; output dropped",
+            extra={"job_id": str(job.id), "patient_id": str(job.patient_id)},
+        )
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
     job.error_message = None

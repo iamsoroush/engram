@@ -448,6 +448,43 @@ def revoke_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str) ->
     return staff_thread_payload(db, thread)
 
 
+def revoke_patient_qa_threads_on_archive(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    actor_user_id: uuid.UUID | None = None,
+) -> int:
+    """Revoke a patient's active Q&A threads when the patient is archived (Q-9 archive half).
+
+    Additive internal primitive (no ``principal``) so the patient-lifecycle/archive path can call it
+    directly. Token rotation on re-activation is owned separately (Track D+). Caller commits."""
+    threads = list(
+        db.execute(
+            select(QaThread).where(
+                QaThread.tenant_id == tenant_id,
+                QaThread.patient_id == patient_id,
+                QaThread.status == THREAD_ACTIVE,
+            )
+        ).scalars()
+    )
+    now = _utc_now()
+    for thread in threads:
+        thread.status = THREAD_REVOKED
+        thread.revoked_at = now
+        thread.revoked_by_user_id = actor_user_id
+        audit(
+            db,
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            action="qa.thread.revoke",
+            target_type="qa_thread",
+            target_id=thread.id,
+            details={"reason": "patient_archived"},
+        )
+    return len(threads)
+
+
 # --- Doctor inbox + reply/dismiss (staff) ---------------------------------------------------------
 
 

@@ -245,11 +245,13 @@ class Patient(Base):
     phone: Mapped[str | None] = mapped_column(String(80))
     email: Mapped[str | None] = mapped_column(String(320))
     notes: Mapped[str | None] = mapped_column(Text)
-    # Mock patient-memory intelligence (placeholder for a future AI job): the tier-aware card
+    # Patient-memory intelligence (Pro AI job + Basic deterministic fallback): the tier-aware card
     # `summary` + its refresh lifecycle. JSONB blob shaped like
-    # {status: "ready"|"updating", mode: "pro"|"basic", summary, source, updated_at,
-    # updating_since, ready_at}. NULL = never generated yet (read paths fall back to the
-    # deterministic rule-based summary). The richer `history` is generated on read, not stored.
+    # {status: "ready"|"updating", mode: "pro"|"basic", summary, history, card, source, updated_at,
+    # built_from_sessions, built_from_name, updating_since, ready_at}. `updated_at` +
+    # built_from_sessions/name are the build-START inputs snapshot (INV-SNAPSHOT): staleness compares
+    # against them so a mid-flight edit, a reassignment (session-set change), or a rename is detected.
+    # NULL = never generated yet (read paths fall back to the deterministic rule-based summary).
     memory: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # Session-derived clinical SAFETY FLAGS (allergy/contraindication/consent) confirmed for this
     # patient: the non-rejected flags from each visit's synthesis, persisted here so they surface

@@ -86,24 +86,44 @@ class MemoryLifecycleTests(unittest.TestCase):
         self.assertEqual(memory_status(self.patient), "ready")
         self.assertFalse(finalize_patient_memory_if_due(None, self.patient, self.sessions, "pro"))
 
-    def test_updating_then_due_finalizes(self) -> None:
+    def test_pro_finalize_despins_without_fabricating_content(self) -> None:
+        # M-P1: for Pro, the read-path safety net must NEVER fabricate canned content — it only
+        # de-spins a stuck `updating` back to `ready`. With no prior AI memory, that means status
+        # flips but no summary is invented (the read-trigger dispatches the real AI build instead).
         now = datetime(2026, 6, 8, 12, 0, tzinfo=timezone.utc)
         mark_patient_memory_updating(_FakeDb(self.patient), self.patient.id, now=now)
         self.assertEqual(memory_status(self.patient), "updating")
 
-        # Before the imitated latency elapses, the read does not finalize.
         too_soon = now + timedelta(seconds=MOCK_MEMORY_DELAY_SECONDS - 1)
         self.assertFalse(finalize_patient_memory_if_due(None, self.patient, self.sessions, "pro", now=too_soon))
         self.assertEqual(memory_status(self.patient), "updating")
-        self.assertIsNone(persisted_summary(self.patient))
 
-        # After it elapses, the next read finalizes to ready with tier-aware content.
         due = now + timedelta(seconds=MOCK_MEMORY_DELAY_SECONDS + 1)
         self.assertTrue(finalize_patient_memory_if_due(None, self.patient, self.sessions, "pro", now=due))
         self.assertEqual(memory_status(self.patient), "ready")
-        self.assertTrue(persisted_summary(self.patient))
+        self.assertIsNone(persisted_summary(self.patient))
+        # De-spin never re-stamps freshness (the memory stays stale so the AI rebuild is still due).
+        self.assertIsNone(self.patient.memory.get("updated_at"))
+
+    def test_pro_finalize_preserves_prior_ai_memory(self) -> None:
+        # M-P1: a real AI memory must survive the read-path safety net verbatim (never overwritten by
+        # canned deterministic content), and its freshness must NOT be bumped by the de-spin.
+        self.patient.memory = {
+            "status": "ready",
+            "mode": "pro",
+            "summary": "Prior AI story: last visit Voluma 0.3 mL, left cheek.",
+            "history": {"snapshot": "s", "sections": [{"label": "Story so far", "body": "b"}], "visits": []},
+            "source": MOCK_AI_SOURCE,
+            "updated_at": "2026-06-07T00:00:00+00:00",
+        }
+        now = datetime(2026, 6, 8, 12, 0, tzinfo=timezone.utc)
+        mark_patient_memory_updating(_FakeDb(self.patient), self.patient.id, now=now)
+        due = now + timedelta(seconds=MOCK_MEMORY_DELAY_SECONDS + 1)
+        self.assertTrue(finalize_patient_memory_if_due(None, self.patient, self.sessions, "pro", now=due))
+        self.assertEqual(memory_status(self.patient), "ready")
+        self.assertIn("Voluma 0.3", persisted_summary(self.patient))
         self.assertEqual(self.patient.memory["source"], MOCK_AI_SOURCE)
-        self.assertEqual(self.patient.memory["mode"], "pro")
+        self.assertEqual(self.patient.memory["updated_at"], "2026-06-07T00:00:00+00:00")
 
     def test_basic_finalizes_deterministic_source(self) -> None:
         now = datetime(2026, 6, 8, 12, 0, tzinfo=timezone.utc)

@@ -267,8 +267,9 @@ def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
     assignment, capture-delete de-effect all route through it), so it also: keeps the cross-visit safety
     store consistent (S-F1); invalidates wrong-patient-derived synthesis state on a true reassignment
     (S-F2/S-F6) — the caller commits and, where AI jobs are reachable, force-dispatches the re-synthesis;
-    and archives an AI-created unverified patient the session just moved away from when nothing else
-    references it (incident Fix 6) — for staff and AI reassignment alike.
+    archives an AI-created unverified patient the session just moved away from when nothing else
+    references it (incident Fix 6) — for staff and AI reassignment alike; and invalidates the FORMER
+    patient's projections (memory refresh mark + share revocation, M-P2/M-P3) via the lifecycle hooks.
     """
     previous_patient_id = session.patient_id
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
@@ -354,6 +355,22 @@ def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
                 "patient_action_badges": badges,
                 **({"ai_patient_creation_basis": True} if event.get("created") else {}),
             }
+
+    # INV-INVALIDATE: when this application CHANGES the session's patient (a reassignment, an
+    # unassignment, or a de-effect that reverts one), the former patient's projections that quoted
+    # this visit must be invalidated. Shared chokepoint for the staff, AI, and capture-delete paths.
+    if str(previous_patient_id) != str(next_patient_id):
+        from app.services.patient_memory_intelligence import mark_patient_memory_updating
+        from app.services.patient_surface import revoke_shares_for_session
+
+        # M-P2: mark the FORMER patient's memory as refreshing. Its removal-aware staleness (the
+        # session-id set no longer matches what the memory was built from) then drives the rebuild so
+        # the brief/line-up card stops quoting a visit that is no longer this patient's.
+        if previous_patient_id is not None:
+            mark_patient_memory_updating(db, previous_patient_id)
+        # M-P3/Q-4: hard-revoke any active public share frozen from THIS visit — otherwise the token
+        # keeps serving the (now reassigned) content, including photos, under the old patient's name.
+        revoke_shares_for_session(db, tenant_id=session.tenant_id, session_id=session.id)
 
     # Incident Fix 6: if this recompute moved the visit off an AI-created unverified patient, archive
     # that patient when nothing else references it. Flush first so the just-repointed captures/session

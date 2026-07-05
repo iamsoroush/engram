@@ -17,7 +17,16 @@ from sqlalchemy.orm import Session as DbSession
 
 from app.auth.dependencies import CurrentPrincipal
 from app.auth.service import audit
-from app.models import MembershipRole, MembershipStatus, Patient, Session, TenantMembership, User, WorklistEntry
+from app.models import (
+    MembershipRole,
+    MembershipStatus,
+    Patient,
+    PatientStatus,
+    Session,
+    TenantMembership,
+    User,
+    WorklistEntry,
+)
 from app.services.attribution import attribution_payload
 from app.services.sessions import parse_uuid
 
@@ -80,6 +89,9 @@ def create_worklist_entry(
     ).scalar_one_or_none()
     if patient is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    # M-P7: an archived (cleaned-up) patient must not be lined up or run a visit against.
+    if patient.status != PatientStatus.active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient is archived")
     membership = _require_active_member(db, principal.tenant_id, clinician_uuid)
     if membership.role.value not in _CLINICIAN_ROLES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only line a patient up for a clinician")
@@ -157,7 +169,13 @@ def list_worklist(
     """
     if status_filter not in _VALID_STATUSES and status_filter != "all":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid status")
-    statement = select(WorklistEntry).where(WorklistEntry.tenant_id == principal.tenant_id)
+    # M-P7: exclude entries for non-active (archived/cleaned-up) patients so the worklist agrees with
+    # memory list / smart lists / the panel, all of which already filter to active patients.
+    statement = (
+        select(WorklistEntry)
+        .join(Patient, Patient.id == WorklistEntry.patient_id)
+        .where(WorklistEntry.tenant_id == principal.tenant_id, Patient.status == PatientStatus.active)
+    )
     target_clinician: uuid.UUID | None = None
     if clinician_id:
         target_clinician = parse_uuid(clinician_id, "clinician_id")
@@ -221,6 +239,32 @@ def resolve_worklist_entry(
     db.commit()
     db.refresh(entry)
     return worklist_entry_payload(db, entry)
+
+
+def cancel_worklist_entries_on_archive(
+    db: DbSession,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+) -> int:
+    """Cancel a patient's still-waiting worklist entries when the patient is archived (M-P7).
+
+    Keeps "Today / up next" free of archived identities even for entries created before the archive.
+    The caller commits. Returns how many entries were cancelled."""
+    entries = list(
+        db.execute(
+            select(WorklistEntry).where(
+                WorklistEntry.tenant_id == tenant_id,
+                WorklistEntry.patient_id == patient_id,
+                WorklistEntry.status == WAITING,
+            )
+        ).scalars()
+    )
+    now = datetime.now(timezone.utc)
+    for entry in entries:
+        entry.status = CANCELLED
+        entry.resolved_at = now
+    return len(entries)
 
 
 def list_clinic_members(db: DbSession, principal: CurrentPrincipal) -> dict[str, Any]:

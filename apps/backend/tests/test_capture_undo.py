@@ -23,6 +23,12 @@ class _Result:
     def scalar_one_or_none(self):
         return self._row
 
+    def scalars(self):
+        # A scripted list row → those rows; None → empty; a scalar → a one-item sequence.
+        if isinstance(self._row, list):
+            return list(self._row)
+        return [] if self._row is None else [self._row]
+
 
 class _ScriptedDb:
     """Minimal DB double: get() → the patient; execute() → scripted (has_session, has_capture)."""
@@ -95,7 +101,9 @@ class ArchiveOrphanedAiPatientTests(unittest.TestCase):
     def test_archives_unverified_ai_orphan(self):
         tenant = uuid.uuid4()
         p = _ai_patient(tenant)
-        db = _ScriptedDb(p, results=[None, None])  # no dependent session, no live capture
+        # no dependent session, no live capture; then the archive-lifecycle hooks query (and find
+        # none of) the patient's worklist entries, shares, and Q&A threads.
+        db = _ScriptedDb(p, results=[None, None, [], [], []])
         archived = _archive_orphaned_ai_patient(db, self._principal(tenant), p.id)
         self.assertTrue(archived)
         self.assertEqual(p.status, PatientStatus.archived)
