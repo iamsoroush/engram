@@ -433,404 +433,429 @@
     "whitespace": null
   },
   "synthesis": {
-    "blank_summary": null,
     "empty": null,
-    "fenced": {
-      "aftercareSelections": [],
-      "generatedBy": "ai-engine",
+    "not_json": null,
+    "no_summary": null,
+    "blank_summary": null,
+    "json_array": null,
+    "minimal": {
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "A visit summary.",
       "language": "mixed",
-      "safetyFlags": [],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "lang": null,
       "sections": [
         {
-          "blocks": [],
           "id": "visit-summary",
-          "title": "خلاصه ویزیت"
+          "title": "Visit summary",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "concern-goals",
-          "title": "نگرانی‌ها و اهداف"
+          "title": "Concern & goals",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "assessment",
-          "title": "ارزیابی"
+          "title": "Assessment",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "treatment-performed",
-          "title": "درمان انجام‌شده"
+          "title": "Treatment performed",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "media",
-          "title": "تصاویر"
+          "title": "Media",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "plan-followup",
-          "title": "برنامه و پیگیری"
+          "title": "Plan & follow-up",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "aftercare",
-          "title": "مراقبت‌های بعد از درمان"
+          "title": "Aftercare",
+          "blocks": []
         }
       ],
+      "treatments": [],
       "sourceReferences": [
         {
-          "captureId": "cap-x",
-          "type": "capture"
+          "type": "capture",
+          "captureId": "cap-a"
         }
       ],
-      "summary": "Fenced summary.",
-      "treatments": [],
-      "uncertainties": []
-    },
-    "full_en_report_language": {
+      "uncertainties": [],
+      "uncertaintyReasons": [],
       "aftercareSelections": [],
-      "generatedBy": "ai-engine",
-      "language": "en",
       "safetyFlags": [],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
-      "sections": [
-        {
-          "blocks": [],
-          "id": "visit-summary",
-          "title": "Visit summary"
-        },
-        {
-          "blocks": [],
-          "id": "concern-goals",
-          "title": "Concern & goals"
-        },
-        {
-          "blocks": [
-            {
-              "text": "note",
-              "type": "paragraph"
-            }
-          ],
-          "id": "assessment",
-          "title": "Assessment"
-        },
-        {
-          "blocks": [],
-          "id": "treatment-performed",
-          "title": "Treatment performed"
-        },
-        {
-          "blocks": [],
-          "id": "media",
-          "title": "Media"
-        },
-        {
-          "blocks": [],
-          "id": "plan-followup",
-          "title": "Plan & follow-up"
-        },
-        {
-          "blocks": [],
-          "id": "aftercare",
-          "title": "Aftercare"
-        }
-      ],
-      "sourceReferences": [],
-      "summary": "Summary.",
-      "treatments": [],
-      "uncertainties": []
+      "generatedBy": "ai-engine"
     },
     "full_fa": {
-      "aftercareSelections": [
-        {
-          "note": null,
-          "status": "applies",
-          "templateId": "t1"
-        },
-        {
-          "note": " differs ",
-          "status": "conflicts",
-          "templateId": "t2"
-        }
-      ],
-      "generatedBy": "ai-engine",
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "Follow-up gel touch-up.",
       "language": "fa",
-      "safetyFlags": [
-        {
-          "kind": "allergy",
-          "sourceCaptureIds": [
-            "cap-a"
-          ],
-          "text": "لیدوکائین"
-        },
-        {
-          "kind": "contraindication",
-          "sourceCaptureIds": [],
-          "text": "pregnant"
-        }
-      ],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "lang": "fa",
       "sections": [
         {
-          "blocks": [
-            {
-              "text": "بیمار آمد.",
-              "type": "paragraph"
-            }
-          ],
           "id": "visit-summary",
-          "title": "خلاصه ویزیت"
+          "title": "خلاصه ویزیت",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "بیمار آمد."
+            }
+          ]
         },
         {
-          "blocks": [],
           "id": "concern-goals",
-          "title": "نگرانی‌ها و اهداف"
+          "title": "نگرانی‌ها و اهداف",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "assessment",
-          "title": "ارزیابی"
+          "title": "ارزیابی",
+          "blocks": []
         },
         {
-          "blocks": [
-            {
-              "text": "ژل ۳ سی‌سی",
-              "type": "paragraph"
-            }
-          ],
           "id": "treatment-performed",
-          "title": "درمان انجام‌شده"
-        },
-        {
+          "title": "درمان انجام‌شده",
           "blocks": [
             {
-              "caption": "photo",
-              "captureId": "cap-a",
-              "type": "image"
+              "type": "paragraph",
+              "text": "ژل ۳ سی‌سی"
             }
-          ],
+          ]
+        },
+        {
           "id": "media",
-          "title": "تصاویر"
+          "title": "تصاویر",
+          "blocks": [
+            {
+              "type": "image",
+              "captureId": "cap-a",
+              "caption": "photo"
+            }
+          ]
         },
         {
-          "blocks": [],
           "id": "plan-followup",
-          "title": "برنامه و پیگیری"
+          "title": "برنامه و پیگیری",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "aftercare",
-          "title": "مراقبت‌های بعد از درمان"
+          "title": "مراقبت‌های بعد از درمان",
+          "blocks": []
         }
       ],
-      "sourceReferences": [
-        {
-          "captureId": "cap-a",
-          "type": "capture"
-        },
-        {
-          "captureId": "cap-b",
-          "type": "capture"
-        }
-      ],
-      "summary": "Follow-up gel touch-up.",
       "treatments": [
         {
           "area": "left cheek",
-          "attributes": {
-            "needleGauge": "27G"
-          },
-          "brand": "Juvederm",
-          "carriedForward": false,
-          "confidence": 0.9,
-          "evidence": "spoken",
-          "lot": null,
+          "areaCode": null,
           "product": "gel",
+          "brand": "Juvederm",
           "quantity": 3,
+          "unit": "cc",
           "quantityText": "۳ سی‌سی",
+          "lot": null,
+          "confidence": 0.9,
           "sourceCaptureIds": [
             "cap-a"
           ],
+          "evidence": "spoken",
+          "carriedForward": false,
           "supersedesCaptureId": null,
-          "unit": "cc"
+          "priorKey": null,
+          "lang": "fa",
+          "attributes": {
+            "needleGauge": "27G"
+          }
         },
         {
           "area": "forehead",
-          "attributes": {},
-          "brand": null,
-          "carriedForward": false,
-          "confidence": 0.0,
-          "evidence": null,
-          "lot": null,
+          "areaCode": null,
           "product": "",
+          "brand": null,
           "quantity": null,
+          "unit": null,
           "quantityText": null,
+          "lot": null,
+          "confidence": 0.0,
           "sourceCaptureIds": [],
+          "evidence": null,
+          "carriedForward": false,
           "supersedesCaptureId": null,
-          "unit": null
+          "priorKey": null,
+          "lang": "fa",
+          "attributes": {}
+        }
+      ],
+      "sourceReferences": [
+        {
+          "type": "capture",
+          "captureId": "cap-a"
+        },
+        {
+          "type": "capture",
+          "captureId": "cap-b"
         }
       ],
       "uncertainties": [
         "ambiguous dose"
-      ]
+      ],
+      "uncertaintyReasons": [
+        {
+          "code": "other",
+          "text": "ambiguous dose"
+        }
+      ],
+      "aftercareSelections": [
+        {
+          "templateId": "t1",
+          "status": "applies",
+          "note": null
+        },
+        {
+          "templateId": "t2",
+          "status": "conflicts",
+          "note": " differs "
+        }
+      ],
+      "safetyFlags": [
+        {
+          "kind": "allergy",
+          "text": "لیدوکائین",
+          "sourceCaptureIds": [
+            "cap-a"
+          ],
+          "lang": "fa"
+        },
+        {
+          "kind": "contraindication",
+          "text": "pregnant",
+          "sourceCaptureIds": [],
+          "lang": "fa"
+        }
+      ],
+      "generatedBy": "ai-engine"
     },
-    "json_array": null,
-    "minimal": {
-      "aftercareSelections": [],
-      "generatedBy": "ai-engine",
-      "language": "mixed",
-      "safetyFlags": [],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+    "full_en_report_language": {
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "Summary.",
+      "language": "en",
+      "lang": "en",
       "sections": [
         {
-          "blocks": [],
           "id": "visit-summary",
-          "title": "Visit summary"
+          "title": "Visit summary",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "concern-goals",
-          "title": "Concern & goals"
+          "title": "Concern & goals",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "assessment",
-          "title": "Assessment"
+          "title": "Assessment",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "note"
+            }
+          ]
         },
         {
-          "blocks": [],
           "id": "treatment-performed",
-          "title": "Treatment performed"
+          "title": "Treatment performed",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "media",
-          "title": "Media"
+          "title": "Media",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "plan-followup",
-          "title": "Plan & follow-up"
+          "title": "Plan & follow-up",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "aftercare",
-          "title": "Aftercare"
+          "title": "Aftercare",
+          "blocks": []
         }
       ],
-      "sourceReferences": [
-        {
-          "captureId": "cap-a",
-          "type": "capture"
-        }
-      ],
-      "summary": "A visit summary.",
       "treatments": [],
-      "uncertainties": []
-    },
-    "no_summary": null,
-    "not_json": null,
-    "sections_not_list": {
+      "sourceReferences": [],
+      "uncertainties": [],
+      "uncertaintyReasons": [],
       "aftercareSelections": [],
-      "generatedBy": "ai-engine",
-      "language": "mixed",
       "safetyFlags": [],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
-      "sections": [
-        {
-          "blocks": [],
-          "id": "visit-summary",
-          "title": "Visit summary"
-        },
-        {
-          "blocks": [],
-          "id": "concern-goals",
-          "title": "Concern & goals"
-        },
-        {
-          "blocks": [],
-          "id": "assessment",
-          "title": "Assessment"
-        },
-        {
-          "blocks": [],
-          "id": "treatment-performed",
-          "title": "Treatment performed"
-        },
-        {
-          "blocks": [],
-          "id": "media",
-          "title": "Media"
-        },
-        {
-          "blocks": [],
-          "id": "plan-followup",
-          "title": "Plan & follow-up"
-        },
-        {
-          "blocks": [],
-          "id": "aftercare",
-          "title": "Aftercare"
-        }
-      ],
-      "sourceReferences": [
-        {
-          "captureId": "cap-a",
-          "type": "capture"
-        }
-      ],
-      "summary": "S",
-      "treatments": [],
-      "uncertainties": []
+      "generatedBy": "ai-engine"
     },
     "unknown_language_defaults_mixed": {
-      "aftercareSelections": [],
-      "generatedBy": "ai-engine",
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "S",
       "language": "mixed",
-      "safetyFlags": [],
-      "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+      "lang": null,
       "sections": [
         {
-          "blocks": [],
           "id": "visit-summary",
-          "title": "Visit summary"
+          "title": "Visit summary",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "concern-goals",
-          "title": "Concern & goals"
+          "title": "Concern & goals",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "assessment",
-          "title": "Assessment"
+          "title": "Assessment",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "treatment-performed",
-          "title": "Treatment performed"
+          "title": "Treatment performed",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "media",
-          "title": "Media"
+          "title": "Media",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "plan-followup",
-          "title": "Plan & follow-up"
+          "title": "Plan & follow-up",
+          "blocks": []
         },
         {
-          "blocks": [],
           "id": "aftercare",
-          "title": "Aftercare"
+          "title": "Aftercare",
+          "blocks": []
         }
       ],
-      "sourceReferences": [],
-      "summary": "S",
       "treatments": [],
-      "uncertainties": []
+      "sourceReferences": [],
+      "uncertainties": [],
+      "uncertaintyReasons": [],
+      "aftercareSelections": [],
+      "safetyFlags": [],
+      "generatedBy": "ai-engine"
+    },
+    "fenced": {
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "Fenced summary.",
+      "language": "mixed",
+      "lang": "fa",
+      "sections": [
+        {
+          "id": "visit-summary",
+          "title": "خلاصه ویزیت",
+          "blocks": []
+        },
+        {
+          "id": "concern-goals",
+          "title": "نگرانی‌ها و اهداف",
+          "blocks": []
+        },
+        {
+          "id": "assessment",
+          "title": "ارزیابی",
+          "blocks": []
+        },
+        {
+          "id": "treatment-performed",
+          "title": "درمان انجام‌شده",
+          "blocks": []
+        },
+        {
+          "id": "media",
+          "title": "تصاویر",
+          "blocks": []
+        },
+        {
+          "id": "plan-followup",
+          "title": "برنامه و پیگیری",
+          "blocks": []
+        },
+        {
+          "id": "aftercare",
+          "title": "مراقبت‌های بعد از درمان",
+          "blocks": []
+        }
+      ],
+      "treatments": [],
+      "sourceReferences": [
+        {
+          "type": "capture",
+          "captureId": "cap-x"
+        }
+      ],
+      "uncertainties": [],
+      "uncertaintyReasons": [],
+      "aftercareSelections": [],
+      "safetyFlags": [],
+      "generatedBy": "ai-engine"
+    },
+    "sections_not_list": {
+      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "summary": "S",
+      "language": "mixed",
+      "lang": null,
+      "sections": [
+        {
+          "id": "visit-summary",
+          "title": "Visit summary",
+          "blocks": []
+        },
+        {
+          "id": "concern-goals",
+          "title": "Concern & goals",
+          "blocks": []
+        },
+        {
+          "id": "assessment",
+          "title": "Assessment",
+          "blocks": []
+        },
+        {
+          "id": "treatment-performed",
+          "title": "Treatment performed",
+          "blocks": []
+        },
+        {
+          "id": "media",
+          "title": "Media",
+          "blocks": []
+        },
+        {
+          "id": "plan-followup",
+          "title": "Plan & follow-up",
+          "blocks": []
+        },
+        {
+          "id": "aftercare",
+          "title": "Aftercare",
+          "blocks": []
+        }
+      ],
+      "treatments": [],
+      "sourceReferences": [
+        {
+          "type": "capture",
+          "captureId": "cap-a"
+        }
+      ],
+      "uncertainties": [],
+      "uncertaintyReasons": [],
+      "aftercareSelections": [],
+      "safetyFlags": [],
+      "generatedBy": "ai-engine"
     }
   },
   "transcription": {

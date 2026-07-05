@@ -13,6 +13,25 @@ TRANSCRIPTION_LANGUAGE_NAMES = {
     "ar": "Arabic",
 }
 
+# Tokens that name "no single language" rather than a real language subtag — never a BCP-47 stamp.
+_NON_LANGUAGE_TOKENS = {"", "auto", "unknown", "mixed", "und"}
+
+
+def normalize_bcp47_lang(value: Any) -> str | None:
+    """Coerce a report/preferred-language input into a BCP-47 language tag, or None.
+
+    The ``lang`` stamp records the language a payload's display strings were GENERATED in — the
+    reference field a future language-switch migration reads (docs/work/ai-engine-refactor-plan.md
+    §4.6). Our inputs are already BCP-47-ish (``fa``, ``en``, ``fa-IR``); sentinels that name no single
+    language (``auto``/``unknown``/``mixed``) map to None so the stamp is never a lie.
+    """
+    if not isinstance(value, str):
+        return None
+    token = value.strip()
+    if token.lower() in _NON_LANGUAGE_TOKENS:
+        return None
+    return token
+
 
 # Persian (۰-۹) and Arabic-Indic (٠-٩) digits → Western/Latin 0-9. Quantification read off a photo
 # (lot/batch numbers, doses, dates) must be comparable across captures regardless of the caption's

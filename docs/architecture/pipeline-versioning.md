@@ -22,6 +22,12 @@
   on the patient projection), with its eval suite wired into `run_all.py`.
 - **D3 staleness read-trigger** for patient memory (`maybe_refresh_stale_patient_memory` on
   patient-open/line-up) plus the background quiescence sweep.
+- **D2 treatment overlay (AES-1101)** — a **fourth** overlay class, `treatment_overlay`: human field
+  edits on treatment rows, bound to a deterministic content-anchored `treatmentKey`, folded at
+  render/projection (`services/treatment_overlay.py:effective_treatments`), re-bound after each
+  synthesis (with a no-LLM `{aiValue, value}` reconcile diff), and excluded from restore. The
+  contract/mechanics (key spec, `priorKey` echo, language portability) are the DATA layer only — the
+  editing UI is a later epic. See D2 below + [backend/processing.md](../backend/processing.md).
 
 **Pending:**
 
@@ -32,9 +38,9 @@
 
 **Divergence from D2 as written:** the user-state overlay is not a separate keyed table — it lives
 in `session.extracted_metadata` (keys `rejected_safety_flags`, `confirmed_carried_forward`,
-`dismissed_aftercare`) and is applied at restore/render time. The invariant holds (a restore never
-overwrites user decisions: `restore_report_version` excludes the overlay keys); only the storage
-shape differs.
+`dismissed_aftercare`, `treatment_overlay`) and is applied at restore/render time. The invariant holds
+(a restore never overwrites user decisions: `restore_report_version` copies only artifact keys, so the
+overlay keys survive untouched); only the storage shape differs.
 
 ## The version DAG
 
@@ -71,6 +77,24 @@ it; they live in a separate, key-addressed **overlay**. Rendered state = `report
 This is the load-bearing invariant: restoring/reusing a cached version never resurrects or loses user
 state (the exact bug class hit repeatedly — see the worker's `preserved_confirmations`). The overlay is
 keyed so a decision sticks to the thing it was made about (e.g. a safety flag by its stable key).
+
+**Fourth overlay class — `treatment_overlay` (AES-1101).** A clinician **field edit** on a treatment row
+(area·product·brand·quantity·lot) is a decision *on* the artifact, not part of it, so it is an overlay
+entry keyed by a stable **`treatmentKey`** — the deterministic, backend-computed, content-anchored key
+`t|<areaCode|norm(area)>|norm(product)|<first sourceCaptureId>` (Unicode-general `norm`; ordinal `#n` on
+collision), anchored on the synthesis-emitted canonical `areaCode` so it is **language-independent** (a
+report-language switch or a non-fa-en clinic can't fragment the binding). An LLM-emitted opaque id was
+rejected: independent synthesis runs have no memory, so it could only be stable by echoing prior ids —
+failing precisely on the hard split/merge case — whereas a content anchor is reproducible by
+construction (the same pattern the safety `flag_key` proved). Two supports: a soft **`priorKey` echo**
+(the model repeats a prior row's key as a tie-breaker, never authoritative) and a deterministic
+**re-bind pass** after each synthesis (exact key → bound; shared source-capture + normalized area +
+`priorKey` → re-bind; else the entry drops with its source-de-effected row). On re-bind the entry's
+`aiValue` is refreshed so a fresh-extraction disagreement surfaces as `{aiValue, value}` (Keep-yours /
+Use-AI) — **never a silent overwrite, no LLM**. Projections (recall, lot-recall cohorts, smart lists,
+patient-memory brief) read `report_version ⊕ overlay` via one `effective_treatments()` fold, so a
+corrected lot/dose is authoritative everywhere. Accepted limitation: two same-area+product rows from one
+capture collide (disambiguated by the ordinal suffix; the reconcile signal surfaces any mis-bind).
 
 ### D3 — Patient memory stays lazy; staleness propagates, no new queue
 Synthesis does **not** enqueue the patient-memory job (it is read/line-up-triggered — `worker.py`). We

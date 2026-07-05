@@ -33,9 +33,11 @@ from app.services.sessions import (
     list_session_artifacts,
     list_session_captures,
     list_sessions,
+    remove_treatment_overlay_edit,
     save_session,
     set_aftercare_dismissed,
     set_safety_flag_rejected,
+    set_treatment_overlay_edit,
     start_review,
     update_session,
 )
@@ -128,6 +130,32 @@ def set_safety_flag_rejection_route(
 ) -> dict[str, Any]:
     """Reject (or re-accept) an auto-kept session safety flag (allergy/contraindication/consent)."""
     return set_safety_flag_rejected(db, principal, session_id, flagKey, rejected)
+
+
+@sessions_api.post("/sessions/{session_id}/treatment-overlay")
+def set_treatment_overlay_route(
+    session_id: str,
+    treatmentKey: str = Body(..., embed=True),
+    field: str = Body(..., embed=True),
+    value: str = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """AES-1101: record a human field edit on a treatment row (area/product/brand/quantity/lot) as a
+    user-owned overlay — deterministic, instant, owner-gated, immune to re-synthesis overwrite."""
+    return set_treatment_overlay_edit(db, principal, session_id, treatmentKey, field, value)
+
+
+@sessions_api.delete("/sessions/{session_id}/treatment-overlay")
+def remove_treatment_overlay_route(
+    session_id: str,
+    treatmentKey: str = Body(..., embed=True),
+    field: str = Body(..., embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """AES-1101: Revert-to-AI — drop the overlay edit for (treatmentKey, field)."""
+    return remove_treatment_overlay_edit(db, principal, session_id, treatmentKey, field)
 
 
 @sessions_api.post("/sessions/{session_id}/save")

@@ -554,6 +554,16 @@
         "tags": []
       }
     },
+    "/api/v1/sessions/{session_id}/treatment-overlay": {
+      "delete": {
+        "operationId": "remove_treatment_overlay_route_api_v1_sessions__session_id__treatment_overlay_delete",
+        "tags": []
+      },
+      "post": {
+        "operationId": "set_treatment_overlay_route_api_v1_sessions__session_id__treatment_overlay_post",
+        "tags": []
+      }
+    },
     "/api/v1/share/{token}": {
       "get": {
         "operationId": "public_share_route_api_v1_share__token__get",
@@ -1624,6 +1634,28 @@
         "POST"
       ],
       "path": "/api/v1/sessions/{session_id}/therapy/risk"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/api/v1/sessions/{session_id}/treatment-overlay"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/treatment-overlay"
     },
     {
       "dependencies": [

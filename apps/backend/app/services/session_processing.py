@@ -12,12 +12,15 @@ from app.services.reporting import (
     patient_information_from_assignment,
     report_template_payload,
 )
+from app.services.treatment_overlay import carried_forward_key, stamp_treatment_keys, stored_treatments
 
 SESSION_PROCESSING_INPUT_VERSION = "2026-05-21.session-processing-input.v1"
 SESSION_PROCESSING_OUTPUT_VERSION = "2026-05-21.session-processing-output.v1"
 # Pro single-pass report synthesis + treatment extraction output (extends the processing output with
 # treatments[] and the fixed-id sections). Emitted by the AI engine, post-processed below.
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-06-15.session-synthesis-output.v1"
+# v2 (2026-07-05): treatments carry areaCode/priorKey, envelopes carry a `lang` stamp. MUST stay
+# byte-identical to the ai_engine copy (`contracts/synthesis.py`) — worker.py gates `is_synthesis` on it.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-05.session-synthesis-output.v2"
 TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
 
 # Treatment post-processing thresholds (deterministic, clinical-safety guardrails over the LLM
@@ -173,8 +176,12 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
         # since the last synthesis) let the synthesizer recompute only what changed.
         "priorReportModel": prior_report_model,
         "changeset": changeset,
-        # Bounded prior-visit treatments enable explicit "same as last time" carry-forward.
+        # Bounded prior-visit treatments enable explicit "same as last time" carry-forward. Each row
+        # carries its stable `treatmentKey`, which the model may echo as `priorKey` (a re-bind hint).
         "referencePriorVisitTreatments": bounded_prior_visit_treatments(db, session),
+        # This session's PRIOR synthesis treatments (with keys), so a within-session re-synthesis can
+        # echo priorKey and keep overlay bindings stable across the update.
+        "priorDraftTreatments": stored_treatments(session),
         # Patient's existing cross-visit safety flags (for the synthesis job's safety-reconcile pass).
         "patientSafetyFlags": existing_safety_flags,
         "session": {
@@ -355,13 +362,6 @@ def prior_visit_capture_ids(treatments: list[dict[str, Any]] | None) -> set[str]
             if isinstance(capture_id, str):
                 ids.add(capture_id)
     return ids
-
-
-def carried_forward_key(treatment: dict[str, Any]) -> str:
-    """Stable id (area|product) for a carried-forward treatment so its dose can be confirmed (Q3)."""
-    area = str(treatment.get("area") or "").strip()
-    product = str(treatment.get("product") or "").strip()
-    return f"{area}|{product}"
 
 
 def _treatment_review_item(
@@ -562,6 +562,9 @@ def finalize_session_synthesis_output(
         prior_visit_capture_ids=prior_visit_capture_ids,
         uncertainties=validated.get("uncertainties") if isinstance(validated.get("uncertainties"), list) else None,
     )
+    # Stamp the deterministic content-anchored treatment_key on each row (schema-v2 §4.1) so the
+    # user-authored treatment overlay can bind to a stable identity that survives re-synthesis.
+    treatments = stamp_treatment_keys(treatments)
     blocks = render_treatment_performed_blocks(treatments)
     finalized = set_treatment_performed_section({**validated, "treatments": treatments}, blocks)
     return finalized, treatments, review_items

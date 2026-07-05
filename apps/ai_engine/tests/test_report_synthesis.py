@@ -32,6 +32,7 @@ CANNED_SYNTHESIS = json.dumps(
         "treatments": [
             {
                 "area": "left cheek",
+                "areaCode": "left-cheek",
                 "product": "gel",
                 "brand": "Juvederm",
                 "quantity": 3,
@@ -43,10 +44,11 @@ CANNED_SYNTHESIS = json.dumps(
                 "evidence": "spoken",
                 "carriedForward": False,
                 "supersedesCaptureId": None,
+                "priorKey": "t|left-cheek|gel|prev-1",
                 "attributes": {"needleGauge": "27G"},
             }
         ],
-        "uncertainties": [],
+        "uncertainties": [{"code": "missing_lot", "text": "Lot number for the cheek gel was not stated."}],
     },
     ensure_ascii=False,
 )
@@ -62,6 +64,14 @@ class ParseSynthesisTests(unittest.TestCase):
         self.assertEqual(output["language"], "fa")
         self.assertEqual(len(output["treatments"]), 1)
         self.assertEqual(output["treatments"][0]["quantityText"], "۳ سی‌سی")  # verbatim native script
+        # schema-v2: canonical English areaCode + priorKey echo + per-payload BCP-47 lang stamp.
+        self.assertEqual(output["treatments"][0]["areaCode"], "left-cheek")
+        self.assertEqual(output["treatments"][0]["priorKey"], "t|left-cheek|gel|prev-1")
+        self.assertEqual(output["treatments"][0]["lang"], "fa")  # derived from detected language (no reportLanguage)
+        self.assertEqual(output["lang"], "fa")
+        # schema-v2: machine-readable uncertainty reason codes alongside the human sentences.
+        self.assertEqual(output["uncertainties"], ["Lot number for the cheek gel was not stated."])
+        self.assertEqual(output["uncertaintyReasons"], [{"code": "missing_lot", "text": "Lot number for the cheek gel was not stated."}])
         # sourceReferences cover every reportable capture so the backend can mark contributions.
         self.assertEqual(
             output["sourceReferences"],

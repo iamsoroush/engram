@@ -18,6 +18,7 @@ from app.services.patient_safety import drop_session_safety_flags, sync_patient_
 from app.services.patients import AI_CREATED_PATIENT_NOTE
 from app.services.report_versions import find_report_version_for_current_set, restore_report_version
 from app.services.sessions import parse_uuid
+from app.services.synthesis_escalation import mark_synthesis_escalation
 
 
 def get_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
@@ -147,6 +148,8 @@ def mark_session_stale_after_source_text_update(
             "updated_at": changed_at.isoformat(),
         },
     }
+    # Fix-at-source is a user correction → the forced re-synthesis should run on the escalation tier.
+    mark_synthesis_escalation(session)
     if session.status in {SessionStatus.organized, SessionStatus.reviewing, SessionStatus.reopened}:
         session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
 

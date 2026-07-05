@@ -131,34 +131,48 @@ last synthesis, enabling a stable targeted update), bounded **prior-visit `treat
 
 ### Output — the A↔B contract
 
-Schema `2026-06-15.session-synthesis-output.v1` (extends `2026-05-21.session-processing-output.v1`):
+Schema `2026-07-05.session-synthesis-output.v2` (extends `2026-05-21.session-processing-output.v1`).
+**The backend gates on this exact string** (`worker.py` `is_synthesis`), so its copy in
+`app/services/session_processing.py` bumps in lockstep.
 
 ```jsonc
 {
-  "schemaVersion": "2026-06-15.session-synthesis-output.v1",
+  "schemaVersion": "2026-07-05.session-synthesis-output.v2",
   "summary": "string",                 // 1–2 line visit summary → session.summary
-  "language": "fa|en|mixed",
+  "language": "fa|en|mixed",           // detected content language
+  "lang": "fa|en|null",                // BCP-47 STAMP: the report language the display strings were
+                                       // generated in (worker-stamped from reportLanguage, never model-
+                                       // emitted). The reference field for a future language-switch
+                                       // migration; on treatments + safetyFlags too. See §4.6 below.
   "sections": [ ... ],                 // FIXED ids + order, rendered by the backend:
                                        // visit-summary, concern-goals, assessment,
                                        // treatment-performed, media, plan-followup, aftercare
                                        // blocks: {type:"paragraph",text} | {type:"image",captureId,caption}
   "treatments": [ /* TreatmentItem */ ],
   "aftercareSelections": [ { "templateId": "…", "status": "applies|conflicts|superseded", "note": "…|null" } ],
-  "safetyFlags": [ { "kind": "allergy|contraindication|consent", "text": "…", "sourceCaptureIds": ["…"] } ],
+  "safetyFlags": [ { "kind": "allergy|contraindication|consent", "text": "…", "sourceCaptureIds": ["…"], "lang": "fa|null" } ],
   "sourceReferences": [ { "type": "capture", "captureId": "…" } ],
-  "uncertainties": [ "string" ],       // drives review chips / Needs-input
+  "uncertainties": [ "string" ],       // human sentences (unchanged) — drives review chips / Needs-input
+  "uncertaintyReasons": [ { "code": "ambiguous_correction|missing_lot|low_confidence|carried_forward_dose|ambiguous_quantity|other", "text": "string" } ],
+                                       // machine-readable companion to `uncertainties` (close-the-day severity roll-up)
   "generatedBy": "ai-engine", "generatedAt": "ISO-8601"
 }
 
 // TreatmentItem — stable queryable CORE + open attributes
 {
-  "area": "string", "product": "string", "brand": "string|null",
+  "area": "string",                     // display, report language
+  "areaCode": "string|null",            // CANONICAL English anatomic slug (cheeks, left-cheek, …),
+                                        // LANGUAGE-INDEPENDENT — the backend anchors treatment_key on it
+  "product": "string", "brand": "string|null",
   "quantity": "number|null", "unit": "string|null",
   "quantityText": "string|null",        // VERBATIM, original script — display + audit
   "lot": "string|null",                 // dictated OR read from a product-label photo
   "confidence": 0.0, "sourceCaptureIds": ["…"], "evidence": "string|null",
   "carriedForward": false,              // "same as last time"
   "supersedesCaptureId": "string|null", // corrections (auditable/undoable)
+  "priorKey": "string|null",            // echoed treatmentKey of a prior row this continues — a re-bind
+                                        // TIE-BREAKER hint only, never authoritative (backend recomputes)
+  "lang": "fa|null",                    // BCP-47 stamp (as above)
   "attributes": { }                     // open map (needleGauge, depth, device, sessions, …)
 }
 ```
@@ -166,6 +180,22 @@ Schema `2026-06-15.session-synthesis-output.v1` (extends `2026-05-21.session-pro
 Section titles localize to the report language (Persian titles when `reportLanguage=fa`); missing
 sections are normalized to empty (`[]`) rather than padded. `product` is the generic category only
 (ژل/فیلر، بوتاکس); `brand` is the commercial name verbatim — never merged.
+
+**§4.6 language portability + treatment keys.** `areaCode` is selected from the closed anatomic
+vocabulary the backend supplies via `domain.areaCodes` (`services/verticals.py`) — the prompt stays
+vertical-agnostic. The `lang` stamp and `areaCode` exist so the backend's deterministic
+**treatment_key** (`services/treatment_overlay.py`) anchors on `areaCode|norm(product)` and stays
+stable across a report-language switch / a non-fa-en clinic — the identity the user-authored treatment
+overlay binds to (see [backend/processing.md](../backend/processing.md) and
+[pipeline-versioning](../architecture/pipeline-versioning.md) D2). The `lang` stamp also lands on the
+**other jobs' envelopes** (caption, patient-memory, transcription) in this increment — worker-stamped,
+additive, no prompt change.
+
+**Correction-triggered escalation (§3.1).** When the job payload carries `escalate: true` (set by the
+backend on a re-dispatch caused by a user correction — fix-at-source edit, treatment-overlay edit, or
+assignment correction), the synthesis call runs on the configured **escalation tier** (`retry_tier`);
+a no-op when no escalation tier is configured. `PROMPT_VERSION` for synthesis is
+`2026-07-05.synthesis.v2`.
 
 ### Extraction discipline (encoded in the prompt, asserted by evals)
 

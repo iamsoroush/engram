@@ -16,6 +16,7 @@ from ai_engine.core.gateway import (
     transcription_is_configured,
 )
 from ai_engine.core.media import audio_duration_seconds, audio_to_flac_mono_16khz_base64
+from ai_engine.core.text import normalize_bcp47_lang
 from ai_engine.core.structured import (
     call_with_validation_retry,
     correction_message,
@@ -135,6 +136,10 @@ def completed_audio_metadata(
         "promptVersion": TRANSCRIPTION_PROMPT_VERSION,
         "text": text,
         "language": structured["language"],
+        # BCP-47 stamp: the clinic's preferred transcription language, else the detected language when
+        # it is a concrete single language (not "mixed"/"unknown"). None otherwise.
+        "lang": normalize_bcp47_lang((transcription_context or {}).get("preferredLanguage"))
+        or normalize_bcp47_lang(structured["language"]),
         "patient_information": patient_information,
         "clinical_summary": structured["clinical_summary"],
         "uncertainties": structured["uncertainties"],

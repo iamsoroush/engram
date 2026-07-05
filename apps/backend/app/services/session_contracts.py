@@ -18,6 +18,7 @@ from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
     structured_report_from_markdown_body,
 )
+from app.services.treatment_overlay import overlay_satisfied_carry_forward_keys
 
 SESSION_CONTRACT_VERSION = "2026-05-19.phase2.1"
 
@@ -41,7 +42,10 @@ def session_is_complete(session: Session) -> bool:
     # confirms the carried dose first (redesign-pro-report §5). Other review items (low-confidence,
     # ambiguous, missing-lot) stay non-blocking. Confirmation is recorded per area|product key.
     review = metadata.get("treatment_review")
-    confirmed = set(metadata.get("confirmed_carried_forward") or [])
+    # A carried-forward dose is confirmed either explicitly (confirmed_carried_forward) OR implicitly by
+    # a human overlay dose edit on that row — the edit IS the confirmation, so the row stops asking
+    # "confirm dose" (AES-1101 Q4 auto-confirm collapse).
+    confirmed = set(metadata.get("confirmed_carried_forward") or []) | overlay_satisfied_carry_forward_keys(session)
     if isinstance(review, list) and any(
         isinstance(item, dict)
         and item.get("category") == "carried_forward"

@@ -41,7 +41,7 @@ PINNED = {
     qa_draft: ("2026-07-04.qa_draft.v1", "79a01d6106ceabf49e9735897e95e3e02284adb9e6178fb6ac2d712aa45eaa3d"),
     qa_revise: ("2026-07-04.qa_revise.v1", "0fdbf0feeda6613b5c15abc846782d3b162af3d05396d11b8466829bdf9a1df1"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
-    synthesis: ("2026-07-04.synthesis.v1", "ee3c6ad3839bc88afc4061e0a8af522f4f9543d94c8c9ab91c17daa4c89de09e"),
+    synthesis: ("2026-07-05.synthesis.v2", "c1f531c02ca6747cd7dab246c49a042b251eb6bd96c1cf2c3d56e6eac555232a"),
 }
 
 

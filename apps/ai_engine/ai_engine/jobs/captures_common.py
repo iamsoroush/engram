@@ -37,6 +37,8 @@ class CaptureProcessingOutput(TypedDict, total=False):
     source_artifact_ids: list[str]
     detected_patient: NotRequired[DetectedPatientOutput]
     language: NotRequired[str]
+    # BCP-47 stamp of the language this payload's display strings were generated in (schema-v2 §4.6).
+    lang: NotRequired[str | None]
     patient_information: NotRequired[dict[str, Any]]
     clinical_summary: NotRequired[str | None]
     uncertainties: NotRequired[list[str]]
