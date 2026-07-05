@@ -260,6 +260,44 @@
         ]
       }
     },
+    "/api/v1/patient-qa/library": {
+      "get": {
+        "operationId": "qa_library_list_api_v1_patient_qa_library_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/library/templates": {
+      "post": {
+        "operationId": "qa_library_create_template_api_v1_patient_qa_library_templates_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/library/templates/{exemplar_id}": {
+      "delete": {
+        "operationId": "qa_library_delete_template_api_v1_patient_qa_library_templates__exemplar_id__delete",
+        "tags": [
+          "patient-qa"
+        ]
+      },
+      "patch": {
+        "operationId": "qa_library_update_template_api_v1_patient_qa_library_templates__exemplar_id__patch",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/library/{exemplar_id}/status": {
+      "post": {
+        "operationId": "qa_library_set_status_api_v1_patient_qa_library__exemplar_id__status_post",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
     "/api/v1/patient-qa/messages/{message_id}/dismiss": {
       "post": {
         "operationId": "qa_dismiss_api_v1_patient_qa_messages__message_id__dismiss_post",
@@ -271,6 +309,14 @@
     "/api/v1/patient-qa/messages/{message_id}/draft": {
       "get": {
         "operationId": "qa_message_draft_api_v1_patient_qa_messages__message_id__draft_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/messages/{message_id}/save-template": {
+      "post": {
+        "operationId": "qa_save_reply_as_template_api_v1_patient_qa_messages__message_id__save_template_post",
         "tags": [
           "patient-qa"
         ]
@@ -1111,6 +1157,61 @@
     },
     {
       "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/library"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/library/templates"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "DELETE"
+      ],
+      "path": "/api/v1/patient-qa/library/templates/{exemplar_id}"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "PATCH"
+      ],
+      "path": "/api/v1/patient-qa/library/templates/{exemplar_id}"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/library/{exemplar_id}/status"
+    },
+    {
+      "dependencies": [
         "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
         "get_db"
       ],
@@ -1130,6 +1231,17 @@
         "GET"
       ],
       "path": "/api/v1/patient-qa/messages/{message_id}/draft"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/patient-qa/messages/{message_id}/save-template"
     },
     {
       "dependencies": [

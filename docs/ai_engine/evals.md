@@ -76,7 +76,7 @@ The merged `scorecard.json` carries a run-level `summary` (`evals_run`, `evals_g
 full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which is what the CI gate
 (below) uploads as an artifact.
 
-## Coverage — the nine modules `run_all.py` runs
+## Coverage — the eleven modules `run_all.py` runs
 
 | Module | Job / seam | What it gates | Fixtures |
 | --- | --- | --- | --- |
@@ -89,6 +89,8 @@ full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which 
 | `report_sections_eval.py` | Synthesis — sections (prose half) | Grounded prose (no invention), image blocks reference real captureIds only + **each at most once** (`imageRefsUnique`), empty sections stay empty, native-script, all ids present; cross-capture correction → final fact only; `en` reportLanguage | Synthetic Farsi + `en` transcripts + self-tests |
 | `patient_memory_eval.py` | Patient memory | Story/delta accuracy over multi-visit briefs, no invented flags, no name-repeat (advisory, counted), grounded recall of dose/brand; **flags persist** over a long history, a **superseded** fact isn't restated, dose **trend** recalled | Synthetic multi-session fixtures (incl. 6–8-visit history) + self-tests |
 | `patient_matching_eval.py` | Matching's **LLM seam** (transcription input) | Spoken name extracted **faithfully** (a near-miss must not be "corrected"; a similar-name pair not swapped; a mid-dictation mention still caught) + assignment `basis` never over-escalated to `explicit` | **Real audio** (6 live clips + `m07`–`m09` pending; `m02` near-miss = `knownGap`) + self-tests + judge smoke |
+| `qa_draft_eval.py` | Q&A reply draft (AES-402/410) | No invented numbers (a dose the doctor never stated), red-flag cases **forbid reassurance** + require a clinic-contact tail, patient-language native script, sign-off present; **retrieval-grounded** cases — exemplar generic guidance adopted (exemplar-followed) and patient context **overriding** a contradicting exemplar (exemplar-overridden) | Synthetic payloads (`QD-01`…`12` + retrieval cases) + gate self-tests + judge smoke |
+| `qa_revise_eval.py` | Q&A reply voice-edit (AES-402) | revise-vs-replace **mode** classification, **numbers-preserved** on a revise, escalation tail survives, native script, sign-off; parser fallback on unusable output | **Real audio** (`r01`–`r10` recorded by the clinician, pending) + parser + gate self-tests + judge smoke |
 
 The deterministic post-processing these jobs feed (correction/supersede/carry-forward, search
 ranking, the exact-vs-fuzzy **auto-assign decision** itself) is unit-tested in `tests/`
@@ -107,10 +109,10 @@ seam can take a pro model independently. See
 
 ### Coverage gaps
 
-- **`qa_draft` / `qa_revise` have no eval suite.** They shipped without one — per CLAUDE.md §4 a new
-  AI job must ship its own eval, so this is the outstanding debt. Golden-set scenarios (question
-  types, tone, escalation cases, voice-edit revise-vs-replace splits) **need user consultation
-  first** — do not design the set unilaterally.
+- **`qa_revise` real clips (`r01`–`r10`) pending.** The `qa_draft` golden set + the `qa_revise`
+  harness (parser + gate self-tests + judge smoke) are wired and green; `qa_revise`'s scored cases are
+  voice notes, so they are **recorded by the user/clinician** (never auto-generated) per
+  `fixtures/RECORDING_CHECKLIST.md` → `qa_revise/`, and score the moment they land (no code change).
 - Caption real photos (`p01`–`p06`), the transcription edge batch (`t10`–`t14`), the full-visit
   synthesis clips (`s01`–`s04`), and matching (`m07`–`m09`) are recorded-when-available (see
   `fixtures/RECORDING_CHECKLIST.md`); the harness is green without them, and each is scored the moment

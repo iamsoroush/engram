@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.db.pgvector import Vector
 
 
 def pg_enum(enum_cls: type[enum.Enum], name: str) -> Enum:
@@ -676,7 +677,70 @@ class QaMessage(Base):
     # "none" | "pending" (draft job in flight) | "ready" | "failed".
     draft_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="none")
     draft_source: Mapped[str | None] = mapped_column(String(80))
+    # Retrieval provenance for the current draft (AES-410): the top exemplar the draft was grounded in,
+    # shaped {kind: template|sent_reply, exemplarId, label}. NULL when nothing was retrieved. Surfaced
+    # as the doctor-only "based on: {template}" chip; never projected to the patient.
+    draft_provenance: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     draft_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()"), onupdate=text("now()")
+    )
+
+
+class QaKnowledgeExemplar(Base):
+    """A clinic-curated or auto-indexed Q&A exemplar — the retrieval corpus behind grounded drafting.
+
+    The QA knowledge library (AES-410): every doctor-approved sent reply is trusted clinical
+    communication, so it is **auto-indexed** here (``kind="sent_reply"``) with a one-tap exclude
+    (``status="excluded"``); on top of that clinics **curate templates** (``kind="template"``) with a
+    title. When a patient asks a between-visits question, the backend retrieves the most relevant
+    exemplars (hybrid lexical + embedding, per-tenant scoped in SQL) and grounds the ``qa_draft`` in
+    them — so the draft is prepared "based on how this clinic answers this kind of question".
+
+    Strictly per-tenant (a reply NEVER crosses tenants). ``embedding`` is a native pgvector column,
+    populated only when the embeddings gateway is configured; NULL rows still rank via the lexical
+    signal (``search_text`` is the normalized, orthography-folded question+answer). ``source_message_id``
+    links an indexed row back to the sent ``QaMessage`` (idempotent auto-index + the exclude target).
+    """
+
+    __tablename__ = "qa_knowledge_exemplars"
+    __table_args__ = (
+        # Retrieval always scopes by tenant + status (+ optionally kind); the exclude list reads by tenant.
+        Index("ix_qa_knowledge_tenant_status_kind", "tenant_id", "status", "kind"),
+        # One indexed exemplar per sent reply — auto-index is idempotent (partial: templates have no source).
+        Index(
+            "uq_qa_knowledge_source_message",
+            "tenant_id",
+            "source_message_id",
+            unique=True,
+            postgresql_where=text("source_message_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    # "template" (clinic-curated, editable, has a title) | "sent_reply" (auto-indexed approved reply).
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    # "active" (retrievable) | "excluded" (evicted from the index by staff; kept for audit/undo).
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="active")
+    # Templates carry a short human title (shown in the Library + the provenance chip); NULL for replies.
+    title: Mapped[str | None] = mapped_column(String(200))
+    # The question pattern this exemplar answers, and the approved answer text. Both clinical CONTENT
+    # (native script, never routed through the UI chrome i18n seam).
+    question: Mapped[str | None] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # "fa" | "en" | "und" — the exemplar's language, used to bias same-language retrieval.
+    language: Mapped[str] = mapped_column(String(8), nullable=False, server_default="und")
+    # Optional curator tags (treatment type, timing) as a JSON list of strings.
+    tags: Mapped[list[str]] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"), default=list)
+    # Normalized (digit/Persian-form folded, ZWNJ-stripped) question+answer — the lexical match target.
+    search_text: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    # Native pgvector embedding of `search_text`; NULL when the embeddings gateway is not configured.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector, nullable=True)
+    # For an auto-indexed reply: the sent QaMessage it came from (idempotency + exclude target).
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("qa_messages.id", ondelete="SET NULL"))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     updated_at: Mapped[datetime] = mapped_column(

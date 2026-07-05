@@ -9,7 +9,11 @@ x-logging: &default-logging
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = Postgres 16 + the `vector` extension (Q&A knowledge retrieval;
+    # decision-complete). This REPLACES postgres:16-alpine. On the FIRST deploy against the existing
+    # production data volume, run a one-time `REINDEX DATABASE engram` (Debian glibc vs alpine musl
+    # collation) during the maintenance window — see docs/production-alpha-tradeoffs.md.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-engram}
       POSTGRES_USER: ${POSTGRES_USER:-engram}

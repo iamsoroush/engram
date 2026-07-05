@@ -35,6 +35,8 @@ EVALS = [
     "report_sections_eval.py",
     "patient_memory_eval.py",
     "patient_matching_eval.py",
+    "qa_draft_eval.py",
+    "qa_revise_eval.py",
 ]
 
 

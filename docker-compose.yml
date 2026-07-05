@@ -1,6 +1,10 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = stock Postgres 16 + the `vector` extension the Q&A knowledge retrieval
+    # needs (decision-complete: pgvector in the existing Postgres, no new infra). Debian-based, so it
+    # replaces the former alpine image — see docs/production-alpha-tradeoffs.md for the one-time
+    # REINDEX note when swapping on an existing data volume (glibc vs musl collation).
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-engram}
       POSTGRES_USER: ${POSTGRES_USER:-engram}

@@ -16,6 +16,7 @@ from app.auth.dependencies import CurrentPrincipal, staff_or_admin_required, sta
 from app.db.session import get_db
 from app.services import qa
 from app.services.ai_jobs import require_ai_engine_token
+from app.services.qa_knowledge import library as qa_library
 from app.storage import ObjectStore, get_object_store
 
 qa_api = APIRouter(prefix="/api/v1", tags=["patient-qa"])
@@ -49,6 +50,25 @@ class QaRoutingModeUpdate(BaseModel):
 
 class QaAskRequest(BaseModel):
     question: str
+
+
+class QaTemplateBody(BaseModel):
+    # A curated Q&A template: an optional title + question pattern + the approved answer (+ tags).
+    title: str | None = None
+    question: str | None = None
+    answer: str
+    tags: list[str] | None = None
+    model_config = {"populate_by_name": True}
+
+
+class QaSaveTemplateRequest(BaseModel):
+    # "Save as template" from a sent reply — optional title; text is taken from the reply.
+    title: str | None = None
+    model_config = {"populate_by_name": True}
+
+
+class QaExemplarStatusRequest(BaseModel):
+    status: str  # "active" (re-include) | "excluded" (evict from the index)
 
 
 # --- Staff: tenant Q&A routing policy (admin-configurable; foundation §7) --------------------------
@@ -201,6 +221,78 @@ def qa_message_draft(
 ) -> dict[str, Any]:
     """Poll the question's current draft state (used while a voice edit / initial draft runs)."""
     return qa.get_message_draft(db, principal, message_id)
+
+
+# --- Staff: knowledge library (curated templates + auto-indexed sent replies; AES-410) -------------
+
+
+@qa_api.get("/patient-qa/library")
+def qa_library_list(
+    kind: str | None = Query(default=None, pattern="^(template|sent_reply)$"),
+    status_filter: str | None = Query(default=None, alias="status", pattern="^(active|excluded)$"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """The Q&A knowledge library: curated templates + auto-indexed sent replies (with the exclude list)."""
+    return qa_library.list_library(db, principal, kind=kind, status_filter=status_filter)
+
+
+@qa_api.post("/patient-qa/library/templates")
+def qa_library_create_template(
+    request: QaTemplateBody,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Create a curated Q&A template (the clinic's standard guidance for a kind of question)."""
+    return qa_library.create_template(
+        db, principal, title=request.title, question=request.question, answer=request.answer, tags=request.tags
+    )
+
+
+@qa_api.patch("/patient-qa/library/templates/{exemplar_id}")
+def qa_library_update_template(
+    exemplar_id: str,
+    request: QaTemplateBody,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Edit a curated template (templates only)."""
+    return qa_library.update_template(
+        db, principal, exemplar_id, title=request.title, question=request.question, answer=request.answer, tags=request.tags
+    )
+
+
+@qa_api.delete("/patient-qa/library/templates/{exemplar_id}", status_code=204)
+def qa_library_delete_template(
+    exemplar_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Delete a curated template."""
+    qa_library.delete_template(db, principal, exemplar_id)
+    return Response(status_code=204)
+
+
+@qa_api.post("/patient-qa/library/{exemplar_id}/status")
+def qa_library_set_status(
+    exemplar_id: str,
+    request: QaExemplarStatusRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Exclude (evict) or re-include an indexed exemplar — the manage/exclude list."""
+    return qa_library.set_exemplar_status(db, principal, exemplar_id, request.status)
+
+
+@qa_api.post("/patient-qa/messages/{message_id}/save-template")
+def qa_save_reply_as_template(
+    message_id: str,
+    request: QaSaveTemplateRequest,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """"Save as template" from a sent doctor reply — the low-friction entry into the library."""
+    return qa_library.save_reply_as_template(db, principal, message_id, title=request.title)
 
 
 # --- Public patient surface (no auth — the token is the capability) --------------------------------

@@ -240,6 +240,24 @@ on the channel they use.
 - **Acceptance:** *Candidate — channel decision.* Iranian clinics lean on WhatsApp/SMS; the surface is
   channel-agnostic (a tokenized link), the channel is a delivery integration to confirm with the human.
 
+### AES-410 — Q&A knowledge library 〔Pro · Dr/As · new〕
+As a **clinic**, I want a curated library of standard Q+A answers plus every doctor-approved reply
+**indexed automatically**, so that the clinic's own guidance becomes reusable and the system gets
+smarter with no manual work.
+- **Acceptance:** a **Library** tab in the Q&A inbox — curated **templates** (create/edit/delete) +
+  auto-indexed **sent replies** with a one-tap **exclude** (manage list); **Save as template** on any
+  sent reply. Per-tenant (never crosses clinics). As-built:
+  [screens/qa-inbox.md](screens/qa-inbox.md), [../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md).
+
+### AES-411 — Retrieval-grounded reply drafting + provenance 〔Pro · Dr · new〕
+As a **doctor**, I want the reply draft prepared **based on how our clinic answers similar questions**,
+with a chip telling me what it's based on, so that drafts match our voice and I trust them.
+- **Acceptance:** the backend retrieves the top library exemplars (hybrid lexical+embedding, per-tenant)
+  into the `qa_draft` prompt; the patient's own context always wins, no dose/fact is copied across
+  patients, and escalation + never-contradict-aftercare keep precedence over any exemplar; a doctor-only
+  **provenance chip** (`based on: {template}` / `a previous reply`) opens the source. Eval-gated
+  (`qa_draft_eval` — exemplar-followed / exemplar-overridden). *Extends AES-402.*
+
 ---
 
 ## E5 — Smart lists, filters & lot recall (Pro)

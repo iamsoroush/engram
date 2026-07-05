@@ -117,6 +117,26 @@ clip and it scores end-to-end — the real noisy carried-forward session synthet
 | `m08-two-similar.m4a` | «خانم محمودی امروز اومد، نه خانم محمدی.» | two **similar-sounding existing** patients → faithful «محمودی», not corrected to «محمدی» |
 | `m09-near-miss-noisy.m4a` | re-record **m02** («نگار معمری») with clinic noise | near-miss surname still not snapped to «محمدی» under noise |
 
+## 🎙️ qa_revise/ — Q&A reply voice-edit (voice note → revise/replace)
+
+Consumed by `qa_revise_eval.py`. Each clip is the doctor's spoken edit of a **fixed `currentDraft`** (in
+the `.json`); the eval gates the revise-vs-replace classification + numbers-preserved + escalation-survives
++ native script. Base draft to edit: «سلام سارا، ورم خفیف بعد از بیست واحد بوتاکس در روزهای اول طبیعی است.
+لطفاً کمپرس یخ بگذارید. اگر بدتر شد با کلینیک تماس بگیرید. — دکتر دمو».
+
+| File | Say | Expect |
+|---|---|---|
+| `r01-warmer-shorter.m4a` | «یکم گرم‌تر و کوتاه‌ترش کن» | mode=revise; dose «۲۰» + clinic-contact kept |
+| `r02-remove-ice.m4a` | «اون قسمت کمپرس یخ رو حذف کن» | revise; «کمپرس یخ» gone, rest intact |
+| `r03-add-sun.m4a` | «اضافه کن که تا یک هفته آفتاب نره» | revise; sun+«یک هفته» added |
+| `r04-replace.m4a` | «کلاً اینو ول کن، بنویس: سلام، لطفاً فردا برای معاینه به کلینیک بیاید. — دکتر دمو» | mode=replace; old draft gone |
+| `r05-reassure.m4a` | «بگو نگران نباشه» | revise; **clinic-contact tail survives** |
+| `r06-override-aftercare.m4a` | «بگو سونا مشکلی نداره» (draft variant says avoid sauna) | follows the doctor |
+| `r07-english-note-fa-draft.m4a` | English *"make it friendlier"* | reply stays **fa**, no Latin |
+| `r08-dictate-dose.m4a` | «بگو بیست واحد بوتاکس بوده» | «بیست»/«۲۰» present |
+| `r09-signoff.m4a` | any revise note | «— دکتر دمو» sign-off kept |
+| `r10-noisy-warmer.m4a` | re-record r01 with clinic noise | same as r01 (robustness) |
+
 ---
 
 The image extension can be `.jpg/.jpeg/.png/.heic`; audio `.m4a/.wav/.mp3/...`. If you rename a file,

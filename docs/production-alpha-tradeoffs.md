@@ -28,6 +28,8 @@ Companion to [production.md](production.md) (current shape + deploy runbook) and
 | **AI gateway** | Single EU instance | No redundancy; gateway down = no transcription/synthesis | HA gateway / failover; monitor reachability from the VPS |
 | **ai-engine worker** | Single worker, default concurrency | Limited throughput under burst | Scale worker concurrency / move to its own node |
 | **Postgres / Redis** | Default config, no pooling | Fine for low load; not tuned | Tuned configs + connection pooling; consider managed Postgres |
+| **Postgres image (pgvector)** | `pgvector/pgvector:pg16` (Debian) replaces `postgres:16-alpine` — the Q&A knowledge retrieval needs the `vector` extension in the **existing** Postgres (no separate vector DB) | The **first deploy against the existing prod data volume changes the libc collation provider** (alpine musl → Debian glibc): text btree indexes must be rebuilt or sort/uniqueness can drift | **One-time, in the maintenance window:** after the image swap `docker compose up -d postgres`, run `REINDEX DATABASE engram;` (Postgres logs a collation-version-mismatch warning until you do), then `ALTER DATABASE engram REFRESH COLLATION VERSION;`. A fresh volume needs neither. |
+| **Q&A embeddings gateway** | `BACKEND_EMBEDDINGS_*` **unset** in prod ⇒ Q&A retrieval is lexical-only (deterministic) | No semantic recall for paraphrased questions until an embeddings endpoint is configured; the embedding cost, once on, is **not metered** through the worker usage sink | Set `BACKEND_EMBEDDINGS_BASE_URL/_API_KEY/_MODEL` to the gateway; add its spend to the AI-usage accounting when it becomes non-trivial |
 
 ## Fast migration path (bigger server / real users)
 

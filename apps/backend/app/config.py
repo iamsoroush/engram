@@ -65,6 +65,21 @@ class Settings(BaseSettings):
     # hundreds of real captures. 0 / unset = use the computed budget. NEVER set in production.
     ai_usage_test_budget_per_seat_usd: float = 0.0
 
+    # --- Q&A knowledge retrieval (RAG for qa_draft; see docs/backend/aes-pro-qa-api.md) ------------
+    # Embeddings gateway for the hybrid Q&A exemplar retrieval. Blank base_url => embeddings are
+    # DISABLED and retrieval runs LEXICAL-ONLY (deterministic, so dev/CI/e2e stay reproducible
+    # gateway-less). An OpenAI-compatible `/embeddings` endpoint; the model is embedded verbatim into
+    # the request. Kept in env only (never the DB) like the worker's gateway secrets.
+    embeddings_base_url: str = ""
+    embeddings_api_key: str = ""
+    embeddings_model: str = "text-embedding-3-small"
+    embeddings_timeout_seconds: float = 10.0
+    # Retrieval sizing (the corpus is tiny — hundreds–low-thousands of short texts per clinic): the
+    # per-tenant candidate cap fetched into memory for ranking, and the top-k exemplars handed to the
+    # draft prompt. Lexical + embedding scores are fused (reciprocal-rank) over the SQL-scoped set.
+    qa_retrieval_candidate_cap: int = 500
+    qa_retrieval_top_k: int = 3
+
     model_config = SettingsConfigDict(env_prefix="BACKEND_")
 
 

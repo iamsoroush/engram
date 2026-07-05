@@ -51,6 +51,8 @@ from app.services.ai_jobs import ai_job_payload, schedule_retry
 from app.services.capabilities import POST_SESSION_QA, tenant_has_capability
 from app.services.patient_memory_intelligence import persisted_summary
 from app.services.patients import get_patient
+from app.services.qa_knowledge import library as qa_library
+from app.services.qa_knowledge import retrieval as qa_retrieval
 from app.services.sessions import parse_uuid
 from app.storage import ObjectStore
 
@@ -319,6 +321,7 @@ def _staff_messages(db: DbSession, thread: QaThread) -> list[dict[str, Any]]:
             "draft": message.draft if message.role == ROLE_PATIENT else None,
             "draftStatus": message.draft_status if message.role == ROLE_PATIENT else DRAFT_NONE,
             "draftSource": message.draft_source if message.role == ROLE_PATIENT else None,
+            "draftProvenance": message.draft_provenance if message.role == ROLE_PATIENT else None,
             "createdByUserId": str(message.created_by_user_id) if message.created_by_user_id else None,
             "createdAt": _iso(message.created_at),
         }
@@ -486,6 +489,7 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
                 "askedAt": pending["createdAt"],
                 "suggestedReply": pending["draft"],
                 "draftStatus": pending["draftStatus"],
+                "draftProvenance": pending["draftProvenance"],
             }
             if pending
             else None
@@ -581,11 +585,27 @@ def send_reply(db: DbSession, principal: CurrentPrincipal, message_id: str, repl
         created_by_user_id=principal.user_id,
     )
     db.add(reply)
+    db.flush()  # assign reply.id so the auto-indexed exemplar can reference it (idempotency key).
     question.status = Q_ANSWERED
     thread.updated_at = now
     patient = db.get(Patient, thread.patient_id)
     if patient is not None:
         _capture_exchange_into_memory(patient, question_text=question.body, reply_text=text, now=now)
+    # Auto-index this doctor-approved reply into the clinic's knowledge base (AES-410 · Q3): it becomes
+    # a retrievable exemplar for future drafts, with a one-tap exclude in the Library. Best-effort — in a
+    # SAVEPOINT so an indexing hiccup rolls back only the index, never the doctor's send.
+    try:
+        with db.begin_nested():
+            qa_library.auto_index_sent_reply(
+                db,
+                tenant_id=principal.tenant_id,
+                question_text=question.body,
+                reply_text=text,
+                source_message_id=reply.id,
+                doctor_user_id=principal.user_id,
+            )
+    except Exception:  # noqa: BLE001 — indexing is an enhancement; the reply must still send.
+        pass
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -844,16 +864,34 @@ def _prior_doctor_answers(db: DbSession, *, tenant_id: uuid.UUID, doctor_user_id
     return [{"question": question, "answer": answer} for answer, question in db.execute(statement).all()]
 
 
-def _qa_draft_fallback(*, question: str, doctor_name: str, prior_answers: list[dict[str, Any]], patient_context: dict[str, Any]) -> str:
+def _qa_draft_fallback(
+    *,
+    question: str,
+    doctor_name: str,
+    prior_answers: list[dict[str, Any]],
+    patient_context: dict[str, Any],
+    top_exemplar: dict[str, Any] | None = None,
+) -> str:
     """Deterministic, clinically-cautious draft used when no AI gateway is configured (placeholder).
 
-    Pure function (no DB / no LLM). Grounded in the question + whether the doctor has answered
-    similar things before + the patient's recent visit, and never invents clinical specifics — it
-    reassures, points to aftercare, and escalates to the clinic when warranted. A real LLM processor
-    replaces this; the contract (a plain-text reply string) is unchanged.
+    Pure function (no DB / no LLM). When a retrieved exemplar is available (``top_exemplar``) the draft
+    is grounded in the clinic's own standard guidance for this kind of question — so even gateway-less
+    the reply is prepared "based on how this clinic answers". Otherwise it falls back to a generic,
+    cautious reassurance grounded in the patient's recent visit. Either way it reassures, points to the
+    aftercare given, and escalates to the clinic when warranted, and never invents clinical specifics. A
+    real LLM processor replaces this in production (Pro always has a gateway); the contract (a plain-text
+    reply string) is unchanged.
     """
     first_name = (patient_context.get("displayName") or "").split(" ")[0] if patient_context.get("displayName") else None
     greeting = f"Hi {first_name}," if first_name else "Hi,"
+    closing = (
+        "If it gets worse, doesn't settle in a few days, or you're worried at all, please reply here or call the clinic "
+        "and we'll take a closer look."
+    )
+    if top_exemplar and isinstance(top_exemplar.get("answer"), str) and top_exemplar["answer"].strip():
+        # Ground the reply in the clinic's own approved guidance for a similar question.
+        guidance = " ".join(top_exemplar["answer"].split())[:600]
+        return f"{greeting} thanks for reaching out. {guidance} {closing}\n\n— {doctor_name}"
     recent = patient_context.get("recentVisitSummaries") or []
     visit_line = (
         f"Looking at your most recent visit ({' '.join(str(recent[0]).split())[:160]}), "
@@ -864,10 +902,6 @@ def _qa_draft_fallback(*, question: str, doctor_name: str, prior_answers: list[d
         "this is a common question and what you describe is usually part of normal healing"
         if prior_answers
         else "what you describe is usually part of normal healing"
-    )
-    closing = (
-        "If it gets worse, doesn't settle in a few days, or you're worried at all, please reply here or call the clinic "
-        "and we'll take a closer look."
     )
     return (
         f"{greeting} thanks for reaching out. {visit_line}{grounding}. "
@@ -895,9 +929,31 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
     tenant = db.get(Tenant, job.tenant_id)
     patient_context = _patient_qa_context(db, patient, tenant_id=job.tenant_id)
     prior_answers = _prior_doctor_answers(db, tenant_id=job.tenant_id, doctor_user_id=doctor_user_id)
+    # Retrieve the clinic's most relevant exemplars (templates + auto-indexed sent replies) so the
+    # draft is grounded in how THIS clinic answers this kind of question (AES-410). The worker stays
+    # stateless — the backend builds `retrievedExemplars`; the top one drives the provenance chip.
+    # Retrieval is an enhancement, never a hard dependency — a failure degrades to an ungrounded draft.
+    try:
+        exemplars = qa_retrieval.retrieve(db, tenant_id=job.tenant_id, query=question.body)
+    except Exception:  # noqa: BLE001 — never let a retrieval hiccup break drafting.
+        db.rollback()
+        exemplars = []
+    retrieved = [
+        {"question": item.get("question"), "answer": item.get("answer"), "source": item.get("kind"), "score": item.get("score")}
+        for item in exemplars
+    ]
+    provenance = qa_library.provenance_from_exemplars(exemplars)
     fallback_draft = _qa_draft_fallback(
-        question=question.body, doctor_name=doctor_name, prior_answers=prior_answers, patient_context=patient_context
+        question=question.body,
+        doctor_name=doctor_name,
+        prior_answers=prior_answers,
+        patient_context=patient_context,
+        top_exemplar=exemplars[0] if exemplars else None,
     )
+    # Stash the provenance on the job so completion can persist it onto the question (the worker never
+    # sees or returns provenance — it is the backend's deterministic attribution of the top exemplar).
+    job.result_metadata = {**(job.result_metadata or {}), "qa_provenance": provenance}
+    db.commit()
     return {
         "job": ai_job_payload(job),
         "aiModels": ai_models,
@@ -905,6 +961,7 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
             "patientQuestion": question.body,
             "patientContext": patient_context,
             "priorAnswers": prior_answers,
+            "retrievedExemplars": retrieved,
             "doctorName": doctor_name,
             "clinicName": tenant.name if tenant else None,
         },
@@ -929,14 +986,19 @@ def complete_qa_draft_worker_job(db: DbSession, *, job: AiJob, output: dict[str,
         draft_text = draft_text.strip() or None
     else:
         draft_text = None
+    # Retrieval provenance was stashed on the job when its payload was built (the top exemplar the
+    # draft is grounded in); surface it as the doctor-only "based on: …" chip.
+    provenance = metadata.get("qa_provenance") if isinstance(metadata.get("qa_provenance"), dict) else None
     # If the question is gone or already handled (answered/dismissed), the draft is simply no longer
     # needed — complete the job quietly rather than resurrecting stale state.
     if question is not None and question.status == Q_PENDING and draft_text:
         question.draft = draft_text
         question.draft_status = DRAFT_READY
         question.draft_source = output.get("source")
+        question.draft_provenance = provenance
     elif question is not None and question.status == Q_PENDING and not draft_text:
         question.draft_status = DRAFT_FAILED
+        question.draft_provenance = None
     job.status = AiJobStatus.succeeded
     job.completed_at = completed_at
     job.error_message = None
@@ -1053,6 +1115,7 @@ def get_message_draft(db: DbSession, principal: CurrentPrincipal, message_id: st
         "draft": question.draft,
         "draftStatus": question.draft_status,
         "draftSource": question.draft_source,
+        "draftProvenance": question.draft_provenance,
         "draftMode": (question.draft_source or "").split(":")[-1] if (question.draft_source or "").startswith("ai-voice:") else None,
     }
 
@@ -1127,6 +1190,10 @@ def complete_qa_revise_worker_job(db: DbSession, *, job: AiJob, output: dict[str
         question.draft = reply_text
         question.draft_status = DRAFT_READY
         question.draft_source = f"ai-voice:{mode}"
+        # A `replace` is a fresh dictation — it is no longer "based on" the retrieved exemplar; a
+        # `revise` keeps grounding the same draft, so the provenance chip survives.
+        if mode == "replace":
+            question.draft_provenance = None
     elif question is not None and question.status == Q_PENDING:
         # Couldn't produce a revision — leave whatever draft was there, just clear the revising state.
         question.draft_status = DRAFT_READY if question.draft else DRAFT_FAILED

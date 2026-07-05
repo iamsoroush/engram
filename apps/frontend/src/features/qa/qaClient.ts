@@ -11,12 +11,24 @@ export interface QaAssignedDoctor {
   name: string;
 }
 
+/**
+ * Retrieval provenance for a suggested reply (AES-410): the library exemplar (a saved template or a
+ * previously-sent reply) the draft was grounded on. `label` is the exemplar's short title, if any.
+ */
+export interface QaDraftProvenance {
+  kind: "template" | "sent_reply";
+  exemplarId: string;
+  label: string | null;
+}
+
 export interface QaPendingQuestion {
   messageId: string;
   question: string;
   askedAt: string | null;
   suggestedReply: string | null;
   draftStatus: "none" | "pending" | "ready" | "failed" | string;
+  /** Which library exemplar grounded this draft, if retrieval found one (AES-410). */
+  draftProvenance?: QaDraftProvenance | null;
 }
 
 export interface QaVisitMarker {
@@ -124,6 +136,8 @@ export interface QaMessageDraft {
   draftStatus: "none" | "pending" | "ready" | "failed" | "revising" | string;
   draftSource: string | null;
   draftMode: "revise" | "replace" | null;
+  /** Which library exemplar grounded this draft, if retrieval found one (AES-410). */
+  draftProvenance?: QaDraftProvenance | null;
 }
 
 /** Send the doctor's voice note to revise/replace the reply draft; the AI decides which (AES-402). */
@@ -194,4 +208,114 @@ export async function setQaRoutingMode(apiFetch: ApiFetch, routingMode: "ai_defa
   });
   if (!response.ok) throw new Error("Could not update Q&A routing");
   return (await response.json()) as QaSettings;
+}
+
+// --- Q&A knowledge library (AES-410) ---------------------------------------------------------------
+// The retrieval corpus behind grounded reply drafting: hand-authored templates plus indexed
+// previously-sent replies. The doctor curates it here (add/edit/delete templates; exclude a noisy
+// sent reply). All chrome is localized in the caller; template/reply text is verbatim clinical content.
+
+/** One library exemplar: a curated template or an indexed sent reply. Shapes mirror the backend. */
+export interface LibraryItem {
+  id: string;
+  kind: "template" | "sent_reply";
+  status: "active" | "excluded";
+  title: string | null;
+  question: string | null;
+  answer: string;
+  language: string;
+  tags: string[];
+  sourceMessageId: string | null;
+  indexed: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface QaLibraryCounts {
+  templates: number;
+  sentRepliesActive: number;
+  sentRepliesExcluded: number;
+}
+
+export interface QaLibraryResponse {
+  templates: LibraryItem[];
+  sentReplies: LibraryItem[];
+  counts: QaLibraryCounts;
+}
+
+/** Create/update body for a curated template. `answer` is required; the rest are optional. */
+export interface QaTemplateInput {
+  title?: string | null;
+  question?: string | null;
+  answer: string;
+  tags?: string[];
+}
+
+export async function fetchQaLibrary(
+  apiFetch: ApiFetch,
+  filters: { kind?: string; status?: string } = {},
+): Promise<QaLibraryResponse> {
+  const params = new URLSearchParams();
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.status) params.set("status", filters.status);
+  const query = params.toString();
+  const response = await apiFetch(`${API_BASE}/patient-qa/library${query ? `?${query}` : ""}`);
+  if (!response.ok) throw new Error("Could not load the Q&A library");
+  const payload = (await response.json()) as Partial<QaLibraryResponse>;
+  return {
+    templates: Array.isArray(payload.templates) ? payload.templates : [],
+    sentReplies: Array.isArray(payload.sentReplies) ? payload.sentReplies : [],
+    counts: payload.counts ?? { templates: 0, sentRepliesActive: 0, sentRepliesExcluded: 0 },
+  };
+}
+
+export async function createQaTemplate(apiFetch: ApiFetch, body: QaTemplateInput): Promise<LibraryItem> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/library/templates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Could not save the template");
+  return (await response.json()) as LibraryItem;
+}
+
+export async function updateQaTemplate(apiFetch: ApiFetch, id: string, body: QaTemplateInput): Promise<LibraryItem> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/library/templates/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error("Could not update the template");
+  return (await response.json()) as LibraryItem;
+}
+
+export async function deleteQaTemplate(apiFetch: ApiFetch, id: string): Promise<void> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/library/templates/${id}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("Could not delete the template");
+}
+
+/** Include/exclude a library exemplar (template or sent reply) from the retrieval corpus. */
+export async function setQaExemplarStatus(
+  apiFetch: ApiFetch,
+  id: string,
+  status: "active" | "excluded",
+): Promise<LibraryItem> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/library/${id}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error("Could not update the exemplar");
+  return (await response.json()) as LibraryItem;
+}
+
+/** Promote a sent doctor reply into a curated, reusable template. */
+export async function saveReplyAsTemplate(apiFetch: ApiFetch, messageId: string, title?: string | null): Promise<LibraryItem> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/messages/${messageId}/save-template`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: title ?? null }),
+  });
+  if (!response.ok) throw new Error("Could not save the reply as a template");
+  return (await response.json()) as LibraryItem;
 }

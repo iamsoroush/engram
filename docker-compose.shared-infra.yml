@@ -17,7 +17,11 @@ networks:
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # pgvector/pgvector:pg16 = Postgres 16 + the `vector` extension (Q&A knowledge retrieval). Shared by
+    # every dev-stack clone; the extension is created per-DB by the alembic migration. If an existing
+    # shared_postgres_data volume was initialised under the old alpine image, run a one-time
+    # `REINDEX DATABASE engram` after the swap (glibc vs musl collation) — docs/dev/worktree-stacks.md.
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-engram}
       POSTGRES_USER: ${POSTGRES_USER:-engram}
