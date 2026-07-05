@@ -155,6 +155,47 @@ when the patient was stored under a partial name). The timeline
 undo-by-capture-deletion. All applies are non-destructive timeline appends → capture chip +
 undo.
 
+#### Identity corrections, detach & the never-silent invariant (E1)
+
+The whole lattice above resolves in one place — `_resolve_capture_identity` in `worker.py` — under
+three structural invariants. **INV-SILENT: a confident detection or an explicit instruction always
+ends in exactly one of an applied effect, a visible suggestion, or a visible "couldn't act" notice**
+— never success-shaped silence (a completion-time backstop asserts it, and a unit-level lattice test
+covers every cell). The added decision kinds:
+
+5. **Name correction, not echo (Fix 1).** An assignment that resolves to the *currently-assigned*
+   patient but whose spoken name materially differs from the stored name is a **name correction**, not
+   an echo. Explicit basis + a role permitted to reassign + an AI-created *unverified* patient →
+   **rename in place** (`decision: "name_corrected"`, before→after harvested via the feedback helpers,
+   never editing `feedback.py`). Otherwise → a one-tap **`suggested_name_correction`** chip. A genuine
+   echo (spoken name ≈ stored name) stays silent.
+6. **Dead-zone create+assign (Fix 7).** On an *unassigned* visit whose detected identity clears no
+   assign/suggest threshold (the 0.762 `possible_match` dead zone below `NEAR_MATCH_SUGGEST_THRESHOLD`
+   0.78), treat as `no_match` → **create + assign** the spoken patient (first-identity-wins), keeping
+   the closest look-alike as an informational `similarExisting` note with a one-tap use-existing escape.
+   The 0.78 floor gates candidate *promotion*, never whether a resolution path exists.
+7. **AI-create duplicate guard (A-F16).** AI creation runs the AES-205 duplicate guard; a strong hit
+   (id/phone/email/exact-name) **suggests use-existing** (`duplicateGuard: true`) instead of splitting
+   the record.
+8. **National-ID name cross-check (A-F5).** A national-ID hit whose *also-spoken* name is materially
+   inconsistent with the ID-matched patient is **demoted to `possible_match`** with a mismatch risk
+   (never auto-applied at any strictness) — one dictated-digit ASR error can no longer silently write
+   the wrong chart.
+9. **Detach / negation (A-F9).** `intents.detach.present` (e.g. "wrong patient, remove her") with no
+   replacement identity → a **`suggested_unassign`** chip (never a silent no-op; unassign is destructive
+   so it is only ever suggested).
+10. **Explicit-but-no-effect (A-F12).** An explicit instruction that matched/created nothing →
+    an actionable **`assignment_no_effect`** ("couldn't apply — assign manually") notice carrying the
+    spoken identity.
+11. **Inert recovered assignment (A-F7).** A recovered older capture whose appended event does not
+    become the active assignment surfaces an **`inertAssignment`** conflict chip instead of nothing.
+
+**INV-LOCK:** every completion holds `SELECT … FOR UPDATE` on the session row so two capture
+completions can't clobber each other's timeline event; capture dispatch is routed through the ordered
+`dispatch_next_session_capture` (never straight past a running sibling).
+**INV-INVALIDATE:** marking a capture out-of-context or editing its transcript re-evaluates the
+assignment it drove (see Out-of-context below and `captures.update_capture`).
+
 ### Append
 Basic: no-op (chronological default). Pro: the capture is folded into the Live-report
 refinement job; recorded as a `report_contribution` effect on the capture.

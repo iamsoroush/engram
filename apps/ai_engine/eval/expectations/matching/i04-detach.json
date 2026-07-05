@@ -1,0 +1,9 @@
+{
+  "_note": "A-F9. A negation/detach with no replacement identity — the visit is NOT this patient / remove her. It must set intents.detach.present=true and extract NO name, so the backend can suggest an unassign instead of silently doing nothing.",
+  "said": "این پرونده مال ایشون نیست.",
+  "expect": {
+    "noName": true,
+    "detachPresent": true,
+    "outOfContext": false
+  }
+}

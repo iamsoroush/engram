@@ -1,13 +1,17 @@
 import unittest
 import uuid
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from app.models import PatientStatus
 from app.services.patient_assignment_timeline import (
     active_patient_assignment_event,
     append_patient_assignment_event,
+    archive_orphaned_ai_patient,
     assignment_source_for_event,
     patient_assignment_event,
 )
+from app.services.patients import AI_CREATED_PATIENT_NOTE
 
 
 class _ScalarResult:
@@ -56,7 +60,9 @@ class PatientAssignmentTimelineTests(unittest.TestCase):
             id=session_id,
             extracted_metadata={"patient_assignment_timeline": [previous_event, deleted_event]},
         )
-        db = _FakeDb([previous_capture_id, None])
+        # active_patient_assignment_event now loads the Capture row to skip out-of-context captures,
+        # so the existence probe returns a capture-like object (in-context) or None (deleted/gone).
+        db = _FakeDb([SimpleNamespace(capture_metadata=None), None])
 
         self.assertEqual(active_patient_assignment_event(db, session), previous_event)
 
@@ -88,7 +94,7 @@ class PatientAssignmentTimelineTests(unittest.TestCase):
             id=session_id,
             extracted_metadata={"patient_assignment_timeline": [newer_event, older_reprocessed_event]},
         )
-        db = _FakeDb([newer_capture_id, older_capture_id])
+        db = _FakeDb([SimpleNamespace(capture_metadata=None), SimpleNamespace(capture_metadata=None)])
 
         self.assertEqual(active_patient_assignment_event(db, session), newer_event)
 
@@ -128,6 +134,88 @@ class PatientAssignmentTimelineTests(unittest.TestCase):
         self.assertEqual(metadata["patient_assignment_timeline"][0]["captureId"], str(legacy_capture_id))
         self.assertTrue(metadata["patient_assignment_timeline"][0]["created"])
         self.assertEqual(metadata["patient_assignment_timeline"][1], next_event)
+
+
+class OutOfContextAssignmentBasisTests(unittest.TestCase):
+    """A-F4: an out-of-context capture is not a valid assignment basis."""
+
+    def test_out_of_context_capture_is_excluded(self):
+        capture_id = uuid.uuid4()
+        event = patient_assignment_event(
+            source="ai-engine", action="matched_and_assigned", patient_id=uuid.uuid4(),
+            display_name="P", reason="r", capture_id=capture_id,
+        )
+        session = SimpleNamespace(
+            tenant_id=uuid.uuid4(), id=uuid.uuid4(),
+            extracted_metadata={"patient_assignment_timeline": [event]},
+        )
+        ooc_capture = SimpleNamespace(capture_metadata={"out_of_context": {"present": True}})
+        db = _FakeDb([ooc_capture])
+        self.assertIsNone(active_patient_assignment_event(db, session))
+
+    def test_staff_overridden_ooc_capture_is_still_a_valid_basis(self):
+        capture_id = uuid.uuid4()
+        event = patient_assignment_event(
+            source="ai-engine", action="matched_and_assigned", patient_id=uuid.uuid4(),
+            display_name="P", reason="r", capture_id=capture_id,
+        )
+        session = SimpleNamespace(
+            tenant_id=uuid.uuid4(), id=uuid.uuid4(),
+            extracted_metadata={"patient_assignment_timeline": [event]},
+        )
+        relevant_capture = SimpleNamespace(
+            capture_metadata={"out_of_context": {"present": True, "overridden_by_staff": True}}
+        )
+        db = _FakeDb([relevant_capture])
+        self.assertEqual(active_patient_assignment_event(db, session), event)
+
+
+class _ArchiveDb:
+    """Minimal DB stub for archive_orphaned_ai_patient: one patient, then scripted dependency probes."""
+
+    def __init__(self, patient, probes):
+        self.patient = patient
+        self.probes = list(probes)
+
+    def get(self, _model, _ident):
+        return self.patient
+
+    def execute(self, _statement):
+        return SimpleNamespace(scalar_one_or_none=lambda: self.probes.pop(0))
+
+
+class OrphanArchiveTests(unittest.TestCase):
+    """Incident Fix 6: reassigning away from an unreferenced AI-created patient archives it."""
+
+    def _patient(self):
+        return SimpleNamespace(
+            id=uuid.uuid4(), tenant_id=uuid.uuid4(), status=PatientStatus.active, notes=AI_CREATED_PATIENT_NOTE
+        )
+
+    def test_unreferenced_ai_patient_is_archived(self):
+        patient = self._patient()
+        db = _ArchiveDb(patient, probes=[None, None])  # no session, no capture
+        with (
+            patch("app.auth.service.audit"),
+            patch("app.services.feedback.record_feedback_event"),
+        ):
+            archived = archive_orphaned_ai_patient(db, patient_id=patient.id, actor_user_id=None)
+        self.assertTrue(archived)
+        self.assertEqual(patient.status, PatientStatus.archived)
+
+    def test_ai_patient_with_remaining_session_is_not_archived(self):
+        patient = self._patient()
+        db = _ArchiveDb(patient, probes=[uuid.uuid4(), None])  # still has a session
+        archived = archive_orphaned_ai_patient(db, patient_id=patient.id, actor_user_id=None)
+        self.assertFalse(archived)
+        self.assertEqual(patient.status, PatientStatus.active)
+
+    def test_verified_patient_is_never_archived(self):
+        patient = self._patient()
+        patient.notes = "A real clinical note"  # no longer the AI-creation breadcrumb
+        db = _ArchiveDb(patient, probes=[None, None])
+        self.assertFalse(archive_orphaned_ai_patient(db, patient_id=patient.id, actor_user_id=None))
+        self.assertEqual(patient.status, PatientStatus.active)
 
 
 if __name__ == "__main__":

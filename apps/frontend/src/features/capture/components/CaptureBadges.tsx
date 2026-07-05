@@ -10,7 +10,30 @@ import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, 
 import { SyncIcon } from "./CaptureIcons";
 import { useT, type Translator } from "../../../shared/i18n";
 
-export type PatientConflictSuggestion = { name: string; patientId?: string; nationalId?: string; spokenName?: string };
+// The resolver handles several decision kinds. `suggested_reassignment` (default) offers the full
+// keep/create/choose actions; the others are name-correction (Fix 1), detach→unassign (A-F9), and the
+// explicit-couldn't-apply notice (A-F12) — each surfaced with its own copy so no decision is silent.
+export type ConflictSuggestionKind =
+  | "suggested_reassignment"
+  | "suggested_name_correction"
+  | "suggested_unassign"
+  | "assignment_no_effect";
+
+export type PatientConflictSuggestion = {
+  name: string;
+  patientId?: string;
+  nationalId?: string;
+  spokenName?: string;
+  kind?: ConflictSuggestionKind;
+  outOfContext?: boolean;
+};
+
+const REASSIGNMENT_SUGGESTION_STATUSES: ReadonlySet<string> = new Set([
+  "suggested_reassignment",
+  "suggested_name_correction",
+  "suggested_unassign",
+  "assignment_no_effect",
+]);
 
 // Internal SENTINEL for "this text was AI-generated". Never rendered as visible text: CaptureAttribution
 // maps it to the ✨ spark icon (with a translated aria-label/title). The "Edited by …" attribution, by
@@ -41,7 +64,18 @@ export function PatientConflictResolver({
   const [editing, setEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editNationalId, setEditNationalId] = React.useState("");
+  const kind = suggestion.kind ?? "suggested_reassignment";
+  const isReassignment = kind === "suggested_reassignment";
   const showMatchedVsSpoken = Boolean(suggestion.patientId && suggestion.spokenName && suggestion.spokenName !== suggestion.name);
+  // The header copy names the decision so a name-correction, an unassign, or a couldn't-apply notice
+  // never reads as a plain reassignment.
+  const headerLabel = (() => {
+    if (kind === "suggested_name_correction") return <>{t("badge.correctNameTo")} <strong>{suggestion.spokenName || suggestion.name}</strong></>;
+    if (kind === "suggested_unassign") return <>{t("badge.suggestedUnassign")}</>;
+    if (kind === "assignment_no_effect") return <>{t("badge.couldntApply")}{suggestion.spokenName ? <> <strong>{suggestion.spokenName}</strong></> : null}</>;
+    if (suggestion.patientId) return <>{t("badge.suggestedReassignTo")} <strong>{suggestion.name}</strong></>;
+    return <>{t("badge.newPatientName")} <strong>{suggestion.name}</strong></>;
+  })();
   const applyDraft = (draft: PatientAssignmentDraft) => {
     if (!onApply || applying) return;
     setApplying(true);
@@ -64,17 +98,14 @@ export function PatientConflictResolver({
   return (
     <div className="effect-chip is-suggested partial-match">
       <div className="partial-match-head">
-        <span className="effect-chip-label">
-          {suggestion.patientId ? (
-            <>{t("badge.suggestedReassignTo")} <strong>{suggestion.name}</strong></>
-          ) : (
-            <>{t("badge.newPatientName")} <strong>{suggestion.name}</strong></>
-          )}
-        </span>
+        <span className="effect-chip-label">{headerLabel}</span>
         {onDismiss ? (
           <button aria-label={t("badge.dismissSuggestion")} className="partial-match-close" onClick={onDismiss} type="button">×</button>
         ) : null}
       </div>
+      {suggestion.outOfContext ? (
+        <span className="partial-match-identity">{t("badge.identityOutOfContext")}</span>
+      ) : null}
       {showMatchedVsSpoken ? (
         <span className="partial-match-identity">
           {t("badge.partialMatchMatched")} <strong>{suggestion.name}</strong> {t("badge.partialMatchYouSaid")} <strong>{suggestion.spokenName}</strong>
@@ -94,18 +125,20 @@ export function PatientConflictResolver({
         </div>
       ) : (
         <div className="partial-match-actions">
-          {suggestion.patientId && onApply ? (
+          {isReassignment && suggestion.patientId && onApply ? (
             <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
               {applying ? t("badge.applying") : t("badge.keepMatch")}
             </button>
           ) : null}
-          {onApply ? (
+          {isReassignment && onApply ? (
             <button className="effect-chip-secondary" disabled={applying} onClick={openEditor} type="button">
               {suggestion.patientId ? t("badge.createNewInstead") : t("badge.createPatient")}
             </button>
           ) : null}
           {onChooseAnother ? (
-            <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">{t("badge.chooseAnother")}</button>
+            <button className="effect-chip-secondary" onClick={onChooseAnother} type="button">
+              {isReassignment ? t("badge.chooseAnother") : t("badge.assignManually")}
+            </button>
           ) : null}
         </div>
       )}
@@ -123,15 +156,20 @@ export function captureConflictSuggestion(
   if (captureAssignmentInfo(item, activePatientAction) !== null) return null;
   const candidate = metadataRecord(metadataRecord(item.metadata).patient_match_candidate);
   const status = metadataDisplay(candidate.status || candidate.decision);
-  const isSuggestion = status === "suggested_reassignment";
-  const matchedName = isSuggestion ? metadataDisplay(candidate.matchedName || candidate.displayName) || suggestionNameFromInformation(candidate) : "";
+  const isSuggestion = REASSIGNMENT_SUGGESTION_STATUSES.has(status);
+  const matchedName = isSuggestion ? metadataDisplay(candidate.matchedName || candidate.proposedName || candidate.displayName) || suggestionNameFromInformation(candidate) : "";
   const spokenName = isSuggestion ? metadataDisplay(candidate.spokenName) : "";
-  if (isSuggestion && (matchedName || spokenName)) {
+  // A name-correction / unassign / couldn't-apply notice carries no matched target but must still be
+  // shown (never a UI-side silent drop), so surface it on its spoken name alone.
+  const alwaysShow = status === "suggested_unassign" || status === "assignment_no_effect" || status === "suggested_name_correction";
+  if (isSuggestion && (matchedName || spokenName || alwaysShow)) {
     return {
       name: matchedName || spokenName,
-      patientId: metadataDisplay(candidate.patientId) || undefined,
+      patientId: status === "suggested_reassignment" ? metadataDisplay(candidate.patientId) || undefined : undefined,
       nationalId: suggestionNationalId(candidate),
       spokenName: spokenName || undefined,
+      kind: status as ConflictSuggestionKind,
+      outOfContext: candidate.outOfContext === true,
     };
   }
   if (alternateCandidate) return { name: alternateCandidate.displayName, patientId: alternateCandidate.patientId };

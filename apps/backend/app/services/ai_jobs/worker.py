@@ -37,10 +37,17 @@ from app.services.capabilities import (
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
+    active_patient_assignment_event,
     patient_assignment_event,
 )
-from app.services.patient_matching import match_patient_from_metadata
-from app.services.patients import create_patient_from_patient_information, patient_information_has_explicit_identity
+from app.services.patient_matching import find_patient_duplicates, match_patient_from_metadata, spoken_name_matches_patient
+from app.services.patients import (
+    create_patient_from_patient_information,
+    display_name_from_patient_information,
+    is_ai_created_unverified_patient,
+    patient_information_has_explicit_identity,
+    rename_patient_in_place,
+)
 from app.services.permissions import user_can_reassign_session
 from app.services.reporting import (
     DEFAULT_REPORT_TEMPLATE_KEY,
@@ -72,12 +79,18 @@ from app.services.ai_jobs.context import build_capture_enrichment_context, build
 from app.services.ai_jobs.intents import (
     assignment_intent_basis,
     caption_review_marker,
+    detach_intent_basis,
+    explicit_no_effect_notice,
     fuzzy_auto_apply_candidate,
+    inert_assignment_conflict,
+    name_correction_suggestion,
     near_match_suggestion,
     out_of_context_marker,
-    should_apply_identity_assignment,
+    resolved_match_patient_id,
+    similar_existing_note,
     spoken_name_from_information,
     suggested_reassignment_candidate,
+    suggested_unassign_candidate,
 )
 from app.services.ai_jobs.orchestration import (
     complete_patient_memory_worker_job,
@@ -157,8 +170,14 @@ def assign_session_to_ai_patient(
     capture: Capture,
     patient: Patient,
     action: dict[str, Any],
-) -> None:
-    """Assign a session/capture set to an AI-selected patient with provenance."""
+) -> bool:
+    """Assign a session/capture set to an AI-selected patient with provenance.
+
+    Returns whether the just-appended event actually became the ACTIVE assignment. It may not (A-F7):
+    a recovered older capture's event has an earlier ``effectiveAt`` than a later capture already in
+    the timeline, so latest-valid-wins leaves the visit filed under the later patient — the caller
+    surfaces that as a conflict instead of a success-shaped no-op.
+    """
     assignment_source = "ai_created" if action.get("created") else "ai_matched"
     assignment_reason = action.get("reason")
     session_metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
@@ -181,6 +200,7 @@ def assign_session_to_ai_patient(
         event,
     )
     apply_active_patient_assignment(db, session)
+    return session.patient_id is not None and str(session.patient_id) == str(patient.id)
 
 
 def resolve_ai_patient_from_match(
@@ -211,6 +231,396 @@ def resolve_ai_patient_from_match(
         )
         return patient, patient is not None
     return None, False
+
+
+def _lock_session_row(db: DbSession, *, tenant_id: uuid.UUID, session_id: uuid.UUID) -> Session | None:
+    """INV-LOCK: load a session row with ``SELECT … FOR UPDATE`` so concurrent completions serialize.
+
+    Two capture completions for the same session both read-modify-write the single JSONB
+    ``extracted_metadata`` column; without a row lock the last committer erases the other capture's
+    timeline event (A-F1/A-F2). Holding the row lock for the whole assignment write orders them. FOR
+    UPDATE is a no-op on SQLite (dialect-ignored), so unit fakes and the sqlite tests are unaffected.
+    """
+    return db.execute(
+        select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id).with_for_update()
+    ).scalar_one_or_none()
+
+
+def _spoken_names(patient_information: dict[str, Any]) -> list[str]:
+    """The spoken/transcribed names to cross-check against a patient's stored aliases."""
+    names = []
+    for key in ("raw_mentioned_name", "standardized_display_name", "full_name", "display_name"):
+        value = patient_information.get(key)
+        if isinstance(value, str) and value.strip():
+            names.append(value.strip())
+    return list(dict.fromkeys(names))
+
+
+def _ai_assign_to_patient(
+    db: DbSession,
+    *,
+    session: Session,
+    capture: Capture,
+    patient: Patient,
+    patient_information: dict[str, Any],
+    match_candidate: dict[str, Any] | None,
+    created: bool,
+    extra_action: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Assign the visit to ``patient`` and return ``(patient_match_candidate, ai_patient_action)``.
+
+    On a successful active assignment returns the match candidate + provenance action. If the append
+    did not become the active assignment (A-F7 inert), returns a conflict chip and no action so the
+    job never reports a phantom success.
+    """
+    action = ai_patient_action_metadata(
+        action="created_and_assigned" if created else "matched_and_assigned",
+        patient=patient,
+        capture=capture,
+        patient_information=patient_information,
+        match_candidate=match_candidate,
+        created=created,
+    )
+    if extra_action:
+        action = {**action, **extra_action}
+    became_active = assign_session_to_ai_patient(db, session=session, capture=capture, patient=patient, action=action)
+    if not became_active:
+        active = active_patient_assignment_event(db, session)
+        conflict = inert_assignment_conflict(
+            applied_patient_id=str(patient.id),
+            applied_display_name=patient.display_name,
+            active_patient_id=active.get("patientId") if isinstance(active, dict) else (str(session.patient_id) if session.patient_id else None),
+            active_display_name=active.get("displayName") if isinstance(active, dict) else None,
+        )
+        return conflict, None
+    return match_candidate, action
+
+
+def _apply_first_identity(
+    db: DbSession,
+    *,
+    job: AiJob,
+    session: Session,
+    capture: Capture,
+    patient_information: dict[str, Any],
+    match: dict[str, Any] | None,
+    strictness: str,
+    assignment_basis: str | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """First-identity-wins for an UNASSIGNED visit (capture-first), incl. the dead-zone fallback.
+
+    Deterministic match → assign. no_match → create+assign (after a duplicate guard). A fuzzy
+    possible_match auto-applies only when strictness permits a single dominant variant; a dominant
+    but not-auto-applied variant surfaces a near-match suggestion; and a sub-threshold near-miss —
+    the 0.762 dead zone (incident Fix 7) — creates+assigns the spoken patient while keeping the
+    look-alike visible as an informational "similar to existing" note.
+    """
+    # Deterministic existing match → assign (never creates here, so creation always flows through the
+    # duplicate guard below — A-F16).
+    if isinstance(match, dict) and match.get("decision") == "matched" and match.get("patientId"):
+        assigned_patient, _created = resolve_ai_patient_from_match(
+            db, job=job, capture=capture, patient_information=patient_information, patient_match_candidate=match
+        )
+        if assigned_patient is not None:
+            return _ai_assign_to_patient(
+                db, session=session, capture=capture, patient=assigned_patient,
+                patient_information=patient_information, match_candidate=match, created=False,
+            )
+    # Fuzzy possible_match: strictness may auto-apply a single dominant variant (reversible + notify).
+    auto_top = fuzzy_auto_apply_candidate(match, strictness=strictness, assignment_basis=assignment_basis)
+    auto_patient = _load_candidate_patient(db, tenant_id=job.tenant_id, candidate=auto_top)
+    if auto_patient is not None:
+        spoken_name = spoken_name_from_information(patient_information)
+        candidate = {
+            **(match or {}),
+            "decision": "matched", "status": "matched",
+            "patientId": str(auto_patient.id), "displayName": auto_patient.display_name,
+            "appliedAutomatically": True, "autoAppliedCloseMatch": True,
+            "matchedName": auto_patient.display_name, "spokenName": spoken_name,
+        }
+        return _ai_assign_to_patient(
+            db, session=session, capture=capture, patient=auto_patient,
+            patient_information=patient_information, match_candidate=candidate, created=False,
+            extra_action={"closeMatch": True, "matchedName": auto_patient.display_name, "spokenName": spoken_name},
+        )
+    near_match = near_match_suggestion(match, patient_information=patient_information)
+    if near_match is not None:
+        return near_match, None
+    # Create path — covers a clean `no_match` AND the sub-threshold dead zone (Fix 7): create + assign
+    # the spoken patient (first-identity-wins), but only after the duplicate guard (A-F16), keeping the
+    # closest look-alike as an informational note when one exists.
+    duplicate = _strong_duplicate(db, tenant_id=job.tenant_id, patient_information=patient_information)
+    if duplicate is not None:
+        return duplicate, None
+    created = create_patient_from_patient_information(
+        db, tenant_id=job.tenant_id, created_by_user_id=job.created_by_user_id,
+        patient_information=patient_information, source_capture_id=capture.id,
+    )
+    if created is not None:
+        note = similar_existing_note(match)
+        return _ai_assign_to_patient(
+            db, session=session, capture=capture, patient=created,
+            patient_information=patient_information, match_candidate=match, created=True,
+            extra_action={"similarExisting": note} if note else None,
+        )
+    # Detected identity but nothing to match or create (e.g. id/phone-only, no display name): never
+    # silent — surface an actionable notice carrying the spoken identity.
+    return explicit_no_effect_notice(session=session, patient_information=patient_information, match=match), None
+
+
+def _load_candidate_patient(db: DbSession, *, tenant_id: uuid.UUID, candidate: dict[str, Any] | None) -> Patient | None:
+    """Load the Patient referenced by a match-candidate dict, if any."""
+    if not isinstance(candidate, dict) or not candidate.get("patientId"):
+        return None
+    try:
+        return db.execute(
+            select(Patient).where(Patient.id == uuid.UUID(str(candidate["patientId"])), Patient.tenant_id == tenant_id)
+        ).scalar_one_or_none()
+    except (ValueError, KeyError):
+        return None
+
+
+def _strong_duplicate(db: DbSession, *, tenant_id: uuid.UUID, patient_information: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a use-existing suggestion when AI creation would strongly duplicate a patient (A-F16).
+
+    Runs the AES-205 duplicate guard at AI-create time (it is otherwise staff-create only): a strong
+    hit (national ID / phone / email / exact name) — typically a concurrent create or a front-desk
+    record made while the job was in flight — suggests the existing patient instead of splitting it.
+    """
+    result = find_patient_duplicates(
+        db, tenant_id=tenant_id,
+        display_name=display_name_from_patient_information(patient_information),
+        national_id=patient_information.get("national_id"),
+        phone=patient_information.get("phone"),
+        email=patient_information.get("email"),
+    )
+    if not result.get("hasLikelyDuplicate"):
+        return None
+    top = (result.get("candidates") or [None])[0]
+    if not isinstance(top, dict) or not top.get("patientId"):
+        return None
+    return {
+        "schemaVersion": "2026-06-02.patient-match-candidate.v1",
+        "decision": "suggested_reassignment", "status": "suggested_reassignment",
+        "appliedAutomatically": False, "duplicateGuard": True,
+        "patientId": top.get("patientId"), "displayName": top.get("displayName"), "matchedName": top.get("displayName"),
+        "spokenName": spoken_name_from_information(patient_information),
+        "reason": "A matching patient already exists — use the existing record instead of creating a duplicate.",
+        "patientInformation": patient_information,
+    }
+
+
+def _resolve_capture_identity(
+    db: DbSession,
+    *,
+    job: AiJob,
+    session: Session | None,
+    capture: Capture,
+    output: dict[str, Any],
+    strictness: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Resolve a capture's identity/assignment intents to ``(patient_match_candidate, action)``.
+
+    The single decision point for the assignment lattice: detach/negation (A-F9), first-identity-wins
+    on an unassigned visit (incl. the dead-zone fallback), same-patient name correction (incident
+    Fix 1), explicit reassignment (policy-gated per AES-906), and implicit-mention suggestions — each
+    ending in an applied effect, a visible suggestion, or a visible notice (INV-SILENT), never silence.
+    """
+    patient_information = output.get("patient_information")
+    detach_basis = detach_intent_basis(output)
+    has_identity = isinstance(patient_information, dict) and patient_information_has_explicit_identity(patient_information)
+
+    # A-F9 — detach/negation ("this isn't her / wrong patient, remove"): no replacement identity, so
+    # it is handled before the identity gate and only ever suggested (unassign is destructive).
+    if detach_basis is not None and session is not None and session.patient_id is not None:
+        current = db.get(Patient, session.patient_id)
+        return (
+            suggested_unassign_candidate(
+                session=session,
+                patient_information=patient_information if isinstance(patient_information, dict) else None,
+                current_display_name=current.display_name if current is not None else None,
+                basis=detach_basis,
+            ),
+            None,
+        )
+
+    if not has_identity or session is None:
+        return None, None
+
+    assignment_basis = assignment_intent_basis(output)
+    match = ai_jobs_pkg.match_patient_from_patient_information(
+        db, tenant_id=job.tenant_id, patient_information=patient_information
+    )
+
+    # A-F4 — an out-of-context capture must NOT file or create a patient. Downgrade any identity to a
+    # suggestion staff can still apply, but never auto-apply/create/rename from a capture the model (or
+    # staff) flagged as non-visit content ("remind me to call Ms. Karimi").
+    if out_of_context_marker(output) is not None:
+        spoken = spoken_name_from_information(patient_information)
+        resolved = resolved_match_patient_id(match)
+        return (
+            {
+                **(match or {}),
+                "schemaVersion": "2026-06-02.patient-match-candidate.v1",
+                "decision": "suggested_reassignment", "status": "suggested_reassignment",
+                "appliedAutomatically": False, "outOfContext": True,
+                "currentPatientId": str(session.patient_id) if session.patient_id else None,
+                "patientId": resolved, "spokenName": spoken, "matchedName": match.get("displayName") if isinstance(match, dict) else None,
+                "reason": "Identity heard in an out-of-context capture — not applied. Confirm to file this visit.",
+                "patientInformation": patient_information,
+            },
+            None,
+        )
+
+    if session.patient_id is None:
+        return _apply_first_identity(
+            db, job=job, session=session, capture=capture, patient_information=patient_information,
+            match=match, strictness=strictness, assignment_basis=assignment_basis,
+        )
+
+    # --- Already-assigned visit ---
+    current_patient = db.get(Patient, session.patient_id)
+    names = _spoken_names(patient_information)
+    resolved_pid = resolved_match_patient_id(match)
+    resolves_to_current = resolved_pid is not None and str(resolved_pid) == str(session.patient_id)
+    role_permitted = user_can_reassign_session(db, session=session, user_id=capture.created_by_user_id)
+    name_is_echo = spoken_name_matches_patient(db, tenant_id=job.tenant_id, patient_id=session.patient_id, names=names)
+
+    # Incident Fix 1 — same-patient name CORRECTION: the mention resolves to the currently-assigned
+    # patient (or to nobody better) but the spoken name differs from the stored one. An explicit,
+    # role-permitted correction of an AI-created unverified patient renames it in place; anything else
+    # becomes a one-tap "Correct name to X?" suggestion (never a silent echo-suppression).
+    is_name_correction = bool(names) and not name_is_echo and (resolves_to_current or resolved_pid is None)
+    if is_name_correction:
+        if (
+            assignment_basis == "explicit"
+            and role_permitted
+            and current_patient is not None
+            and is_ai_created_unverified_patient(current_patient)
+        ):
+            new_name = rename_patient_in_place(
+                db, patient=current_patient, patient_information=patient_information,
+                actor_user_id=capture.created_by_user_id, source_capture_id=capture.id,
+            )
+            if new_name is not None:
+                candidate = {
+                    "schemaVersion": "2026-06-02.patient-match-candidate.v1",
+                    "decision": "name_corrected", "status": "name_corrected", "appliedAutomatically": True,
+                    "patientId": str(current_patient.id), "displayName": new_name, "spokenName": new_name,
+                    "reason": "Renamed this AI-created patient from an explicit spoken correction.",
+                    "patientInformation": patient_information,
+                }
+                action = ai_patient_action_metadata(
+                    action="renamed", patient=current_patient, capture=capture,
+                    patient_information=patient_information, match_candidate=candidate, created=False,
+                )
+                return candidate, {**action, "nameCorrection": True}
+        return (
+            name_correction_suggestion(
+                session=session,
+                current_display_name=current_patient.display_name if current_patient is not None else None,
+                patient_information=patient_information, match=match,
+            ),
+            None,
+        )
+
+    # --- Reassignment to a DIFFERENT patient ---
+    if assignment_basis == "explicit" and role_permitted:
+        # Deterministic match → reassign (creation is routed through the duplicate guard below).
+        if isinstance(match, dict) and match.get("decision") == "matched" and match.get("patientId"):
+            assigned_patient, _created = resolve_ai_patient_from_match(
+                db, job=job, capture=capture, patient_information=patient_information, patient_match_candidate=match
+            )
+            if assigned_patient is not None:
+                return _ai_assign_to_patient(
+                    db, session=session, capture=capture, patient=assigned_patient,
+                    patient_information=patient_information, match_candidate=match, created=False,
+                )
+        auto_top = fuzzy_auto_apply_candidate(match, strictness=strictness, assignment_basis=assignment_basis)
+        auto_patient = _load_candidate_patient(db, tenant_id=job.tenant_id, candidate=auto_top)
+        if auto_patient is not None:
+            spoken_name = spoken_name_from_information(patient_information)
+            candidate = {
+                **(match or {}), "decision": "matched", "status": "matched",
+                "patientId": str(auto_patient.id), "displayName": auto_patient.display_name,
+                "appliedAutomatically": True, "autoAppliedCloseMatch": True,
+                "matchedName": auto_patient.display_name, "spokenName": spoken_name,
+            }
+            return _ai_assign_to_patient(
+                db, session=session, capture=capture, patient=auto_patient,
+                patient_information=patient_information, match_candidate=candidate, created=False,
+                extra_action={"closeMatch": True, "matchedName": auto_patient.display_name, "spokenName": spoken_name},
+            )
+        near_match = near_match_suggestion(match, patient_information=patient_information)
+        if near_match is not None:
+            return near_match, None
+        # An explicit reassignment to a brand-new person (no_match) may create + assign — after the
+        # duplicate guard (A-F16). A strong duplicate suggests use-existing instead.
+        if isinstance(match, dict) and match.get("decision") == "no_match":
+            duplicate = _strong_duplicate(db, tenant_id=job.tenant_id, patient_information=patient_information)
+            if duplicate is not None:
+                return duplicate, None
+            created = create_patient_from_patient_information(
+                db, tenant_id=job.tenant_id, created_by_user_id=job.created_by_user_id,
+                patient_information=patient_information, source_capture_id=capture.id,
+            )
+            if created is not None:
+                return _ai_assign_to_patient(
+                    db, session=session, capture=capture, patient=created,
+                    patient_information=patient_information, match_candidate=match, created=True,
+                )
+        # A-F12 — explicit reassignment that resolved to no applicable patient must never no-op silently.
+        return explicit_no_effect_notice(session=session, patient_information=patient_information, match=match), None
+
+    # Explicit but the capturer's role can't reassign (AES-906) → suggestion to the owner, never blocked.
+    if assignment_basis == "explicit" and not role_permitted:
+        return (
+            suggested_reassignment_candidate(
+                db, tenant_id=job.tenant_id, session=session,
+                patient_information=patient_information, policy_deferred=True,
+            ),
+            None,
+        )
+
+    # Implicit mention of a different patient on an assigned visit → suggestion (echo-suppressed when
+    # it resolves to the already-assigned patient with a matching name — that path returned above).
+    return (
+        suggested_reassignment_candidate(
+            db, tenant_id=job.tenant_id, session=session,
+            patient_information=patient_information, policy_deferred=False,
+        ),
+        None,
+    )
+
+
+def _explicit_instruction_unsatisfied(db: DbSession, *, job: AiJob, session: Session, output: dict[str, Any]) -> bool:
+    """Whether an explicit assignment/detach instruction was heard but left genuinely unresolved.
+
+    The predicate behind the INV-SILENT completion backstop. True only for a real miss: an explicit
+    identity instruction that does NOT already resolve to the assigned patient, or a detach of an
+    assigned visit. A mention of the already-assigned patient (echo) and a detach of an already-
+    unassigned visit are already satisfied — not silence — so they return False.
+    """
+    if detach_intent_basis(output) is not None:
+        return session.patient_id is not None
+    if assignment_intent_basis(output) != "explicit":
+        return False
+    patient_information = output.get("patient_information")
+    if not isinstance(patient_information, dict) or not patient_information_has_explicit_identity(patient_information):
+        return False
+    if session.patient_id is None:
+        return True  # unassigned + explicit identity should always have produced an effect
+    match = ai_jobs_pkg.match_patient_from_patient_information(
+        db, tenant_id=job.tenant_id, patient_information=patient_information
+    )
+    resolved = resolved_match_patient_id(match)
+    names = _spoken_names(patient_information)
+    is_echo = (
+        resolved is not None
+        and str(resolved) == str(session.patient_id)
+        and spoken_name_matches_patient(db, tenant_id=job.tenant_id, patient_id=session.patient_id, names=names)
+    )
+    return not is_echo
 
 
 def get_ai_job(db: DbSession, principal: CurrentPrincipal, job_id: str) -> dict[str, Any]:
@@ -479,132 +889,38 @@ def complete_worker_job(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target capture is missing")
 
     completed_at = utc_now()
-    session = db.execute(
-        select(Session).where(Session.id == capture.session_id, Session.tenant_id == job.tenant_id)
-    ).scalar_one_or_none()
-    patient_match_candidate = None
-    ai_patient_action = None
+    # INV-LOCK: hold the session row for the whole assignment write so two capture completions for the
+    # same session serialize instead of clobbering each other's timeline event (A-F1/A-F2).
+    session = _lock_session_row(db, tenant_id=job.tenant_id, session_id=capture.session_id)
+    strictness = tenant_match_strictness(db, job.tenant_id)
     patient_information = output.get("patient_information")
-    # Intelligent patient matching (match/create/reassign/suggest) runs for both tiers — it is the
-    # core memory-accuracy feature. Capabilities gate enrichment (captions/decoration) and the
-    # synthesized report below; matching itself is never gated.
+    # Resolve identity/assignment intents to a single (candidate, action) decision. The full lattice —
+    # first-identity-wins (+ dead-zone), same-patient name correction, explicit/policy-gated
+    # reassignment, detach, and suggestions — lives in _resolve_capture_identity so every branch ends
+    # in an applied effect, a visible suggestion, or a visible notice (INV-SILENT). Matching runs for
+    # both tiers (it is the core memory-accuracy feature); capabilities gate only enrichment + report.
+    patient_match_candidate, ai_patient_action = _resolve_capture_identity(
+        db, job=job, session=session, capture=capture, output=output, strictness=strictness
+    )
+    # INV-SILENT completion assertion (defensive backstop): an explicit instruction that changed
+    # nothing AND is not already satisfied by the current assignment must never vanish — surface a
+    # "couldn't apply — assign manually" notice. Legitimate echoes (a mention of the already-assigned
+    # patient, a detach of an already-unassigned visit) are excluded, so this fires only on a true miss.
     if (
-        isinstance(patient_information, dict)
-        and patient_information_has_explicit_identity(patient_information)
+        patient_match_candidate is None
+        and ai_patient_action is None
+        and session is not None
+        and _explicit_instruction_unsatisfied(db, job=job, session=session, output=output)
     ):
-        assignment_basis = assignment_intent_basis(output)
-        strictness = tenant_match_strictness(db, job.tenant_id)
-        has_existing_patient = session is not None and session.patient_id is not None
-        wants_apply = should_apply_identity_assignment(
-            has_session=session is not None,
-            has_existing_patient=has_existing_patient,
-            assignment_basis=assignment_basis,
+        logger.warning(
+            "INV-SILENT backstop: explicit assignment instruction produced no visible outcome",
+            extra={"job_id": str(job.id), "capture_id": str(capture.id), "session_id": str(session.id)},
         )
-        # AES-906 (policy-aware intent): an explicit reassignment of an already-assigned visit
-        # auto-applies only if the *capturer's* role is permitted to reassign (AES-905). If not, it
-        # is routed to the owner as a suggestion (`policy_deferred`) — never applied silently, never
-        # blocked. Initial filing of an unassigned visit is the capture-first floor and is not gated.
-        reassignment_blocked_by_policy = (
-            wants_apply
-            and has_existing_patient
-            and session is not None
-            and not user_can_reassign_session(db, session=session, user_id=capture.created_by_user_id)
+        patient_match_candidate = explicit_no_effect_notice(
+            session=session,
+            patient_information=patient_information if isinstance(patient_information, dict) else {},
+            match=None,
         )
-        # First identity on an unassigned visit is always applied; once a patient is
-        # assigned, only an explicit (re)assignment instruction the capturer is permitted to make
-        # overrides it. An implicit mention — or a reassignment the capturer's role can't make —
-        # becomes a suggestion, not a silent change.
-        if wants_apply and not reassignment_blocked_by_policy:
-            patient_match_candidate = ai_jobs_pkg.match_patient_from_patient_information(
-                db,
-                tenant_id=job.tenant_id,
-                patient_information=patient_information,
-            )
-            assigned_patient, created_patient = resolve_ai_patient_from_match(
-                db,
-                job=job,
-                capture=capture,
-                patient_information=patient_information,
-                patient_match_candidate=patient_match_candidate,
-            )
-            if assigned_patient is not None:
-                ai_patient_action = ai_patient_action_metadata(
-                    action="created_and_assigned" if created_patient else "matched_and_assigned",
-                    patient=assigned_patient,
-                    capture=capture,
-                    patient_information=patient_information,
-                    match_candidate=patient_match_candidate,
-                    created=created_patient,
-                )
-                assign_session_to_ai_patient(
-                    db,
-                    session=session,
-                    capture=capture,
-                    patient=assigned_patient,
-                    action=ai_patient_action,
-                )
-            else:
-                # Apply was intended but the match is only a confident fuzzy one. Under
-                # balanced/lenient strictness a single high-confidence variant with an explicit
-                # instruction auto-applies (reversible, with notify); the national-ID conflict
-                # guard and ambiguity always win. Otherwise surface a one-tap suggestion instead
-                # of a silent no-op (never silently apply a fuzzy name).
-                auto_top = fuzzy_auto_apply_candidate(
-                    patient_match_candidate, strictness=strictness, assignment_basis=assignment_basis
-                )
-                auto_patient = None
-                if auto_top is not None:
-                    try:
-                        auto_patient = db.execute(
-                            select(Patient).where(
-                                Patient.id == uuid.UUID(str(auto_top["patientId"])),
-                                Patient.tenant_id == job.tenant_id,
-                            )
-                        ).scalar_one_or_none()
-                    except (ValueError, KeyError):
-                        auto_patient = None
-                if auto_patient is not None:
-                    spoken_name = spoken_name_from_information(patient_information)
-                    patient_match_candidate = {
-                        **patient_match_candidate,
-                        "decision": "matched",
-                        "status": "matched",
-                        "patientId": str(auto_patient.id),
-                        "displayName": auto_patient.display_name,
-                        "appliedAutomatically": True,
-                        "autoAppliedCloseMatch": True,
-                        "matchedName": auto_patient.display_name,
-                        "spokenName": spoken_name,
-                    }
-                    ai_patient_action = {
-                        **ai_patient_action_metadata(
-                            action="matched_and_assigned",
-                            patient=auto_patient,
-                            capture=capture,
-                            patient_information=patient_information,
-                            match_candidate=patient_match_candidate,
-                            created=False,
-                        ),
-                        # Flag the close match so the chip shows "· close match" + matched-vs-spoken.
-                        "closeMatch": True,
-                        "matchedName": auto_patient.display_name,
-                        "spokenName": spoken_name,
-                    }
-                    assign_session_to_ai_patient(
-                        db, session=session, capture=capture, patient=auto_patient, action=ai_patient_action
-                    )
-                else:
-                    near_match = near_match_suggestion(patient_match_candidate, patient_information=patient_information)
-                    if near_match is not None:
-                        patient_match_candidate = near_match
-        elif has_existing_patient:
-            patient_match_candidate = suggested_reassignment_candidate(
-                db,
-                tenant_id=job.tenant_id,
-                session=session,
-                patient_information=patient_information,
-                policy_deferred=reassignment_blocked_by_policy,
-            )
     output_with_match = (
         {**output, "patient_match_candidate": patient_match_candidate, "ai_patient_action": ai_patient_action}
         if patient_match_candidate is not None

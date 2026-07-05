@@ -235,6 +235,81 @@ def _fuzzy_alias_candidates(
 
 
 NATIONAL_ID_CONFLICT_RISK = "The extracted national ID does not match this patient's national ID. Staff must confirm before assignment."
+# A national-ID hit is deterministic and normally auto-applies, but a single dictated-digit ASR
+# error can collide with a *different* patient's stored ID. When the spoken name is materially
+# inconsistent with the ID-matched patient's stored name, the ID hit is unsafe (A-F5): demote to
+# possible_match so it routes to the resolver at every strictness instead of a silent wrong-chart write.
+NATIONAL_ID_NAME_MISMATCH_RISK = "The extracted national ID matched a patient whose name is very different from the spoken name. Staff must confirm before assignment."
+# The best spoken-name↔stored-alias similarity below which the two names are treated as inconsistent.
+# Calibrated against the token-aware `_name_similarity`: genuinely different Persian/Latin names cap
+# around ~0.6 while the same person (incl. last-name-only mentions and transliteration drift) scores
+# ~0.96+, so 0.72 separates them with margin and errs toward demotion (safe — it only asks staff to confirm).
+NAME_CONSISTENCY_MIN_SIMILARITY = 0.72
+# Risks that make a candidate unsafe to auto-apply at ANY strictness — it must always route to the
+# resolver even when it would otherwise clear the fuzzy auto-apply line (used by intents.py).
+NEVER_AUTO_APPLY_RISKS = frozenset({NATIONAL_ID_CONFLICT_RISK, NATIONAL_ID_NAME_MISMATCH_RISK})
+
+
+def _stored_name_aliases(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> list[str]:
+    """Return a patient's deterministic normalized name aliases for a cross-check."""
+    return [
+        value
+        for value in db.execute(
+            select(PatientIdentifier.normalized_value).where(
+                PatientIdentifier.tenant_id == tenant_id,
+                PatientIdentifier.patient_id == patient_id,
+                PatientIdentifier.identifier_type.in_(["normalized_alias", "normalized_name"]),
+            )
+        ).scalars()
+        if value
+    ]
+
+
+# At/above this best spoken↔stored similarity the spoken name is treated as the SAME stored name (an
+# echo/confirmation), not a correction — used to tell a genuine echo from a name correction (Fix 1).
+NAME_SAME_SIMILARITY = 0.9
+
+
+def spoken_name_similarity_to_patient(
+    db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID, names: list[str]
+) -> float | None:
+    """Best similarity between the spoken name(s) and a patient's stored name aliases, or None.
+
+    None when there is nothing to compare (no spoken name, or the patient stores no name alias) — the
+    caller must not infer agreement OR disagreement from an absent comparison.
+    """
+    spoken_aliases = list(dict.fromkeys(alias for name in names for alias in normalized_aliases_for_value(name)))
+    if not spoken_aliases:
+        return None
+    stored = _stored_name_aliases(db, tenant_id=tenant_id, patient_id=patient_id)
+    if not stored:
+        return None
+    return max(_name_similarity(spoken, alias) for spoken in spoken_aliases for alias in stored)
+
+
+def _spoken_name_inconsistent_with_patient(
+    db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID, names: list[str]
+) -> bool:
+    """Whether the spoken name(s) are materially inconsistent with a patient's stored name (A-F5).
+
+    Only decisive when the visit actually spoke a name AND the patient stores name aliases: if the
+    best spoken↔stored similarity is very low, the names disagree. With no spoken name or no stored
+    alias to compare against, we cannot say they conflict, so return False (no demotion).
+    """
+    best = spoken_name_similarity_to_patient(db, tenant_id=tenant_id, patient_id=patient_id, names=names)
+    return best is not None and best < NAME_CONSISTENCY_MIN_SIMILARITY
+
+
+def spoken_name_matches_patient(
+    db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID, names: list[str]
+) -> bool:
+    """Whether the spoken name is essentially the patient's stored name (an echo, not a correction).
+
+    True only when there is a name to compare and it strongly matches a stored alias. Absent a
+    comparison this is False, so a bare mention that can't be confirmed as an echo stays actionable.
+    """
+    best = spoken_name_similarity_to_patient(db, tenant_id=tenant_id, patient_id=patient_id, names=names)
+    return best is not None and best >= NAME_SAME_SIMILARITY
 
 
 def _stored_national_ids(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> set[str]:
@@ -322,13 +397,26 @@ def match_patient_from_patient_information(
             reason="The extracted national ID exactly matched an existing patient identifier.",
         )
         if candidates:
+            decision = "matched"
+            risks = list(candidates[0].risks)
+            reason = "Exact national ID match selected deterministically."
+            # A-F5: a dictated-digit ASR error can collide with a different patient's national ID.
+            # If the spoken name materially disagrees with the ID-matched patient, the hit is unsafe
+            # — demote to possible_match (routes to the resolver at every strictness) with a risk.
+            if _spoken_name_inconsistent_with_patient(
+                db, tenant_id=tenant_id, patient_id=candidates[0].patient_id, names=values["names"]
+            ):
+                decision = "possible_match"
+                risks = [*risks, NATIONAL_ID_NAME_MISMATCH_RISK]
+                reason = "National ID matched, but the spoken name disagrees — staff should confirm before assignment."
+                candidates[0].risks = list(dict.fromkeys([*candidates[0].risks, NATIONAL_ID_NAME_MISMATCH_RISK]))
             return _result(
-                decision="matched",
+                decision=decision,
                 candidates=candidates,
                 matched_on=["national_id"],
-                reason="Exact national ID match selected deterministically.",
+                reason=reason,
                 patient_information=patient_information,
-                risks=candidates[0].risks,
+                risks=risks,
             )
 
     contact_candidates: list[MatchCandidate] = []

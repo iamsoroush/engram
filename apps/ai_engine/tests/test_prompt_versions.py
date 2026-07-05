@@ -35,7 +35,7 @@ CANONICAL_CONTEXT = {
 
 # module -> (expected PROMPT_VERSION, expected sha256 of build(CANONICAL_CONTEXT))
 PINNED = {
-    transcription: ("2026-07-04.transcription.v1", "cd9e6c4f8398119bae29daa9bdb2f934c3b2286b4a099828d44456735b25b853"),
+    transcription: ("2026-07-05.transcription.v2", "413299ab0b3c6e9388938e1251ad730b9166d1483df27641a899aca2adbce5f5"),
     caption: ("2026-07-04.caption.v1", "b066644f987c727fac3f4d1e430b6856acaa79bbd7db406b763136ef79f1d634"),
     patient_memory: ("2026-07-04.patient_memory.v1", "2b63775e25bdcf178efdcf2abd2927ada9ec001595597256a954a55f541dc720"),
     # v2 adds a retrieval-grounding branch (retrievedExemplars). The shared CANONICAL_CONTEXT carries

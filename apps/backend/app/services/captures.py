@@ -32,6 +32,18 @@ def get_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> 
     return payload
 
 
+def _capture_drove_assignment(metadata: dict[str, Any]) -> bool:
+    """Whether this capture was the basis for the visit's patient assignment (A-F6).
+
+    True when its metadata carries the active-assignment provenance an AI match writes onto the basis
+    capture — so a later transcript edit knows the identity effect it read from must be re-checked.
+    """
+    if metadata.get("ai_patient_assignment_basis") is True or isinstance(metadata.get("ai_patient_action"), dict):
+        return True
+    candidate = metadata.get("patient_match_candidate")
+    return isinstance(candidate, dict) and candidate.get("decision") in {"matched", "name_corrected"}
+
+
 def update_capture(
     db: DbSession,
     principal: CurrentPrincipal,
@@ -45,23 +57,39 @@ def update_capture(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid capture status") from exc
     relevance_marked = False
+    marked_out_of_context = False
+    transcript_recheck = False
     previous_metadata = dict(capture.capture_metadata or {})
     if request.metadata is not None:
         incoming_metadata = dict(request.metadata)
-        # Staff "Mark relevant" clears the AI out-of-context marker non-destructively so the
-        # capture flows back into the (Pro) live report, while keeping the AI marker for audit.
+        # Staff toggle the out-of-context marker two ways. "Mark relevant" (present:false) clears the
+        # AI marker non-destructively so the capture flows back into the (Pro) live report. "Mark out
+        # of context" (present:true) is the A-F4 reverse path: it sets the capture aside AND de-effects
+        # any assignment it drove — like deletion — since an OOC capture must never keep a visit filed.
         if isinstance(incoming_metadata.get("out_of_context"), dict):
-            relevance_marked = True
             existing_ooc = (capture.capture_metadata or {}).get("out_of_context")
             existing_present = isinstance(existing_ooc, dict) and existing_ooc.get("present") is True
-            incoming_metadata["out_of_context"] = {
-                "present": False,
-                "overridden_by_staff": True,
-                "source": "staff",
-                "overridden_by_user_id": str(principal.user_id),
-                "overridden_at": datetime.now(timezone.utc).isoformat(),
-                "ai_marker": existing_ooc if existing_present else (existing_ooc.get("ai_marker") if isinstance(existing_ooc, dict) else None),
-            }
+            if incoming_metadata["out_of_context"].get("present") is True:
+                marked_out_of_context = True
+                reason = incoming_metadata["out_of_context"].get("reason")
+                incoming_metadata["out_of_context"] = {
+                    "present": True,
+                    "source": "staff",
+                    "marked_by_user_id": str(principal.user_id),
+                    "marked_at": datetime.now(timezone.utc).isoformat(),
+                    "reason": reason if isinstance(reason, str) and reason.strip() else None,
+                    "ai_marker": existing_ooc if existing_present else (existing_ooc.get("ai_marker") if isinstance(existing_ooc, dict) else None),
+                }
+            else:
+                relevance_marked = True
+                incoming_metadata["out_of_context"] = {
+                    "present": False,
+                    "overridden_by_staff": True,
+                    "source": "staff",
+                    "overridden_by_user_id": str(principal.user_id),
+                    "overridden_at": datetime.now(timezone.utc).isoformat(),
+                    "ai_marker": existing_ooc if existing_present else (existing_ooc.get("ai_marker") if isinstance(existing_ooc, dict) else None),
+                }
         capture.capture_metadata = merged_capture_metadata_for_staff_edit(capture.capture_metadata or {}, incoming_metadata, principal)
         if capture.capture_type == CaptureType.photo and "caption" in request.metadata:
             session = db.get(Session, capture.session_id)
@@ -71,15 +99,42 @@ def update_capture(
             session = db.get(Session, capture.session_id)
             if session is not None and session.tenant_id == principal.tenant_id:
                 mark_session_stale_after_source_text_update(session, str(capture.id), "transcript-edit", "An audio transcript was edited after the last processed session output.", datetime.now(timezone.utc))
+            # A-F6 / INV-INVALIDATE: a fix-at-source transcript edit changes the very text the patient
+            # match was read from. If this capture drove the visit's assignment, the corrected name may
+            # now point at a different patient — surface a re-check chip instead of silently keeping the
+            # wrong patient (a full AI re-extraction of the edited text is a follow-up).
+            if _capture_drove_assignment(previous_metadata):
+                transcript_recheck = True
+                capture.capture_metadata = {
+                    **(capture.capture_metadata or {}),
+                    "needs_review": {
+                        "present": True,
+                        "kind": "patient_recheck",
+                        "reason": "Transcript edited after assignment — re-check the assigned patient.",
+                        "source": "staff",
+                    },
+                }
         # Harvest a transcript/caption staff edit as a candidate eval case (eval-epic §1b). Staged in
         # this same transaction (like audit); never raises into the edit.
         record_capture_text_correction(db, principal, capture, previous_metadata, request.metadata)
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="capture.update", target_type="capture", target_id=capture.id)
+    # A-F4: de-effect a staff "mark out of context" — recompute the assignment (the timeline now
+    # excludes this OOC capture) and drop this visit's safety-flag contribution from a former patient.
+    if marked_out_of_context and capture.session_id is not None:
+        session = db.get(Session, capture.session_id)
+        if session is not None and session.tenant_id == principal.tenant_id:
+            former_patient_id = session.patient_id
+            db.flush()
+            apply_active_patient_assignment(db, session)
+            if former_patient_id is not None and session.patient_id != former_patient_id:
+                former_patient = db.get(Patient, former_patient_id)
+                if former_patient is not None:
+                    drop_session_safety_flags(former_patient, session.id)
     db.commit()
     db.refresh(capture)
     # A capture moving in/out of the report changes its contents, so regenerate the live report
     # (no-op while the capture chain is still processing).
-    if relevance_marked and capture.session_id is not None:
+    if (relevance_marked or marked_out_of_context) and capture.session_id is not None:
         from app.services.ai_jobs import regenerate_session_report_if_idle
 
         regenerate_session_report_if_idle(
@@ -90,6 +145,7 @@ def update_capture(
             force=True,
         )
         db.refresh(capture)
+    _ = transcript_recheck  # surfaced via the capture's needs_review marker above
     artifact = db.get(Artifact, capture.source_artifact_id) if capture.source_artifact_id else None
     return capture_payload(capture, artifact, db)
 

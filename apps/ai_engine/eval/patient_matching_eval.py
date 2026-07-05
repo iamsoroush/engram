@@ -116,6 +116,24 @@ def run_gates(output: dict[str, Any], expect: dict[str, Any]) -> list[str]:
         if contains(raw or "", token) or contains(standardized or "", token):
             problems.append(f"name {token!r} extracted but was not spoken in THIS clip (context bleed)")
 
+    intents = output.get("intents") if isinstance(output.get("intents"), dict) else {}
+
+    # Detach/negation intent (A-F9): "this isn't her / remove the patient" with no replacement name.
+    if "detachPresent" in expect:
+        detach = intents.get("detach") if isinstance(intents.get("detach"), dict) else {}
+        if bool(detach.get("present")) != expect["detachPresent"]:
+            problems.append(f"intents.detach.present {detach.get('present')!r}≠{expect['detachPresent']}")
+
+    # Out-of-context carve-out (A-F15): an assignment/correction instruction is visit content and must
+    # NOT be flagged out_of_context. `outOfContext: false` asserts the model kept the clip in context.
+    if "outOfContext" in expect:
+        ooc = intents.get("out_of_context") if isinstance(intents.get("out_of_context"), dict) else {}
+        if bool(ooc.get("present")) != expect["outOfContext"]:
+            problems.append(
+                f"intents.out_of_context.present {ooc.get('present')!r}≠{expect['outOfContext']} "
+                "(an assignment/correction instruction IS visit content)"
+            )
+
     return problems
 
 
@@ -141,13 +159,18 @@ def judge_transliteration(reference: str, candidate: str) -> dict[str, Any]:
 # --- Synthetic cases ------------------------------------------------------------------------------
 
 def _output(raw: str | None, standardized: str | None, *, present: bool = False, basis: str | None = None,
-            national_id: str | None = None, phone: str | None = None) -> dict[str, Any]:
+            national_id: str | None = None, phone: str | None = None, detach: bool = False,
+            out_of_context: bool = False) -> dict[str, Any]:
     assignment = {"present": present, "basis": basis, "confidence": 0.5, "evidence": None} if present or basis else {"present": False}
     return {
         "transcript": raw or "",
         "patient_information": {"raw_mentioned_name": raw, "standardized_display_name": standardized,
                                "national_id": national_id, "phone": phone},
-        "intents": {"assignment": assignment},
+        "intents": {
+            "assignment": assignment,
+            "detach": {"present": detach, "basis": "explicit"},
+            "out_of_context": {"present": out_of_context, "confidence": 0.9, "reason": None},
+        },
     }
 
 
@@ -256,6 +279,58 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expect": {"nameContains": ["محمودی"], "nameAbsent": ["محمدی"]},
         "expectGatesPass": False,
         "expectReasonContains": "not extracted",
+    },
+    # (i01 class — incident Fix 3) A «…هست درستش» correction DIRECTIVE must classify basis='explicit'
+    # (the production audio-4 miss came back implicit and the correction was silently swallowed).
+    {
+        "name": "i01 correction directive «اسم بیمار سروش معاضد هست درستش» → basis explicit",
+        "output": _output("سروش معاضد", "Soroush Moazed", present=True, basis="explicit"),
+        "expect": {"nameContains": ["معاضد"], "assignmentPresent": True, "basis": "explicit", "noLatinInName": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "i01 correction directive classified implicit → FAILS (the swallowed-correction regression)",
+        "output": _output("سروش معاضد", "Soroush Moazed", present=True, basis="implicit"),
+        "expect": {"basis": "explicit"},
+        "expectGatesPass": False,
+        "expectReasonContains": "basis",
+    },
+    # (i02 class — incident Fix 3 / A-F15) A correction-only clip is VISIT content, never out-of-context.
+    {
+        "name": "i02 «اشتباهه، بیمار سارا هست» correction-only → in context (not out_of_context)",
+        "output": _output("سارا", "Sara", present=True, basis="explicit", out_of_context=False),
+        "expect": {"nameContains": ["سارا"], "basis": "explicit", "outOfContext": False},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "i02 correction clip flagged out_of_context → FAILS the carve-out gate",
+        "output": _output("سارا", "Sara", present=True, basis="explicit", out_of_context=True),
+        "expect": {"outOfContext": False},
+        "expectGatesPass": False,
+        "expectReasonContains": "visit content",
+    },
+    # (i03 class — A-F14) In-clip self-correction «برای سارا… نه، مریم»: the CORRECTED (last) name wins,
+    # the discarded one must not be extracted, and a deliberate correction is explicit.
+    {
+        "name": "i03 self-correction «برای سارا… نه، مریم» → مریم extracted (not سارا), basis explicit",
+        "output": _output("مریم", "Maryam", present=True, basis="explicit"),
+        "expect": {"nameContains": ["مریم"], "nameAbsent": ["سارا"], "basis": "explicit"},
+        "expectGatesPass": True,
+    },
+    # (i04 class — A-F9) Detach/negation «این پرونده مال ایشون نیست» with NO replacement name → detach
+    # intent present and no name extracted (so the backend can suggest an unassign, never silence).
+    {
+        "name": "i04 detach «این پرونده مال ایشون نیست» → detach present, no name",
+        "output": _output(None, None, detach=True),
+        "expect": {"noName": True, "detachPresent": True},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "i04 detach clip with detach NOT flagged → FAILS (negation would be lost)",
+        "output": _output(None, None, detach=False),
+        "expect": {"detachPresent": True},
+        "expectGatesPass": False,
+        "expectReasonContains": "detach",
     },
 ]
 

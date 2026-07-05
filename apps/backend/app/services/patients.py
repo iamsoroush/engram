@@ -226,6 +226,68 @@ def add_patient_information_identifiers(
 AI_CREATED_PATIENT_NOTE = "Created by AI from an audio capture. Complete and verify patient details."
 
 
+def is_ai_created_unverified_patient(patient: Patient) -> bool:
+    """Whether a patient is still an unverified AI-created record (carries the creation breadcrumb).
+
+    The breadcrumb is cleared once staff edit/verify the patient, so this doubles as the
+    "needs_verification" gate for the aggressive-rename / orphan-archive paths — only such a record
+    may be renamed in place or archived without an explicit staff action.
+    """
+    return patient.status == PatientStatus.active and (patient.notes or "").strip() == AI_CREATED_PATIENT_NOTE
+
+
+def rename_patient_in_place(
+    db: DbSession,
+    *,
+    patient: Patient,
+    patient_information: dict[str, Any],
+    actor_user_id: uuid.UUID | None,
+    source_capture_id: uuid.UUID | None = None,
+) -> str | None:
+    """Rename an AI-created unverified patient from a spoken identity correction (incident Fix 1).
+
+    Only ever applied to an unverified AI-created patient (see :func:`is_ai_created_unverified_patient`);
+    a human-created/verified patient gets a suggestion instead (decided by the caller). Updates the
+    display name in place, adds the corrected name's search aliases so future captures resolve to it,
+    and records the before→after as a feedback-harvest signal (never modifies feedback.py). Returns the
+    new display name, or None when there is nothing to rename to.
+    """
+    new_name = display_name_from_patient_information(patient_information)
+    if not new_name or new_name.strip() == (patient.display_name or "").strip():
+        return None
+    previous_name = patient.display_name
+    patient.display_name = new_name
+    db.flush()
+    # Add the corrected name's aliases so subsequent captures match the renamed patient. Old aliases
+    # (the mis-transcription) are left in place — harmless: they still resolve to this same patient.
+    add_patient_information_identifiers(db, patient=patient, patient_information=patient_information)
+    from app.services.feedback import record_feedback_event
+
+    record_feedback_event(
+        db,
+        tenant_id=patient.tenant_id,
+        actor_user_id=actor_user_id,
+        kind="correction",
+        ai_output_type="patient_match",
+        patient_id=patient.id,
+        context={
+            "action": "rename_ai_patient",
+            "previous_display_name": previous_name,
+            "source_capture_id": str(source_capture_id) if source_capture_id else None,
+        },
+    )
+    audit(
+        db,
+        tenant_id=patient.tenant_id,
+        actor_user_id=actor_user_id,
+        action="patient.rename_ai",
+        target_type="patient",
+        target_id=patient.id,
+        details={"previous_display_name": previous_name, "new_display_name": new_name},
+    )
+    return new_name
+
+
 def create_patient_from_patient_information(
     db: DbSession,
     *,

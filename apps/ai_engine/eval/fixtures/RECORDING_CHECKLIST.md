@@ -67,6 +67,21 @@ confusable dose minimal pair, length, code-switch, or a second voice — these d
       *"خانم محمودی امروز اومد، نه خانم محمدی."*  (expect: faithful «محمودی»; **not** auto-corrected to «محمدی»)
 - [ ] **m09** `m09-near-miss-noisy.m4a` — re-record **m02** (the «نگار معمری» near-miss) **with clinic noise**  (expect: near-miss surname still NOT snapped to «محمدی»)
 
+**Batch 3 — incident cluster (identity-correction / detach). Prefer the owner's OWN prod/dev clips
+where they exist (approved reuse — his voice, no patient data): production session
+`f3ee7cd5-3aa4-44cc-8d04-2897a3258b34` (audio 4 is the `درستش` correction) and dev sessions
+`f681a5fb…` / `8b7ea6f8…`, from MinIO bucket `engram-captures` via `ssh engram`. Expectations for
+these are already committed in `expectations/matching/i0*.json`.**
+
+- [ ] **i01** `i01-correction-directive.m4a` — the prod audio-4 clip:
+      *"اسم بیمار سروش معاضد هست درستش."*  (expect: `basis` **explicit**, «معاضد» extracted, NOT out_of_context)
+- [ ] **i02** `i02-correction-only-in-context.m4a` — a correction-ONLY clip (no clinical content):
+      *"اشتباهه، بیمار سارا هست."*  (expect: `basis` explicit, **out_of_context false** — an instruction is visit content)
+- [ ] **i03** `i03-self-correction.m4a` — in-clip self-correction:
+      *"برای سارا... نه، مریم."*  (expect: «مریم» extracted, «سارا» absent, `basis` explicit — knownGap on flash)
+- [ ] **i04** `i04-detach.m4a` — negation with NO replacement name:
+      *"این پرونده مال ایشون نیست."*  (expect: `intents.detach.present` true, no name extracted)
+
 ## 🎙️ Q&A reply voice-edit (voice note → revise/replace)  →  `qa_revise/`
 
 > **Now wired.** `qa_revise_eval.py` consumes `qa_revise/`: each clip is the doctor's spoken edit of a
