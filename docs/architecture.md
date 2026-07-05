@@ -42,7 +42,19 @@ Storage
 
 Postgres is the source of truth for tenants, users, patients, sessions, captures, artifacts, audit events, and processing job rows; the schema is managed with Alembic. MinIO stores source files and generated artifacts in both development and production. See [backend data model](backend/data-model.md), [storage](backend/storage.md), [auth](backend/auth.md), and [production](production.md) for details.
 
-Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks; `apps/ai_engine` consumes them and executes the AI jobs against an LLM gateway ([ai_engine/processing.md](ai_engine/processing.md)). Every AI job is **eval-gated**: changes must keep `apps/ai_engine/eval/run_all.py` green ([ai_engine/evals.md](ai_engine/evals.md)).
+Celery and Redis provide the background job boundary. The backend creates durable job rows and sends named tasks; `apps/ai_engine` consumes them and executes the AI jobs against the AI gateway ([ai_engine/processing.md](ai_engine/processing.md)). Every AI job is **eval-gated**: changes must keep `apps/ai_engine/eval/run_all.py` green ([ai_engine/evals.md](ai_engine/evals.md)).
+
+**The AI gateway** is a lightweight service **developed and maintained by us** (its own codebase,
+outside this repo; live at `gw.engram.ir` — [production.md](production.md)). It exposes one
+OpenAI-compatible API over **both OpenAI and Gemini models** — clients simply use the `openai`
+package against it, including `response_format: json_schema` enforcement for either model family
+and an OpenAI-compatible `/embeddings` endpoint (same API key; all OpenAI embedding models). Per
+request it translates to the destination provider's format, **computes the price** (the `usage`
+records our metering consumes — [business/ai-usage-limits.md](business/ai-usage-limits.md)), and
+returns the response. It also **holds the provider API keys** — this system only ever carries a
+gateway key, so OpenAI/Gemini credentials never touch the backend or worker. Because it is ours,
+**new gateway features can be added quickly on request** — when a job needs a capability the
+gateway lacks, ask for the gateway feature rather than building a client-side workaround.
 
 The AI engine does not import backend modules or connect directly to Postgres. It updates job lifecycle state and results through protected backend internal endpoints at `/internal/ai/...`. This keeps the backend as the owner of database schema, tenant scoping, audit events, and capture/job state while allowing the AI engine to evolve as a separate service.
 
