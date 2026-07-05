@@ -103,19 +103,22 @@ class StructuredTranscriptionTests(unittest.TestCase):
         self.assertEqual(output["detected_patient"]["status"], "not_detected")
 
     def test_non_fixture_audio_requires_configured_transcription_gateway(self):
-        with self.assertRaisesRegex(RuntimeError, "Audio transcription gateway is not configured"):
-            completed_audio_metadata(
-                {"id": "job-1", "jobType": "audio_capture_process", "inputArtifactIds": ["artifact-1"]},
-                {
-                    "type": "audio",
-                    "metadata": {"original_filename": "clinic-audio.wav"},
-                },
-                content=None,
-            )
+        # Pin the gateway to unconfigured — the host env may carry real gateway vars.
+        with patch("ai_engine.jobs.capture_audio.transcription_is_configured", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "Audio transcription gateway is not configured"):
+                completed_audio_metadata(
+                    {"id": "job-1", "jobType": "audio_capture_process", "inputArtifactIds": ["artifact-1"]},
+                    {
+                        "type": "audio",
+                        "metadata": {"original_filename": "clinic-audio.wav"},
+                    },
+                    content=None,
+                )
 
     def test_placeholder_helper_does_not_generate_non_fixture_audio_text(self):
-        with self.assertRaisesRegex(RuntimeError, "Audio transcription gateway is not configured"):
-            placeholder_text_for_capture({"type": "audio", "metadata": {"detail": "Audio note saved."}})
+        with patch("ai_engine.jobs.capture_audio.transcription_is_configured", return_value=False):
+            with self.assertRaisesRegex(RuntimeError, "Audio transcription gateway is not configured"):
+                placeholder_text_for_capture({"type": "audio", "metadata": {"detail": "Audio note saved."}})
 
     def test_parse_extracts_explicit_assignment_intent(self):
         parsed = parse_structured_transcription_output(
