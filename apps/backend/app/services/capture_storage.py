@@ -70,10 +70,16 @@ def validate_wav_pcm_16k_mono(content: bytes) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio must include WAV fmt and data chunks")
 
 
-def get_session_for_tenant(db: DbSession, tenant_id: uuid.UUID, session_id: uuid.UUID) -> Session:
-    session = db.execute(
-        select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
-    ).scalar_one_or_none()
+def get_session_for_tenant(
+    db: DbSession, tenant_id: uuid.UUID, session_id: uuid.UUID, *, for_update: bool = False
+) -> Session:
+    """Fetch a tenant-scoped session. ``for_update`` takes a row lock (INV-LOCK, S-F15) so a user-state
+    write serializes against the synthesis completion handler's read-modify-write of the same
+    ``extracted_metadata`` JSON column (no-op on SQLite, which ignores ``FOR UPDATE``)."""
+    query = select(Session).where(Session.id == session_id, Session.tenant_id == tenant_id)
+    if for_update:
+        query = query.with_for_update()
+    session = db.execute(query).scalar_one_or_none()
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return session
@@ -130,9 +136,16 @@ def _report_model_with_media_pairing(
 
 def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
     from app.services.attribution import attribution_payload
+    from app.services.treatment_overlay import effective_treatments_from_metadata
 
     contracts = build_session_contracts(session, db)
     extracted_metadata = session.extracted_metadata or {}
+    # (S-F8) Fold the user-authored treatment overlay into the treatments the payload exposes — the
+    # capture screen's treatment table reads `extractedMetadata.treatments`, so a corrected lot/dose must
+    # show here too (not just in recall / smart-lists / memory, which already read effective_treatments).
+    # A read-only projection: the raw AI artifact stays untouched in the DB; identity when no overlay.
+    if isinstance(extracted_metadata, dict) and isinstance(extracted_metadata.get("treatments"), list):
+        extracted_metadata = {**extracted_metadata, "treatments": effective_treatments_from_metadata(extracted_metadata)}
     assignment_source = extracted_metadata.get("patient_assignment_source")
     structured_report = session.report_model if isinstance(session.report_model, dict) and session.report_model else None
     if structured_report is not None and db is not None:

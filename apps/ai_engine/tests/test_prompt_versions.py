@@ -37,7 +37,7 @@ CANONICAL_CONTEXT = {
 PINNED = {
     transcription: ("2026-07-04.transcription.v1", "cd9e6c4f8398119bae29daa9bdb2f934c3b2286b4a099828d44456735b25b853"),
     caption: ("2026-07-04.caption.v1", "b066644f987c727fac3f4d1e430b6856acaa79bbd7db406b763136ef79f1d634"),
-    patient_memory: ("2026-07-04.patient_memory.v1", "2b63775e25bdcf178efdcf2abd2927ada9ec001595597256a954a55f541dc720"),
+    patient_memory: ("2026-07-05.patient_memory.v2", "f425a3fe2c1bb363f5df840866af784e0b40e05ceb253b1a2c8e8237ccb5330a"),
     # v2 adds a retrieval-grounding branch (retrievedExemplars). The shared CANONICAL_CONTEXT carries
     # no exemplars, so build() takes the byte-identical no-exemplar path (hash unchanged from v1); the
     # exemplar branch is pinned separately in ``test_qa_draft_exemplar_branch_is_pinned`` so it can be
@@ -45,7 +45,7 @@ PINNED = {
     qa_draft: ("2026-07-05.qa_draft.v2", "79a01d6106ceabf49e9735897e95e3e02284adb9e6178fb6ac2d712aa45eaa3d"),
     qa_revise: ("2026-07-04.qa_revise.v1", "0fdbf0feeda6613b5c15abc846782d3b162af3d05396d11b8466829bdf9a1df1"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
-    synthesis: ("2026-07-05.synthesis.v2", "c1f531c02ca6747cd7dab246c49a042b251eb6bd96c1cf2c3d56e6eac555232a"),
+    synthesis: ("2026-07-05.synthesis.v3", "c7fbf63b19deaee4a7fd9d7ab473d74753b5627ece4b2058baffee40e8effaf7"),
 }
 
 

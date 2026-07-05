@@ -122,14 +122,16 @@ def stamp_treatment_keys(treatments: list[dict[str, Any]] | None) -> list[dict[s
 
 
 def carried_forward_key(treatment: dict[str, Any]) -> str:
-    """Stable id (``area|product``) for a carried-forward treatment so its dose can be confirmed (Q3).
+    """Stable id (``<areaCode|norm(area)>|norm(product)``) for a carried-forward dose to confirm (Q3).
 
-    NOTE: distinct from ``treatmentKey`` (which also anchors on areaCode + source capture). The
-    confirm-dose overlay (``confirmed_carried_forward``) and the review row are both keyed on this.
+    Anchored on the same language-independent area anchor + normalized product as ``treatmentKey`` (S-F7),
+    so a confirmed carried dose stays confirmed across a re-synthesis that rewords the display strings or
+    a report-language switch («گونه» → «گونه‌ها», fa → en) — instead of minting a new key that re-opens
+    "confirm dose" and flips a closed visit back to incomplete. NOTE: distinct from ``treatmentKey``
+    (which also folds in the source capture). The confirm-dose overlay (``confirmed_carried_forward``) and
+    the review row are both keyed on this.
     """
-    area = str(treatment.get("area") or "").strip()
-    product = str(treatment.get("product") or "").strip()
-    return f"{area}|{product}"
+    return f"{_treatment_area_anchor(treatment)}|{norm_token(treatment.get('product'))}"
 
 
 # --- Reading stored treatments + the overlay --------------------------------------------------------
@@ -224,32 +226,61 @@ def effective_treatments_from_metadata(metadata: dict[str, Any] | None) -> list[
 # --- The post-synthesis re-bind pass ----------------------------------------------------------------
 def rebind_treatment_overlay(
     fresh_treatments: list[dict[str, Any]] | None, overlay: list[dict[str, Any]] | None
-) -> list[dict[str, Any]]:
-    """Re-anchor each overlay entry to the freshly-synthesized rows; drop the orphans.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Re-anchor each overlay entry to the freshly-synthesized rows; PARK (never delete) the orphans.
 
-    Per overlay entry: an EXACT ``treatmentKey`` match binds; else a fresh row sharing a source capture
-    AND the normalized area (the split/re-key case, with ``priorKey`` as tie-breaker) re-binds (its
-    ``treatmentKey`` + anchor snapshot are updated); else the row is gone and the entry drops with it
-    (matches the source-de-effected edge case). Every surviving entry's ``aiValue`` is refreshed to the
-    fresh AI value, so a disagreement with the human ``value`` surfaces via ``{aiValue, value}`` — never
-    a silent overwrite.
+    A human overlay edit (e.g. a corrected lot number) is authoritative user state — a re-synthesis must
+    never silently destroy it (S-F4). Per overlay entry, in order:
+
+    1. EXACT ``treatmentKey`` match → bind.
+    2. **priorKey-first**: a fresh row that explicitly claims to continue this exact prior key
+       (``row.priorKey == entry.treatmentKey``) → bind, *independent of the area filter*. This rescues an
+       edit when a re-synthesis re-slugs the area ("cheeks" → "left-cheek"): the priorKey hint — built
+       precisely for this — is honored before the area anchor, which would otherwise reject it.
+    3. area+source candidate: a fresh row sharing a source capture AND the normalized area.
+    4. else the row is gone from this synthesis → the entry is PARKED as an orphan (surfaced as a review
+       chip) rather than deleted, so a corrected lot can't silently revert to the wrong AI lot.
+
+    Returns ``(rebound, orphans)``. Every surviving entry's ``aiValue`` is refreshed so a disagreement
+    with the human ``value`` surfaces via ``{aiValue, value}`` — never a silent overwrite. Parked orphans
+    are re-attempted on the next re-synthesis (pass them back in ``overlay``), so a row that reappears
+    re-binds out of the orphan list.
     """
     fresh = [row for row in (fresh_treatments or []) if isinstance(row, dict) and isinstance(row.get("treatmentKey"), str)]
     by_key = {row["treatmentKey"]: row for row in fresh}
     rebound: list[dict[str, Any]] = []
+    orphans: list[dict[str, Any]] = []
     for entry in overlay or []:
         if not isinstance(entry, dict):
             continue
         field = entry.get("field")
         if field not in TREATMENT_OVERLAY_FIELDS:
             continue
-        row = by_key.get(entry.get("treatmentKey"))
+        entry_key = entry.get("treatmentKey")
+        row = by_key.get(entry_key)
+        if row is None:
+            row = _priorkey_match(entry_key, fresh)
         if row is None:
             row = _rebind_candidate(entry, fresh)
         if row is None:
-            continue  # source de-effected → the edit drops with its row
+            orphans.append(_park_orphan_entry(entry))  # source row gone → park, never delete
+            continue
         rebound.append(_bind_entry_to_row(entry, row))
-    return rebound
+    return rebound, orphans
+
+
+def _priorkey_match(entry_key: Any, fresh: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """A fresh row that explicitly continues this exact prior key (``priorKey == entry_key``).
+
+    A first-class re-bind rule, checked BEFORE the area filter — a row echoing the prior key must rescue
+    the binding even when a re-synthesis re-keyed its area (S-F4).
+    """
+    if not isinstance(entry_key, str) or not entry_key:
+        return None
+    for row in fresh:
+        if row.get("priorKey") == entry_key:
+            return row
+    return None
 
 
 def _rebind_candidate(entry: dict[str, Any], fresh: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -271,9 +302,20 @@ def _rebind_candidate(entry: dict[str, Any], fresh: list[dict[str, Any]]) -> dic
     return candidates[0]
 
 
+def _park_orphan_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """Return the overlay entry marked parked (its value/aiValue/field preserved for the review chip)."""
+    parked = dict(entry)
+    parked["parked"] = True
+    parked.setdefault("parkedAt", _now_iso())
+    return parked
+
+
 def _bind_entry_to_row(entry: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
     """Return the entry re-anchored to ``row``: fresh key + anchor snapshot + refreshed aiValue."""
     bound = dict(entry)
+    # A re-bound entry is active again — clear any parked marker from a prior synthesis where it orphaned.
+    bound.pop("parked", None)
+    bound.pop("parkedAt", None)
     bound["treatmentKey"] = row["treatmentKey"]
     bound["matchArea"] = _treatment_area_anchor(row)
     bound["sourceCaptureIds"] = [value for value in (row.get("sourceCaptureIds") or []) if isinstance(value, str)]

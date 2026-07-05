@@ -14,7 +14,7 @@ from app.schemas.patients import AssignPatientRequest
 from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
 from app.services.feedback import record_capture_text_correction, record_feedback_event
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
-from app.services.patient_safety import drop_session_safety_flags, sync_patient_safety_flags
+from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
 from app.services.patients import AI_CREATED_PATIENT_NOTE
 from app.services.report_versions import find_report_version_for_current_set, restore_report_version
 from app.services.sessions import parse_uuid
@@ -273,14 +273,12 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     # capture's assignment event is dropped and the active assignment recomputed.
     apply_active_patient_assignment(db, session)
     # De-effect the removal: if this capture spuriously CREATED a patient that is now orphaned, soft-
-    # delete it (the motivating bug — a mis-transcribed name spawned a patient that lingered); and if the
-    # removal changed the session's patient, drop this visit's safety-flag contribution from the former
-    # patient so the cross-visit safety set stays consistent.
+    # delete it (the motivating bug — a mis-transcribed name spawned a patient that lingered). The
+    # cross-visit safety-flag drop/sync on the patient change is handled centrally in
+    # apply_active_patient_assignment above (it is the one place session.patient_id changes) — the old
+    # explicit call here passed the ORM Session (not session.id) to drop_session_safety_flags, so its
+    # str() never matched a stored sourceSessionId and the de-effect silently removed nothing (S-F1).
     _archive_orphaned_ai_patient(db, principal, created_patient_id)
-    if former_patient_id is not None and session.patient_id != former_patient_id:
-        former_patient = db.get(Patient, former_patient_id)
-        if former_patient is not None:
-            drop_session_safety_flags(former_patient, session)
     # Cache-hit restore (pipeline-versioning): if removing this capture returns the session to a
     # previously-synthesized capture set, restore that exact report_version deterministically — no
     # re-synthesis, no "wrong entries". Otherwise fall through to a recompute (below).
@@ -291,6 +289,13 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
             restored_patient = db.get(Patient, session.patient_id)
             if restored_patient is not None:
                 sync_patient_safety_flags(restored_patient, session)
+                # Restore parity with the ai_jobs cache-hit path (S-F14): re-apply the version's
+                # cross-visit reconcile decisions over the freshly synced union (they now round-trip via
+                # _ARTIFACT_METADATA_KEYS). apply_safety_reconciliation re-validates ofKey against this
+                # patient's flags, so a stale/cross-patient decision can't hide a distinct allergy.
+                reconciliation = session.extracted_metadata.get("safety_reconciliation")
+                if isinstance(reconciliation, dict):
+                    apply_safety_reconciliation(restored_patient, reconciliation)
     audit(
         db,
         tenant_id=principal.tenant_id,

@@ -54,9 +54,12 @@ from app.services.session_processing import (
     capture_is_out_of_context,
     finalize_session_synthesis_output,
     prior_visit_capture_ids,
+    render_treatment_performed_blocks,
     report_model_from_session_processing_output,
     session_processing_output_from_legacy_report,
+    set_treatment_performed_section,
 )
+from app.services.synthesis_escalation import SYNTHESIS_ESCALATE_KEY
 from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
 from app.services.report_versions import record_report_version
 from app.services.treatment_overlay import rebind_treatment_overlay
@@ -429,6 +432,23 @@ def start_worker_job(
         report_model = session.report_model if isinstance(session.report_model, dict) else None
         if not (report_model and report_model.get("sections")):
             session.status = SessionStatus.processing
+        # (S-F5, INV-SNAPSHOT) Freeze the job's INPUT capture-set + content signature at START. The
+        # synthesis reflects the payload built now; if a fix-at-source capture EDIT lands mid-job, the DB
+        # state at completion diverges from these. Completion stamps freshness + records the version from
+        # THIS snapshot, and dispatches a follow-up when the current set no longer matches — so a stale
+        # report is never marked current and the version store is never keyed to content it doesn't reflect.
+        if job.job_type == AiJobType.session_organize:
+            from app.services.report_versions import session_capture_set
+
+            start_reportable = reportable_session_captures(db, tenant_id=job.tenant_id, session_id=session.id)
+            start_set_hash, start_set_items = session_capture_set(db, session)
+            job.result_metadata = {
+                **(job.result_metadata or {}),
+                "input_signature": session_report_content_signature(start_reportable),
+                "input_capture_ids": [str(capture.id) for capture in start_reportable],
+                "input_capture_set_hash": start_set_hash,
+                "input_capture_set_items": start_set_items,
+            }
     db.commit()
     db.refresh(job)
     return worker_job_payload(db, job)
@@ -798,6 +818,20 @@ def progress_worker_job(
     return {"job": ai_job_payload(job)}
 
 
+def _synthesis_output_has_body(output: dict[str, Any]) -> bool:
+    """Whether a synthesis output has ANY content block across its sections (S-F12 hollow-report floor).
+
+    A structurally-valid synthesis can pass the summary gate yet carry zero blocks in every section — a
+    hollow report that would replace the deterministic baseline (which held the real transcripts/photos)
+    with a near-empty one. Checked AFTER finalize, so the treatment-performed section rendered from a
+    non-empty treatments[] counts as body; only an all-empty output is hollow.
+    """
+    for section in output.get("sections") or []:
+        if isinstance(section, dict) and section.get("blocks"):
+            return True
+    return False
+
+
 def _complete_session_synthesis_skip(
     db: DbSession, *, job: AiJob, output_key: str, session: Session, reason: str | None = None
 ) -> dict[str, Any]:
@@ -865,8 +899,12 @@ def complete_session_worker_job(
     """Persist successful session-level AI engine output."""
     if job.session_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job is missing session_id")
+    # (S-F15, INV-LOCK) Serialize this completion against the concurrent user-state writers
+    # (dose confirmations / safety-flag rejections / overlay edits) that the capture screen actively
+    # encourages DURING the "Organizing with AI" window: take a row lock so their read-modify-write of
+    # extracted_metadata can't be clobbered by, or clobber, this handler's rebuild. No-op on SQLite.
     session = db.execute(
-        select(Session).where(Session.id == job.session_id, Session.tenant_id == job.tenant_id)
+        select(Session).where(Session.id == job.session_id, Session.tenant_id == job.tenant_id).with_for_update()
     ).scalar_one_or_none()
     if session is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI job target session is missing")
@@ -910,6 +948,36 @@ def complete_session_worker_job(
             valid_capture_ids=synthesis_capture_ids,
             prior_visit_capture_ids=prior_ids,
         )
+        # (S-F12) Hollow-report floor: a valid-JSON synthesis with a non-empty summary but zero content
+        # blocks across every section (including the treatment-performed prose re-rendered from
+        # treatments[]) is malformed — keep the deterministic baseline instead of blanking the report.
+        if not _synthesis_output_has_body(session_processing_output):
+            return _complete_session_synthesis_skip(
+                db, job=job, output_key=output_key, session=session, reason="hollow_synthesis"
+            )
+        # (S-F3) Zero treatments over the SAME captures a prior synthesis extracted some from is far more
+        # likely a transient miss than a real change — never silently downgrade a Pro visit to
+        # no-treatments. Keep the prior rows, re-render the prose from them, and raise a review item.
+        prior_md = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+        prior_treatments = [item for item in (prior_md.get("treatments") or []) if isinstance(item, dict)]
+        prior_synth = prior_md.get("report_synthesis") if isinstance(prior_md.get("report_synthesis"), dict) else {}
+        prior_synth_ids = prior_synth.get("captureIds") if isinstance(prior_synth.get("captureIds"), list) else []
+        same_capture_set = set(str(value) for value in prior_synth_ids) == set(synthesis_capture_ids)
+        if not synthesis_treatments and prior_treatments and same_capture_set:
+            synthesis_treatments = prior_treatments
+            session_processing_output = set_treatment_performed_section(
+                session_processing_output, render_treatment_performed_blocks(prior_treatments)
+            )
+            synthesis_review = [
+                *synthesis_review,
+                {
+                    "category": "treatments_vanished",
+                    "reason": "This re-synthesis found no treatments though the previous one recorded some "
+                    "for the same captures — confirm before they are removed.",
+                    "product": None,
+                    "sourceCaptureIds": [],
+                },
+            ]
 
     structured_findings = session_processing_output.get("findings")
     if isinstance(structured_findings, list) and not isinstance(extracted_metadata.get("findings"), list):
@@ -1002,18 +1070,23 @@ def complete_session_worker_job(
     prior_confirmed = previous_metadata.get("confirmed_carried_forward")
     prior_dismissed_aftercare = previous_metadata.get("dismissed_aftercare")
     prior_rejected_safety_flags = previous_metadata.get("rejected_safety_flags")
+    prior_rejected_records = previous_metadata.get("rejected_safety_flag_records")
     # The user-authored treatment overlay (AES-1101) is user state too — re-bind each edit to the freshly
-    # synthesized rows (exact key → bound; shared source-capture + normalized area, priorKey tie-break →
-    # re-bind; else drop with its source-de-effected row), refreshing aiValue so a fresh-extraction
-    # disagreement surfaces via {aiValue, value}. On the legacy path (no fresh treatments) preserve as-is.
+    # synthesized rows (exact key → bound; priorKey-first → re-bind across an area re-key; shared
+    # source-capture + normalized area → re-bind; else PARK the entry as an orphan — never delete a human
+    # edit, S-F4), refreshing aiValue so a fresh-extraction disagreement surfaces via {aiValue, value}.
+    # Prior orphans are re-fed so a row that reappears re-binds out of the orphan list. On the legacy path
+    # (no fresh treatments) preserve overlay + orphans as-is.
     prior_treatment_overlay = previous_metadata.get("treatment_overlay")
-    rebound_treatment_overlay = (
-        rebind_treatment_overlay(synthesis_treatments, prior_treatment_overlay)
-        if is_synthesis
-        else [entry for entry in prior_treatment_overlay if isinstance(entry, dict)]
-        if isinstance(prior_treatment_overlay, list)
-        else []
-    )
+    prior_overlay_orphans_raw = previous_metadata.get("treatment_overlay_orphans")
+    prior_overlay_entries = [entry for entry in prior_treatment_overlay if isinstance(entry, dict)] if isinstance(prior_treatment_overlay, list) else []
+    prior_overlay_orphans = [entry for entry in prior_overlay_orphans_raw if isinstance(entry, dict)] if isinstance(prior_overlay_orphans_raw, list) else []
+    if is_synthesis:
+        rebound_treatment_overlay, rebound_overlay_orphans = rebind_treatment_overlay(
+            synthesis_treatments, [*prior_overlay_entries, *prior_overlay_orphans]
+        )
+    else:
+        rebound_treatment_overlay, rebound_overlay_orphans = prior_overlay_entries, prior_overlay_orphans
     preserved_confirmations = {
         **(
             {"confirmed_carried_forward": [value for value in prior_confirmed if isinstance(value, str)]}
@@ -1030,8 +1103,21 @@ def complete_session_worker_job(
             if isinstance(prior_rejected_safety_flags, list) and prior_rejected_safety_flags
             else {}
         ),
+        # Rich rejection records (key, kind, sourceCaptureIds) let a rejection follow a flag across a
+        # re-synthesis that rewords its text (S-F7) — preserved alongside the plain key list.
+        **(
+            {"rejected_safety_flag_records": [record for record in prior_rejected_records if isinstance(record, dict)]}
+            if isinstance(prior_rejected_records, list) and prior_rejected_records
+            else {}
+        ),
         **({"treatment_overlay": rebound_treatment_overlay} if rebound_treatment_overlay else {}),
+        **({"treatment_overlay_orphans": rebound_overlay_orphans} if rebound_overlay_orphans else {}),
     }
+    # (S-F9) Preserve a correction-set escalation marker that landed DURING this job so the follow-up
+    # dispatch escalates (the rebuild below otherwise wipes it — it is not an AI artifact).
+    preserved_control = {
+        SYNTHESIS_ESCALATE_KEY: True
+    } if previous_metadata.get(SYNTHESIS_ESCALATE_KEY) is True else {}
     # The synthesized live report is a Pro capability: mark the captures it folded in as
     # contributed and record the included / set-aside counts for the report meta strip.
     report_contribution_summary: dict[str, int] | None = None
@@ -1041,23 +1127,38 @@ def complete_session_worker_job(
         report_contribution_summary = mark_session_report_contributions(
             db, session=session, generated_at=completed_at.isoformat(), source_capture_ids=report_source_ids
         )
+    # (S-F5, INV-SNAPSHOT) Stamp freshness from the job-START snapshot, not the completion-time DB. If a
+    # fix-at-source capture EDIT landed mid-job, the current content signature no longer matches what this
+    # job actually synthesized — so we mark it NOT current (stale) and force a follow-up, instead of
+    # stamping a stale report "current" for the post-edit signature (which would suppress the follow-up).
+    start_snapshot = job.result_metadata if isinstance(job.result_metadata, dict) else {}
+    start_signature = start_snapshot.get("input_signature")
+    start_capture_ids = start_snapshot.get("input_capture_ids") if isinstance(start_snapshot.get("input_capture_ids"), list) else synthesis_capture_ids
+    start_set_hash = start_snapshot.get("input_capture_set_hash")
+    start_set_items = start_snapshot.get("input_capture_set_items")
+    current_signature = session_report_content_signature(reportable_captures) if is_synthesis else None
+    input_matches_current = (not is_synthesis) or start_signature is None or start_signature == current_signature
     session.extracted_metadata = {
         **preserved_assignment,
         **preserved_patient_match,
         **extracted_metadata,
         **preserved_confirmations,
+        **preserved_control,
         "session_processing_output": session_processing_output,
-        "generated_output_stale": False,
+        # A mid-job content edit (input != current) leaves the report stale so the floor + a fresh
+        # synthesis re-run against the new content; otherwise the synthesis is current.
+        "generated_output_stale": is_synthesis and not input_matches_current,
         "processed_versions": previous_versions[-5:],
         **({"report_contribution_summary": report_contribution_summary} if report_contribution_summary is not None else {}),
-        # Mark the synthesis current for this exact reportable content so a later deterministic regen
-        # doesn't clobber the LLM report (the floor only rebuilds when the content signature changes).
+        # Mark the synthesis current for the exact reportable content it was BUILT from (the START
+        # snapshot) so a later deterministic regen doesn't clobber the LLM report; a mid-job edit stamps
+        # `stale` so the floor rebuilds and re-synthesizes.
         **(
             {
                 "report_synthesis": {
-                    "status": "current",
-                    "captureIds": synthesis_capture_ids,
-                    "signature": session_report_content_signature(reportable_captures),
+                    "status": "current" if input_matches_current else "stale",
+                    "captureIds": start_capture_ids,
+                    "signature": start_signature if start_signature is not None else current_signature,
                     "generatedAt": completed_at.isoformat(),
                 }
             }
@@ -1080,8 +1181,20 @@ def complete_session_worker_job(
     # Snapshot this synthesis as a content-addressed report_version (pipeline-versioning): a future undo
     # that returns the session to this capture set restores it deterministically (no re-synthesis).
     if is_synthesis:
-        record_report_version(db, session, generated_by="ai-engine", generated_at=completed_at)
-    session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
+        # Key the version by the job-START capture set (S-F5) so a mid-job edit can't store pre-edit
+        # artifacts under the post-edit content hash (a deterministic wrong-restore later).
+        version_capture_set = (
+            (start_set_hash, start_set_items)
+            if isinstance(start_set_hash, str) and isinstance(start_set_items, list)
+            else None
+        )
+        record_report_version(
+            db, session, generated_by="ai-engine", generated_at=completed_at, capture_set=version_capture_set
+        )
+    # (S-F10) Settle status only from a transient processing/draft state — never stomp a clinician who
+    # hit "start review" (reviewing) while a slow synthesis was in flight back to needs_review.
+    if session.status in {SessionStatus.processing, SessionStatus.draft}:
+        session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     session.organization_source = OrganizationSource.ai_engine
     session.updated_at = completed_at
     job.status = AiJobStatus.succeeded
@@ -1111,10 +1224,16 @@ def complete_session_worker_job(
     db.refresh(job)
     if is_synthesis:
         # The LLM write is FINAL on the synthesis path — do NOT re-run the deterministic regen (it
-        # would clobber the synthesized report). Only re-dispatch synthesis if a capture landed mid-job
-        # (debounced + guarded), so a late capture still gets folded in.
+        # would clobber the synthesized report). Re-dispatch synthesis if a capture landed mid-job
+        # (debounced + guarded), so a late capture still gets folded in — and FORCE it when a mid-job
+        # content EDIT means the current set no longer matches what this job synthesized (S-F5), where
+        # every capture is already contributed so the uncontributed-capture guard wouldn't fire.
         maybe_dispatch_session_synthesis(
-            db, tenant_id=job.tenant_id, session_id=job.session_id, created_by_user_id=job.created_by_user_id
+            db,
+            tenant_id=job.tenant_id,
+            session_id=job.session_id,
+            created_by_user_id=job.created_by_user_id,
+            force=not input_matches_current,
         )
     elif job.session_id is not None:
         # Legacy/placeholder path: deterministic regen is the source of truth.

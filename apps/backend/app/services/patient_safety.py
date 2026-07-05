@@ -76,9 +76,50 @@ def session_rejected_safety_flag_keys(session: Session) -> list[str]:
     return [str(value) for value in raw if isinstance(value, str)] if isinstance(raw, list) else []
 
 
-def session_kept_safety_flags(session: Session) -> list[dict[str, Any]]:
-    """Detected flags minus the rejected ones — what is shown and persisted to the patient."""
+def session_rejected_safety_flag_records(session: Session) -> list[dict[str, Any]]:
+    """Rich rejection records ``[{key, kind, sourceCaptureIds, text}]`` maintained by the reject endpoint.
+
+    Distinct from the plain ``rejected_safety_flags`` key list (which the frontend recomputes): these carry
+    the rejected flag's kind + source captures so a rejection can follow the flag across a re-synthesis
+    that rewords its text (S-F7) — a key alone can't, since the reworded text mints a new key.
+    """
+    raw = _session_metadata(session).get("rejected_safety_flag_records")
+    return [record for record in raw if isinstance(record, dict) and isinstance(record.get("key"), str)] if isinstance(raw, list) else []
+
+
+def carried_rejected_safety_flag_keys(session: Session) -> set[str]:
+    """Rejected keys, augmented with reworded re-detections (S-F7).
+
+    A rejection keyed on ``kind|normalized-text`` no longer matches after a re-synthesis reworded the
+    flag, so the rejected wrong flag would reappear and re-sync onto the patient. For each rejection
+    record whose exact key is no longer detected, a currently-detected flag of the SAME kind sharing a
+    source capture is treated as the same (reworded) flag and its new key is added to the rejected set.
+    """
     rejected = set(session_rejected_safety_flag_keys(session))
+    detected = session_detected_safety_flags(session)
+    detected_keys = {flag["key"] for flag in detected}
+    for record in session_rejected_safety_flag_records(session):
+        if record["key"] in detected_keys:
+            continue  # exact key still detected — nothing to carry
+        kind = record.get("kind")
+        sources = {value for value in (record.get("sourceCaptureIds") or []) if isinstance(value, str)}
+        if not sources:
+            continue
+        for flag in detected:
+            if flag["key"] in rejected:
+                continue
+            if flag["kind"] == kind and sources & set(flag.get("sourceCaptureIds") or []):
+                rejected.add(flag["key"])
+    return rejected
+
+
+def session_kept_safety_flags(session: Session) -> list[dict[str, Any]]:
+    """Detected flags minus the rejected ones — what is shown and persisted to the patient.
+
+    Rejections are matched tolerant of rewording (S-F7): a flag whose exact key was rejected OR that a
+    prior rejection record re-identifies (same kind + shared source capture) is dropped.
+    """
+    rejected = carried_rejected_safety_flag_keys(session)
     return [flag for flag in session_detected_safety_flags(session) if flag["key"] not in rejected]
 
 
@@ -163,20 +204,77 @@ def apply_safety_reconciliation(patient: Patient, decisions: Any) -> None:
     not marked duplicate/superseded is reset to plain keep. Never removes a flag (the union is the
     deterministic floor); the payload merely hides meaning-duplicates + annotates supersedes. Staged on
     the patient; the caller commits.
+
+    Two safety guards are applied against the raw decisions here — the deterministic layer, resilient to
+    a stale or cross-patient decision set (S-F6):
+
+    * **Resolve every decision against THIS patient's actually-present flags.** The reconcile decisions
+      were computed against the *then-assigned* patient's flags but can be re-applied later (cache-hit
+      restore, completion after a mid-job reassignment) to a different patient. A duplicate/superseded
+      whose ``ofKey`` is not a visible flag on this patient is downgraded to plain keep — never hide a
+      flag whose twin isn't even here.
+    * **Break duplicate cycles/chains.** ``{A: dup-of-B, B: dup-of-A}`` (or any mutual-duplicate group)
+      would otherwise hide EVERY member and lose a distinct allergy. Each connected duplicate component
+      keeps exactly one canonical flag visible (earliest-added, id-tiebroken); the rest collapse onto it.
+      This preserves the "never lose a distinct flag" floor.
     """
     if not isinstance(decisions, dict):
         return
     raw = patient.safety_flags if isinstance(getattr(patient, "safety_flags", None), list) else []
-    updated: list[dict[str, Any]] = []
-    for flag in raw:
-        if not isinstance(flag, dict):
+    flags = [dict(flag) for flag in raw if isinstance(flag, dict)]
+    # Deterministic canonical ordering per flag (earliest addedAt, then key).
+    order = {flag.get("key"): (str(flag.get("addedAt") or ""), str(flag.get("key") or "")) for flag in flags}
+    present = {key for key in order if key}
+
+    # Union-find over duplicate edges among flags present on THIS patient; superseded stays directional.
+    parent: dict[str, str] = {key: key for key in present}
+
+    def _find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def _union(left: str, right: str) -> None:
+        parent[_find(left)] = _find(right)
+
+    superseded: dict[str, str | None] = {}
+    for key in present:
+        decision = decisions.get(key)
+        if not isinstance(decision, dict):
             continue
-        flag = dict(flag)
-        decision = decisions.get(flag.get("key"))
-        status = decision.get("status") if isinstance(decision, dict) else None
-        if status in {"duplicate", "superseded"}:
-            flag["reconcileStatus"] = status
-            flag["reconcileOfKey"] = decision.get("ofKey")
+        status = decision.get("status")
+        of_key = decision.get("ofKey")
+        resolves = of_key in present and of_key != key
+        if status == "duplicate":
+            # A duplicate HIDES its flag, so its ofKey must resolve to another visible flag on THIS
+            # patient — else keep (never lose a distinct flag whose twin isn't here).
+            if resolves:
+                _union(key, of_key)
+        elif status == "superseded":
+            # A superseded flag stays VISIBLE and merely annotated, so it is safe to annotate even when
+            # the ofKey doesn't resolve on this patient (a superseded ofKey may legitimately be None).
+            superseded[key] = of_key if resolves else None
+
+    # Canonical (kept-visible) flag per duplicate component = earliest-added, id-tiebroken.
+    canonical: dict[str, str] = {}
+    for key in present:
+        root = _find(key)
+        current = canonical.get(root)
+        if current is None or order[key] < order[current]:
+            canonical[root] = key
+
+    updated: list[dict[str, Any]] = []
+    for flag in flags:
+        key = flag.get("key")
+        root = _find(key) if key in parent else None
+        canon = canonical.get(root) if root is not None else None
+        if canon is not None and key != canon:
+            flag["reconcileStatus"] = "duplicate"  # a real twin of the component's canonical (hidden)
+            flag["reconcileOfKey"] = canon
+        elif key in superseded:
+            flag["reconcileStatus"] = "superseded"  # stays visible, annotated
+            flag["reconcileOfKey"] = superseded[key]
         else:
             flag.pop("reconcileStatus", None)
             flag.pop("reconcileOfKey", None)

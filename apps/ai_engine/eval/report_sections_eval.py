@@ -399,6 +399,33 @@ CASES: list[dict[str, Any]] = [
         "judge": False,
     },
     {
+        # META-SPEECH EXCLUSION (S-F13): a capture interleaves clinical dictation with an administrative
+        # instruction to staff/the app. The clinical substance must surface; the admin/meta words must
+        # NOT leak into the report anywhere (summary, sections, or uncertainties — _report_text spans all).
+        "name": "mixed clinical + admin instruction → clinical surfaces, meta-speech excluded",
+        "captures": [_audio("c1", "بیست واحد بوتاکس روی پیشانی تزریق شد. راستی این رو برای منشی بفرست و بگو نوبت بعدی رو توی سیستم ثبت کنه")],
+        "expect": {
+            "sectionsNonEmpty": ["treatment-performed"],
+            "surfacesAny": [["بوتاکس", "botox"]],
+            "forbiddenAnywhere": ["منشی", "بفرست", "ثبت کنه"],
+        },
+        "judge": True,
+    },
+    {
+        # META-SPEECH EXCLUSION (S-F13): a SECOND capture is entirely an app command — none of it is
+        # clinical, so nothing from it may appear in the report; the clinical capture still surfaces.
+        "name": "entirely-meta capture dropped → app commands never appear in the report",
+        "captures": [
+            _audio("c1", "یک سی‌سی ژل توی گونه چپ تزریق شد"),
+            _audio("c2", "ضبط رو نگه دار و فایل ویزیت قبلی رو از سیستم پاک کن"),
+        ],
+        "expect": {
+            "surfacesAny": [["گونه", "cheek"]],
+            "forbiddenAnywhere": ["ضبط", "پاک کن", "سیستم"],
+        },
+        "judge": True,
+    },
+    {
         # LONG VISIT: a realistically long multi-treatment visit (5 audio captures + a photo). Completeness
         # — the key sections carry content and the several treated areas all surface in the report.
         "name": "long multi-treatment visit (5+ captures) → key sections complete, areas surface",

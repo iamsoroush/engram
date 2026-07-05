@@ -27,6 +27,13 @@ _ARTIFACT_METADATA_KEYS = (
     "safety_flags",
     "aftercare_selections",
     "uncertainties",
+    # v2 companions of `uncertainties` / `safety_flags`: without these a restore desyncs the coded
+    # uncertainty reasons, the cross-visit reconcile decisions, and the report-language stamp from the
+    # artifacts they annotate (S-F14). The reconcile decisions are re-validated against the restored
+    # patient's flags at apply time, so restoring them is safe even after a reassignment.
+    "uncertainty_reasons",
+    "safety_reconciliation",
+    "lang",
     "treatment_review",
     "source_capture_ids",
     "session_processing_output",
@@ -104,20 +111,34 @@ def _artifacts(session: Session) -> dict[str, Any]:
         "generated_report": session.generated_report,
         "report_model": session.report_model,
         "report_template_key": session.report_template_key,
+        # The patient this version was synthesized FOR. The capture-set hash is patient-blind (it hashes
+        # capture content only), so two patients with the same captures collide; scoping the cache-hit to
+        # the recorded patient stops a stale cross-patient version restoring on a reassigned session
+        # (S-F2/S-F6). Kept out of _ARTIFACT_METADATA_KEYS so it never leaks into the restored metadata.
+        "patientId": str(session.patient_id) if session.patient_id else None,
         **{key: md.get(key) for key in _ARTIFACT_METADATA_KEYS},
     }
 
 
 def record_report_version(
-    db: DbSession, session: Session, *, generated_by: str | None = None, generated_at: datetime | None = None
+    db: DbSession,
+    session: Session,
+    *,
+    generated_by: str | None = None,
+    generated_at: datetime | None = None,
+    capture_set: tuple[str, list[dict[str, Any]]] | None = None,
 ) -> SessionReportVersion:
     """Snapshot the session's current synthesized artifacts as a content-addressed report_version.
 
     Idempotent per (session, capture_set_hash): a session that re-synthesizes to the same capture set
     refreshes that version's artifacts in place rather than duplicating. Staged on the session; the
     caller commits.
+
+    ``capture_set`` overrides the (hash, items) the version is keyed by — pass the job-START snapshot so a
+    mid-job capture EDIT can't key pre-edit artifacts under the post-edit content hash (S-F5). Defaults to
+    the session's current capture set.
     """
-    set_hash, items = session_capture_set(db, session)
+    set_hash, items = capture_set if capture_set is not None else session_capture_set(db, session)
     existing = db.execute(
         select(SessionReportVersion).where(
             SessionReportVersion.tenant_id == session.tenant_id,
@@ -146,9 +167,16 @@ def record_report_version(
 
 
 def find_report_version_for_current_set(db: DbSession, session: Session) -> SessionReportVersion | None:
-    """The stored version matching the session's CURRENT capture set, if any (the undo cache-hit)."""
+    """The stored version matching the session's CURRENT capture set AND patient, if any (undo cache-hit).
+
+    Patient-scoped: the capture-set hash is patient-blind, so a version recorded while the session was
+    assigned to a different patient must NOT cache-restore onto the reassigned session (it carries that
+    patient's carry-forward doses + safety-reconcile decisions — S-F2/S-F6). A version whose recorded
+    ``patientId`` differs from the session's current patient is skipped, forcing a fresh re-synthesis.
+    """
     set_hash, _ = session_capture_set(db, session)
-    return db.execute(
+    current_patient = str(session.patient_id) if session.patient_id else None
+    versions = db.execute(
         select(SessionReportVersion)
         .where(
             SessionReportVersion.tenant_id == session.tenant_id,
@@ -156,7 +184,14 @@ def find_report_version_for_current_set(db: DbSession, session: Session) -> Sess
             SessionReportVersion.capture_set_hash == set_hash,
         )
         .order_by(SessionReportVersion.created_at.desc())
-    ).scalars().first()
+    ).scalars()
+    for version in versions:
+        artifacts = version.artifacts if isinstance(version.artifacts, dict) else {}
+        version_patient = artifacts.get("patientId")
+        version_patient = str(version_patient) if version_patient else None
+        if version_patient == current_patient:
+            return version
+    return None
 
 
 def restore_report_version(session: Session, version: SessionReportVersion) -> None:

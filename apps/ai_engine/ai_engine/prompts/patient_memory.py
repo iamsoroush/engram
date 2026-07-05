@@ -6,7 +6,7 @@ from typing import Any
 
 from ai_engine.prompts._shared import domain_framing
 
-PROMPT_VERSION = "2026-07-04.patient_memory.v1"
+PROMPT_VERSION = "2026-07-05.patient_memory.v2"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -45,6 +45,14 @@ def build(payload: dict[str, Any]) -> str:
                 "the language is Persian/Farsi, embedding common English clinical terms is fine "
                 "(Finglish, e.g. «فیلر گونه چپ»), but do not switch into English sentences and never "
                 "romanize Persian into Latin."
+            ),
+            (
+                "META-SPEECH EXCLUSION: a visit brief can contain administrative / non-clinical talk aimed "
+                "at staff or the app (e.g. «این رو برای منشی بفرست», «نوبت بعدی رو ثبت کن», \"send to "
+                "reception\", \"remind me to call\", \"stop the recording\"). NEVER carry such "
+                "scheduling/app-command/meta content into the memory — not the summary, not any history "
+                "section, not a flag. Remember ONLY the patient's clinical story (what was done, "
+                "preferences, cautions, genuine allergy/consent). An app command is never a flag."
             ),
             (
                 "Return ONLY strict JSON (no markdown, no code fences) with EXACTLY this shape:\n"

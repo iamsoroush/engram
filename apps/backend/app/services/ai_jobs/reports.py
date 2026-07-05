@@ -401,7 +401,10 @@ def restore_cached_session_synthesis(db: DbSession, *, session: Session) -> bool
             reconciliation = metadata.get("safety_reconciliation")
             if isinstance(reconciliation, dict):
                 apply_safety_reconciliation(patient, reconciliation)
-    session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
+    # (S-F10) Settle status only from a transient processing/draft state — a cache-hit restore that lands
+    # while the clinician is reviewing (or the visit is already needs_review) must not stomp that state.
+    if getattr(session, "status", None) in {SessionStatus.processing, SessionStatus.draft}:
+        session.status = SessionStatus.needs_review if session.patient_id else SessionStatus.unassigned
     return True
 
 
