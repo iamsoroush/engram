@@ -64,9 +64,11 @@
   "src/features/capture/components/CaptureDialogs.tsx": [
     "Promise"
   ],
+  "src/features/capture/components/CaptureRegions.tsx": [
+    "Promise"
+  ],
   "src/features/capture/components/CaptureScreen.tsx": [
     "0 ? ( // The raw captures, demoted to a collapsible \"Sources\" drawer beneath the report. Editing, // deleting, re-assigning and tapping into a capture all still live here (and via the report's // own source links). Auto-expanded while the report has no content yet.",
-    "Promise",
     "captureTypeCounts[type] ? ("
   ],
   "src/features/capture/components/LiveDraftReport.tsx": [

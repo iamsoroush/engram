@@ -4,6 +4,29 @@
 
 The frontend saves captures to IndexedDB before any backend request. This doc owns the technical outbox, ID mapping, and cache policy. User-facing copy and state labels are owned by [UX states](../ux/states.md).
 
+## Engine & seam contract (ports)
+
+The outbox is a **framework-agnostic engine** (`src/app/outbox/outboxEngine.ts`, `createOutboxEngine`)
+that touches no React and no browser globals directly — it receives injected **ports**, which is what
+makes it unit-testable against a fake in-memory storage adapter in the Node test environment
+(`outboxEngine.test.ts`). `SyncProvider` is the thin React shell that constructs the engine with the
+real ports + state setters and exposes `useSync()`. The ports (defined in `src/app/outbox/types.ts`):
+
+- **StoragePort** — durable local persistence (IndexedDB in prod; the fake in tests).
+- **ApiPort** — backend client calls pre-bound to the auth-aware `apiFetch`.
+- **SessionSink** — the session read/write the engine performs. This is the seam between the outbox and
+  the session store: `SessionStoreProvider` (seam C) implements it and hands it to `SyncProvider` via
+  the app's sync bridge, so the engine reads/writes the latest session state through getters (never a
+  stale closure) while the store owns the state. See [frontend overview](overview.md#composition-root--seams).
+- **SyncStatusSink** — the sync UI state the engine drives (online / reachable / pending counts /
+  syncing / storage), owned by `SyncProvider`.
+- **Env** — browser globals + navigation + the `flushSync` optimistic-paint wrapper for `saveDraft`,
+  injectable for tests.
+
+The load-bearing async-correctness refs are preserved by construction: the engine reads current
+auth/session state through getters at call time and keeps its own overlap guard + single-flight refresh
+internally.
+
 ## Local Stores
 
 Continue using:

@@ -28,7 +28,7 @@ import { useToast } from "./ToastProvider";
 // `../outbox`. Consumers read `useSync()`; session state still lives in App (increment 4) and is
 // supplied through a **bridge** the app body registers upward — the same inversion ApiProvider uses
 // for its auth bridge. In increment 5 the identical bridge is registered by SessionStore instead; the
-// engine and this provider do not change. See docs/work/frontend-sync-store-codesign.md.
+// engine and this provider do not change. See docs/frontend/sync-outbox.md.
 
 /** What the app body (or, in increment 5, SessionStore) supplies upward so the engine can read/write
  *  session state, raise toasts, and land on the capture screen. Its methods may close over fresh state

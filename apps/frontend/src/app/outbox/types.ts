@@ -14,7 +14,7 @@ import type { StorageStatus } from "../../services/storage/storageStatus";
 // Ports for the framework-agnostic outbox engine (frontend-refactor plan §4, increment 4). The engine
 // touches no React and no browser globals directly: it receives storage, api, session, status, and env
 // ports so it can be unit-tested against a fake in-memory storage adapter (vitest runs in Node — there
-// is no DOM/IndexedDB). See docs/work/frontend-sync-store-codesign.md for the seam contract.
+// is no DOM/IndexedDB). See docs/frontend/sync-outbox.md for the seam contract.
 
 /** Durable local outbox persistence (IndexedDB in production; in-memory fake in tests). */
 export type StoragePort = {

@@ -48,6 +48,12 @@ The AI engine does not import backend modules or connect directly to Postgres. I
 
 The one narrow exception is **Q&A knowledge retrieval** (AES-410): retrieval is a backend concern (the worker stays stateless), so the backend makes a single optional outbound call to an OpenAI-compatible `/embeddings` gateway to embed the query + exemplars for hybrid retrieval (`app/services/qa_knowledge/`). Unconfigured (`BACKEND_EMBEDDINGS_*` blank) it degrades to deterministic lexical-only retrieval, so dev/CI/e2e are unaffected. Embeddings are stored in a pgvector column in the existing Postgres — no new datastore.
 
+The frontend `App.tsx` is a **composition root** that assembles layered provider seams — shared
+infrastructure (`Api`/`Auth`/`Capabilities`/`Toast`) then the aesthetics shell (`Sync` outbox engine →
+`SessionStore` → `Navigation`) — and features consume them through hooks (`useApi`/`useSync`/
+`useSessions`/`useSessionActions`/`useNavigation`, plus per-feature API binders like `useMemoryApi`)
+rather than prop-threading. See [frontend overview](frontend/overview.md#composition-root--seams).
+
 ## Data Flow
 
 ### Capture

@@ -69,5 +69,9 @@ same render nets to no history churn.
 - Unknown hashes fall back to Active Session.
 - There is no dedicated not-found screen.
 - If remote loading is unavailable after login, locally saved sessions remain visible and the UI uses calm saved-state copy such as `Offline · Captures are saved on this device`.
-- If the URL has no hash, the app can restore the last staff screen from local workspace state after auth refresh.
+- **Restore-last-screen vs. explicit hash (rule):** an explicit location hash present at load **always
+  wins** over restore-last-screen. The app restores the last staff screen from local workspace state
+  (after auth refresh) **only when the load carried no hash**. Whether the initial URL had a hash is
+  captured once at load, so a deep link is race-proof against the async workspace hydrate (this closed a
+  historical flake where a full reload of `/#patients` randomly landed on Active visit).
 - The last active session and selected historical review are restored when matching local or remote session data is available.
