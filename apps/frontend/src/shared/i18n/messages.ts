@@ -253,6 +253,12 @@ const en: Dict = {
   // Capture badges / patient-conflict resolver / inline status — S3
   "badge.suggestedReassignTo": "Suggested: reassign to",
   "badge.newPatientName": "New patient:",
+  // Identity-correction / detach / couldn't-apply chip copy — E1
+  "badge.correctNameTo": "Correct name to",
+  "badge.suggestedUnassign": "Suggested: unassign this visit",
+  "badge.couldntApply": "Couldn't apply — assign the patient manually.",
+  "badge.identityOutOfContext": "Identity heard in an out-of-context capture — not applied.",
+  "badge.assignManually": "Assign manually",
   "badge.dismissSuggestion": "Dismiss suggestion",
   "badge.partialMatchMatched": "Matched",
   "badge.partialMatchYouSaid": "· you said",
@@ -1690,6 +1696,12 @@ const fa: Dict = {
   // Capture badges / patient-conflict resolver / inline status — S3
   "badge.suggestedReassignTo": "پیشنهاد: واگذاری مجدد به",
   "badge.newPatientName": "بیمار جدید:",
+  // Identity-correction / detach / couldn't-apply chip copy — E1
+  "badge.correctNameTo": "اصلاح نام به",
+  "badge.suggestedUnassign": "پیشنهاد: لغو تخصیص این ویزیت",
+  "badge.couldntApply": "قابل اعمال نبود — بیمار را دستی تخصیص دهید.",
+  "badge.identityOutOfContext": "نام در ضبطِ خارج از زمینه شنیده شد — اعمال نشد.",
+  "badge.assignManually": "تخصیص دستی",
   "badge.dismissSuggestion": "رد پیشنهاد",
   "badge.partialMatchMatched": "تطبیق با",
   "badge.partialMatchYouSaid": "· شما گفتید",

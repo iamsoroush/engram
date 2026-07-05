@@ -165,7 +165,13 @@ def stop_recovery_if_target_is_gone(db: DbSession, job: AiJob, *, now: datetime)
                 error_message="AI job target session is deleted",
             )
             return "session_deleted"
-        session.status = SessionStatus.processing
+        # A-F10: a Pro synthesis refinement runs AFTER a deterministic report already exists — recovery
+        # must NOT flash it back to `processing` (which the skip/terminal paths never clear, stranding a
+        # complete visible report in a spinner). Only the legacy first-pass job (no report yet) flips to
+        # processing; mirror start_worker_job's guard.
+        report_model = session.report_model if isinstance(session.report_model, dict) else None
+        if not (report_model and report_model.get("sections")):
+            session.status = SessionStatus.processing
     return None
 
 

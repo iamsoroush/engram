@@ -103,6 +103,9 @@ class PatientMatchingOrderTests(unittest.TestCase):
             ) as exact,
             patch("app.services.patient_matching._exact_alias_candidates", return_value=[]) as exact_alias,
             patch("app.services.patient_matching._fuzzy_alias_candidates", return_value=[]) as fuzzy,
+            # No stored aliases to cross-check against → the A-F5 name guard can't flag a conflict,
+            # so the national-ID hit still wins (this test isolates the match-ladder ordering).
+            patch("app.services.patient_matching._stored_name_aliases", return_value=[]),
         ):
             result = match_patient_from_patient_information(
                 object(),
@@ -176,6 +179,57 @@ class PatientMatchingConflictTests(unittest.TestCase):
         self.assertEqual(result["decision"], "possible_match")
         self.assertIsNone(result["patientId"])
         self.assertTrue(any("national ID" in risk for risk in result["risks"]))
+
+    def test_national_id_match_with_inconsistent_spoken_name_demotes(self):
+        # A-F5: a dictated-digit ASR error collides with a DIFFERENT patient's national ID. The
+        # spoken name ("Sara Ahmadi") is nothing like the ID-matched patient's stored aliases
+        # ("maryam", "hosseini") → demote to possible_match with a name-mismatch risk, never a
+        # silent full-confidence wrong-chart write.
+        from app.services.patient_matching import NATIONAL_ID_NAME_MISMATCH_RISK
+
+        national_candidate = MatchCandidate(
+            patient_id=uuid.uuid4(),
+            display_name="Maryam Hosseini",
+            confidence=1.0,
+            matched_on=["national_id"],
+            reason="national id",
+        )
+        with (
+            patch("app.services.patient_matching._exact_identifier_candidates", return_value=[national_candidate]),
+            patch(
+                "app.services.patient_matching._stored_name_aliases",
+                return_value=["maryam hosseini", "maryam", "hosseini"],
+            ),
+        ):
+            result = match_patient_from_patient_information(
+                object(),
+                tenant_id=uuid.uuid4(),
+                patient_information={"standardized_display_name": "Sara Ahmadi", "national_id": "0012345678"},
+            )
+        self.assertEqual(result["decision"], "possible_match")
+        self.assertIsNone(result["patientId"])
+        self.assertIn(NATIONAL_ID_NAME_MISMATCH_RISK, result["risks"])
+
+    def test_national_id_match_with_consistent_spoken_name_assigns(self):
+        # The safe case: the spoken name agrees with the ID-matched patient → stays a deterministic match.
+        national_candidate = MatchCandidate(
+            patient_id=uuid.uuid4(),
+            display_name="Maryam Hosseini",
+            confidence=1.0,
+            matched_on=["national_id"],
+            reason="national id",
+        )
+        with (
+            patch("app.services.patient_matching._exact_identifier_candidates", return_value=[national_candidate]),
+            patch("app.services.patient_matching._stored_name_aliases", return_value=["maryam", "hosseini"]),
+        ):
+            result = match_patient_from_patient_information(
+                object(),
+                tenant_id=uuid.uuid4(),
+                patient_information={"standardized_display_name": "Maryam Hosseini", "national_id": "0012345678"},
+            )
+        self.assertEqual(result["decision"], "matched")
+        self.assertEqual(result["patientId"], str(national_candidate.patient_id))
 
     def test_name_match_without_national_id_conflict_assigns(self):
         candidate = self._name_candidate()

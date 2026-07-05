@@ -1,0 +1,11 @@
+{
+  "_note": "Incident Fix 3. The production audio-4 clip (session f3ee7cd5-3aa4-44cc-8d04-2897a3258b34) — a «...هست درستش» name-correction DIRECTIVE that regressed to basis='implicit' and was silently swallowed. It must classify basis='explicit': a directive to correct the patient's name is an explicit assignment change, even when phrased as a plain name statement followed by 'درستش'.",
+  "said": "اسم بیمار سروش معاضد هست درستش.",
+  "expect": {
+    "nameContains": ["معاضد"],
+    "assignmentPresent": true,
+    "basis": "explicit",
+    "outOfContext": false,
+    "noLatinInName": true
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_note": "Incident Fix 3 / A-F15 (OOC carve-out). A clip whose only content is an assignment correction has no clinical content, which used to invite an out_of_context flag. Assignment/correction instructions ARE visit content, so out_of_context must stay false and the correction classify explicit.",
+  "said": "اشتباهه، بیمار سارا هست.",
+  "expect": {
+    "nameContains": ["سارا"],
+    "assignmentPresent": true,
+    "basis": "explicit",
+    "outOfContext": false
+  }
+}

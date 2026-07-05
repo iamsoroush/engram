@@ -81,11 +81,22 @@ The backbone is **basis** (explicit | implicit) × **match quality** (exact | pa
 | **partial** (fuzzy) | unassigned | **Suggested** → quick actions; **auto-applies** only under `balanced`/`lenient` strictness + a single high-confidence candidate | **Suggested** (no auto-apply) |
 | **partial** | assigned | **Suggested** → quick actions; **auto-applies** only under `balanced`/`lenient` strictness + a single high-confidence candidate | **Suggested** (no auto-apply) |
 | **none** (usable identity) | unassigned | create + assign, flagged **verify** (editable) | create + assign, flagged **verify** |
-| **none** | assigned | create + assign (override), flagged **verify** | quiet (a bare mention; no chip unless a candidate surfaces) |
+| **none** | assigned | reassign, or **rename in place** (Fix 1) when the current patient is an AI-created *unverified* record and the correction is explicit; else **Correct name to X?** | **Correct name to X?** suggestion when the spoken name differs from the assigned patient; otherwise quiet (a genuine echo) |
 
-Invariants at **every** strictness: a partial match is **never silently applied**; the national-ID
-**conflict guard** routes to review; multiple comparable candidates route to the choose-patient
-resolver, never auto-apply.
+Invariants at **every** strictness (all enforced by the never-silent completion assertion, INV-SILENT):
+a partial match is **never silently applied**; the national-ID **conflict guard** (incl. the A-F5
+spoken-name cross-check) routes to review; multiple comparable candidates route to the choose-patient
+resolver, never auto-apply. A **dead-zone near-miss** on an unassigned visit (below the 0.78 suggest
+floor) creates + assigns the spoken patient and keeps the look-alike as a *"similar to existing Y"*
+note (Fix 7). An **out-of-context** capture never files/creates a patient — its identity is downgraded
+to a suggestion (A-F4).
+
+Added chip kinds (E1) beyond reassign/create — each a visible, never-silent surface:
+
+- **Correct name to X?** (`suggested_name_correction`) — a same-patient name correction awaiting confirm.
+- **Unassign this visit?** (`suggested_unassign`) — from a detach/negation capture ("wrong patient, remove her").
+- **Couldn't apply — assign manually** (`assignment_no_effect`) — an explicit instruction that matched/created nothing.
+- **similar-to-existing** note on a dead-zone create; **conflict** chip for a recovered-but-inert assignment.
 
 On a partial match the resolver shows **what was matched vs what was spoken** ("Matched *معاصد* ·
 you said *معاضد*") with one-tap actions:

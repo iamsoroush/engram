@@ -649,6 +649,10 @@ def enqueue_capture_processing_job(db: DbSession, *, principal: CurrentPrincipal
     )
     db.commit()
     db.refresh(job)
-    dispatch_capture_processing_job(db, job)
+    # A-F1: never dispatch straight past the chain. Route through the ordered dispatcher, which no-ops
+    # while a capture job is already running for the session and otherwise dispatches the earliest
+    # queued capture — so a manual reprocess can't run concurrently with an in-flight sibling and
+    # interleave two completions on the same session's metadata.
+    dispatch_next_session_capture(db, tenant_id=principal.tenant_id, session_id=capture.session_id)
     db.refresh(job)
     return {"job": ai_job_payload(job)}

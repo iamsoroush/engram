@@ -1,0 +1,12 @@
+{
+  "_note": "A-F14. An in-clip self-correction: the speaker names one patient then corrects to another. The CORRECTED (last) name is the intended patient; the discarded name must not be extracted, and a deliberate correction is explicit.",
+  "said": "برای سارا... نه، مریم.",
+  "expect": {
+    "nameContains": ["مریم"],
+    "nameAbsent": ["سارا"],
+    "assignmentPresent": true,
+    "basis": "explicit",
+    "noLatinInName": true
+  },
+  "knownGap": "flash models intermittently keep the first (discarded) name or drop the correction; a pro model is more faithful"
+}

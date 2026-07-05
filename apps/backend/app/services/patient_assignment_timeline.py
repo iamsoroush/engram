@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from app.models import Capture, CaptureStatus, OrganizationSource, Patient, Session, SessionStatus
+from app.models import Capture, CaptureStatus, OrganizationSource, Patient, PatientStatus, Session, SessionStatus
 
 
 STALE_ASSIGNMENT_KEYS = {
@@ -118,8 +118,23 @@ def legacy_patient_action_time(action: dict[str, Any]) -> str:
     return utc_now_iso()
 
 
+def _capture_is_out_of_context(capture: Capture) -> bool:
+    """Whether a capture is flagged out-of-context and not staff-overridden (local copy to avoid a
+    cycle with session_processing; mirrors ``capture_is_out_of_context``)."""
+    metadata = capture.capture_metadata if isinstance(capture.capture_metadata, dict) else {}
+    marker = metadata.get("out_of_context")
+    if not isinstance(marker, dict) or marker.get("overridden_by_staff") is True:
+        return False
+    return marker.get("present") is True
+
+
 def active_patient_assignment_event(db: DbSession, session: Session) -> dict[str, Any] | None:
-    """Return the latest timeline event whose source still exists."""
+    """Return the latest timeline event whose source capture still exists and is in context.
+
+    A deleted capture, or an out-of-context one (AI-flagged or staff-marked), is not a valid
+    assignment basis (A-F4): an OOC capture must never file or keep a visit filed under a patient, and
+    marking a capture out-of-context after the fact de-effects the assignment it drove — like deletion.
+    """
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     timeline = metadata.get("patient_assignment_timeline")
     if not isinstance(timeline, list):
@@ -133,15 +148,15 @@ def active_patient_assignment_event(db: DbSession, session: Session) -> dict[str
         parsed_capture_id = parse_uuid_or_none(capture_id)
         if parsed_capture_id is None:
             continue
-        capture_exists = db.execute(
-            select(Capture.id).where(
+        capture = db.execute(
+            select(Capture).where(
                 Capture.id == parsed_capture_id,
                 Capture.tenant_id == session.tenant_id,
                 Capture.session_id == session.id,
                 Capture.status != CaptureStatus.deleted,
             )
         ).scalar_one_or_none()
-        if capture_exists is not None:
+        if capture is not None and not _capture_is_out_of_context(capture):
             valid_events.append((event_sort_time(event), index, event))
     if not valid_events:
         return None
@@ -166,8 +181,64 @@ def event_sort_time(event: dict[str, Any]) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
+def archive_orphaned_ai_patient(db: DbSession, *, patient_id: uuid.UUID | None, actor_user_id: uuid.UUID | None) -> bool:
+    """Soft-delete an AI-created unverified patient a reassignment just orphaned (incident Fix 6).
+
+    The chokepoint form of ``captures._archive_orphaned_ai_patient``: when the active assignment moves
+    away from an AI-created *unverified* patient that nothing else references (no assigned session, no
+    live capture), archive it (reversible ``status=archived``) so a mis-transcribed spoken identity
+    doesn't leave a ghost patient behind — for BOTH staff and AI-driven reassignment. Never touches a
+    verified/human-created patient or one with remaining dependents. Best-effort; returns whether it archived.
+    """
+    if patient_id is None:
+        return False
+    from app.auth.service import audit
+    from app.services.feedback import record_feedback_event
+    from app.services.patients import is_ai_created_unverified_patient
+
+    patient = db.get(Patient, patient_id)
+    if patient is None or not is_ai_created_unverified_patient(patient):
+        return False
+    has_session = db.execute(
+        select(Session.id).where(Session.tenant_id == patient.tenant_id, Session.patient_id == patient.id).limit(1)
+    ).scalar_one_or_none()
+    has_capture = db.execute(
+        select(Capture.id).where(
+            Capture.tenant_id == patient.tenant_id,
+            Capture.patient_id == patient.id,
+            Capture.status != CaptureStatus.deleted,
+        ).limit(1)
+    ).scalar_one_or_none()
+    if has_session is not None or has_capture is not None:
+        return False
+    patient.status = PatientStatus.archived
+    audit(
+        db,
+        tenant_id=patient.tenant_id,
+        actor_user_id=actor_user_id,
+        action="patient.archive_orphaned_ai",
+        target_type="patient",
+        target_id=patient.id,
+    )
+    record_feedback_event(
+        db,
+        tenant_id=patient.tenant_id,
+        actor_user_id=actor_user_id,
+        kind="correction",
+        ai_output_type="patient_match",
+        patient_id=patient.id,
+        context={"action": "reassign_orphaned_ai_patient"},
+    )
+    return True
+
+
 def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
-    """Apply the latest valid assignment event to the session and capture badges."""
+    """Apply the latest valid assignment event to the session and capture badges.
+
+    When the active patient changes, an AI-created unverified patient the session just moved away from
+    is archived if nothing else references it (incident Fix 6) — for staff and AI reassignment alike.
+    """
+    former_patient_id = session.patient_id
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     event = active_patient_assignment_event(db, session)
     next_patient_id = None
@@ -233,3 +304,11 @@ def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
                 "patient_action_badges": badges,
                 **({"ai_patient_creation_basis": True} if event.get("created") else {}),
             }
+
+    # Incident Fix 6: if this recompute moved the visit off an AI-created unverified patient, archive
+    # that patient when nothing else references it. Flush first so the just-repointed captures/session
+    # are visible to the dependents check (this session uses autoflush=False).
+    if former_patient_id is not None and str(former_patient_id) != str(next_patient_id):
+        db.flush()
+        actor = parse_uuid_or_none(event.get("actorUserId")) if isinstance(event, dict) else None
+        archive_orphaned_ai_patient(db, patient_id=former_patient_id, actor_user_id=actor)
