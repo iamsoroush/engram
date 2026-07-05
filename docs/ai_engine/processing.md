@@ -118,6 +118,23 @@ deterministic regen over it. Not-Pro / no gateway / malformed or empty output �
 (`gateway_not_configured` / `empty_or_malformed_synthesis`): the deterministic baseline stands and
 `treatments[]` stays empty. Basic never dispatches. A session is "complete" either way.
 
+**Malformed is transient, so it is retried, not swallowed.** A `gateway_not_configured` skip is
+permanent (never retried). An `empty_or_malformed_synthesis` (refusal / prose / truncated JSON / missing
+summary) is as transient as a network error, so the worker **raises to retry** it a bounded number of
+times (`SYNTHESIS_MALFORMED_RETRY_LIMIT`) before falling back to the skip sentinel — one bad completion
+never permanently downgrades a Pro visit to no-treatments. The backend adds two apply-time floors:
+a **hollow-report floor** (a valid-JSON output whose sections carry zero blocks anywhere, even after
+`treatment-performed` is re-rendered from `treatments[]`, is treated as malformed — keep the baseline),
+and a **zero-treatments guard** (empty `treatments[]` over the *same* captures a prior synthesis
+extracted rows from keeps the prior rows and raises a review item, rather than silently dropping them).
+
+**Freshness is stamped from the job-START snapshot** (`worker.py`): the completion signature + version
+key come from the capture set as it was at `/start`, not completion-time DB state. A fix-at-source
+capture edit that lands mid-synthesis therefore leaves the report **stale** and dispatches a follow-up,
+instead of stamping a pre-edit report "current" for the post-edit content. On a **reassignment** the
+report is force-re-synthesized against the corrected patient, and the version cache is patient-scoped so
+a stale cross-patient version can't cache-restore ([pipeline-versioning](../architecture/pipeline-versioning.md)).
+
 ### Context
 
 The session-processing input (versioned `2026-05-21.session-processing-input.v1`, extended for
@@ -195,7 +212,7 @@ additive, no prompt change.
 backend on a re-dispatch caused by a user correction — fix-at-source edit, treatment-overlay edit, or
 assignment correction), the synthesis call runs on the configured **escalation tier** (`retry_tier`);
 a no-op when no escalation tier is configured. `PROMPT_VERSION` for synthesis is
-`2026-07-05.synthesis.v2`.
+`2026-07-05.synthesis.v3` (the `.v3` bump adds the meta-speech exclusion clause below).
 
 ### Extraction discipline (encoded in the prompt, asserted by evals)
 
@@ -223,10 +240,18 @@ a no-op when no escalation tier is configured. `PROMPT_VERSION` for synthesis is
   statement a capture **explicitly** makes, quoted in the report language, never inferred and never
   a negative/absence statement. Errs toward inclusion — flags are auto-kept (opt-out): the clinician
   rejects a wrong one, and the backend persists the rest to the patient so they surface cross-visit.
-- **Uncertainty → Needs-input:** every structured job emits `uncertainties[]` + per-item
-  `confidence`; below a per-job threshold the backend raises a `needsReview` effect with a
-  human-readable reason (ambiguous correction, missing-but-expected lot, low-confidence product,
-  carried-forward dose, low-confidence caption/OOC), surfaced as capture chips + Needs-input items.
+- **Uncertainty → Needs-input:** every structured job emits `uncertainties[]` + the machine-readable
+  `uncertaintyReasons[{code,text}]` + per-item `confidence`. The backend maps each **code** to a review
+  category (`missing_lot`, `low_confidence`, `ambiguous`) instead of collapsing all to "ambiguous", and
+  **suppresses a `carried_forward_dose` uncertainty when the keyed carried-forward row-chip already
+  covers that dose** — a carried dose surfaces exactly one actionable item, not a row-chip *and* an
+  un-clearable note. The low-confidence review threshold is unified with the frontend styling threshold
+  (`< 0.6`). Surfaced as capture chips + Needs-input items.
+- **Meta-speech exclusion** (prompt `.v3`; same clause in the patient-memory prompt): a capture can
+  interleave clinical dictation with administrative talk to staff / the app («این رو برای منشی بفرست»,
+  "stop the recording"). Such meta/admin instructions must never leak into the report — not the summary,
+  a section, a treatment, aftercare, or a safety flag; an entirely-meta capture contributes nothing.
+  Eval-gated with planted-meta cases in `report_sections_eval` (`forbiddenAnywhere` over the whole report).
 
 ### Cross-visit safety reconcile (in-job second call)
 
@@ -236,7 +261,12 @@ text — dedup same-concept flags, keep distinct ones, supersede an explicit upd
 dropped), never merge across kinds, never drop a distinct allergy/contraindication. It is
 best-effort and additive: any failure or malformed output falls back to the deterministic union (the
 safety floor) without failing the synthesis. Decisions ship as
-`extracted_metadata.safety_reconciliation`.
+`extracted_metadata.safety_reconciliation`. The deterministic **apply** layer
+(`apply_safety_reconciliation`) hardens this against a stale/cross-patient decision set: it re-validates
+each `ofKey` against the flags actually **visible on this patient** (an unresolved one downgrades to
+keep) and **breaks mutual-duplicate cycles** (each duplicate component keeps one canonical flag visible)
+— so a reconcile decision can never hide a distinct allergy. Reconcile decisions are invalidated on a
+reassignment and recomputed for the corrected patient.
 
 ### Backend assembly
 

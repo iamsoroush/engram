@@ -14,10 +14,18 @@
 
 - The `SessionReportVersion` store (`session_report_versions`): immutable, content-addressed
   snapshots keyed by `capture_set_hash` (the ordered in-context capture-version set), with
-  `pinned` rows exempt from future GC (`services/report_versions.py`).
+  `pinned` rows exempt from future GC (`services/report_versions.py`). Each version also records the
+  **`patientId` it was synthesized for** (inside `artifacts`, out of the restored key set): the
+  capture-set hash is patient-blind, so a cache-hit is scoped to the session's current patient — a
+  version made under a former patient never restores onto a reassigned session (its carry-forward doses
+  + safety-reconcile decisions belong to that other patient). A version is keyed and its freshness
+  signature stamped from the **job-START capture-set snapshot**, so a fix-at-source capture edit that
+  lands mid-synthesis can't stamp a stale report "current" or store pre-edit artifacts under the
+  post-edit hash — the completion detects the mismatch, keeps the report stale, and dispatches a
+  follow-up (`worker.py`).
 - Undo/delete **cache-hit restore**: returning to a previously-seen capture set restores the
-  stored version deterministically (no LLM) and re-syncs the patient's safety flags
-  (`services/captures.py`).
+  stored version deterministically (no LLM) and re-syncs the patient's safety flags **and re-applies the
+  reconcile decisions** (parity with the synthesis-completion path — `services/captures.py`).
 - **D7 safety-reconcile** end-to-end (reconcile pass in synthesis → `apply_safety_reconciliation`
   on the patient projection), with its eval suite wired into `run_all.py`.
 - **D3 staleness read-trigger** for patient memory (`maybe_refresh_stale_patient_memory` on
@@ -88,10 +96,15 @@ rejected: independent synthesis runs have no memory, so it could only be stable 
 failing precisely on the hard split/merge case — whereas a content anchor is reproducible by
 construction (the same pattern the safety `flag_key` proved). Two supports: a soft **`priorKey` echo**
 (the model repeats a prior row's key as a tie-breaker, never authoritative) and a deterministic
-**re-bind pass** after each synthesis (exact key → bound; shared source-capture + normalized area +
-`priorKey` → re-bind; else the entry drops with its source-de-effected row). On re-bind the entry's
-`aiValue` is refreshed so a fresh-extraction disagreement surfaces as `{aiValue, value}` (Keep-yours /
-Use-AI) — **never a silent overwrite, no LLM**. Projections (recall, lot-recall cohorts, smart lists,
+**re-bind pass** after each synthesis (exact key → bound; **priorKey-first** — a fresh row echoing the
+entry's key re-binds *even across an area re-slug*, checked before the area filter that would otherwise
+reject it; shared source-capture + normalized area → re-bind; else the entry is **parked in
+`treatment_overlay_orphans`** — surfaced as a review chip, never deleted — and re-attempted on the next
+synthesis, so a row that reappears re-binds out of the orphan list). A human edit is therefore never
+destroyed by a re-key or a `treatments: []` run. On re-bind the entry's `aiValue` is refreshed so a
+fresh-extraction disagreement surfaces as `{aiValue, value}` (Keep-yours / Use-AI) — **never a silent
+overwrite, no LLM**. `carried_forward_key` (the confirm-dose id) is anchored on the same
+`areaCode|norm(product)`, so a confirmed carried dose stays confirmed across a reword / language switch. Projections (recall, lot-recall cohorts, smart lists,
 patient-memory brief) read `report_version ⊕ overlay` via one `effective_treatments()` fold, so a
 corrected lot/dose is authoritative everywhere. Accepted limitation: two same-area+product rows from one
 capture collide (disambiguated by the ordinal suffix; the reconcile signal surfaces any mis-bind).
@@ -116,7 +129,16 @@ drift.
   all that patient's sessions' current kept flags** (kept = detected − user rejections). Conflict +
   duplicate resolution is delegated to the **safety-reconcile job** (D7) — a narrow, selection-only LLM
   step, *not* Job 4 and *not* free-generation. Removal (a rejection) is a **deterministic, instant**
-  filter (no LLM).
+  filter (no LLM). A rejection **follows its flag across a re-synthesis that rewords the text**: the
+  reject endpoint keeps a rich `rejected_safety_flag_record` (kind + source captures) beside the plain
+  key, so `kept` re-identifies the reworded flag (same kind + shared source capture) and drops it —
+  a bare `kind|text` key alone could not survive rewording. On a **reassignment**, the wrong patient's
+  flags are dropped and the new patient's synced at the one assignment choke point
+  (`apply_active_patient_assignment`), which every path (staff, AI, capture-delete) routes through.
+  The deterministic reconcile-apply layer (`apply_safety_reconciliation`) is hardened so a stale or
+  cross-patient decision set can never lose a distinct allergy: an `ofKey` that doesn't resolve to a
+  **visible flag on THIS patient** downgrades to keep, and a **mutual-duplicate cycle** keeps exactly
+  one canonical flag visible instead of hiding every member.
 
 ### D7 — Safety-reconcile job (cross-visit dedup/supersede; selection-only, keys-out)
 

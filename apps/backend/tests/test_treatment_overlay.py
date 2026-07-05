@@ -72,8 +72,9 @@ class RebindTests(unittest.TestCase):
     def test_exact_key_binds_and_refreshes_ai_value(self):
         fresh = [{"treatmentKey": "t|cheeks|gel|c1", "area": "cheeks", "product": "gel", "lot": "AI-NEW", "sourceCaptureIds": ["c1"]}]
         overlay = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "HUMAN", "aiValue": "AI-OLD", "op": "edit"}]
-        rebound = rebind_treatment_overlay(fresh, overlay)
+        rebound, orphans = rebind_treatment_overlay(fresh, overlay)
         self.assertEqual(len(rebound), 1)
+        self.assertEqual(orphans, [])
         self.assertEqual(rebound[0]["value"], "HUMAN")
         self.assertEqual(rebound[0]["aiValue"], "AI-NEW")  # disagreement surfaces (HUMAN != AI-NEW)
 
@@ -84,8 +85,9 @@ class RebindTests(unittest.TestCase):
             "treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "HUMAN", "aiValue": "AI",
             "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit",
         }]
-        rebound = rebind_treatment_overlay(fresh, overlay)
+        rebound, orphans = rebind_treatment_overlay(fresh, overlay)
         self.assertEqual(rebound[0]["treatmentKey"], "t|cheeks|gel-x|c1")
+        self.assertEqual(orphans, [])
 
     def test_prior_key_breaks_ties(self):
         fresh = [
@@ -93,13 +95,47 @@ class RebindTests(unittest.TestCase):
             {"treatmentKey": "t|cheeks|b|c1", "areaCode": "cheeks", "product": "b", "sourceCaptureIds": ["c1"], "priorKey": "t|cheeks|gel|c1", "lot": "2"},
         ]
         overlay = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "H", "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit"}]
-        rebound = rebind_treatment_overlay(fresh, overlay)
+        rebound, _ = rebind_treatment_overlay(fresh, overlay)
         self.assertEqual(rebound[0]["treatmentKey"], "t|cheeks|b|c1")  # the priorKey-claiming row wins
 
-    def test_orphan_entry_drops(self):
+    def test_priorkey_rescues_across_area_rekey(self):
+        # S-F4: a re-synthesis re-slugs the area (cheeks → left-cheek), so the area anchor no longer
+        # matches — but the row echoes priorKey == the edit's key, which must rescue the binding.
+        fresh = [{
+            "treatmentKey": "t|left-cheek|gel|c1", "areaCode": "left-cheek", "product": "gel",
+            "sourceCaptureIds": ["c1"], "priorKey": "t|cheeks|gel|c1", "lot": "AI",
+        }]
+        overlay = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "HUMAN", "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit"}]
+        rebound, orphans = rebind_treatment_overlay(fresh, overlay)
+        self.assertEqual(orphans, [])
+        self.assertEqual(rebound[0]["treatmentKey"], "t|left-cheek|gel|c1")
+        self.assertEqual(rebound[0]["value"], "HUMAN")  # the human edit survived the re-key
+
+    def test_unbindable_entry_is_parked_not_deleted(self):
+        # S-F4: no fresh row matches → the human edit is PARKED (surfaced as a review chip), never lost.
         fresh = [{"treatmentKey": "t|other|x|c9", "areaCode": "other", "product": "x", "sourceCaptureIds": ["c9"]}]
         overlay = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "H", "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit"}]
-        self.assertEqual(rebind_treatment_overlay(fresh, overlay), [])
+        rebound, orphans = rebind_treatment_overlay(fresh, overlay)
+        self.assertEqual(rebound, [])
+        self.assertEqual(len(orphans), 1)
+        self.assertTrue(orphans[0]["parked"])
+        self.assertEqual(orphans[0]["value"], "H")
+
+    def test_empty_synthesis_parks_all_edits(self):
+        # S-F4: a treatments:[] run must not destroy every overlay edit — all are parked.
+        overlay = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "H", "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit"}]
+        rebound, orphans = rebind_treatment_overlay([], overlay)
+        self.assertEqual(rebound, [])
+        self.assertEqual(len(orphans), 1)
+
+    def test_parked_orphan_rebinds_when_row_reappears(self):
+        # A row that reappears in a later synthesis re-binds the parked edit out of the orphan list.
+        parked = [{"treatmentKey": "t|cheeks|gel|c1", "field": "lot", "value": "H", "matchArea": "cheeks", "sourceCaptureIds": ["c1"], "op": "edit", "parked": True}]
+        fresh = [{"treatmentKey": "t|cheeks|gel|c1", "areaCode": "cheeks", "product": "gel", "sourceCaptureIds": ["c1"], "lot": "AI"}]
+        rebound, orphans = rebind_treatment_overlay(fresh, parked)
+        self.assertEqual(orphans, [])
+        self.assertEqual(len(rebound), 1)
+        self.assertNotIn("parked", rebound[0])
 
 
 class AutoConfirmTests(unittest.TestCase):

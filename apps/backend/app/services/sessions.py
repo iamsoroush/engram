@@ -13,7 +13,7 @@ from app.schemas.patients import AssignPatientRequest
 from app.schemas.sessions import SessionCreate, SessionSaveRequest, SessionUpdate
 from app.services.capture_storage import artifact_payload, capture_payload, get_session_for_tenant, session_payload
 from app.services.feedback import record_feedback_event
-from app.services.patient_safety import drop_session_safety_flags, session_detected_safety_flags, sync_patient_safety_flags
+from app.services.patient_safety import session_detected_safety_flags, sync_patient_safety_flags
 from app.services.patient_assignment_timeline import (
     append_patient_assignment_event,
     apply_active_patient_assignment,
@@ -25,13 +25,15 @@ from app.services.permissions import (
     session_permission_for_roles,
     tenant_role_permissions,
 )
-from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, structured_report_from_markdown_body
+from app.services.reporting import DEFAULT_REPORT_TEMPLATE_KEY, render_report_body_markdown, structured_report_from_markdown_body
+from app.services.session_processing import render_treatment_performed_blocks, set_treatment_performed_section
 from app.services.synthesis_escalation import mark_synthesis_escalation
 from app.services.treatment_overlay import (
     TREATMENT_OVERLAY_FIELDS,
     find_treatment_by_key,
     remove_overlay_edit,
     session_treatment_overlay,
+    stamp_treatment_keys,
     stored_treatments,
     upsert_overlay_edit,
 )
@@ -209,7 +211,7 @@ def get_session(db: DbSession, principal: CurrentPrincipal, session_id: str) -> 
 
 
 def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, request: SessionUpdate) -> dict[str, Any]:
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     # AES-902: editing/curating a session is the owner's by default. A non-owner may edit only when
     # the tenant's policy grants their role the "full" preset (admins always can). We refuse with
     # 403 rather than silently no-op, so a read-only viewer sees the attributed/read-only state.
@@ -258,6 +260,11 @@ def update_session(db: DbSession, principal: CurrentPrincipal, session_id: str, 
         metadata = {**metadata, "processing_status": request.processing_status}
     if request.extracted_metadata is not None:
         metadata = {**metadata, **request.extracted_metadata}
+        # (S-F14) A staff bulk edit of treatments[] must not strip the content-anchored treatmentKey the
+        # overlay binds to — re-stamp keys so a hand-edited row keeps a stable identity (rows without a
+        # key would otherwise orphan every overlay edit on the next fold/re-synthesis).
+        if isinstance(request.extracted_metadata.get("treatments"), list):
+            metadata["treatments"] = stamp_treatment_keys(metadata.get("treatments"))
     if metadata != (session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}):
         session.extracted_metadata = metadata
     if request.status is not None:
@@ -298,7 +305,7 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
     review items stay non-blocking. Confirmation persists in `extracted_metadata.confirmed_carried_forward`
     and survives re-synthesis (the same carried item keeps its key).
     """
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     if not can_edit(session_permission_for_principal(db, principal, session)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -328,6 +335,23 @@ def confirm_carried_forward_dose(db: DbSession, principal: CurrentPrincipal, ses
     return session_payload(session, db)
 
 
+def _rerender_treatment_performed(db: DbSession, session: Session) -> None:
+    """Re-render the report's treatment-performed section from the overlay-folded treatments (S-F8).
+
+    Keeps the printed/shared report prose consistent with the human-corrected treatment values without a
+    re-synthesis. No-op when there is no structured report model or no treatment-performed section
+    (Basic / deterministic baseline), so it is safe to call on any session.
+    """
+    from app.services.treatment_overlay import effective_treatments
+
+    report_model = session.report_model if isinstance(session.report_model, dict) else None
+    if not (report_model and report_model.get("sections")):
+        return
+    blocks = render_treatment_performed_blocks(effective_treatments(session))
+    session.report_model = set_treatment_performed_section(report_model, blocks)
+    session.generated_report = render_report_body_markdown(session.report_model, db=db, session=session)
+
+
 def set_treatment_overlay_edit(
     db: DbSession, principal: CurrentPrincipal, session_id: str, treatment_key: str, field: str, value: str
 ) -> dict[str, Any]:
@@ -338,7 +362,7 @@ def set_treatment_overlay_edit(
     the fresh row and surfaces any disagreement (``{aiValue, value}``) rather than overwriting it. v1 is
     field-edit only (owner-gated per pipeline-versioning permissions); row add/remove are v2.
     """
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     if not can_edit(session_permission_for_principal(db, principal, session)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -361,6 +385,10 @@ def set_treatment_overlay_edit(
     )
     metadata["treatment_overlay"] = overlay
     session.extracted_metadata = metadata
+    # (S-F8) Re-render the treatment-performed prose from the folded (effective) treatments so the
+    # printed/shared report line shows the human-corrected value immediately — the prose was baked from
+    # raw treatments at synthesis time and would otherwise keep showing the AI value until a re-synthesis.
+    _rerender_treatment_performed(db, session)
     # A treatment-overlay edit is a user correction → the NEXT synthesis for this session escalates (§3.1).
     mark_synthesis_escalation(session)
     # Harvest the field-granular before→after as a candidate eval case (epic Q5, eval-epic §3a).
@@ -386,7 +414,7 @@ def remove_treatment_overlay_edit(
     db: DbSession, principal: CurrentPrincipal, session_id: str, treatment_key: str, field: str
 ) -> dict[str, Any]:
     """AES-1101: Revert-to-AI — drop the overlay edit for (treatmentKey, field) so the AI value returns."""
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     if not can_edit(session_permission_for_principal(db, principal, session)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -397,6 +425,8 @@ def remove_treatment_overlay_edit(
         session_treatment_overlay(session), treatment_key=treatment_key, field=field
     )
     session.extracted_metadata = metadata
+    # (S-F8) Reverting an edit re-renders the prose back to the AI value (mirror of the edit path).
+    _rerender_treatment_performed(db, session)
     audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.treatment_overlay_revert", target_type="session", target_id=session.id)
     db.commit()
     db.refresh(session)
@@ -412,7 +442,7 @@ def set_aftercare_dismissed(
     it records the template id in ``extracted_metadata.dismissed_aftercare`` so it stays removed across
     re-synthesis and reloads. Re-adding (``dismissed=False``) clears it. User state, not AI output.
     """
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     if not can_edit(session_permission_for_principal(db, principal, session)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -444,7 +474,7 @@ def set_safety_flag_rejected(
     cross-visit safety store is re-synced from the visit's kept flags, and a rejection is harvested as
     an AI-feedback signal (the rejected flag IS the eval target). User state, not AI output.
     """
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     if not can_edit(session_permission_for_principal(db, principal, session)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -452,16 +482,30 @@ def set_safety_flag_rejected(
         )
     metadata = dict(session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {})
     rejected_keys = [str(value) for value in (metadata.get("rejected_safety_flags") or []) if isinstance(value, str)]
+    rejected_records = [record for record in (metadata.get("rejected_safety_flag_records") or []) if isinstance(record, dict) and isinstance(record.get("key"), str)]
+    rejected_flag = next((flag for flag in session_detected_safety_flags(session) if flag["key"] == flag_key), None)
     if rejected and flag_key not in rejected_keys:
         rejected_keys.append(flag_key)
     elif not rejected:
         rejected_keys = [value for value in rejected_keys if value != flag_key]
+    # (S-F7) Maintain a rich rejection record (kind + source captures) alongside the key so the rejection
+    # follows the flag across a re-synthesis that rewords its text — a bare key can't survive rewording.
+    rejected_records = [record for record in rejected_records if record.get("key") != flag_key]
+    if rejected and rejected_flag is not None:
+        rejected_records.append(
+            {
+                "key": flag_key,
+                "kind": rejected_flag["kind"],
+                "text": rejected_flag["text"],
+                "sourceCaptureIds": rejected_flag.get("sourceCaptureIds") or [],
+            }
+        )
     metadata["rejected_safety_flags"] = rejected_keys
+    metadata["rejected_safety_flag_records"] = rejected_records
     session.extracted_metadata = metadata
     if rejected:
         # A rejection is a failure signal: the synthesis surfaced a wrong safety flag. Harvest it (the
         # rejected flag text is the eval target) so the safety-flags eval gathers real negatives.
-        rejected_flag = next((flag for flag in session_detected_safety_flags(session) if flag["key"] == flag_key), None)
         record_feedback_event(
             db,
             tenant_id=principal.tenant_id,
@@ -491,7 +535,7 @@ def assign_session_patient(
     session_id: str,
     request: AssignPatientRequest,
 ) -> dict[str, Any]:
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     previous = session.patient_id
     next_patient_id = require_patient(db, principal.tenant_id, request.patient_id)
     # AES-902: *changing* an already-assigned visit to a different patient (or clearing it) is a
@@ -565,21 +609,23 @@ def assign_session_patient(
                 "match_candidate": match_candidate if isinstance(match_candidate, dict) else None,
             },
         )
-    # Safety flags are detected during synthesis regardless of assignment, but only persist to a
-    # PATIENT once one is known — and assignment does NOT re-run synthesis. So project this visit's
-    # kept safety flags onto the (re)assigned patient now, and drop this visit's contribution from a
-    # prior patient on reassignment/unassignment, so the cross-visit safety store stays correct even
-    # for the capture-first flow (flag dictated while unassigned, patient assigned later).
-    if previous is not None and (next_patient_id is None or str(previous) != str(next_patient_id)):
-        old_patient = db.get(Patient, previous)
-        if old_patient is not None:
-            drop_session_safety_flags(old_patient, session.id)
-    if patient is not None:
-        sync_patient_safety_flags(patient, session)
-    # An explicit reassignment is a correction of a prior (often AI) assignment → the next synthesis for
-    # this session, which reads the corrected patient's prior-visit context, escalates to the top tier (§3.1).
+    # Safety-flag drop/sync AND the reassignment invalidation (carry-forward confirmations + reconcile) +
+    # the escalation marker are all handled centrally in apply_active_patient_assignment above — the one
+    # place patient_id changes — so every assignment path (staff, AI-driven, capture-delete) is covered.
+    # A reassignment is a correction of a prior (often wrong-patient) synthesis: force a fresh re-synthesis
+    # so carry-forward + safety-reconcile recompute against the corrected patient. The patient-scoped
+    # version cache (report_versions) prevents a stale cross-patient cache-hit from short-circuiting it.
     if is_reassignment:
-        mark_synthesis_escalation(session)
+        from app.services.ai_jobs import regenerate_session_report_if_idle
+
+        db.flush()
+        regenerate_session_report_if_idle(
+            db,
+            tenant_id=principal.tenant_id,
+            session_id=session.id,
+            created_by_user_id=principal.user_id,
+            force=True,
+        )
     audit(
         db,
         tenant_id=principal.tenant_id,
@@ -600,7 +646,7 @@ def assign_session_patient(
 
 
 def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
-    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"))
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     session.status = SessionStatus.reviewing
     session.review_started_by_user_id = principal.user_id
     session.review_started_at = datetime.now(timezone.utc)

@@ -528,6 +528,11 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
 # capture. Gateway-less / malformed → a SKIP sentinel; the backend keeps the deterministic baseline
 # and treatments stay empty (Basic + gateway-less run zero AI and must never break).
 
+# A malformed/refused synthesis is retried this many times (Celery re-dispatch) before falling back to
+# the deterministic baseline skip sentinel — bounded so a persistently-bad input still settles (S-F3).
+SYNTHESIS_MALFORMED_RETRY_LIMIT = 2
+
+
 def report_synthesis_json_schema() -> dict[str, Any]:
     """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
     block = {
@@ -764,7 +769,18 @@ def run_session_processing_job(job_id: str, *, celery_task_id: str | None, retry
     # baseline already wrote a report. Gateway-less / malformed yields a skip sentinel that the
     # backend treats as "keep the deterministic baseline" (treatments empty) — never breaks.
     if payload.get("reportSynthesis"):
-        client.complete_job(job_id, output_key="session_outputs", output=completed_session_synthesis_output(payload))
+        output = completed_session_synthesis_output(payload)
+        # (S-F3) A malformed/refused completion is exactly as transient as a network error — one bad
+        # response should not permanently downgrade a Pro visit to no-treatments. Retry a bounded number
+        # of times (raise → Celery re-dispatch), THEN fall back to the skip sentinel so the deterministic
+        # baseline stands. A gateway-not-configured skip is NOT transient and is never retried.
+        if (
+            output.get("synthesis_skipped")
+            and output.get("reason") == "empty_or_malformed_synthesis"
+            and retry_count < SYNTHESIS_MALFORMED_RETRY_LIMIT
+        ):
+            raise RuntimeError("empty_or_malformed_synthesis: retrying before falling back to the baseline")
+        client.complete_job(job_id, output_key="session_outputs", output=output)
         return
 
     # Legacy deterministic progressive stages (placeholder pipeline + recovery of pre-synthesis jobs).

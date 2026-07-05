@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-05.synthesis.v2"
+PROMPT_VERSION = "2026-07-05.synthesis.v3"
 
 
 def build(processing_context: dict[str, Any]) -> str:
@@ -152,6 +152,18 @@ def build(processing_context: dict[str, Any]) -> str:
                 "- Safety errs toward INCLUSION: when a statement plausibly reads as an allergy / "
                 "contraindication / consent concern, include it — the clinician removes a wrong one. Return "
                 "[] only when no capture states any such thing."
+            ),
+            (
+                "META-SPEECH EXCLUSION (administrative / non-clinical talk): a capture can interleave "
+                "clinical dictation with talk directed at STAFF or the APP that is NOT part of the visit "
+                "record — e.g. «این رو برای منشی بفرست», «به سیستم بگو نوبت بعدی رو ثبت کنه», «ضبط رو نگه "
+                "دار», «فایل قبلی رو پاک کن», \"send this to reception\", \"remind me to call them\", "
+                "\"stop the recording\". NEVER let such administrative/meta instructions leak into the "
+                "report — not the summary, not any section's prose, not a treatment, aftercare, or safety "
+                "flag. Extract ONLY the clinical substance of the visit (assessment, what was performed, "
+                "plan, genuine allergy/contraindication/consent). If a capture is ENTIRELY meta/"
+                "administrative with no clinical content, contribute nothing from it. A scheduling or "
+                "app-command sentence is never a treatment and never a safety flag."
             ),
             (
                 "uncertainties: a list of items, each an object {code, text}. `text` is a short "

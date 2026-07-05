@@ -25,10 +25,23 @@ TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
 
 # Treatment post-processing thresholds (deterministic, clinical-safety guardrails over the LLM
 # output). A field that writes doses must surface uncertainty rather than silently commit.
-LOW_CONFIDENCE_TREATMENT_THRESHOLD = 0.5
+# Unified with the frontend's low-confidence STYLING threshold (< 0.6) so a mid-band row (e.g. 0.55)
+# that renders "low confidence" also raises a review item — no styling-without-an-item gap (S-F14).
+LOW_CONFIDENCE_TREATMENT_THRESHOLD = 0.6
 CARRY_FORWARD_MAX_CONFIDENCE = 0.6
 # Bound the prior-visit treatments we feed back in (for "same as last time"), keeping the context small.
 MAX_PRIOR_VISIT_TREATMENTS = 12
+
+# Coded uncertainty reason → treatment_review category (S-F11). The machine-readable
+# uncertaintyReasons[{code,text}] drive the review surface instead of every uncertainty collapsing to
+# "ambiguous". carried_forward_dose is handled specially (suppressed when a keyed carried item exists).
+_UNCERTAINTY_CODE_TO_CATEGORY = {
+    "ambiguous_correction": "ambiguous",
+    "missing_lot": "missing_lot",
+    "low_confidence": "low_confidence",
+    "ambiguous_quantity": "ambiguous",
+    "other": "ambiguous",
+}
 
 
 def capture_is_out_of_context(capture: Capture) -> bool:
@@ -385,6 +398,7 @@ def process_synthesized_treatments(
     valid_capture_ids: list[str] | set[str],
     prior_visit_capture_ids: list[str] | set[str] | None = None,
     uncertainties: list[str] | None = None,
+    uncertainty_reasons: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Validate + finalize the LLM's treatments[] and collect items a clinician must confirm.
 
@@ -415,8 +429,10 @@ def process_synthesized_treatments(
             else []
         )
         supersedes = treatment.get("supersedesCaptureId")
-        if isinstance(supersedes, str) and supersedes in valid:
-            treatment["supersedesCaptureId"] = supersedes  # clean, auditable correction
+        if isinstance(supersedes, str) and supersedes in allowed:
+            # A clean, auditable correction — of a THIS-visit statement OR a prior-visit dose (a
+            # cross-visit correction cites a prior capture, an allowed carry-forward source: S-F12).
+            treatment["supersedesCaptureId"] = supersedes
         elif supersedes:
             # The model flagged a correction but we can't resolve which capture it replaces — surface
             # for confirmation and keep BOTH statements rather than silently overwriting a dose.
@@ -457,9 +473,28 @@ def process_synthesized_treatments(
         if attributes.get("lotExpected") is True and not treatment.get("lot"):
             review.append(_treatment_review_item("missing_lot", f"Missing lot number for {product}.", product, treatment["sourceCaptureIds"]))
         processed.append(treatment)
-    for sentence in uncertainties or []:
-        if isinstance(sentence, str) and sentence.strip():
-            review.append(_treatment_review_item("ambiguous", sentence.strip(), None, []))
+    # (S-F11) Map coded uncertainties to review categories. Prefer the machine-readable
+    # uncertaintyReasons [{code,text}]; fall back to bare uncertainty strings (treated as "other"). A
+    # carried_forward_dose uncertainty is SUPPRESSED when a keyed carried_forward row-chip already covers
+    # the same dose (the prompt asks for both), so a carried dose surfaces exactly ONE actionable item.
+    has_keyed_carried = any(item.get("category") == "carried_forward" for item in review)
+    reasons = (
+        [reason for reason in uncertainty_reasons if isinstance(reason, dict)]
+        if uncertainty_reasons
+        else [{"code": "other", "text": sentence} for sentence in (uncertainties or []) if isinstance(sentence, str) and sentence.strip()]
+    )
+    for reason in reasons:
+        text = reason.get("text")
+        if not (isinstance(text, str) and text.strip()):
+            continue
+        code = reason.get("code")
+        if code == "carried_forward_dose":
+            if has_keyed_carried:
+                continue  # the keyed carried_forward row-chip already covers this dose — no duplicate note
+            category = "ambiguous"  # no keyed row to confirm → a display-only note, never a blocking item
+        else:
+            category = _UNCERTAINTY_CODE_TO_CATEGORY.get(code, "ambiguous")
+        review.append(_treatment_review_item(category, text.strip(), None, []))
     return processed, review
 
 
@@ -561,6 +596,8 @@ def finalize_session_synthesis_output(
         valid_capture_ids=valid_capture_ids,
         prior_visit_capture_ids=prior_visit_capture_ids,
         uncertainties=validated.get("uncertainties") if isinstance(validated.get("uncertainties"), list) else None,
+        # The v2 machine-readable companion (schema-v2 uncertaintyReasons) drives the review categories.
+        uncertainty_reasons=validated.get("uncertaintyReasons") if isinstance(validated.get("uncertaintyReasons"), list) else None,
     )
     # Stamp the deterministic content-anchored treatment_key on each row (schema-v2 §4.1) so the
     # user-authored treatment overlay can bind to a stable identity that survives re-synthesis.

@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.models import Capture, CaptureStatus, OrganizationSource, Patient, PatientStatus, Session, SessionStatus
+from app.services.patient_safety import drop_session_safety_flags, sync_patient_safety_flags
+from app.services.synthesis_escalation import SYNTHESIS_ESCALATE_KEY
 
 
 STALE_ASSIGNMENT_KEYS = {
@@ -232,13 +234,43 @@ def archive_orphaned_ai_patient(db: DbSession, *, patient_id: uuid.UUID | None, 
     return True
 
 
+
+# A true reassignment (patient A→B, or B→∅) invalidates session state that was computed against the
+# WRONG patient. These user/AI-state keys are cleared so a forced re-synthesis recomputes them for the
+# correct patient (S-F2 carry-forward confirmations, S-F6 cross-visit safety reconcile). The visit's own
+# treatment_overlay (human field edits on THIS visit's rows) is patient-independent and is NOT cleared.
+_REASSIGNMENT_INVALIDATED_KEYS = ("confirmed_carried_forward", "safety_reconciliation")
+
+
+def _invalidate_reassigned_session_state(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Drop wrong-patient-derived synthesis state on a true reassignment; force a fresh escalated run.
+
+    The stored treatments/report stay in place (so the report never blanks) but are marked stale +
+    not-current, and the next synthesis is escalated — a reassignment is proof the prior context was
+    wrong. The forced re-synthesis (dispatched by the caller) recomputes carry-forward + safety-reconcile
+    against the correct patient; the patient-scoped version cache (report_versions) prevents a stale
+    cross-patient cache-hit from short-circuiting it.
+    """
+    next_metadata = {key: value for key, value in metadata.items() if key not in _REASSIGNMENT_INVALIDATED_KEYS}
+    next_metadata["generated_output_stale"] = True
+    next_metadata[SYNTHESIS_ESCALATE_KEY] = True
+    record = next_metadata.get("report_synthesis")
+    if isinstance(record, dict) and record.get("status") == "current":
+        next_metadata["report_synthesis"] = {**record, "status": "stale"}
+    return next_metadata
+
+
 def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
     """Apply the latest valid assignment event to the session and capture badges.
 
-    When the active patient changes, an AI-created unverified patient the session just moved away from
-    is archived if nothing else references it (incident Fix 6) — for staff and AI reassignment alike.
+    This is the single choke point where ``session.patient_id`` changes (staff assign endpoint, AI-driven
+    assignment, capture-delete de-effect all route through it), so it also: keeps the cross-visit safety
+    store consistent (S-F1); invalidates wrong-patient-derived synthesis state on a true reassignment
+    (S-F2/S-F6) — the caller commits and, where AI jobs are reachable, force-dispatches the re-synthesis;
+    and archives an AI-created unverified patient the session just moved away from when nothing else
+    references it (incident Fix 6) — for staff and AI reassignment alike.
     """
-    former_patient_id = session.patient_id
+    previous_patient_id = session.patient_id
     metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
     event = active_patient_assignment_event(db, session)
     next_patient_id = None
@@ -270,9 +302,27 @@ def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
             "active_patient_assignment_action": event,
             **({"ai_patient_action": action_metadata or event} if source in {"ai_created", "ai_matched"} else {}),
         }
+    # A true reassignment: an existing patient changed to a different one (or was cleared). Initial filing
+    # of an unassigned visit (previous is None) is NOT a reassignment.
+    is_true_reassignment = previous_patient_id is not None and str(previous_patient_id) != (
+        str(next_patient_id) if next_patient_id is not None else ""
+    )
+    if is_true_reassignment:
+        next_metadata = _invalidate_reassigned_session_state(next_metadata)
     session.patient_id = next_patient_id
     session.extracted_metadata = next_metadata
+    # (S-F1) Keep the cross-visit safety store consistent with the assignment: drop this visit's
+    # contribution from a patient it left, and (re-)project its kept flags onto the patient it now points
+    # at. Done here — the one place patient_id changes — so the AI-driven reassign path (which never went
+    # through the staff endpoint's explicit drop/sync) is covered too.
+    if is_true_reassignment and previous_patient_id is not None:
+        old_patient = db.get(Patient, previous_patient_id)
+        if old_patient is not None:
+            drop_session_safety_flags(old_patient, session.id)
     if next_patient_id is not None:
+        new_patient = db.get(Patient, next_patient_id)
+        if new_patient is not None:
+            sync_patient_safety_flags(new_patient, session)
         session.organization_source = OrganizationSource.ai_engine if source in {"ai_created", "ai_matched"} else OrganizationSource.staff
         if session.status in {SessionStatus.unassigned, SessionStatus.draft, SessionStatus.processing}:
             session.status = SessionStatus.needs_review
@@ -308,7 +358,7 @@ def apply_active_patient_assignment(db: DbSession, session: Session) -> None:
     # Incident Fix 6: if this recompute moved the visit off an AI-created unverified patient, archive
     # that patient when nothing else references it. Flush first so the just-repointed captures/session
     # are visible to the dependents check (this session uses autoflush=False).
-    if former_patient_id is not None and str(former_patient_id) != str(next_patient_id):
+    if previous_patient_id is not None and str(previous_patient_id) != str(next_patient_id):
         db.flush()
         actor = parse_uuid_or_none(event.get("actorUserId")) if isinstance(event, dict) else None
-        archive_orphaned_ai_patient(db, patient_id=former_patient_id, actor_user_id=actor)
+        archive_orphaned_ai_patient(db, patient_id=previous_patient_id, actor_user_id=actor)
