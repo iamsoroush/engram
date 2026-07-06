@@ -1,58 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { stripInitialExpanded, stripTransition, type StripSignals } from "./PatientStrip";
+import { stripDefaultExpanded } from "./PatientStrip";
 
-// The session-layout-diet auto-collapse state machine (AES-1302): pre-capture expanded → report-has-
-// content collapsed → unassigned keeps Assign → undo-all re-expands → (re)assignment of a patient with
-// history re-surfaces it, and collapse waits for report-has-content AND history-surfaced.
+// The session-layout-diet auto-collapse decision (AES-1302), derived from current signals so it is
+// correct however the screen arrives at a state: pre-capture expanded → in-progress collapsed →
+// a patient with un-surfaced history stays expanded (the (re)assignment auto-surface) → collapse waits
+// for report-has-content AND history-surfaced → historical collapsed.
 
-const base: StripSignals = { assignmentSignal: "p1:staff", reportHasContent: false, hasCaptures: false };
+const base = { isHistorical: false, hasCaptures: false, reportHasContent: false, hasHistory: false, surfaced: false };
 
-describe("stripInitialExpanded", () => {
+describe("stripDefaultExpanded", () => {
   it("is expanded pre-capture (a glance aid before capturing)", () => {
-    expect(stripInitialExpanded(false, false)).toBe(true);
-  });
-  it("is collapsed once there are captures", () => {
-    expect(stripInitialExpanded(false, true)).toBe(false);
-  });
-  it("is collapsed for historical review (no pending actions)", () => {
-    expect(stripInitialExpanded(true, false)).toBe(false);
-  });
-});
-
-describe("stripTransition", () => {
-  it("re-expands when every capture is undone (returns to the pre-capture glance)", () => {
-    const prev = { ...base, hasCaptures: true };
-    const next = { ...base, hasCaptures: false };
-    expect(stripTransition(prev, next, { hasHistory: false, surfaced: true }).expanded).toBe(true);
+    expect(stripDefaultExpanded(base)).toBe(true);
   });
 
-  it("collapses when the report gains content and history is already surfaced", () => {
-    const prev = { ...base, hasCaptures: true, reportHasContent: false };
-    const next = { ...base, hasCaptures: true, reportHasContent: true };
-    expect(stripTransition(prev, next, { hasHistory: true, surfaced: true }).expanded).toBe(false);
+  it("collapses once the report has content and there is no history to surface", () => {
+    expect(stripDefaultExpanded({ ...base, reportHasContent: true })).toBe(false);
   });
 
-  it("collapses when the report gains content and there is no history to surface", () => {
-    const prev = { ...base, hasCaptures: true, reportHasContent: false };
-    const next = { ...base, hasCaptures: true, reportHasContent: true };
-    expect(stripTransition(prev, next, { hasHistory: false, surfaced: false }).expanded).toBe(false);
+  it("collapses once captures exist and there is no history", () => {
+    expect(stripDefaultExpanded({ ...base, hasCaptures: true })).toBe(false);
   });
 
-  it("does NOT collapse on report content while an un-surfaced history is still pending", () => {
-    const prev = { ...base, hasCaptures: true, reportHasContent: false };
-    const next = { ...base, hasCaptures: true, reportHasContent: true };
-    expect(stripTransition(prev, next, { hasHistory: true, surfaced: false }).expanded).toBeNull();
+  it("stays expanded to surface an un-surfaced history even with content (the (re)assignment surface)", () => {
+    expect(stripDefaultExpanded({ ...base, reportHasContent: true, hasHistory: true, surfaced: false })).toBe(true);
   });
 
-  it("re-surfaces history on a (re)assignment, winning over a simultaneous collapse", () => {
-    const prev = { assignmentSignal: "p1:staff", hasCaptures: true, reportHasContent: false };
-    const next = { assignmentSignal: "p2:ai_match", hasCaptures: true, reportHasContent: true };
-    const result = stripTransition(prev, next, { hasHistory: true, surfaced: true });
-    expect(result.expanded).toBe(true); // assignment wins → expand (surface p2's history)
-    expect(result.surfaced).toBe(true);
+  it("collapses once that history has been surfaced (report-has-content AND surfaced)", () => {
+    expect(stripDefaultExpanded({ ...base, reportHasContent: true, hasHistory: true, surfaced: true })).toBe(false);
   });
 
-  it("leaves a manual toggle intact when nothing transitions", () => {
-    expect(stripTransition(base, base, { hasHistory: true, surfaced: false }).expanded).toBeNull();
+  it("is collapsed for historical review regardless of content", () => {
+    expect(stripDefaultExpanded({ ...base, isHistorical: true, reportHasContent: true })).toBe(false);
   });
 });

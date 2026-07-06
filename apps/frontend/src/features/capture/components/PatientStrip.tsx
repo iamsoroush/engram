@@ -9,36 +9,29 @@ import { useT } from "../../../shared/i18n";
 import { textDirection } from "../captureModel";
 import { PatientIcon, EditIcon, AddPatientIcon, ClockHistoryIcon } from "./CaptureIcons";
 
-/** The transition inputs the auto-collapse state machine watches. */
-export type StripSignals = { assignmentSignal: string; reportHasContent: boolean; hasCaptures: boolean };
-
-/** Pre-capture the strip is a glance aid (expanded); everything else opens collapsed. */
-export function stripInitialExpanded(isHistorical: boolean, hasCaptures: boolean): boolean {
-  return !isHistorical && !hasCaptures;
-}
-
 /**
- * The pure auto-collapse decision (AES-1302). Given the previous → next signals and whether the
- * patient's history has been surfaced yet, returns the expanded state to force (`null` = no change,
- * leave a manual toggle intact) and the updated `surfaced` flag. Rules, later-wins:
- * - undo all captures → re-expand (return to the pre-capture glance);
- * - report gains content → collapse, but only once history is surfaced (or there is none);
- * - a (re)assignment of a patient WITH history → surface it (expand) — wins over a simultaneous collapse.
+ * The pure auto-collapse **default** (AES-1302) — derived from the current signals, not from
+ * transitions, so it is correct however the screen arrives at a state (including opening a session
+ * whose report already has content). A manual toggle overrides this default until the next
+ * assignment/undo-to-glance event. Rules:
+ * - historical review → collapsed (no pending actions);
+ * - **pre-capture** (no captures, no report content) → expanded (a glance aid before you capture);
+ * - a patient **with history whose history hasn't been surfaced yet** → expanded (surface it —
+ *   this is the (re)assignment auto-surface: `surfaced` resets on every assignment);
+ * - otherwise (report/capture in progress, and history surfaced or absent) → collapsed.
  */
-export function stripTransition(
-  prev: StripSignals,
-  next: StripSignals,
-  opts: { hasHistory: boolean; surfaced: boolean },
-): { expanded: boolean | null; surfaced: boolean } {
-  let expanded: boolean | null = null;
-  let surfaced = opts.surfaced;
-  if (prev.hasCaptures && !next.hasCaptures) expanded = true;
-  if (!prev.reportHasContent && next.reportHasContent && (opts.surfaced || !opts.hasHistory)) expanded = false;
-  if (next.assignmentSignal !== prev.assignmentSignal && opts.hasHistory) {
-    expanded = true;
-    surfaced = true;
-  }
-  return { expanded, surfaced };
+export function stripDefaultExpanded(opts: {
+  isHistorical: boolean;
+  hasCaptures: boolean;
+  reportHasContent: boolean;
+  hasHistory: boolean;
+  surfaced: boolean;
+}): boolean {
+  if (opts.isHistorical) return false;
+  const inProgress = opts.hasCaptures || opts.reportHasContent;
+  if (!inProgress) return true;
+  if (opts.hasHistory && !opts.surfaced) return true;
+  return false;
 }
 
 export function PatientStrip({
@@ -91,26 +84,36 @@ export function PatientStrip({
   verifyRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const t = useT();
-  const [expanded, setExpanded] = React.useState(() => stripInitialExpanded(isHistorical, hasCaptures));
-  const surfacedRef = React.useRef(false);
-  const prevRef = React.useRef<StripSignals>({ assignmentSignal, reportHasContent, hasCaptures });
+  // Whether the current patient's history has been surfaced (shown expanded while the report has
+  // content) — gates the auto-collapse. Resets on every (re)assignment so history re-surfaces.
+  const [surfaced, setSurfaced] = React.useState(false);
+  // The clinician's explicit toggle, which overrides the derived default until the next
+  // (re)assignment or undo-to-glance event. `null` = follow the default.
+  const [override, setOverride] = React.useState<boolean | null>(null);
+  const inProgress = hasCaptures || reportHasContent;
 
-  // Pre-capture (or any) expansion of a patient WITH history counts as surfacing it.
+  // A (re)assignment re-surfaces the (new) patient's history and clears the manual choice.
   React.useEffect(() => {
-    if (expanded && hasHistory) surfacedRef.current = true;
-  }, [expanded, hasHistory]);
+    setSurfaced(false);
+    setOverride(null);
+  }, [assignmentSignal]);
 
-  // Drive the default expanded state off signal TRANSITIONS (a manual toggle in between still sticks —
-  // the effect only re-decides when an input actually changes).
+  // Undoing back to the pre-capture glance clears the manual choice (returns to the default).
+  const prevInProgress = React.useRef(inProgress);
   React.useEffect(() => {
-    const prev = prevRef.current;
-    const next: StripSignals = { assignmentSignal, reportHasContent, hasCaptures };
-    prevRef.current = next;
-    if (isHistorical) return;
-    const { expanded: forced, surfaced } = stripTransition(prev, next, { hasHistory, surfaced: surfacedRef.current });
-    surfacedRef.current = surfaced;
-    if (forced !== null) setExpanded(forced);
-  }, [assignmentSignal, reportHasContent, hasCaptures, hasHistory, isHistorical]);
+    if (prevInProgress.current && !inProgress) setOverride(null);
+    prevInProgress.current = inProgress;
+  }, [inProgress]);
+
+  const wantExpanded = stripDefaultExpanded({ isHistorical, hasCaptures, reportHasContent, hasHistory, surfaced });
+  const expanded = override ?? wantExpanded;
+  const setExpanded = (value: boolean) => setOverride(value);
+
+  // Showing history while the report has content marks it surfaced → the strip may now auto-collapse
+  // (the "collapse only after report-has-content AND history-surfaced" rule).
+  React.useEffect(() => {
+    if (expanded && hasHistory && reportHasContent && !surfaced) setSurfaced(true);
+  }, [expanded, hasHistory, reportHasContent, surfaced]);
 
   const review = () => {
     setExpanded(true);
