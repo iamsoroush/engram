@@ -58,7 +58,9 @@ import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
-import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { CaptureDestinationPanel, PatientsHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { useMemoryApi } from "../features/memory/useMemoryApi";
+import { FinderOverlay } from "../features/finder";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
 import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
@@ -111,6 +113,9 @@ function AppInner() {
   // Capability seam (A3): tier/role affordances have one home. Replaces the scattered
   // `auth.tenant.tier !== "basic"` checks + `onFetchX = isPro ? cb : undefined` prop-gating below.
   const { isBasic, canUseQa, canUseSmartLists } = useCapabilities();
+  // The Clinical-Memory API surface, bound once (patient search, recent memory, Pro lot ledger/recall,
+  // Q&A) — consumed by the unified finder overlay below.
+  const memoryApi = useMemoryApi();
   // Seam B (increment 4): the offline outbox engine + its sync UI state (online/reachable/pending
   // counts/syncing/storage) live in SyncProvider. App drives it via `sync.*` and registers the
   // session bridge below so the engine can read/write session state that still lives here.
@@ -146,6 +151,8 @@ function AppInner() {
     accountReturnRef,
   } = useNavigation();
   const [qaPendingCount, setQaPendingCount] = React.useState(0);
+  // The unified finder overlay (AES-1201..1205): app-wide, floats over the current screen.
+  const [finderOpen, setFinderOpen] = React.useState(false);
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -641,6 +648,32 @@ function AppInner() {
   // returns to the memory list instead of exiting the area (item: in-screen history levels).
   useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
 
+  // The finder overlay is an in-screen level: hardware Back closes it before exiting the area (AES-1201).
+  useBackLevel(finderOpen, () => setFinderOpen(false));
+
+  // Desktop launcher: ⌘K / Ctrl-K opens the finder from anywhere — a nicety layered on the mobile-first
+  // top-bar entry (harmless on mobile, which has no hardware keyboard). Not load-bearing (AES-1205).
+  React.useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && (event.key === "k" || event.key === "K")) {
+        event.preventDefault();
+        setFinderOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // `/#search` is a deep-link into the finder: open the overlay over the Clinical-Memory workspace and
+  // normalize the hash. The old local-substring search screen is retired — its behavior survives only as
+  // the finder's offline fallback (AES-1204).
+  React.useEffect(() => {
+    if (screen === "search") {
+      navigateScreen("patients");
+      setFinderOpen(true);
+    }
+  }, [screen, navigateScreen]);
+
   // Register the outbox engine's session bridge (seam B). Session state + the SessionSink now live in
   // SessionStore (seam C, increment 5); App wires the store's sink into the bridge and keeps ownership
   // of navigation (the router seam, increment 7). Placed before any early return so hook order is stable.
@@ -672,6 +705,14 @@ function AppInner() {
   };
 
   const returnToClinicalMemory = () => {
+    setSelectedSessionId("");
+    navigateScreen("patients");
+  };
+
+  // Open a patient's timeline from the finder — no capture round-trip stash (the finder is not a
+  // mid-visit jump), just land on the patient's file in Clinical Memory.
+  const openPatientFromFinder = (patientId: string) => {
+    setClinicalMemoryReturnContext({ tab: "patients", patientId });
     setSelectedSessionId("");
     navigateScreen("patients");
   };
@@ -872,11 +913,13 @@ function AppInner() {
       // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
       return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshQaPendingCount} />;
     }
-    if (screen === "search") {
-      return <SearchHome onOpenSession={openMemorySession} sessions={sessions} syncHealth={syncHealth} />;
-    }
     return (
       <PatientsHome
+        // `initialPatientId` seeds the open patient file on MOUNT only. When the finder targets a
+        // patient while Clinical Memory is already the screen beneath it, PatientsHome is already
+        // mounted, so keying on the target id remounts it and the file opens (AES-1201). Undefined
+        // target → stable key, no churn on ordinary Patients-tab use.
+        key={`patients-${clinicalMemoryReturnContext?.patientId ?? ""}`}
         initialPatientId={clinicalMemoryReturnContext?.patientId}
         onBackToVisit={captureReturnSession ? returnToActiveCapture : undefined}
         initialTab={clinicalMemoryReturnContext?.tab}
@@ -967,6 +1010,7 @@ function AppInner() {
         screen={screen}
         syncHealth={syncHealth}
         onNavigate={handleShellNavigate}
+        onOpenFinder={() => setFinderOpen(true)}
         qaPendingCount={qaPendingCount}
       >
         {pendingCaptureKind ? (
@@ -982,6 +1026,18 @@ function AppInner() {
         ) : null}
         {renderCurrentScreen()}
       </Shell>
+      {finderOpen ? (
+        <FinderOverlay
+          onClose={() => setFinderOpen(false)}
+          memoryApi={memoryApi}
+          sessions={sessions}
+          syncHealth={syncHealth}
+          onOpenPatient={openPatientFromFinder}
+          onOpenSession={openMemorySession}
+          onCreatePatient={() => navigateScreen("patients")}
+          onToast={setToast}
+        />
+      ) : null}
       {sessionShare && auth ? (
         <SharePatientSheet
           patientId={sessionShare.id}

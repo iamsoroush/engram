@@ -122,7 +122,7 @@ UX (system-state):
   One compact file per major user workflow.
 
 - `docs/ux/screens/`  
-  One compact file per important screen (incl. `capture.md` — the primary surface, with the partial-match matrix and undo UX — `patients.md` with the Pro Lists tab + worklist, `qa-inbox.md`, `patient-surface.md` for the public `/share` + `/qa` pages, `insights.md`).
+  One compact file per important screen (incl. `capture.md` — the primary surface, with the partial-match matrix and undo UX — `patients.md` with the Pro Lists tab + worklist, `qa-inbox.md`, `patient-surface.md` for the public `/share` + `/qa` pages, `insights.md`, `finder.md` — the app-wide unified-finder overlay that replaced the old `/#search` screen).
 
 - `docs/ux/aesthetics-stories.md`  
   The AES-### story registry (IDs, status, decisions) that specs, QA scripts, and code comments cite.

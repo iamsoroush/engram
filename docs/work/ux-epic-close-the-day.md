@@ -10,7 +10,7 @@ and a new `AES-10xx` band in [`docs/ux/aesthetics-stories.md`](../ux/aesthetics-
 
 > Priority **1 of 5** structural epics. Companion docs:
 > [`ux-epic-treatment-overlay.md`](ux-epic-treatment-overlay.md),
-> [`ux-epic-unified-finder.md`](ux-epic-unified-finder.md),
+> unified-finder (built — [`screens/finder.md`](../ux/screens/finder.md)),
 > [`ux-epic-session-layout-diet.md`](ux-epic-session-layout-diet.md),
 > [`ux-epic-tier-convergence.md`](ux-epic-tier-convergence.md). This epic defines the **severity
 > language** the layout-diet epic renders as strip chips — build the two together at the seam.

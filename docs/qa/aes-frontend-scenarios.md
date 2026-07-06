@@ -23,7 +23,8 @@ stable hash, it is given as `#…` (e.g. the app root + `#settings`).
 **Top navigation (always visible).**
 - **Session** (the capture screen) — the default screen, hash `#active-session`.
 - **Memory** (Clinical Memory: Today · Patients · Needs input) — hash `#patients`.
-- **Search** (the magnifier) — hash `#search`.
+- **Finder** (the magnifier) — opens the app-wide finder overlay (not a screen); `#search` deep-links
+  into it. See [finder](../ux/screens/finder.md).
 - **Avatar menu** (top right) → **Profile** (`#profile`), **Settings** (`#settings`), **Logout**.
 
 **Sign in as the right persona + tier.** On the sign-in screen:

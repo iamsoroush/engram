@@ -484,6 +484,59 @@ it — reflects the truth I typed.
 
 ---
 
+## E12 — Unified finder (app-wide retrieval)
+*One patients-first finder overlay that replaces the old top-nav `/#search` local-substring screen
+with the real Persian-aware patient search + Pro lot recall. Built + folded to the system-state doc:
+[screens/finder.md](screens/finder.md) (entry points + launcher in [navigation.md](navigation.md)).*
+
+### AES-1201 — Finder overlay (patients-first) 〔Both · All · new〕
+As **any clinic user**, I want one app-wide finder I can open from anywhere, so that the box I reach
+for first is the one that can actually find a patient — not a local-only filter.
+- **Acceptance:** a mobile-first full-screen sheet floating over the current screen (capture bar stays
+  underneath); grouped grains (patients / today's visits / Pro lot recall); a pre-query empty state
+  (recent patients + today's visits + hint); one back-stack history level so hardware Back / Escape /
+  the close control dismiss it; bilingual (fa/en + RTL) chrome, clinical content verbatim + bidi-isolated.
+
+### AES-1202 — Finder patient + visit search 〔Both · All · new〕
+As a **clinician / receptionist**, I want the finder to hit the real ranked patient search and my
+loaded visits, so that a patient the client never loaded is findable by name, phone, or national ID.
+- **Acceptance:** patients grain = debounced `GET /patients/search` (AES-204 deterministic,
+  Persian-orthography-aware, ranked; match-reason shown); visits grain = the loaded sessions
+  (today's + query substring); no-results offers a duplicate-guarded **Add a patient** hand-off (routes
+  to the Patients tab's shared `RegisterPatientForm`). Composes existing endpoints — no new backend surface.
+
+### AES-1203 — Lot/product recall grain (Pro) 〔Pro · Dr/As/Rc · new〕
+As a **doctor / receptionist under recall stress**, I want to type a lot number into the finder and
+get the affected cohort, so that recall-under-stress isn't three taps deep behind a Pro tab.
+- **Acceptance:** a lot/product-shaped query surfaces a distinct **Recall lot {lot}** action above
+  patient results; selecting runs the exact-match `GET /lot-recall`; the compact inline cohort cites
+  each patient's verbatim treatment line(s), keeps near-misses in a separate **Similar lots (not
+  included)** group (never folded in), and exposes the per-patient Q&A outreach handoff — the
+  [Lists-tab](screens/patients.md) safety contract, verbatim. Absent on Basic (a legible upgrade).
+
+### AES-1204 — Replace `/#search`; offline fallback 〔Both · All · new〕
+As **any user**, I want the finder to be the top-level retrieval surface, so that the strong search
+is prominent and the old local one still works offline.
+- **Acceptance:** the old `SearchHome` local-substring screen is retired; `/#search` deep-links into
+  the overlay over Clinical Memory and normalizes the hash to `#patients`; offline, backend grains are
+  skipped and the query falls back to the preserved local substring over loaded sessions with the
+  "patient search may be limited" note.
+
+### AES-1205 — Launcher + entry points 〔Both · All · new〕
+As a **desktop user**, I want a ⌘K launcher, and on mobile the existing magnifier, so that the finder
+opens from anywhere without a keyboard dependency on mobile.
+- **Acceptance:** the top-bar magnifier opens the overlay (all sizes); **⌘K / Ctrl-K** opens it on
+  desktop (a nicety, not load-bearing). The finder is no longer a nav pill (no `aria-current`).
+- **Deferred (within the band):** the `Mine`/`Clinic` scope toggle (AES-904 reuse — currently defaults
+  to the whole-clinic base), add-a-patient name prefill, and "expand to finder" from the assignment sheets.
+
+### AES-1206 — Global content search 〔Pro · Dr/As · new · ⊕〕
+As a **doctor**, I want the finder to also search capture/report *content*, so that I can find a visit
+by what was said, not just by patient/lot. **Deferred candidate** — backend global content search across
+captures / extracted findings / report prose is a larger later migration; find-only in v1.
+
+---
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

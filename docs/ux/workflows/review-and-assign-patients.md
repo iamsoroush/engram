@@ -59,7 +59,7 @@ the basis × match-quality × visit-state decision matrix:
 
 - [Clinical Memory](../screens/patients.md)
 - [Session review](../screens/session-review.md)
-- [Search](../screens/search.md)
+- [Finder (unified retrieval)](../screens/finder.md)
 
 ## Related Shared Rules
 

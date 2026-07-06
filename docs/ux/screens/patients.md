@@ -175,6 +175,8 @@ shown in the UI, so the count is trustworthy:
 ### Lot & product lookup + recall
 
 One search box, two grains: browse by **product** ("on product X") or recall an exact **lot**. The
+same recall is also reachable from the app-wide [finder](finder.md) (a lot-shaped query surfaces a
+compact recall cohort inline) — the recall-under-stress promotion, same safety contract. The
 box is backed by the **lot ledger** — the distinct lots/products in the clinic's extracted data,
 each with patient/visit counts — so staff pick from what was actually used instead of typing from
 memory. Recalling a lot returns every patient who received it. Safety-grade rules:

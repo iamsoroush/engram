@@ -377,7 +377,7 @@ make the S2/S4 mapping less heuristic — a synthesis schema change, so if wante
 same v2 bump as the treatment keys, eval-gated. Its "synthesis still in flight shows nothing" rule is
 already served by `processing_status`. [tier-convergence](ux-epic-tier-convergence.md) — explicitly
 adds **no** synthesis or structure to Basic; no gating change; it *depends on* the skip-sentinel +
-deterministic-baseline seams this plan preserves. [unified-finder](ux-epic-unified-finder.md) /
+deterministic-baseline seams this plan preserves. [unified-finder](../ux/screens/finder.md) (built) /
 [session-layout-diet](ux-epic-session-layout-diet.md) — deterministic backend/frontend work, no
 pipeline requirements.
 
