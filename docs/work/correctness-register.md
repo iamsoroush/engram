@@ -1,9 +1,10 @@
 # Correctness register — deduped findings + track assignments
 
-**Status:** owner-reviewed plan, 2026-07-05. Index over the four verbatim reports in
-[redteam/](redteam/README.md) (~44 findings, ~36 CONFIRMED-IN-CODE). Fix agents: read your track's
-section here, then the referenced report entries for full file:line evidence. Delete this doc +
-redteam/ when all tracks fold.
+**Status:** tracks E1/E2/E3/D+ **MERGED to main 2026-07-06** (`8b104d2`, PR #3 — CI green).
+Remaining: the Track A/B/C addenda below (ride the Batch-2 UX epics) + the E1 fast-follow
+(one-tap rename/unassign endpoint — see launch-backlog.md, assigned to Track B). Index over the
+four verbatim reports in [redteam/](redteam/README.md) (~44 findings, ~36 CONFIRMED-IN-CODE).
+Delete this doc + redteam/ when the addenda fold with Batch 2.
 
 ## The five structural invariants (design rules, not per-bug patches)
 
