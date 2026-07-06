@@ -19,6 +19,7 @@ import {
   createPatient,
   deleteCapture,
   dismissAiPatientAction,
+  editTreatmentOverlay,
   fetchCapture,
   fetchSession,
   fetchSessionCaptures,
@@ -29,6 +30,7 @@ import {
   postFeedback,
   rejectSafetyFlag,
   saveSessionForProcessing,
+  revertTreatmentOverlay,
   searchPatients,
   setAftercareDismissed,
   updateCaptureCaption,
@@ -128,6 +130,10 @@ export type SessionActions = {
   applyPatientNameCorrection: (sessionId: string, spokenName: string, basisCaptureId?: string) => Promise<void>;
   /** E1 one-tap: apply a `suggested_unassign` chip (clear the visit's patient). */
   unassignPatientFromSession: (sessionId: string, basisCaptureId?: string) => Promise<void>;
+  /** AES-1102: record a human field edit on a treatment row (user-owned overlay, no re-synthesis). */
+  editTreatmentField: (sessionId: string, treatmentKey: string, field: string, value: string) => Promise<void>;
+  /** AES-1103: Revert-to-AI / Use-AI — drop the overlay edit for (treatmentKey, field). */
+  revertTreatmentField: (sessionId: string, treatmentKey: string, field: string) => Promise<void>;
   selfHealStalePatient: (sessionId: string | undefined, deadPatientId?: string) => Promise<void>;
   assignPatientToSession: (
     sessionId: string,
@@ -669,6 +675,35 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     [apiFetch, appT, applySessionUpdate, setToast],
   );
 
+  // AES-1102/1103: a human field edit on a treatment row — deterministic + instant (no re-synthesis,
+  // no AI budget). Authoritative on render; a later re-synthesis surfaces any disagreement, never
+  // overwrites. Revert drops the overlay so the AI value returns.
+  const editTreatmentField = React.useCallback(
+    async (sessionId: string, treatmentKey: string, field: string, value: string) => {
+      try {
+        const updated = await editTreatmentOverlay(apiFetch, sessionId, treatmentKey, field, value);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("capture.toastTreatmentUpdated"));
+      } catch {
+        setToast(appT("capture.toastCouldNotUpdateTreatment"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
+  const revertTreatmentField = React.useCallback(
+    async (sessionId: string, treatmentKey: string, field: string) => {
+      try {
+        const updated = await revertTreatmentOverlay(apiFetch, sessionId, treatmentKey, field);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("capture.toastTreatmentReverted"));
+      } catch {
+        setToast(appT("capture.toastCouldNotUpdateTreatment"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
       if (draft.patientId) {
@@ -1027,6 +1062,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       rejectSafetyFlagFromSession,
       applyPatientNameCorrection,
       unassignPatientFromSession,
+      editTreatmentField,
+      revertTreatmentField,
       selfHealStalePatient,
       assignPatientToSession,
       searchPatientsForAssignment,
@@ -1058,6 +1095,8 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       rejectSafetyFlagFromSession,
       applyPatientNameCorrection,
       unassignPatientFromSession,
+      editTreatmentField,
+      revertTreatmentField,
       selfHealStalePatient,
       assignPatientToSession,
       searchPatientsForAssignment,

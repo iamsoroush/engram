@@ -1,13 +1,13 @@
 // Live report views (pro/basic) + markdown rendering for the capture flow.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { CaptureItem, CaptureSession, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
-import { useT } from "../../../shared/i18n";
+import type { CaptureItem, CaptureSession, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation, StructuredReportBlock, TreatmentOverlayEntry } from "../../../domain/types";
+import { useT, type Translator } from "../../../shared/i18n";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
 import { CaptureTimelineIcon } from "./CaptureBadges";
 import { BeforeAfterSlider } from "./BeforeAfterSlider";
-import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionAiOrganizing, aiOrganizingNotice, generatedTextForReport, textDirection } from "../captureModel";
+import { reportFreshness, patientInformationFromSession, workspaceStructuredReportCopy, workspaceTreatments, treatmentLabel, treatmentAttributeLines, isLowConfidenceTreatment, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionTreatmentOverlay, sessionTreatmentOverlayOrphans, sessionAiOrganizing, aiOrganizingNotice, generatedTextForReport, textDirection } from "../captureModel";
 
 // Persian section titles, keyed by the fixed section id (mirrors the ai_engine's SYNTHESIS_SECTIONS).
 // Applied at render so EXISTING reports (synthesized before titles were localized) and the
@@ -40,6 +40,10 @@ export function LiveReportView({
   onConfirmCarriedForward,
   onFixAtSource,
   onOpenSource,
+  onEditTreatmentField,
+  onRevertTreatmentField,
+  canEditTreatments,
+  currentUserId,
   reportLanguage,
 }: {
   isPro: boolean;
@@ -50,13 +54,32 @@ export function LiveReportView({
   onFixAtSource?: () => void;
   /** Tap a claim (treatment row / cited block) → open its source capture ("assistive + cited"). */
   onOpenSource?: (captureId: string) => void;
+  /** AES-1102: record a human field edit on a treatment row (deterministic overlay, no re-synthesis). */
+  onEditTreatmentField?: (treatmentKey: string, field: string, value: string) => Promise<void> | void;
+  /** AES-1103: Revert-to-AI / Use-AI for one (treatmentKey, field). */
+  onRevertTreatmentField?: (treatmentKey: string, field: string) => Promise<void> | void;
+  /** Whether the viewer may author treatment edits (owner-default gating; false = read-only rows). */
+  canEditTreatments?: boolean;
+  /** The signed-in user's id, so an edit reads "Edited by you" vs a colleague's. */
+  currentUserId?: string | null;
   /** Report-content language — localizes the section titles (distinct from app UI language). */
   reportLanguage?: string | null;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
   return isPro ? (
-    <ProLiveReport session={session} onResolveFile={onResolveFile} onConfirmCarriedForward={onConfirmCarriedForward} onFixAtSource={onFixAtSource} onOpenSource={onOpenSource} reportLanguage={reportLanguage} />
+    <ProLiveReport
+      session={session}
+      onResolveFile={onResolveFile}
+      onConfirmCarriedForward={onConfirmCarriedForward}
+      onFixAtSource={onFixAtSource}
+      onOpenSource={onOpenSource}
+      onEditTreatmentField={onEditTreatmentField}
+      onRevertTreatmentField={onRevertTreatmentField}
+      canEditTreatments={canEditTreatments}
+      currentUserId={currentUserId}
+      reportLanguage={reportLanguage}
+    />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
   );
@@ -94,6 +117,10 @@ export function ProLiveReport({
   onConfirmCarriedForward,
   onFixAtSource,
   onOpenSource,
+  onEditTreatmentField,
+  onRevertTreatmentField,
+  canEditTreatments,
+  currentUserId,
   reportLanguage,
 }: {
   session: CaptureSession | null;
@@ -101,9 +128,14 @@ export function ProLiveReport({
   onConfirmCarriedForward?: (sessionId: string, key: string) => Promise<void>;
   onFixAtSource?: () => void;
   onOpenSource?: (captureId: string) => void;
+  onEditTreatmentField?: (treatmentKey: string, field: string, value: string) => Promise<void> | void;
+  onRevertTreatmentField?: (treatmentKey: string, field: string) => Promise<void> | void;
+  canEditTreatments?: boolean;
+  currentUserId?: string | null;
   reportLanguage?: string | null;
 }) {
   const t = useT();
+  const overlayEntries = sessionTreatmentOverlay(session);
   const bodyParagraphs = workspaceStructuredReportCopy(session);
   // Render the report's structured sections (with their headers). This one path serves both report
   // models: the deterministic baseline's by-type grouping (Audio notes / Written notes / Photos) AND
@@ -213,6 +245,11 @@ export function ProLiveReport({
                     carriedForwardReasons={carriedForwardReasons}
                     onConfirmCarried={onConfirmCarried}
                     reviewNotes={reviewNoteItems}
+                    overlayEntries={overlayEntries}
+                    canEditTreatments={canEditTreatments}
+                    currentUserId={currentUserId}
+                    onEditField={onEditTreatmentField}
+                    onRevertField={onRevertTreatmentField}
                   />
                 ) : section.id === "media" ? (
                   <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
@@ -254,14 +291,65 @@ export function ProLiveReport({
             carriedForwardReasons={carriedForwardReasons}
             onConfirmCarried={onConfirmCarried}
             reviewNotes={reviewNoteItems}
+            overlayEntries={overlayEntries}
+            canEditTreatments={canEditTreatments}
+            currentUserId={currentUserId}
+            onEditField={onEditTreatmentField}
+            onRevertField={onRevertTreatmentField}
           />
         </section>
       ) : null}
+      {/* Orphaned-overlay review chips (AES-1101): a human edit a re-synthesis couldn't re-bind — parked,
+          never deleted, and re-applied if its row returns. Surfaced so a correction is never silently
+          lost; Revert drops it if it's genuinely stale. */}
+      <TreatmentOverlayOrphans orphans={sessionTreatmentOverlayOrphans(session)} canEdit={canEditTreatments} onRevertField={onRevertTreatmentField} t={t} />
       {/* The clinician's confirmations are embedded in the report itself — the carried-forward dose
           confirm sits on its treatment row (above), not in a separate section. The report thumbs
           rating is an end-cap rendered by CaptureScreen AFTER the aftercare section (rate-after-
           reading), not here mid-report. */}
     </div>
+  );
+}
+
+/** Parked overlay orphans — surfaced as calm review chips so a re-keyed/removed human edit is never lost. */
+function TreatmentOverlayOrphans({
+  orphans,
+  canEdit,
+  onRevertField,
+  t,
+}: {
+  orphans: TreatmentOverlayEntry[];
+  canEdit?: boolean;
+  onRevertField?: (treatmentKey: string, field: string) => Promise<void> | void;
+  t: Translator;
+}) {
+  const [busy, setBusy] = React.useState<string | null>(null);
+  if (!orphans.length) return null;
+  return (
+    <ul className="treatment-orphans" aria-label={t("overlay.orphansLabel")}>
+      {orphans.map((entry) => {
+        const id = `${entry.treatmentKey}|${entry.field}`;
+        return (
+          <li key={id} dir={textDirection(entry.value)}>
+            <span className="treatment-orphan-icon" aria-hidden="true">✎</span>
+            <span className="treatment-orphan-text">{t("overlay.orphanNote", { field: overlayFieldLabel(entry.field, t), value: entry.value })}</span>
+            {canEdit && onRevertField ? (
+              <button
+                type="button"
+                className="treatment-revert-btn"
+                disabled={busy === id}
+                onClick={() => {
+                  setBusy(id);
+                  void Promise.resolve(onRevertField(entry.treatmentKey, entry.field)).finally(() => setBusy(null));
+                }}
+              >
+                {busy === id ? t("overlay.reverting") : t("overlay.discardEdit")}
+              </button>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -309,6 +397,11 @@ function TreatmentsList({
   carriedForwardReasons,
   onConfirmCarried,
   reviewNotes,
+  overlayEntries,
+  canEditTreatments,
+  currentUserId,
+  onEditField,
+  onRevertField,
 }: {
   treatments: SessionTreatment[];
   confirmedCarriedForward: Set<string>;
@@ -327,82 +420,51 @@ function TreatmentsList({
   /** Coded review items with no inline home — rendered calmly under the list, source-correctable ones
    *  (missing lot / low confidence) carry a fix action; any item with a source capture deep-links to it. */
   reviewNotes?: SessionTreatmentReview[];
+  /** AES-1101 overlay entries for this session (field-edit provenance + reconcile lookup). */
+  overlayEntries?: TreatmentOverlayEntry[];
+  /** Whether the viewer may author treatment edits (owner-default gating; false = read-only rows). */
+  canEditTreatments?: boolean;
+  /** The signed-in user's id, so an edit reads "Edited by you" vs a colleague's edit. */
+  currentUserId?: string | null;
+  /** AES-1102: record a human field edit (deterministic, no re-synthesis). */
+  onEditField?: (treatmentKey: string, field: string, value: string) => Promise<void> | void;
+  /** AES-1103: Revert-to-AI / Use-AI for one (treatmentKey, field). */
+  onRevertField?: (treatmentKey: string, field: string) => Promise<void> | void;
 }) {
-  const [confirmingKey, setConfirmingKey] = React.useState<string | null>(null);
   const t = useT();
+  // treatmentKey → { field → overlay entry } — the row's provenance/reconcile lookup.
+  const overlayByKey = React.useMemo(() => {
+    const map = new Map<string, Record<string, TreatmentOverlayEntry>>();
+    for (const entry of overlayEntries || []) {
+      const forKey = map.get(entry.treatmentKey) || {};
+      forKey[entry.field] = entry;
+      map.set(entry.treatmentKey, forKey);
+    }
+    return map;
+  }, [overlayEntries]);
   return (
     <>
       <ul className="treatments-list">
-        {treatments.map((treatment, index) => {
-          const label = treatmentLabel(treatment);
-          const lowConfidence = isLowConfidenceTreatment(treatment);
-          const attributeLines = treatmentAttributeLines(treatment);
-          const lotMissing = !treatment.lot && Boolean(treatment.product) && Boolean(missingLotProducts?.has((treatment.product || "").trim()));
-          // Soft, fixable extraction gaps point the doctor to the source capture (the lot/dose is fixed
-          // by editing what was captured, then the AI re-extracts — never overwritten by a manual edit).
-          const fixable = lowConfidence || lotMissing;
-          const key = `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`;
-          const isCarried = Boolean(treatment.carriedForward);
-          const isConfirmed = isCarried && confirmedCarriedForward.has(key);
-          // A carried-forward dose needs confirmation only when the synthesis flagged it (key present) —
-          // keeps the inline confirm in lock-step with the sticky "N to confirm" bar's count.
-          const needsConfirm = isCarried && !isConfirmed && Boolean(onConfirmCarried) && Boolean(carriedForwardReasons && key in carriedForwardReasons);
-          const confirmReason = carriedForwardReasons?.[key];
-          return (
-            <li
-              className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}${needsConfirm ? " needs-confirm" : ""}`}
-              dir={textDirection(label)}
-              key={`${index}-${label.slice(0, 24)}`}
-            >
-              <span className="treatment-item-line">
-                {label}
-                {/* When the inline confirm box is shown it already says "carried forward", so the line
-                    flag would be redundant — only show it when there's no pending confirm box. */}
-                {isCarried && !needsConfirm ? (
-                  <span className={`treatment-flag${isConfirmed ? " confirmed" : ""}`}>{t("report.flagCarriedForward")}{isConfirmed ? t("report.flagConfirmedSuffix") : ""}</span>
-                ) : null}
-                {lowConfidence ? <span className="treatment-flag low">{t("report.flagLowConfidence")}</span> : null}
-                {lotMissing ? <span className="treatment-flag low">{t("report.flagLotMissing")}</span> : null}
-                {fixable && onFixAtSource ? (
-                  <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
-                    {t("report.fixAtSource")}
-                  </button>
-                ) : null}
-                <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
-              </span>
-              {attributeLines.length ? (
-                <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
-                  {attributeLines.join(" · ")}
-                </span>
-              ) : null}
-              {needsConfirm ? (
-                <span className="treatment-confirm">
-                  <span className="treatment-confirm-reason" dir={textDirection(confirmReason || "")}>
-                    {confirmReason || t("report.confirmReasonDefault")}
-                  </span>
-                  <button
-                    type="button"
-                    className="treatment-confirm-btn"
-                    disabled={confirmingKey === key}
-                    onClick={async () => {
-                      if (!onConfirmCarried) return;
-                      setConfirmingKey(key);
-                      try {
-                        await onConfirmCarried(key);
-                      } finally {
-                        setConfirmingKey(null);
-                      }
-                    }}
-                  >
-                    {confirmingKey === key ? t("report.confirming") : t("report.confirmDose")}
-                  </button>
-                </span>
-              ) : isConfirmed ? (
-                <span className="treatment-confirmed">{t("report.doseConfirmed")}</span>
-              ) : null}
-            </li>
-          );
-        })}
+        {treatments.map((treatment, index) => (
+          <TreatmentRow
+            key={`${index}-${(treatment.treatmentKey || treatmentLabel(treatment)).slice(0, 32)}`}
+            treatment={treatment}
+            index={index}
+            confirmedCarriedForward={confirmedCarriedForward}
+            missingLotProducts={missingLotProducts}
+            onFixAtSource={onFixAtSource}
+            onOpenSource={onOpenSource}
+            isPersian={isPersian}
+            carriedForwardReasons={carriedForwardReasons}
+            onConfirmCarried={onConfirmCarried}
+            overlayByField={treatment.treatmentKey ? overlayByKey.get(treatment.treatmentKey) : undefined}
+            canEdit={Boolean(canEditTreatments && treatment.treatmentKey && onEditField)}
+            currentUserId={currentUserId}
+            onEditField={onEditField}
+            onRevertField={onRevertField}
+            t={t}
+          />
+        ))}
       </ul>
       {reviewNotes?.length ? (
         <ul className="treatment-review-notes" aria-label={t("report.notesToReview")}>
@@ -428,6 +490,248 @@ function TreatmentsList({
         </ul>
       ) : null}
     </>
+  );
+}
+
+// The treatment fields a clinician may override via the overlay (mirrors the backend
+// TREATMENT_OVERLAY_FIELDS). A dose edit targets `quantity` (the verbatim display anchor).
+const OVERLAY_FIELDS = ["area", "product", "brand", "quantity", "lot"] as const;
+type OverlayField = (typeof OVERLAY_FIELDS)[number];
+
+/** The current displayed value of an editable field (the same anchor the human value replaces). */
+function currentFieldValue(treatment: SessionTreatment, field: OverlayField): string {
+  if (field === "quantity") {
+    return treatment.quantityText || (treatment.quantity != null && treatment.unit ? `${treatment.quantity} ${treatment.unit}` : treatment.quantity != null ? String(treatment.quantity) : "");
+  }
+  return (treatment[field] as string | null | undefined) || "";
+}
+
+function overlayFieldLabel(field: string, t: Translator): string {
+  return t(`overlay.field.${field}`);
+}
+
+/**
+ * One structured treatment row (area · product · brand · quantity · lot). The clinician's inline
+ * confirmations live here (carried-forward dose, AES-1101 field-edit overlay). An edited field flips to
+ * a human-owned presentation — an "Edited by you" chip + a provenance/reconcile subline preserving the
+ * AI value (the verbatim dictation for a dose) — with one-tap Revert-to-AI. The edit is deterministic,
+ * instant, and immune to re-mis-extraction (it overrides synthesis on render; a later disagreement
+ * surfaces, never overwrites). Editing a carried-forward dose auto-satisfies its confirm blocker (Q4).
+ */
+function TreatmentRow({
+  treatment,
+  index,
+  confirmedCarriedForward,
+  missingLotProducts,
+  onFixAtSource,
+  onOpenSource,
+  isPersian,
+  carriedForwardReasons,
+  onConfirmCarried,
+  overlayByField,
+  canEdit,
+  currentUserId,
+  onEditField,
+  onRevertField,
+  t,
+}: {
+  treatment: SessionTreatment;
+  index: number;
+  confirmedCarriedForward: Set<string>;
+  missingLotProducts?: Set<string>;
+  onFixAtSource?: () => void;
+  onOpenSource?: (captureId: string) => void;
+  isPersian?: boolean;
+  carriedForwardReasons?: Record<string, string>;
+  onConfirmCarried?: (key: string) => Promise<void>;
+  overlayByField?: Record<string, TreatmentOverlayEntry>;
+  canEdit?: boolean;
+  currentUserId?: string | null;
+  onEditField?: (treatmentKey: string, field: string, value: string) => Promise<void> | void;
+  onRevertField?: (treatmentKey: string, field: string) => Promise<void> | void;
+  t: Translator;
+}) {
+  const [confirming, setConfirming] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
+  const [busyField, setBusyField] = React.useState<string | null>(null);
+  const label = treatmentLabel(treatment);
+  const lowConfidence = isLowConfidenceTreatment(treatment);
+  const attributeLines = treatmentAttributeLines(treatment);
+  const lotMissing = !treatment.lot && Boolean(treatment.product) && Boolean(missingLotProducts?.has((treatment.product || "").trim()));
+  const fixable = lowConfidence || lotMissing;
+  const key = `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`;
+  const editedFields = (treatment.overlayEditedFields || []).filter((field): field is OverlayField => (OVERLAY_FIELDS as readonly string[]).includes(field));
+  const doseEdited = editedFields.includes("quantity");
+  const isCarried = Boolean(treatment.carriedForward);
+  const isConfirmed = isCarried && confirmedCarriedForward.has(key);
+  // Q4: editing a carried-forward dose IS the confirmation — the row stops asking "Confirm dose".
+  const needsConfirm = isCarried && !isConfirmed && !doseEdited && Boolean(onConfirmCarried) && Boolean(carriedForwardReasons && key in carriedForwardReasons);
+  const confirmReason = carriedForwardReasons?.[key];
+  const treatmentKey = treatment.treatmentKey || "";
+  const revert = (field: string) => {
+    if (!onRevertField || !treatmentKey || busyField) return;
+    setBusyField(field);
+    void Promise.resolve(onRevertField(treatmentKey, field)).finally(() => setBusyField(null));
+  };
+  return (
+    <li
+      className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}${needsConfirm ? " needs-confirm" : ""}${editedFields.length ? " edited" : ""}`}
+      dir={textDirection(label)}
+    >
+      <span className="treatment-item-line">
+        {label}
+        {isCarried && !needsConfirm ? (
+          <span className={`treatment-flag${isConfirmed || doseEdited ? " confirmed" : ""}`}>{t("report.flagCarriedForward")}{isConfirmed || doseEdited ? t("report.flagConfirmedSuffix") : ""}</span>
+        ) : null}
+        {/* A human-confirmed value clears the amber uncertainty chip (a human vouched for it). */}
+        {lowConfidence && !editedFields.length ? <span className="treatment-flag low">{t("report.flagLowConfidence")}</span> : null}
+        {lotMissing && !editedFields.includes("lot") ? <span className="treatment-flag low">{t("report.flagLotMissing")}</span> : null}
+        {fixable && !editedFields.length && onFixAtSource ? (
+          <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
+            {t("report.fixAtSource")}
+          </button>
+        ) : null}
+        {editedFields.length ? (
+          <span className="treatment-edited-chip">
+            <span aria-hidden="true">✎</span>{" "}
+            {overlayByField && editedFields.every((field) => overlayByField[field]?.editedByUserId === currentUserId)
+              ? t("overlay.editedByYou")
+              : t("overlay.editedByClinician")}
+          </span>
+        ) : null}
+        <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
+        {canEdit ? (
+          <button type="button" className="treatment-edit-btn" onClick={() => setEditing((open) => !open)} aria-expanded={editing} aria-label={t("overlay.editRow")} title={t("overlay.editRow")}>
+            <span aria-hidden="true">✎</span>
+          </button>
+        ) : null}
+      </span>
+      {attributeLines.length ? (
+        <span className="treatment-attributes" dir={textDirection(attributeLines.join(" · "))}>
+          {attributeLines.join(" · ")}
+        </span>
+      ) : null}
+      {/* Provenance + reconcile per edited field: the AI value stays visible (verbatim dictation for a
+          dose) and one tap adopts it — the guarantee that synthesis can never overwrite a human value
+          without it being seen. Backend ships {aiValue, value}; Keep-yours is the default (do nothing). */}
+      {editedFields.map((field) => {
+        const entry = overlayByField?.[field];
+        const aiValue = entry?.aiValue?.trim();
+        if (!aiValue) return null;
+        return (
+          <span className="treatment-provenance" key={field} dir={textDirection(aiValue)}>
+            <span className="treatment-provenance-text">
+              {t("overlay.aiReads", { field: overlayFieldLabel(field, t), value: aiValue })}
+            </span>
+            {onRevertField ? (
+              <button type="button" className="treatment-revert-btn" disabled={busyField === field} onClick={() => revert(field)}>
+                {busyField === field ? t("overlay.reverting") : t("overlay.useAi")}
+              </button>
+            ) : null}
+          </span>
+        );
+      })}
+      {editing && canEdit && treatmentKey ? (
+        <TreatmentFieldEditor
+          treatment={treatment}
+          onClose={() => setEditing(false)}
+          onSave={async (field, value) => {
+            if (!onEditField) return;
+            setBusyField(field);
+            try {
+              await onEditField(treatmentKey, field, value);
+            } finally {
+              setBusyField(null);
+            }
+          }}
+          t={t}
+        />
+      ) : null}
+      {needsConfirm ? (
+        <span className="treatment-confirm">
+          <span className="treatment-confirm-reason" dir={textDirection(confirmReason || "")}>
+            {confirmReason || t("report.confirmReasonDefault")}
+          </span>
+          <button
+            type="button"
+            className="treatment-confirm-btn"
+            disabled={confirming}
+            onClick={async () => {
+              if (!onConfirmCarried) return;
+              setConfirming(true);
+              try {
+                await onConfirmCarried(key);
+              } finally {
+                setConfirming(false);
+              }
+            }}
+          >
+            {confirming ? t("report.confirming") : t("report.confirmDose")}
+          </button>
+        </span>
+      ) : isConfirmed ? (
+        <span className="treatment-confirmed">{t("report.doseConfirmed")}</span>
+      ) : null}
+    </li>
+  );
+}
+
+/** The compact per-field editor a row's ✎ opens. Editable: area · product · brand · quantity · lot.
+ *  Each changed field is saved as its own overlay entry (deterministic, instant, no synthesis). Values
+ *  are clinical CONTENT, per-line RTL (a Latin brand/lot stays LTR inside an RTL row); only chrome via t. */
+function TreatmentFieldEditor({
+  treatment,
+  onClose,
+  onSave,
+  t,
+}: {
+  treatment: SessionTreatment;
+  onClose: () => void;
+  onSave: (field: OverlayField, value: string) => Promise<void>;
+  t: Translator;
+}) {
+  const [drafts, setDrafts] = React.useState<Record<OverlayField, string>>(() => {
+    const initial = {} as Record<OverlayField, string>;
+    for (const field of OVERLAY_FIELDS) initial[field] = currentFieldValue(treatment, field);
+    return initial;
+  });
+  const [saving, setSaving] = React.useState(false);
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      // Only write fields the clinician actually changed to a non-empty value (clearing → use Revert).
+      for (const field of OVERLAY_FIELDS) {
+        const next = drafts[field].trim();
+        if (next && next !== currentFieldValue(treatment, field).trim()) await onSave(field, next);
+      }
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="treatment-editor">
+      {OVERLAY_FIELDS.map((field) => (
+        <label className="treatment-editor-field" key={field}>
+          <span className="treatment-editor-label">{overlayFieldLabel(field, t)}</span>
+          <input
+            value={drafts[field]}
+            dir={textDirection(drafts[field])}
+            onChange={(event) => setDrafts((current) => ({ ...current, [field]: event.target.value }))}
+            aria-label={overlayFieldLabel(field, t)}
+          />
+        </label>
+      ))}
+      <div className="treatment-editor-actions">
+        <button type="button" className="treatment-editor-cancel" onClick={onClose} disabled={saving}>
+          {t("badge.cancel")}
+        </button>
+        <button type="button" className="treatment-editor-save" onClick={save} disabled={saving}>
+          {saving ? t("badge.saving") : t("badge.save")}
+        </button>
+      </div>
+    </div>
   );
 }
 

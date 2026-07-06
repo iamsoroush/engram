@@ -1164,6 +1164,29 @@ export async function applyUnassignSuggestion(apiFetch: ApiFetch, sessionId: str
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+/** AES-1102: record a human field edit on a treatment row as a user-owned overlay (deterministic,
+ *  instant, no re-synthesis). Returns the updated session with the folded value + reconcile signal. */
+export async function editTreatmentOverlay(apiFetch: ApiFetch, sessionId: string, treatmentKey: string, field: string, value: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/treatment-overlay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ treatmentKey, field, value }),
+  });
+  if (!response.ok) throw new Error("Could not save the treatment edit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** AES-1103: Revert-to-AI / Use-AI — drop the overlay edit for (treatmentKey, field). */
+export async function revertTreatmentOverlay(apiFetch: ApiFetch, sessionId: string, treatmentKey: string, field: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/treatment-overlay`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ treatmentKey, field }),
+  });
+  if (!response.ok) throw new Error("Could not revert the treatment edit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
     method: "PATCH",

@@ -119,6 +119,8 @@ export function CaptureScreen({
     rejectSafetyFlagFromSession: onRejectSafetyFlag,
     applyPatientNameCorrection: onApplyNameCorrection,
     unassignPatientFromSession: onUnassignPatient,
+    editTreatmentField: onEditTreatmentField,
+    revertTreatmentField: onRevertTreatmentField,
     editCaptureSourceText,
   } = useSessionActions();
   const onUpdateCaptureCaption = (sessionId: string, captureId: string, caption: string) =>
@@ -230,11 +232,24 @@ export function CaptureScreen({
   // Keys (area|product) of the treatment rows actually rendered — the inline "Confirm dose" box lives
   // on one of these rows, so only a carried-forward item WITH a matching row has a reachable resolver.
   // (Reachability invariant: a counted dose confirm that had no row would be a phantom count.)
+  const workspaceTreatmentRows = workspaceTreatments(activeSession);
   const renderedTreatmentKeys = new Set(
-    workspaceTreatments(activeSession).map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`),
+    workspaceTreatmentRows.map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`),
+  );
+  // Q4: a carried-forward dose the clinician re-dosed via the overlay is already confirmed by the edit
+  // — its inline confirm collapses, so it must not keep inflating the "N to confirm" count either.
+  const doseEditedKeys = new Set(
+    workspaceTreatmentRows
+      .filter((treatment) => treatment.overlayEditedFields?.includes("quantity"))
+      .map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`),
   );
   const openDoseConfirmations = treatmentReview.filter(
-    (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key) && renderedTreatmentKeys.has(item.key),
+    (item) =>
+      item.category === "carried_forward" &&
+      item.key &&
+      !confirmedCarriedForward.has(item.key) &&
+      renderedTreatmentKeys.has(item.key) &&
+      !doseEditedKeys.has(item.key),
   );
   // A blocker only when there is an AI-*created* patient still awaiting verification — NOT any stored
   // `ai_patient_action` (a plain match, or an already-verified create, is no blocker). Gated on the same
@@ -631,6 +646,10 @@ export function CaptureScreen({
               onConfirmCarriedForward={onConfirmCarriedForward}
               onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
               onOpenSource={openSourceCapture}
+              onEditTreatmentField={activeSession ? (treatmentKey, field, value) => onEditTreatmentField(activeSession.id, treatmentKey, field, value) : undefined}
+              onRevertTreatmentField={activeSession ? (treatmentKey, field) => onRevertTreatmentField(activeSession.id, treatmentKey, field) : undefined}
+              canEditTreatments={isPro && !readOnly}
+              currentUserId={currentUserId}
               reportLanguage={reportLanguage}
             />
           ) : (

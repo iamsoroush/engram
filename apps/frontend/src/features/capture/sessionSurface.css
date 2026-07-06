@@ -161,3 +161,110 @@
   .patient-strip-identity strong, .patient-strip-copy strong { color: #e6ebf4; }
   .patient-strip-action { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
 }
+
+/* --- Treatment overlay: inline field editor + provenance + reconcile (AES-1102..1105) ----------- */
+.treatment-edit-btn {
+  flex: 0 0 auto;
+  margin-inline-start: 4px;
+  border: 0;
+  background: transparent;
+  color: #8a98ad;
+  font-size: 0.82rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.treatment-edit-btn:hover { background: #eef2f8; color: #3a4a66; }
+/* "Edited by you" — human-owned provenance, visually distinct from the AI spark. */
+.treatment-edited-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: #245c9c;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+/* The provenance/reconcile subline: the AI value stays visible (verbatim dictation for a dose); one
+   tap adopts it (Use AI = revert). Keep-yours is the default (the human value already leads). */
+.treatment-provenance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: #6b7a90;
+}
+.treatment-provenance-text { flex: 1 1 auto; }
+.treatment-revert-btn {
+  flex: 0 0 auto;
+  border: 1px solid #d7deea;
+  background: #fff;
+  color: #3a4a66;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.treatment-revert-btn:hover:not(:disabled) { background: #f2f6fc; }
+.treatment-revert-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* The compact per-field editor a row's ✎ opens. */
+.treatment-editor {
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 10px;
+  background: #f8fafd;
+  display: grid;
+  gap: 7px;
+}
+.treatment-editor-field { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 8px; }
+.treatment-editor-label { font-size: 0.74rem; color: #6b7a90; font-weight: 600; }
+.treatment-editor-field input {
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 0.82rem;
+  background: #fff;
+  min-width: 0;
+}
+.treatment-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.treatment-editor-cancel, .treatment-editor-save {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.treatment-editor-cancel { background: #eef2f8; color: #3a4a66; }
+.treatment-editor-save { background: #245c9c; color: #fff; }
+.treatment-editor-save:disabled, .treatment-editor-cancel:disabled { opacity: 0.55; cursor: default; }
+
+/* Parked overlay orphans — a calm review chip list (a lost human edit is never silent). */
+.treatment-orphans {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px dashed #d7c9a6;
+  background: #fffdf6;
+  display: grid;
+  gap: 6px;
+}
+.treatment-orphans li { display: flex; align-items: center; gap: 7px; font-size: 0.76rem; color: #6b5a2f; }
+.treatment-orphan-icon { flex: 0 0 auto; color: #b08a3a; }
+.treatment-orphan-text { flex: 1 1 auto; }
+
+@media (prefers-color-scheme: dark) {
+  .treatment-edited-chip { background: #16324e; color: #9cc6f5; }
+  .treatment-editor { background: #131722; border-color: #2a3140; }
+  .treatment-editor-field input { background: #0f131c; border-color: #2a3140; color: #e6ebf4; }
+  .treatment-revert-btn { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
+  .treatment-orphans { background: #1c1a12; border-color: #4a3f26; }
+}
