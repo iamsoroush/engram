@@ -34,7 +34,12 @@ test.describe("P1-1 Pro synthesis (treatments table + safety flag)", () => {
     await expect(treatment).toBeVisible();
     await expect(treatment).toContainText(/left cheek/i);
 
-    // Safety flag surfaces prominently.
+    // Safety is never buried: the collapsed patient strip shows a red safety chip; tapping it expands
+    // the strip and reveals the full safety panel (session-layout-diet — it's no longer a standalone
+    // zone above the report).
+    const safetyChip = page.locator(".patient-strip-chip.safety");
+    await expect(safetyChip).toBeVisible();
+    await safetyChip.click();
     const safety = page.locator(".session-safety-panel");
     await expect(safety).toBeVisible();
     const flag = safety.locator(".session-safety-flag.safety-allergy");
