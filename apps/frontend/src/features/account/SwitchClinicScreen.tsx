@@ -1,7 +1,7 @@
 import React from "react";
 import type { AuthSession } from "../../domain/appTypes";
 import { useT } from "../../shared/i18n";
-import { Badge, Button } from "../../shared/ui/primitives";
+import { Badge, Button, ScreenHeader } from "../../shared/ui/primitives";
 
 /**
  * Clinic switcher for a user who belongs to more than one clinic (the cross-clinic case Team
@@ -40,12 +40,7 @@ export function SwitchClinicScreen({
 
   return (
     <div className="account-screen" data-screen="switch-clinic">
-      <div className="account-header">
-        <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> {t("switchclinic.back")}
-        </Button>
-        <h1>{t("switchclinic.title")}</h1>
-      </div>
+      <ScreenHeader title={t("switchclinic.title")} onBack={onBack} backLabel={t("switchclinic.back")} />
       <p className="muted">{t("switchclinic.intro")}</p>
       <ul className="team-list">
         {clinics.map((clinic) => {

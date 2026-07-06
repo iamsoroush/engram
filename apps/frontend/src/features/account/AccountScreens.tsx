@@ -1,6 +1,6 @@
 import React from "react";
 import type { AftercareTemplate, AftercareTemplateDraft, AiUsageState, ApiFetch, AuthSession, RolePermissions } from "../../domain/appTypes";
-import { Button, Card } from "../../shared/ui/primitives";
+import { Button, Card, ScreenHeader } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { isAdmin as isAdminViewer } from "../../shared/lib/multiseat";
 import { AftercareTemplatesSettings } from "../aesthetics/AftercareTemplatesSettings";
@@ -50,18 +50,13 @@ function RolePermissionsSettings({
         const label = t(labelKey);
         return (
           <SettingRow key={role} label={label} hint={t(hintKey)}>
-            <select
-              aria-label={t("settings.rolePermissionAria", { role: label })}
+            <SelectMenu
+              ariaLabel={t("settings.rolePermissionAria", { role: label })}
               disabled={saving}
-              onChange={(event) => onSave({ rolePermissions: { [role]: event.target.value } })}
+              onChange={(value) => onSave({ rolePermissions: { [role]: value } })}
               value={String(resolved[role] || PRESET_DEFAULTS[role] || "contribute")}
-            >
-              {PERMISSION_PRESETS.map((preset) => (
-                <option key={preset.value} value={preset.value}>
-                  {t(preset.labelKey)}
-                </option>
-              ))}
-            </select>
+              options={PERMISSION_PRESETS.map((preset) => ({ value: preset.value, label: t(preset.labelKey) }))}
+            />
           </SettingRow>
         );
       })}
@@ -73,14 +68,7 @@ const capitalize = (value: string) => (value ? value[0].toUpperCase() + value.sl
 
 function AccountHeader({ title, onBack }: { title: string; onBack: () => void }) {
   const t = useT();
-  return (
-    <div className="account-header">
-      <Button className="account-back" onClick={onBack} size="sm" variant="secondary" type="button">
-        <span aria-hidden="true">←</span> {t("settings.back")}
-      </Button>
-      <h1>{title}</h1>
-    </div>
-  );
+  return <ScreenHeader title={title} onBack={onBack} backLabel={t("settings.back")} />;
 }
 
 function SettingRow({ label, hint, children }: { label: React.ReactNode; hint?: string; children: React.ReactNode }) {
@@ -138,7 +126,7 @@ export function SettingsScreen({
     { value: "ar", label: "العربية" },
   ];
   return (
-    <div className="account-screen">
+    <div className="account-screen account-two-col" data-screen="settings">
       <AccountHeader title={t("settings.title")} onBack={onBack} />
 
       <Card className="settings-group">
@@ -271,7 +259,7 @@ export function ProfileScreen({
       .map((part) => part[0]?.toUpperCase())
       .join("") || "A";
   return (
-    <div className="account-screen">
+    <div className="account-screen account-two-col" data-screen="profile">
       <AccountHeader title={t("settings.profileTitle")} onBack={onBack} />
 
       <Card className="profile-card">

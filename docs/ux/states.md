@@ -125,6 +125,9 @@ back to unassigned. Please assign it again.` No error code, no stuck spinner, no
 - Clinical Memory Needs input says there is nothing urgent when no human decisions are waiting.
 - Search shows empty copy before a query and when no loaded memory matches.
 - Session review capture list shows `No captures loaded for this session yet.`
+- Insights charts use a shared **placeholder block** (dashed frame, fixed min-height matching the
+  chart, a small icon, the empty label + a "try a longer date range" hint) so an all-empty analytics
+  panel keeps its visual weight and reads as intentional rather than broken ([insights.md](screens/insights.md#states)).
 
 ## Offline And AI-Unavailable Behavior
 

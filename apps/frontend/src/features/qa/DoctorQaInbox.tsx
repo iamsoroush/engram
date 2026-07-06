@@ -1,7 +1,7 @@
 import React from "react";
 import "./qaInbox.css";
 import type { ApiFetch } from "../../domain/appTypes";
-import { Alert, Badge, Button, Card, Skeleton, Textarea } from "../../shared/ui/primitives";
+import { Alert, Badge, Button, Card, DisclosureRow, Skeleton, Textarea } from "../../shared/ui/primitives";
 import { formatDate } from "../../shared/lib/datetime";
 import { useT } from "../../shared/i18n";
 import {
@@ -186,6 +186,7 @@ export function DoctorQaInbox({
               <label className="qa-routing">
                 {t("qa.routingLabel")}
                 <select
+                  className="select"
                   value={settings.routingMode === "manual" ? "manual" : "ai_default"}
                   onChange={(event) => void handleRoutingMode(event.target.value as "ai_default" | "manual")}
                 >
@@ -427,10 +428,9 @@ function QaThreadCard({
 
       {/* Explicit, labelled disclosure for the full thread (replaces the easy-to-miss chevron). */}
       {hiddenCount > 0 ? (
-        <button className="qa-expand-toggle" type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
-          <Chevron open={expanded} />
+        <DisclosureRow className="qa-expand-toggle" open={expanded} onToggle={() => setExpanded((value) => !value)}>
           {expanded ? t("qa.hideConversation") : t("qa.viewConversation", { n: item.messages.length })}
-        </button>
+        </DisclosureRow>
       ) : null}
 
       {item.needsApproval ? (
@@ -527,26 +527,6 @@ function DraftStatusBadge({
   if (draftFailed) return <span className="qa-draft-hint">{t("qa.draftFailedHint")}</span>;
   if (draftPending) return <span className="qa-draft-hint">{t("qa.draftingHint")}</span>;
   return <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>;
-}
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className="qa-chevron"
-      viewBox="0 0 24 24"
-      width="18"
-      height="18"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
 }
 
 function VoiceControl({ voice, onStart }: { voice: ReturnType<typeof useVoiceEdit>; onStart: () => void }) {

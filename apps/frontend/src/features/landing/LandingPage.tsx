@@ -33,33 +33,71 @@ function ModalityIcon({ name }: { name: Modality }) {
   );
 }
 
+// Stroke icons for the trust cards (records / device / AI-opt-in) — same visual family as the app.
+function TrustIcon({ n }: { n: "1" | "2" | "3" }) {
+  if (n === "1") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M12 3l7 3v5c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6l7-3Z" />
+        <path d="m9 12 2 2 4-4" />
+      </svg>
+    );
+  }
+  if (n === "2") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="7" y="3" width="10" height="18" rx="2" />
+        <path d="M11 18h2" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 4v3M12 17v3M4 12h3M17 12h3" />
+      <path d="M12 8.5 13 11l2.5 1-2.5 1-1 2.5-1-2.5L8.5 12 11 11l1-2.5Z" />
+    </svg>
+  );
+}
+
 // A stylized in-product preview (not a screenshot) built from the app's own tokens — RTL-safe and
-// maintenance-free. Shows the capture-first surface: an unassigned visit + the audio/photo/note bar.
+// maintenance-free. Shows the capture-first surface AND the report it produces (treatments + a
+// safety chip), framed as a tablet.
 function AppPreview({ t }: { t: Translator }) {
   const modalities: Modality[] = ["note", "photo", "audio"];
   return (
     <figure className="landing-preview">
-      <div className="landing-preview-screen" aria-hidden="true">
-        <div className="landing-preview-topbar">
-          <span className="landing-preview-brand">Engram</span>
-        </div>
-        <div className="landing-preview-session">
-          <span className="landing-preview-dot" />
-          <strong>{t("landing.preview.session")}</strong>
-        </div>
-        <div className="landing-preview-chip">{t("landing.preview.unassigned")}</div>
-        <div className="landing-preview-card">
-          <span className="landing-preview-line w70" />
-          <span className="landing-preview-line w90" />
-          <span className="landing-preview-line w55" />
-        </div>
-        <div className="landing-preview-bar">
-          {modalities.map((m, index) => (
-            <span className={`landing-preview-action${index === 0 ? " primary" : ""}`} key={m}>
-              <ModalityIcon name={m} />
-              {t(`landing.preview.${m}`)}
-            </span>
-          ))}
+      <div className="landing-preview-frame">
+        <div className="landing-preview-screen" aria-hidden="true">
+          <div className="landing-preview-topbar">
+            <span className="landing-preview-brand">Engram</span>
+          </div>
+          <div className="landing-preview-session">
+            <span className="landing-preview-dot" />
+            <strong>{t("landing.preview.session")}</strong>
+          </div>
+          <div className="landing-preview-chip">{t("landing.preview.unassigned")}</div>
+          <div className="landing-preview-report">
+            <div className="landing-preview-report-head">
+              <strong>{t("landing.preview.reportTitle")}</strong>
+              <span className="landing-preview-safety">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="m5 12 4 4 10-10" />
+                </svg>
+                {t("landing.preview.safe")}
+              </span>
+            </div>
+            <span className="landing-preview-line w90" />
+            <span className="landing-preview-line w70" />
+            <span className="landing-preview-line w55" />
+          </div>
+          <div className="landing-preview-bar">
+            {modalities.map((m, index) => (
+              <span className={`landing-preview-action${index === 0 ? " primary" : ""}`} key={m}>
+                <ModalityIcon name={m} />
+                {t(`landing.preview.${m}`)}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
       <figcaption className="landing-preview-caption">{t("landing.preview.caption")}</figcaption>
@@ -110,12 +148,29 @@ function PlanTeaser({
         <li>{t(`landing.pricing.${tier}.f2`)}</li>
         <li>{t(`landing.pricing.${tier}.f3`)}</li>
       </ul>
+      {isPro ? <p className="landing-plan-footnote">{t("landing.pricing.aiFootnote")}</p> : null}
       {onSignup ? (
         <Button onClick={onSignup} type="button">
           {t("landing.cta.signup")}
         </Button>
       ) : null}
     </article>
+  );
+}
+
+// A quiet social-proof strip — a claim + grayscale initials chips, keyed for later real logos.
+function SocialProof({ t }: { t: Translator }) {
+  return (
+    <section className="landing-social" aria-label={t("landing.social.label")}>
+      <span className="landing-social-label">{t("landing.social.label")}</span>
+      <div className="landing-social-logos" aria-hidden="true">
+        {["ن", "د", "پ"].map((initial, i) => (
+          <span className="landing-social-logo" key={i}>
+            {initial}
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -146,7 +201,8 @@ export function LandingPage({ t, onSignup, onLogin }: { t: Translator; onSignup:
         </div>
       </section>
 
-      <section className="landing-section">
+      <section className="landing-section landing-section--band">
+        <p className="eyebrow">{t("landing.how.eyebrow")}</p>
         <h2 className="landing-section-title">{t("landing.how.title")}</h2>
         <div className="landing-steps">
           <HowStep n="1" t={t} />
@@ -156,10 +212,14 @@ export function LandingPage({ t, onSignup, onLogin }: { t: Translator; onSignup:
       </section>
 
       <section className="landing-section">
+        <p className="eyebrow">{t("landing.trust.eyebrow")}</p>
         <h2 className="landing-section-title">{t("landing.trust.title")}</h2>
         <div className="landing-trust">
           {(["1", "2", "3"] as const).map((n) => (
             <article className="landing-trust-item" key={n}>
+              <span className="landing-trust-icon" aria-hidden="true">
+                <TrustIcon n={n} />
+              </span>
               <h3>{t(`landing.trust.${n}.title`)}</h3>
               <p>{t(`landing.trust.${n}.body`)}</p>
             </article>
@@ -167,7 +227,10 @@ export function LandingPage({ t, onSignup, onLogin }: { t: Translator; onSignup:
         </div>
       </section>
 
-      <section className="landing-section">
+      <SocialProof t={t} />
+
+      <section className="landing-section landing-section--band">
+        <p className="eyebrow">{t("landing.pricing.eyebrow")}</p>
         <div className="landing-pricing-head">
           <h2 className="landing-section-title">{t("landing.pricing.title")}</h2>
           <span className="landing-pricing-note">{t("landing.pricing.note")}</span>

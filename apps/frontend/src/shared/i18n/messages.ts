@@ -71,6 +71,7 @@ const en: Dict = {
   "insights.range.this-year": "This year",
   "insights.loadError": "Could not load insights. Please try again.",
   "insights.empty": "Not enough data yet.",
+  "insights.emptyHint": "Try a longer date range.",
   "insights.unknown": "Unknown",
   "insights.kpi.visits": "Visits",
   "insights.kpi.newPatients": "New patients",
@@ -1388,6 +1389,13 @@ const en: Dict = {
   "landing.pricing.pro.f2": "AI reports, summaries & patient matching",
   "landing.pricing.pro.f3": "Patient memory + post-visit Q&A",
   "landing.footer": "Built for aesthetics clinics. Therapy and dermatology next.",
+  "landing.preview.reportTitle": "Visit report",
+  "landing.preview.safe": "Safety checked",
+  "landing.how.eyebrow": "Workflow",
+  "landing.trust.eyebrow": "Trust & data",
+  "landing.pricing.eyebrow": "Pricing",
+  "landing.pricing.aiFootnote": "Fair-use AI included on Pro — no per-report fees.",
+  "landing.social.label": "Used in clinics in Tehran",
 
   // Shared auth fields
   "auth.email": "Email",
@@ -1518,6 +1526,7 @@ const fa: Dict = {
   "insights.range.this-year": "امسال",
   "insights.loadError": "بارگذاری بینش‌ها ممکن نشد. دوباره تلاش کنید.",
   "insights.empty": "هنوز داده کافی نیست.",
+  "insights.emptyHint": "بازهٔ زمانی بلندتری را امتحان کنید.",
   "insights.unknown": "نامشخص",
   "insights.kpi.visits": "ویزیت‌ها",
   "insights.kpi.newPatients": "بیماران جدید",
@@ -2832,6 +2841,13 @@ const fa: Dict = {
   "landing.pricing.pro.f2": "گزارش و خلاصهٔ هوش مصنوعی و تطبیق بیمار",
   "landing.pricing.pro.f3": "حافظهٔ بیمار + پرسش‌وپاسخ پس از ویزیت",
   "landing.footer": "ساخته‌شده برای کلینیک‌های زیبایی. روان‌درمانی و پوست در گام‌های بعدی.",
+  "landing.preview.reportTitle": "گزارش ویزیت",
+  "landing.preview.safe": "بررسی ایمنی انجام شد",
+  "landing.how.eyebrow": "روند کار",
+  "landing.trust.eyebrow": "اعتماد و داده",
+  "landing.pricing.eyebrow": "قیمت‌گذاری",
+  "landing.pricing.aiFootnote": "هوش مصنوعی منصفانه در Pro — بدون هزینهٔ هر گزارش.",
+  "landing.social.label": "در کلینیک‌های تهران استفاده می‌شود",
 
   // Shared auth fields
   "auth.email": "ایمیل",

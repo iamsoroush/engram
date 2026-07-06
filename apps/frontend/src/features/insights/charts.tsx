@@ -1,5 +1,5 @@
 import React from "react";
-import { useAppLang } from "../../shared/i18n";
+import { useAppLang, useT } from "../../shared/i18n";
 
 /**
  * Lightweight, dependency-free chart primitives for the Insights panel. Deliberately mostly
@@ -20,6 +20,24 @@ export function useNum(): (value: number, opts?: Intl.NumberFormatOptions) => st
 
 // A calm, on-brand categorical palette (design tokens) for multi-series charts.
 export const SERIES_COLORS = ["#075eff", "#6b3df0", "#0a9d6e", "#995c00", "#1d4ed8", "#b42318"];
+
+/**
+ * Shared empty-state block for charts. Keeps the card's visual weight (fixed min-height matching the
+ * chart it replaces + dashed frame) so an all-empty panel reads as intentional, not broken.
+ */
+export function ChartPlaceholder({ label, variant = "chart" }: { label: string; variant?: "chart" | "heatmap" | "list" }) {
+  const t = useT();
+  return (
+    <div className={`ins-placeholder ins-placeholder--${variant}`} role="status">
+      <svg className="ins-placeholder-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v18h18" />
+        <path d="M7 15l3-4 3 3 4-6" />
+      </svg>
+      <span className="ins-placeholder-label">{label}</span>
+      <span className="ins-placeholder-hint">{t("insights.emptyHint")}</span>
+    </div>
+  );
+}
 
 // --- StatCard + Sparkline ---------------------------------------------------------------------------
 export type Delta = { current: number; previous: number; pct: number | null };
@@ -93,7 +111,7 @@ export function BarList({
   valueSuffix?: string;
 }) {
   const num = useNum();
-  if (!items.length) return <p className="ins-empty">{emptyLabel}</p>;
+  if (!items.length) return <ChartPlaceholder label={emptyLabel} variant="list" />;
   const max = Math.max(...items.map((i) => i.value), 1);
   return (
     <ul className="ins-barlist">
@@ -120,7 +138,7 @@ export function ColumnChart({ columns, height = 128, emptyLabel }: { columns: Co
   const totals = columns.map((c) => c.segments.reduce((s, seg) => s + seg.value, 0));
   const max = Math.max(...totals, 1);
   const nonEmpty = totals.some((t) => t > 0);
-  if (!nonEmpty && emptyLabel) return <p className="ins-empty">{emptyLabel}</p>;
+  if (!nonEmpty && emptyLabel) return <ChartPlaceholder label={emptyLabel} variant="chart" />;
   return (
     <div className="ins-columns" style={{ blockSize: height }}>
       {columns.map((col, i) => (
@@ -211,7 +229,7 @@ export function Heatmap({
   emptyLabel: string;
 }) {
   const max = Math.max(...grid.flat(), 0);
-  if (max === 0) return <p className="ins-empty">{emptyLabel}</p>;
+  if (max === 0) return <ChartPlaceholder label={emptyLabel} variant="heatmap" />;
   return (
     <div className="ins-heatmap" style={{ gridTemplateColumns: `auto repeat(${colLabels.length}, 1fr)` }}>
       <span />

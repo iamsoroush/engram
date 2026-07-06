@@ -5,6 +5,12 @@ capture context, so they are the one place the persistent capture bar is hidden 
 their content). Each page has a **Back** action returning to the previous staff screen. Routes:
 [navigation.md](../navigation.md).
 
+**Shared chrome.** Every account/utility page (Settings, Profile, Team, Plan, Switch clinic,
+Insights) renders the shared **`ScreenHeader`** — one back-button + title pattern. The back button
+is a ≥44px tap target with an SVG chevron that mirrors under RTL (points toward the inline-start
+edge in both fa and en); there is no literal `←` glyph. The content column matches the topbar width
+(`--content-max`, 820px). See [frontend/overview.md](../../frontend/overview.md#shared-ui-primitives).
+
 ## Account menu (the dropdown)
 
 - Header: avatar + signed-in name + role · clinic name, with a `Pro`/`Basic` tier pill.
@@ -24,7 +30,11 @@ their content). Each page has a **Back** action returning to the previous staff 
 ## Settings (`/#settings`)
 
 Tenant-level preferences, grouped; each control saves on change with a calm toast
-(`PATCH /tenant/settings`).
+(`PATCH /tenant/settings`). Dropdowns share one visual system — the styled `SelectMenu` and the
+styled native `Select` are identical closed (same height, border, radius and mirrored caret). **On
+tablet/desktop (≥768px) the setting cards flow in a two-column grid**; the header, the AI-usage card
+and the tall aftercare-template editor span both columns, while the small groups pair up. Below
+768px it is a single column. Card order reads top→bottom then start→end in both LTR and RTL.
 
 - **Languages**
   - *App language* — `English` | `فارسی` | `العربية` (autonyms, each in its own script; sets the UI

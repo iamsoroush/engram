@@ -70,7 +70,7 @@ export function AftercareTemplatesSettings({
   };
 
   return (
-    <Card className="settings-group">
+    <Card className="settings-group settings-group--wide">
       <div className="settings-group-head">
         <h2>{t("aftercare.title")}</h2>
         <p>{t("aftercare.subtitle")}</p>

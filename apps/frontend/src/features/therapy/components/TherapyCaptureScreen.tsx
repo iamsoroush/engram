@@ -238,7 +238,7 @@ export function TherapyCaptureScreen({
             </div>
             <label className="field-label">
               Level
-              <select value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
+              <select className="select" value={riskLevel} onChange={(event) => setRiskLevel(event.target.value)}>
                 <option value="low">Low</option>
                 <option value="moderate">Moderate</option>
                 <option value="high">High</option>

@@ -80,7 +80,7 @@ export function PatientForm({
         </label>
         <label className="patient-form-field">
           <span>{t("patientform.sex")}</span>
-          <select data-content disabled={loading} onChange={set("sex")} value={values.sex}>
+          <select className="select" data-content disabled={loading} onChange={set("sex")} value={values.sex}>
             <option value="">{t("patientform.sexUnspecified")}</option>
             <option value="female">{t("patientform.sexFemale")}</option>
             <option value="male">{t("patientform.sexMale")}</option>

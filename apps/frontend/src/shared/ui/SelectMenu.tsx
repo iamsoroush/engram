@@ -64,7 +64,11 @@ export function SelectMenu({
         onClick={toggle}
       >
         <span dir="auto">{current?.label ?? value}</span>
-        <span className="select-menu-chev" aria-hidden="true">▾</span>
+        <span className="select-menu-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
       </button>
       {open && rect
         ? createPortal(
