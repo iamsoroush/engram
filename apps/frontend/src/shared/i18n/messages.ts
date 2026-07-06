@@ -255,6 +255,8 @@ const en: Dict = {
   "badge.newPatientName": "New patient:",
   // Identity-correction / detach / couldn't-apply chip copy — E1
   "badge.correctNameTo": "Correct name to",
+  "badge.correctName": "Correct name",
+  "badge.unassignConfirm": "Unassign",
   "badge.suggestedUnassign": "Suggested: unassign this visit",
   "badge.couldntApply": "Couldn't apply — assign the patient manually.",
   "badge.identityOutOfContext": "Identity heard in an out-of-context capture — not applied.",
@@ -350,6 +352,7 @@ const en: Dict = {
   "capture.removeFromThisVisit": "Remove from this visit",
   "capture.aftercareConflictSource": "(differs from your clinic’s “{name}” protocol)",
   "capture.aftercareConflictDefault": "Your dictated aftercare differs from your clinic’s “{name}” protocol — your words are used.",
+  "capture.dismissConflictNote": "Dismiss this note",
   "capture.sources": "Sources",
   "capture.organizing": "Organizing…",
   "capture.undoLast": "Undo last capture",
@@ -377,6 +380,9 @@ const en: Dict = {
   "capture.toastMarkedRelevant": "Marked relevant. The live report is updating.",
   "capture.toastDoseConfirmed": "Dose confirmed.",
   "capture.toastCouldNotConfirmDose": "Could not confirm the dose. Try again.",
+  "capture.toastNameCorrected": "Patient name corrected.",
+  "capture.toastCouldNotCorrectName": "Could not correct the name. Try again.",
+  "capture.toastCouldNotUnassign": "Could not unassign the visit. Try again.",
   "capture.toastCouldNotUpdateAftercare": "Could not update aftercare. Try again.",
   "capture.toastCouldNotLoadCaptures": "Could not load captures for this visit.",
 
@@ -1701,6 +1707,8 @@ const fa: Dict = {
   "badge.newPatientName": "بیمار جدید:",
   // Identity-correction / detach / couldn't-apply chip copy — E1
   "badge.correctNameTo": "اصلاح نام به",
+  "badge.correctName": "اصلاح نام",
+  "badge.unassignConfirm": "لغو تخصیص",
   "badge.suggestedUnassign": "پیشنهاد: لغو تخصیص این ویزیت",
   "badge.couldntApply": "قابل اعمال نبود — بیمار را دستی تخصیص دهید.",
   "badge.identityOutOfContext": "نام در ضبطِ خارج از زمینه شنیده شد — اعمال نشد.",
@@ -1796,6 +1804,7 @@ const fa: Dict = {
   "capture.removeFromThisVisit": "حذف از این ویزیت",
   "capture.aftercareConflictSource": "(با پروتکل «{name}» کلینیک شما تفاوت دارد)",
   "capture.aftercareConflictDefault": "مراقبت‌های پس از درمانی که دیکته کرده‌اید با پروتکل «{name}» کلینیک شما تفاوت دارد — عبارت شما اعمال می‌شود.",
+  "capture.dismissConflictNote": "بستن این یادداشت",
   "capture.sources": "منابع",
   "capture.organizing": "در حال سازمان‌دهی…",
   "capture.undoLast": "واگرد آخرین ثبت",
@@ -1823,6 +1832,9 @@ const fa: Dict = {
   "capture.toastMarkedRelevant": "به‌عنوان مرتبط علامت‌گذاری شد. گزارش زنده در حال به‌روزرسانی است.",
   "capture.toastDoseConfirmed": "دوز تأیید شد.",
   "capture.toastCouldNotConfirmDose": "تأیید دوز ممکن نشد. دوباره تلاش کنید.",
+  "capture.toastNameCorrected": "نام بیمار اصلاح شد.",
+  "capture.toastCouldNotCorrectName": "اصلاح نام ممکن نشد. دوباره تلاش کنید.",
+  "capture.toastCouldNotUnassign": "لغو تخصیص ویزیت ممکن نشد. دوباره تلاش کنید.",
   "capture.toastCouldNotUpdateAftercare": "به‌روزرسانی مراقبت‌های پس از درمان ممکن نشد. دوباره تلاش کنید.",
   "capture.toastCouldNotLoadCaptures": "بارگذاری ثبت‌های این ویزیت ممکن نشد.",
 

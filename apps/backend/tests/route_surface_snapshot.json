@@ -518,6 +518,12 @@
         "tags": []
       }
     },
+    "/api/v1/sessions/{session_id}/apply-name-correction": {
+      "post": {
+        "operationId": "apply_name_correction_route_api_v1_sessions__session_id__apply_name_correction_post",
+        "tags": []
+      }
+    },
     "/api/v1/sessions/{session_id}/artifacts": {
       "get": {
         "operationId": "list_session_artifacts_route_api_v1_sessions__session_id__artifacts_get",
@@ -607,6 +613,12 @@
       },
       "post": {
         "operationId": "set_treatment_overlay_route_api_v1_sessions__session_id__treatment_overlay_post",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/unassign-patient": {
+      "post": {
+        "operationId": "unassign_session_patient_route_api_v1_sessions__session_id__unassign_patient_post",
         "tags": []
       }
     },
@@ -1594,6 +1606,17 @@
     },
     {
       "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/apply-name-correction"
+    },
+    {
+      "dependencies": [
         "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
         "get_db"
       ],
@@ -1768,6 +1791,17 @@
         "POST"
       ],
       "path": "/api/v1/sessions/{session_id}/treatment-overlay"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/unassign-patient"
     },
     {
       "dependencies": [

@@ -760,6 +760,26 @@ export function aiPatientActionForSession(session: CaptureSession | null) {
   return Object.keys(action).length ? action : null;
 }
 
+/**
+ * Whether an `ai_patient_action` is a blocker awaiting identity verification — i.e. an AI-*created*
+ * patient still flagged `needsVerification`. The SINGLE source of truth for both the verify-bar count
+ * (`patientVerifyNeeded`) and the resolver that renders it (`AiCreatedPatientPanel`), so the count can
+ * never diverge from a reachable resolver (INV-SILENT: every counted blocker has a resolver on screen).
+ * A merely *matched* action, or a created patient already `verified`, is NOT a blocker — it must not
+ * inflate the count (the phantom-verify-count bug: the count read "an action exists", the panel read
+ * "created + unverified"). Mirrors `AiCreatedPatientPanel`'s render guard exactly.
+ */
+export function aiCreatedPatientNeedsVerification(
+  action: Record<string, unknown> | null,
+  session: CaptureSession | null,
+): boolean {
+  if (!action) return false;
+  const patientId = metadataDisplay(action.patientId) || session?.patientId || "";
+  if (!patientId || action.action !== "created_and_assigned") return false;
+  const status = metadataDisplay(action.status);
+  return action.needsVerification !== false && status !== "verified";
+}
+
 export function activePatientAssignmentActionForSession(session: CaptureSession | null) {
   if (!session?.extractedMetadata) return null;
   const action = metadataRecord(session.extractedMetadata.active_patient_assignment_action || session.extractedMetadata.ai_patient_action);
@@ -882,6 +902,9 @@ export function sessionTreatmentReview(session: CaptureSession | null): SessionT
       reason: metadataText(entry.reason),
       product: metadataText(entry.product) || null,
       key: metadataText(entry.key) || null,
+      sourceCaptureIds: Array.isArray(entry.sourceCaptureIds)
+        ? entry.sourceCaptureIds.filter((id): id is string => typeof id === "string")
+        : undefined,
     }))
     .filter((item) => item.reason);
 }

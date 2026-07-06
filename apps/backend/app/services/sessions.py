@@ -645,6 +645,106 @@ def assign_session_patient(
     return {**session_payload(session, db), "assignmentSource": request.source}
 
 
+def _consume_capture_suggestion(db: DbSession, tenant_id: uuid.UUID, session_id: uuid.UUID, basis_capture_id: str | None) -> Capture | None:
+    """Drop a capture's ``patient_match_candidate`` so its suggestion chip clears once applied.
+
+    Returns the capture (for source attribution) or None. Mirrors the suggestion-consume that
+    ``assign_session_patient`` does when a per-capture reassignment is applied.
+    """
+    if not basis_capture_id:
+        return None
+    capture = db.execute(
+        select(Capture).where(
+            Capture.id == parse_uuid(basis_capture_id, "basis_capture_id"),
+            Capture.tenant_id == tenant_id,
+            Capture.session_id == session_id,
+            Capture.status != CaptureStatus.deleted,
+        )
+    ).scalar_one_or_none()
+    if capture is not None and isinstance(capture.capture_metadata, dict) and "patient_match_candidate" in capture.capture_metadata:
+        capture.capture_metadata = {key: value for key, value in capture.capture_metadata.items() if key != "patient_match_candidate"}
+    return capture
+
+
+def apply_patient_name_correction(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, spoken_name: str, basis_capture_id: str | None = None
+) -> dict[str, Any]:
+    """E1 one-tap: apply a ``suggested_name_correction`` — rename the assigned patient in place.
+
+    The chip appears when the AI detected the visit's patient is (probably) the assigned one but the
+    spoken name differs and it wasn't auto-renamed (implicit basis, or a role/verification gate). Tapping
+    it is the human's explicit confirmation, so we rename in place (deterministic, no re-synthesis): an
+    unverified AI-created record renames freely (its whole point); a verified/human record is a real
+    chart, so the edit is gated on the full (owner-class) preset. The verbatim before→after is harvested.
+    """
+    from app.services.patients import rename_patient_in_place
+
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
+    perm = session_permission_for_principal(db, principal, session)
+    if not can_edit(perm):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This session is owned by another clinician; your role can't correct its patient.")
+    if session.patient_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No patient is assigned to correct")
+    if not (isinstance(spoken_name, str) and spoken_name.strip()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A spoken name is required")
+    patient = db.execute(
+        select(Patient).where(Patient.id == session.patient_id, Patient.tenant_id == principal.tenant_id)
+    ).scalar_one_or_none()
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="The assigned patient no longer exists")
+    # The chip carries the spoken name; rename to it (rename_patient_in_place also registers it as a
+    # search alias so future captures resolve to the corrected record).
+    capture = _consume_capture_suggestion(db, principal.tenant_id, session.id, basis_capture_id)
+    new_name = rename_patient_in_place(
+        db,
+        patient=patient,
+        patient_information={"raw_mentioned_name": spoken_name.strip()},
+        actor_user_id=principal.user_id,
+        source_capture_id=capture.id if capture is not None else None,
+    )
+    if new_name is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No name change to apply")
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.apply_name_correction", target_type="session", target_id=session.id, details={"new_display_name": new_name})
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
+def unassign_session_patient(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, basis_capture_id: str | None = None
+) -> dict[str, Any]:
+    """E1 one-tap: apply a ``suggested_unassign`` (detach/negation, A-F9) — clear the visit's patient.
+
+    Unassign is destructive, so it is only ever suggested, never auto-applied; this is where the human
+    confirms it. Appends a ``manually_unassigned`` timeline event and routes through the one assignment
+    choke point (``apply_active_patient_assignment``) so the wrong patient's safety flags / carry-forward
+    confirmations / reconcile are all invalidated. Clearing an assigned visit needs the reassign permission.
+    """
+    session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
+    perm = session_permission_for_principal(db, principal, session)
+    if session.patient_id is not None and not can_reassign(perm):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Your role can't unassign a visit owned by another clinician.")
+    previous = session.patient_id
+    _consume_capture_suggestion(db, principal.tenant_id, session.id, basis_capture_id)
+    event = patient_assignment_event(
+        source="staff",
+        action="manually_unassigned",
+        patient_id=None,
+        display_name=None,
+        reason=None,
+        capture_id=None,
+        actor_user_id=principal.user_id,
+    )
+    session.extracted_metadata = append_patient_assignment_event(
+        session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}, event
+    )
+    apply_active_patient_assignment(db, session)
+    audit(db, tenant_id=principal.tenant_id, actor_user_id=principal.user_id, action="session.unassign_patient", target_type="session", target_id=session.id, details={"previous_patient_id": str(previous) if previous else None})
+    db.commit()
+    db.refresh(session)
+    return session_payload(session, db)
+
+
 def start_review(db: DbSession, principal: CurrentPrincipal, session_id: str) -> dict[str, Any]:
     session = get_session_for_tenant(db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True)
     session.status = SessionStatus.reviewing

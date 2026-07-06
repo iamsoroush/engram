@@ -1137,6 +1137,30 @@ export async function setAftercareDismissed(apiFetch: ApiFetch, sessionId: strin
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 
+/** E1 one-tap: apply a `suggested_name_correction` chip — rename the assigned patient in place. */
+export async function applyNameCorrection(apiFetch: ApiFetch, sessionId: string, spokenName: string, basisCaptureId?: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/apply-name-correction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ spokenName, basisCaptureId: basisCaptureId ?? null }),
+  });
+  if (!response.ok) throw new Error("Could not apply the name correction");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** E1 one-tap: apply a `suggested_unassign` chip — clear the visit's patient (detach/negation).
+ *  Distinct from `unassignSessionPatient` (the generic outbox unassign via assign-patient): this hits
+ *  the dedicated endpoint that also consumes the originating capture's suggestion so its chip clears. */
+export async function applyUnassignSuggestion(apiFetch: ApiFetch, sessionId: string, basisCaptureId?: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/unassign-patient`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ basisCaptureId: basisCaptureId ?? null }),
+  });
+  if (!response.ok) throw new Error("Could not unassign the visit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
 export async function updateCaptureTitle(apiFetch: ApiFetch, captureId: string, title: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, {
     method: "PATCH",

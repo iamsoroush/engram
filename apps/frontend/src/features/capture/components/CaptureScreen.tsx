@@ -1,6 +1,7 @@
 // Capture screen shell (orchestration); presentational pieces live in sibling files.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
+import "../sessionSurface.css";
 import type { AftercareTemplate, LineupCard, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
@@ -14,7 +15,7 @@ import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { SessionVerifyBar } from "./SessionVerifyBar";
 import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion } from "./CaptureBadges";
 import { NextLinedUpBar, SessionReviewRegion, SessionSafetyPanel } from "./CaptureRegions";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
@@ -113,6 +114,8 @@ export function CaptureScreen({
     fetchCaptureById: onFetchCapture,
     dismissAftercareTemplate: onDismissAftercare,
     rejectSafetyFlagFromSession: onRejectSafetyFlag,
+    applyPatientNameCorrection: onApplyNameCorrection,
+    unassignPatientFromSession: onUnassignPatient,
     editCaptureSourceText,
   } = useSessionActions();
   const onUpdateCaptureCaption = (sessionId: string, captureId: string, caption: string) =>
@@ -221,10 +224,19 @@ export function CaptureScreen({
   // in the report and never feed this count, keeping the bar calm ("warnings over blocking").
   const treatmentReview = sessionTreatmentReview(activeSession);
   const confirmedCarriedForward = new Set(sessionConfirmedCarriedForward(activeSession));
-  const openDoseConfirmations = treatmentReview.filter(
-    (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key),
+  // Keys (area|product) of the treatment rows actually rendered — the inline "Confirm dose" box lives
+  // on one of these rows, so only a carried-forward item WITH a matching row has a reachable resolver.
+  // (Reachability invariant: a counted dose confirm that had no row would be a phantom count.)
+  const renderedTreatmentKeys = new Set(
+    workspaceTreatments(activeSession).map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`),
   );
-  const patientVerifyNeeded = Boolean(aiPatientAction && onCompleteAiCreatedPatient);
+  const openDoseConfirmations = treatmentReview.filter(
+    (item) => item.category === "carried_forward" && item.key && !confirmedCarriedForward.has(item.key) && renderedTreatmentKeys.has(item.key),
+  );
+  // A blocker only when there is an AI-*created* patient still awaiting verification — NOT any stored
+  // `ai_patient_action` (a plain match, or an already-verified create, is no blocker). Gated on the same
+  // predicate the resolver renders on, so the count and the reachable resolver stay in lock-step.
+  const patientVerifyNeeded = Boolean(onCompleteAiCreatedPatient) && aiCreatedPatientNeedsVerification(aiPatientAction, activeSession);
   // Patient CONFLICTS (a capture dictated a different/partial-match patient than the assigned one) are
   // a session-level blocker too — surfaced in the verify region + counted, not buried in the Sources
   // drawer (FB8). Resolution is in place via the shared PatientConflictResolver. Local dismiss only.
@@ -474,13 +486,15 @@ export function CaptureScreen({
           collapsed={reportHasContent}
         />
       ) : null}
-      {!isHistorical && activeSession && ((aiPatientAction && onCompleteAiCreatedPatient) || patientConflicts.length) ? (
+      {!isHistorical && activeSession && (patientVerifyNeeded || patientConflicts.length) ? (
         <SessionReviewRegion
           session={activeSession}
-          aiPatientAction={aiPatientAction}
+          aiPatientAction={patientVerifyNeeded ? aiPatientAction : null}
           onCompleteAiCreatedPatient={onCompleteAiCreatedPatient}
           patientConflicts={patientConflicts}
           onAssignPatient={onAssignPatient}
+          onApplyNameCorrection={(basisCaptureId, spokenName) => onApplyNameCorrection(activeSession.id, spokenName, basisCaptureId)}
+          onUnassign={(basisCaptureId) => onUnassignPatient(activeSession.id, basisCaptureId)}
           onOpenResolver={onOpenResolver}
           onDismissConflict={(captureId) => setDismissedConflicts((current) => new Set(current).add(captureId))}
           regionRef={verifyRegionRef}
@@ -602,6 +616,19 @@ export function CaptureScreen({
                     <>{t("capture.aftercareConflictDefault", { name: conflict.template.name })}</>
                   )}
                 </span>
+                {/* A conflict/superseded note is opt-out too: dismissing it records the template id in
+                    `dismissed_aftercare` (persists across re-synthesis) so the note stays gone. */}
+                {!isHistorical && activeSession ? (
+                  <button
+                    className="aftercare-conflict-dismiss"
+                    type="button"
+                    aria-label={t("capture.removeTemplate", { name: conflict.template.name })}
+                    title={t("capture.dismissConflictNote")}
+                    onClick={() => onDismissAftercare(activeSession.id, conflict.template.id, true)}
+                  >
+                    ✕
+                  </button>
+                ) : null}
               </div>
             ))}
           </section>

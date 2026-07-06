@@ -1,0 +1,30 @@
+/* Session-surface feature CSS (Batch-2 session-surface work: Track-B fast-follows + the
+   session-layout-diet and treatment-overlay epics). Co-located and feature-scoped so it stays out of
+   the shared token/primitive layer in styles.css (Track F owns those). References design tokens
+   read-only (var(--…)); it never defines them. Load-once via an import in CaptureScreen. */
+
+/* --- Track B: aftercare conflict/superseded dismiss --------------------------------------------- */
+/* A conflict/superseded note is opt-out too — a subtle × at the end of the amber note dismisses it
+   (writes dismissed_aftercare, persists across re-synthesis). Mirrors .aftercare-included-remove. */
+.aftercare-conflict-dismiss {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8935a;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.aftercare-conflict-dismiss:hover { background: #f6ecd0; color: #6b4e12; }
+
+/* --- Track B: coded review notes (uncertainty_reasons) render actionably ------------------------ */
+/* The reason takes the row; a source-correctable code's fix action / source link sits at the end. */
+.treatment-review-note-text { flex: 1 1 auto; }
+.treatment-review-notes li .treatment-fix-at-source,
+.treatment-review-notes li .source-citation { flex: 0 0 auto; margin-inline-start: 4px; }

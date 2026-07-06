@@ -6,7 +6,7 @@ import type { CaptureItem, CaptureSession } from "../../../domain/types";
 import { metadataDisplay, metadataRecord } from "../metadata";
 import { Card } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
-import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, AssignmentCandidate } from "../captureModel";
+import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, aiCreatedPatientNeedsVerification, AssignmentCandidate } from "../captureModel";
 import { SyncIcon } from "./CaptureIcons";
 import { useT, type Translator } from "../../../shared/i18n";
 
@@ -50,12 +50,18 @@ export function PatientConflictResolver({
   suggestion,
   basisCaptureId,
   onApply,
+  onApplyNameCorrection,
+  onUnassign,
   onChooseAnother,
   onDismiss,
 }: {
   suggestion: PatientConflictSuggestion;
   basisCaptureId: string;
   onApply?: (draft: PatientAssignmentDraft) => Promise<void>;
+  /** One-tap apply for a `suggested_name_correction` — rename the assigned patient to the spoken name. */
+  onApplyNameCorrection?: (spokenName: string) => void | Promise<void>;
+  /** One-tap apply for a `suggested_unassign` — clear the visit's patient. */
+  onUnassign?: () => void | Promise<void>;
   onChooseAnother?: () => void;
   onDismiss?: () => void;
 }) {
@@ -85,6 +91,15 @@ export function PatientConflictResolver({
     if (!suggestion.patientId) return;
     applyDraft({ patientId: suggestion.patientId, displayName: suggestion.name, basisCaptureId });
   };
+  // One-tap apply for the E1 identity-correction chips (rename-in-place / unassign) — these have no
+  // assignment draft; they mutate the current patient directly through their dedicated endpoints.
+  const runApply = (action?: () => void | Promise<void>) => {
+    if (!action || applying) return;
+    setApplying(true);
+    void Promise.resolve(action()).finally(() => setApplying(false));
+  };
+  const applyNameCorrection = () => runApply(onApplyNameCorrection ? () => onApplyNameCorrection(suggestion.spokenName || suggestion.name) : undefined);
+  const applyUnassign = () => runApply(onUnassign);
   const createNew = (name: string, nationalId?: string) => {
     const display = name.trim();
     if (!display) return;
@@ -125,6 +140,18 @@ export function PatientConflictResolver({
         </div>
       ) : (
         <div className="partial-match-actions">
+          {/* E1 one-tap: a name correction renames the assigned patient in place; a detach unassigns —
+              each a single primary action (never leaving the resolver), with Assign-manually as escape. */}
+          {kind === "suggested_name_correction" && onApplyNameCorrection ? (
+            <button className="effect-chip-action" disabled={applying} onClick={applyNameCorrection} type="button">
+              {applying ? t("badge.applying") : t("badge.correctName")}
+            </button>
+          ) : null}
+          {kind === "suggested_unassign" && onUnassign ? (
+            <button className="effect-chip-action" disabled={applying} onClick={applyUnassign} type="button">
+              {applying ? t("badge.applying") : t("badge.unassignConfirm")}
+            </button>
+          ) : null}
           {isReassignment && suggestion.patientId && onApply ? (
             <button className="effect-chip-action" disabled={applying} onClick={keepMatch} type="button">
               {applying ? t("badge.applying") : t("badge.keepMatch")}
@@ -302,9 +329,9 @@ export function AiCreatedPatientPanel({
   const patientInfo = metadataRecord(action.patientInformation);
   const patientId = metadataDisplay(action.patientId || session.patientId);
   const [saving, setSaving] = React.useState(false);
-  const status = metadataDisplay(action.status);
-  const needsVerification = action.needsVerification !== false && status !== "verified";
-  if (!patientId || action.action !== "created_and_assigned" || !needsVerification) return null;
+  // Same predicate the verify-bar count uses (aiCreatedPatientNeedsVerification), so a counted blocker
+  // always has this reachable resolver and an un-counted action never renders an empty panel.
+  if (!aiCreatedPatientNeedsVerification(action, session)) return null;
   // Seed the unified create/edit form from the AI-extracted identity.
   const initial = {
     displayName: metadataDisplay(action.displayName || session.patientName || patientInfo.raw_mentioned_name),

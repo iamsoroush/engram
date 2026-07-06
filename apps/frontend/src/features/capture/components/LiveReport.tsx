@@ -1,7 +1,7 @@
 // Live report views (pro/basic) + markdown rendering for the capture flow.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
-import type { CaptureItem, CaptureSession, SessionTreatment, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
+import type { CaptureItem, CaptureSession, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation, StructuredReportBlock } from "../../../domain/types";
 import { useT } from "../../../shared/i18n";
 import { TryProTeaser } from "../../aesthetics/TryProTeaser";
 import { CaptureRawPreview } from "./SourcePreview";
@@ -118,7 +118,8 @@ export function ProLiveReport({
   const treatments = workspaceTreatments(session);
   const hasTreatmentSection = sections.some((section) => section.id === TREATMENT_SECTION_ID);
   // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
-  // low confidence, missing lot, free-text uncertainty) — rendered as calm chips below the report.
+  // low confidence, missing lot, free-text uncertainty) from the coded uncertainty_reasons (S-F11) —
+  // rendered inline on the matching row where they have a home, else as calm notes below the list.
   const review = sessionTreatmentReview(session);
   // Products the synthesis flagged as missing a lot/batch number — drives a soft inline "lot not
   // captured · fix at source" hint on the matching treatment row (never counted as a blocker).
@@ -138,12 +139,25 @@ export function ProLiveReport({
     });
   const onConfirmCarried =
     onConfirmCarriedForward && session ? (key: string) => onConfirmCarriedForward(session.id, key) : undefined;
-  // The synthesis's softer uncertainties (not the carried-forward dose, not the per-row low-confidence
-  // / missing-lot hints) — shown as calm notes beneath the treatments list.
-  const reviewNotes = review
-    .filter((item) => item.category !== "carried_forward" && item.category !== "low_confidence" && item.category !== "missing_lot")
-    .map((item) => item.reason)
-    .filter(Boolean);
+  // Which review items already have an INLINE home on a rendered row (so a note would double-surface):
+  // a carried-forward dose with a matching row, a missing-lot / low-confidence flag on a matching row.
+  const treatmentKeySet = new Set(treatments.map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`));
+  const missingLotInline = new Set(
+    treatments.filter((treatment) => !treatment.lot && treatment.product && missingLotProducts.has((treatment.product || "").trim())).map((treatment) => (treatment.product || "").trim()),
+  );
+  const lowConfidenceInline = new Set(
+    treatments.filter(isLowConfidenceTreatment).map((treatment) => (treatment.product || "").trim()).filter(Boolean),
+  );
+  const surfacedInline = (item: (typeof review)[number]): boolean => {
+    if (item.category === "carried_forward") return Boolean(item.key && treatmentKeySet.has(item.key));
+    if (item.category === "missing_lot") return Boolean(item.product && missingLotInline.has(item.product.trim()));
+    if (item.category === "low_confidence") return Boolean(item.product && lowConfidenceInline.has(item.product.trim()));
+    return false; // an ambiguous / free-text uncertainty has no inline row — it is always a note
+  };
+  // Every coded review item NOT already surfaced inline becomes a calm note (never silently dropped —
+  // e.g. a missing-lot flag whose product didn't render a row). Kept as objects so a note can carry an
+  // action: deep-link to its source capture, or fix-at-source for a source-correctable code.
+  const reviewNoteItems = review.filter((item) => !surfacedInline(item));
   // Pro "organizing with AI": the deterministic baseline is visible and complete, but the synthesis
   // job is still in flight — show a calm, persistent notice instead of a (false) "current" line.
   const organizing = sessionAiOrganizing(session);
@@ -198,7 +212,7 @@ export function ProLiveReport({
                     isPersian={isPersianReport(reportLanguage)}
                     carriedForwardReasons={carriedForwardReasons}
                     onConfirmCarried={onConfirmCarried}
-                    reviewNotes={reviewNotes}
+                    reviewNotes={reviewNoteItems}
                   />
                 ) : section.id === "media" ? (
                   <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
@@ -239,7 +253,7 @@ export function ProLiveReport({
             isPersian={isPersianReport(reportLanguage)}
             carriedForwardReasons={carriedForwardReasons}
             onConfirmCarried={onConfirmCarried}
-            reviewNotes={reviewNotes}
+            reviewNotes={reviewNoteItems}
           />
         </section>
       ) : null}
@@ -310,8 +324,9 @@ function TreatmentsList({
   carriedForwardReasons?: Record<string, string>;
   /** Confirm a carried-forward dose by its `area|product` key. */
   onConfirmCarried?: (key: string) => Promise<void>;
-  /** The synthesis's softer uncertainties (ambiguous notes), rendered calmly under the list. */
-  reviewNotes?: string[];
+  /** Coded review items with no inline home — rendered calmly under the list, source-correctable ones
+   *  (missing lot / low confidence) carry a fix action; any item with a source capture deep-links to it. */
+  reviewNotes?: SessionTreatmentReview[];
 }) {
   const [confirmingKey, setConfirmingKey] = React.useState<string | null>(null);
   const t = useT();
@@ -391,12 +406,25 @@ function TreatmentsList({
       </ul>
       {reviewNotes?.length ? (
         <ul className="treatment-review-notes" aria-label={t("report.notesToReview")}>
-          {reviewNotes.map((note, index) => (
-            <li key={`${index}-${note.slice(0, 24)}`} dir={textDirection(note)}>
-              <span className="treatment-review-note-icon" aria-hidden="true">ⓘ</span>
-              {note}
-            </li>
-          ))}
+          {reviewNotes.map((item, index) => {
+            const source = item.sourceCaptureIds?.find((id) => typeof id === "string" && id.trim());
+            // A source-correctable code (missing lot / low confidence) offers fix-at-source; any coded
+            // item that cites a capture deep-links to it. An ambiguous/free-text note stays informational.
+            const fixable = item.category === "missing_lot" || item.category === "low_confidence";
+            return (
+              <li key={`${index}-${item.reason.slice(0, 24)}`} dir={textDirection(item.reason)}>
+                <span className="treatment-review-note-icon" aria-hidden="true">ⓘ</span>
+                <span className="treatment-review-note-text">{item.reason}</span>
+                {source && onOpenSource ? (
+                  <SourceCitation captureIds={item.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
+                ) : fixable && onFixAtSource ? (
+                  <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
+                    {t("report.fixAtSource")}
+                  </button>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </>

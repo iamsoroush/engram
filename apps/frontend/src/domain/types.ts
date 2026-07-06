@@ -175,6 +175,8 @@ export type SessionTreatmentReview = {
   product?: string | null;
   /** Stable `area|product` key for a carried_forward item — what the confirm endpoint records (Q3). */
   key?: string | null;
+  /** Captures the coded uncertainty (S-F11) points at — a note deep-links to its source ("↗ source"). */
+  sourceCaptureIds?: string[];
 };
 
 export type SessionSummaries = {
