@@ -8,7 +8,7 @@ import unittest
 import uuid
 from types import SimpleNamespace
 
-from app.models import OrganizationSource, SessionStatus
+from app.models import OrganizationSource, PatientStatus, SessionStatus
 from app.services.patient_assignment_timeline import apply_active_patient_assignment, patient_assignment_event
 from app.services.synthesis_escalation import SYNTHESIS_ESCALATE_KEY
 from app.services.patient_safety import (
@@ -65,6 +65,9 @@ class _AssignDb:
     def get(self, _model, pk):
         return self._patients.get(pk)
 
+    def flush(self):  # the chokepoint flushes before the orphan-archive dependents check
+        pass
+
 
 class ReassignmentSafetyTests(unittest.TestCase):
     """S-F1/S-F2: the central assignment choke point drops old-patient flags, syncs the new patient,
@@ -73,10 +76,12 @@ class ReassignmentSafetyTests(unittest.TestCase):
     def test_ai_reassignment_moves_safety_flags_and_invalidates(self):
         tenant_id = uuid.uuid4()
         session_id = uuid.uuid4()
+        # Fakes model the Patient attrs the full chokepoint now reads: memory (M-P2 refresh mark),
+        # status/notes (Fix-6 orphan-archive guard — staff-created here, so the guard exits early).
         w = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, safety_flags=[
             {"key": "allergy|lido", "kind": "allergy", "text": "lidocaine", "sourceSessionId": str(session_id), "sourceCaptureIds": []},
-        ])
-        r = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, safety_flags=[])
+        ], memory=None, status=PatientStatus.active, notes="")
+        r = SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, safety_flags=[], memory=None, status=PatientStatus.active, notes="")
         event = patient_assignment_event(
             source="staff", action="manually_assigned", patient_id=r.id,
             display_name="R", reason="corrected", capture_id=None,
