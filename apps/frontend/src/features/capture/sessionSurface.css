@@ -28,3 +28,136 @@
 .treatment-review-note-text { flex: 1 1 auto; }
 .treatment-review-notes li .treatment-fix-at-source,
 .treatment-review-notes li .source-citation { flex: 0 0 auto; margin-inline-start: 4px; }
+
+/* --- Session-layout-diet: the patient strip (AES-1301..1305) ------------------------------------ */
+/* The strip is sticky so identity + safety + verify count stay visible while reading a long report
+   (owner round-2 decision: pinned). It sits directly above the report card. */
+.patient-strip {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  margin-bottom: 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(20, 30, 55, 0.05);
+}
+.patient-strip.expanded { padding: 4px 4px 8px; background: #fbfcfe; }
+
+/* Collapsed: a single line — avatar · name · ordinal · state · chips · chevron. */
+.patient-strip-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  min-height: 44px;
+}
+.patient-strip-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #eef2f8;
+  color: #6b7a93;
+}
+.patient-strip-avatar svg { width: 17px; height: 17px; }
+.patient-strip-identity {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: start;
+  cursor: pointer;
+  overflow: hidden;
+}
+.patient-strip-identity strong { font-size: 0.9rem; color: #1f2a44; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.patient-strip-ordinal { flex: 0 0 auto; font-size: 0.76rem; color: #8a98ad; }
+.patient-strip-state { flex: 0 0 auto; font-size: 0.76rem; color: #3f8f5b; font-weight: 600; }
+.patient-strip-state.unassigned { color: #b7791f; }
+.patient-strip-line.unassigned { background: #fffaf0; border-radius: 14px; }
+.patient-strip-chips { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.patient-strip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.patient-strip-chip.verify { background: #fdf3e2; color: #a15c15; }
+.patient-strip-chip.safety { background: #fdecec; color: #c0392b; padding: 3px 7px; }
+.patient-strip-assign {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: #b7791f;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.patient-strip-chevron {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #8a98ad;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+
+/* Expanded: a header row (identity + actions) then the absorbed cards flow beneath. */
+.patient-strip-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px 6px;
+}
+.patient-strip-copy { flex: 1 1 auto; min-width: 0; }
+.patient-strip-copy strong { display: block; font-size: 0.92rem; color: #1f2a44; }
+.patient-strip-copy p { margin: 1px 0 0; font-size: 0.76rem; color: #8a98ad; }
+.patient-strip-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+.patient-strip-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #e3e8f0;
+  border-radius: 999px;
+  background: #fff;
+  padding: 5px 11px;
+  font-size: 0.78rem;
+  color: #3a4a66;
+  cursor: pointer;
+}
+.patient-strip-action.primary { background: #b7791f; border-color: #b7791f; color: #fff; }
+.patient-strip-action svg { width: 14px; height: 14px; }
+/* The absorbed cards drop their own outer margins so they nest cleanly inside the strip. */
+.patient-strip .session-safety-panel,
+.patient-strip .session-context-card,
+.patient-strip-verify { margin: 6px 6px 0; }
+
+/* Active conflicts: a thin, always-visible band above the report (never buried in the strip). */
+.session-conflict-band {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .patient-strip { background: #161b26; border-color: #2a3140; }
+  .patient-strip.expanded { background: #131722; }
+  .patient-strip-avatar { background: #232a38; color: #9aa7bd; }
+  .patient-strip-identity strong, .patient-strip-copy strong { color: #e6ebf4; }
+  .patient-strip-action { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
+}

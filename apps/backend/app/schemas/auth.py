@@ -21,6 +21,8 @@ class TenantSettingsUpdate(BaseModel):
     matchStrictness: str | None = None
     # Story C (decision 2): include commercial brand names in a curated share's treatment line.
     shareIncludeBrands: bool | None = None
+    # Session-layout-diet (AES-1304): pin the session safety panel open (high-risk clinic).
+    highRiskClinic: bool | None = None
     # Multi-seat role permissions (AES-905): per non-owner role preset, e.g.
     # {"assistant": "reassign", "doctor": "contribute"}. Each value ∈ contribute | reassign | full.
     # Only provided roles change; unknown roles/presets are rejected (400). Admin-only at the route.
@@ -104,6 +106,8 @@ class TenantProfile(BaseModel):
     appLanguage: str = "en"
     matchStrictness: str = "strict"
     shareIncludeBrands: bool = False
+    # Session-layout-diet (AES-1304): when true, the session safety panel stays pinned open.
+    highRiskClinic: bool = False
     # A0 — vertical + the presentation label for its report-required work-unit ("Session" for clinics).
     vertical: str = "clinic"
     encounterLabel: str = "Session"

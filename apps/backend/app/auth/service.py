@@ -39,6 +39,7 @@ def tenant_profile(tenant: Tenant) -> TenantProfile:
         appLanguage=tenant.app_language,
         matchStrictness=tenant.match_strictness,
         shareIncludeBrands=tenant.share_include_brands,
+        highRiskClinic=tenant.high_risk_clinic,
         vertical=tenant.vertical,
         encounterLabel=encounter_label(tenant.vertical),
         rolePermissions=resolve_role_permissions(tenant.role_permissions),
@@ -352,6 +353,8 @@ def update_tenant_settings(db: Session, principal: "CurrentPrincipal", *, provid
         tenant.match_strictness = value
     if "shareIncludeBrands" in provided:
         tenant.share_include_brands = bool(provided["shareIncludeBrands"])
+    if "highRiskClinic" in provided:
+        tenant.high_risk_clinic = bool(provided["highRiskClinic"])
     if "rolePermissions" in provided:
         # AES-905: admin-only — role permissions are the clinic's org policy, not a per-user pref.
         # The clinic ``owner`` (founder) administers the tenant too, so it shares this gate with admin.

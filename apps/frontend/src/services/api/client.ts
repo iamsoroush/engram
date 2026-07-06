@@ -806,6 +806,9 @@ export async function updateTenantSettings(
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
+    shareIncludeBrands?: boolean;
+    // Session-layout-diet (AES-1304): pin the session safety panel open (high-risk clinic).
+    highRiskClinic?: boolean;
     // AES-905 — per non-owner role preset, e.g. { assistant: "reassign" }. Admin-only on the backend.
     rolePermissions?: RolePermissions;
   },

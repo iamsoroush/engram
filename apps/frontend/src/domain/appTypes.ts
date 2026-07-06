@@ -82,6 +82,8 @@ export type AuthTenant = {
   matchStrictness?: "strict" | "balanced" | "lenient" | string;
   /** Story C (decision 2): include commercial brand names in a curated share's treatment line. */
   shareIncludeBrands?: boolean;
+  /** Session-layout-diet (AES-1304): pin the session safety panel open (high-risk clinic). */
+  highRiskClinic?: boolean;
   /** A0 — vertical ("clinic" today) + the presentation label for its work-unit ("Session"). */
   vertical?: string;
   encounterLabel?: string;

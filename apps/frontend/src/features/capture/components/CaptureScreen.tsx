@@ -12,10 +12,10 @@ import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
 import { LiveReportView } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
-import { SessionVerifyBar } from "./SessionVerifyBar";
-import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion } from "./CaptureBadges";
-import { NextLinedUpBar, SessionReviewRegion, SessionSafetyPanel } from "./CaptureRegions";
-import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture } from "../captureModel";
+import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion, AiCreatedPatientPanel, PatientConflictResolver } from "./CaptureBadges";
+import { NextLinedUpBar, SessionSafetyPanel } from "./CaptureRegions";
+import { PatientStrip } from "./PatientStrip";
+import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture, ordinalWord } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
 import { isPersianLocale } from "../../../shared/lib/datetime";
@@ -98,7 +98,10 @@ export function CaptureScreen({
   const { resolveSourceFile: onResolveFile } = useMemoryApi();
   const { tier } = useCapabilities();
   const { offline } = useSync();
-  const reportLanguage = useAuth().auth?.tenant.reportLanguage ?? null;
+  const tenant = useAuth().auth?.tenant;
+  const reportLanguage = tenant?.reportLanguage ?? null;
+  // Session-layout-diet: a high-risk clinic pins the full safety panel open (never a collapsed chip).
+  const highRiskClinic = tenant?.highRiskClinic ?? false;
   const {
     renameSession: onUpdateTitle,
     renameCapture: onRenameCapture,
@@ -265,9 +268,13 @@ export function CaptureScreen({
   // (above the report), and a carried-forward dose lives inline on its treatment row in the report. The
   // region (when present) is highest on the page, so it wins; otherwise the first inline dose row.
   const scrollToVerify = () => {
-    const region = verifyRegionRef.current;
-    const target = region || document.querySelector(".treatment-item.needs-confirm");
-    target?.scrollIntoView({ behavior: "smooth", block: region ? "start" : "center" });
+    // Topmost blocker first: the always-visible conflict band, then the strip's AI-created-patient
+    // verify region (revealed by expanding the strip), then the first inline carried-forward dose row.
+    const target =
+      document.querySelector(".session-conflict-band") ||
+      verifyRegionRef.current ||
+      document.querySelector(".treatment-item.needs-confirm");
+    target?.scrollIntoView({ behavior: "smooth", block: target?.classList?.contains("treatment-item") ? "center" : "start" });
   };
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
@@ -276,6 +283,23 @@ export function CaptureScreen({
       workspaceStructuredReportCopy(activeSession).length ||
       workspaceTreatments(activeSession).length,
   );
+  // --- Session-layout-diet: patient-strip derived state ---
+  const patientAssigned = Boolean(activeSession?.patientId || activeSession?.patientName);
+  // The collapsed strip's assignment line — "✓ assigned" / "Matched by AI" / soft-amber "Unassigned".
+  const assignmentStateLabel = patientAssigned
+    ? activeSession?.assignmentSource
+      ? assignmentSourceLabel(activeSession.assignmentSource, t)
+      : t("strip.assignedCheck")
+    : t("strip.unassigned");
+  const visitOrdinalLabel = sessionOrdinal ? t("strip.nthVisit", { ordinal: ordinalWord(sessionOrdinal, t) }) : null;
+  // Whether the assigned patient has prior history worth auto-surfacing on (re)assignment.
+  const stripHasHistory = Boolean(
+    sessionContext && (sessionContext.lastVisit?.hasPriorVisit || sessionContext.totalPriorVisits > 0 || sessionContext.safetyFlags?.length),
+  );
+  // Changes on every (re)assignment so the strip's state machine can re-surface the history.
+  const assignmentSignal = `${activeSession?.patientId ?? ""}:${activeSession?.assignmentSource ?? ""}`;
+  // High-risk clinics keep the full safety panel pinned above the report (never a collapsed chip).
+  const safetyPinned = highRiskClinic && keptSafetyFlags.length > 0;
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const sourcesShown = sourcesOpen || !reportHasContent;
   const sourcesDrawerRef = React.useRef<HTMLElement>(null);
@@ -408,97 +432,133 @@ export function CaptureScreen({
           </span>
         </div>
       ) : null}
+      {/* AI-usage notice — a thin, calm bar ABOVE the patient strip (rare; only near/at budget). */}
       {!isHistorical && usageNotice ? usageNotice : null}
-      {useUnifiedLayout && !isHistorical ? (
-        <SessionVerifyBar count={verifyCount} onReview={scrollToVerify} pending={isUpdatingReport} />
-      ) : null}
-      <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
-        <span className="patient-context-avatar" aria-hidden="true">
-          <PatientIcon />
-        </span>
-        <div className="patient-context-copy">
-          <strong dir={textDirection(patientName)}>{patientName}</strong>
-          <p>
-            {activeSession?.patientId || activeSession?.patientName
-              ? activeSession.assignmentSource
-                ? assignmentSourceLabel(activeSession.assignmentSource, t)
-                : t("capture.assignedManually")
-              : t("capture.captureFirstAssignWhenReady")}
-          </p>
-        </div>
-        <div className="patient-context-actions">
-          {activeSession?.patientId && onViewPatientHistory ? (
-            <button
-              className="patient-context-action"
-              onClick={() => onViewPatientHistory(activeSession.patientId as string)}
-              type="button"
-            >
-              <ClockHistoryIcon />
-              {t("capture.history")}
-            </button>
+      {!isHistorical && activeSession ? (
+        <>
+          {/* The pinned, collapsible patient strip: identity + context + verify chips + safety chip in
+              one line above the report; the diet turns nine zones into strip → report. */}
+          <PatientStrip
+            patientName={patientName}
+            assigned={patientAssigned}
+            assignmentStateLabel={assignmentStateLabel}
+            visitOrdinalLabel={visitOrdinalLabel}
+            onAssignOrChange={onCloseAssignment}
+            onViewHistory={activeSession.patientId && onViewPatientHistory ? () => onViewPatientHistory(activeSession.patientId as string) : undefined}
+            verifyCount={verifyCount}
+            onReview={scrollToVerify}
+            safetyChipCount={safetyPinned ? 0 : keptSafetyFlags.length}
+            hasCaptures={captureCount > 0}
+            reportHasContent={reportHasContent}
+            hasHistory={stripHasHistory}
+            assignmentSignal={assignmentSignal}
+            isHistorical={false}
+            contextCard={
+              activeSession.patientId && sessionContext ? (
+                <SessionContextCard
+                  context={sessionContext}
+                  isPro={isPro}
+                  lineupCard={lineupCard}
+                  onOpenVisit={onOpenVisit}
+                  onUseAsNote={onUseAsNote}
+                  onResolveFile={onResolveFile}
+                  collapsed={false}
+                />
+              ) : null
+            }
+            safetyPanel={
+              !safetyPinned ? (
+                <SessionSafetyPanel
+                  flags={keptSafetyFlags}
+                  sessionId={activeSession.id}
+                  canEdit={!readOnly}
+                  onReject={onRejectSafetyFlag}
+                />
+              ) : null
+            }
+            aiCreatedPanel={
+              patientVerifyNeeded ? (
+                <AiCreatedPatientPanel action={aiPatientAction as Record<string, unknown>} session={activeSession} onComplete={onCompleteAiCreatedPatient as NonNullable<typeof onCompleteAiCreatedPatient>} />
+              ) : null
+            }
+            verifyRef={verifyRegionRef}
+          />
+          {/* High-risk clinic: the full safety panel stays pinned above the report (never a chip). */}
+          {safetyPinned ? (
+            <SessionSafetyPanel flags={keptSafetyFlags} sessionId={activeSession.id} canEdit={!readOnly} onReject={onRejectSafetyFlag} />
           ) : null}
-          {onCloseAssignment ? (
-            <button
-              className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
-              onClick={onCloseAssignment}
-              type="button"
-            >
-              {activeSession?.patientId || activeSession?.patientName ? (
-                <>
-                  <EditIcon />
-                  {t("capture.change")}
-                </>
-              ) : (
-                <>
-                  <AddPatientIcon />
-                  {t("capture.assign")}
-                </>
-              )}
-            </button>
+          {nextLinedUpPatient && !activeSession.patientId && !activeSession.patientName ? (
+            <NextLinedUpBar
+              patientName={nextLinedUpPatient.patientName}
+              hasCaptures={Boolean(activeSession.items.length)}
+              onAssignActiveToNext={onAssignActiveToNext}
+              onStartNextVisit={onStartNextVisit}
+            />
           ) : null}
-        </div>
-      </Card>
-      {!isHistorical && nextLinedUpPatient && activeSession && !activeSession.patientId && !activeSession.patientName ? (
-        <NextLinedUpBar
-          patientName={nextLinedUpPatient.patientName}
-          hasCaptures={Boolean(activeSession.items.length)}
-          onAssignActiveToNext={onAssignActiveToNext}
-          onStartNextVisit={onStartNextVisit}
-        />
+          {/* Active patient conflicts stay in a thin, always-visible band above the report — visible and
+              resolvable in place, never buried in the strip (owner round-2 decision). */}
+          {patientConflicts.length ? (
+            <section className="session-conflict-band" aria-label={t("capture.patientNeedsConfirmation")}>
+              {patientConflicts.map((conflict) => (
+                <PatientConflictResolver
+                  key={conflict.captureId}
+                  suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
+                  basisCaptureId={conflict.captureId}
+                  onApply={onAssignPatient ? (draft) => onAssignPatient(activeSession.id, draft) : undefined}
+                  onApplyNameCorrection={(spokenName) => onApplyNameCorrection(activeSession.id, spokenName, conflict.captureId)}
+                  onUnassign={() => onUnassignPatient(activeSession.id, conflict.captureId)}
+                  onChooseAnother={onOpenResolver}
+                  onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
+                />
+              ))}
+            </section>
+          ) : null}
+        </>
       ) : null}
-      {/* Session-level safety panel — highest priority, so it sits ABOVE the context card and the
-          verify region. Opt-out: every detected flag is shown by default; the × rejects a wrong one.
-          NOT a verify-bar blocker (not in verifyRegionRef, not counted). Renders null when empty. */}
-      <SessionSafetyPanel
-        flags={keptSafetyFlags}
-        sessionId={activeSession?.id ?? ""}
-        canEdit={!isHistorical && !readOnly && Boolean(activeSession)}
-        onReject={onRejectSafetyFlag}
-      />
-      {!isHistorical && activeSession?.patientId && sessionContext ? (
-        <SessionContextCard
-          context={sessionContext}
-          isPro={isPro}
-          lineupCard={lineupCard}
-          onOpenVisit={onOpenVisit}
-          onUseAsNote={onUseAsNote}
-          onResolveFile={onResolveFile}
-          collapsed={reportHasContent}
-        />
-      ) : null}
-      {!isHistorical && activeSession && (patientVerifyNeeded || patientConflicts.length) ? (
-        <SessionReviewRegion
-          session={activeSession}
-          aiPatientAction={patientVerifyNeeded ? aiPatientAction : null}
-          onCompleteAiCreatedPatient={onCompleteAiCreatedPatient}
-          patientConflicts={patientConflicts}
-          onAssignPatient={onAssignPatient}
-          onApplyNameCorrection={(basisCaptureId, spokenName) => onApplyNameCorrection(activeSession.id, spokenName, basisCaptureId)}
-          onUnassign={(basisCaptureId) => onUnassignPatient(activeSession.id, basisCaptureId)}
-          onOpenResolver={onOpenResolver}
-          onDismissConflict={(captureId) => setDismissedConflicts((current) => new Set(current).add(captureId))}
-          regionRef={verifyRegionRef}
-        />
+      {/* Historical review keeps the flat patient card (no strip diet — it's read-only visit review). */}
+      {isHistorical ? (
+        <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
+          <span className="patient-context-avatar" aria-hidden="true">
+            <PatientIcon />
+          </span>
+          <div className="patient-context-copy">
+            <strong dir={textDirection(patientName)}>{patientName}</strong>
+            <p>
+              {activeSession?.patientId || activeSession?.patientName
+                ? activeSession.assignmentSource
+                  ? assignmentSourceLabel(activeSession.assignmentSource, t)
+                  : t("capture.assignedManually")
+                : t("capture.captureFirstAssignWhenReady")}
+            </p>
+          </div>
+          <div className="patient-context-actions">
+            {activeSession?.patientId && onViewPatientHistory ? (
+              <button className="patient-context-action" onClick={() => onViewPatientHistory(activeSession.patientId as string)} type="button">
+                <ClockHistoryIcon />
+                {t("capture.history")}
+              </button>
+            ) : null}
+            {onCloseAssignment ? (
+              <button
+                className={`patient-context-action${activeSession?.patientId || activeSession?.patientName ? "" : " primary"}`}
+                onClick={onCloseAssignment}
+                type="button"
+              >
+                {activeSession?.patientId || activeSession?.patientName ? (
+                  <>
+                    <EditIcon />
+                    {t("capture.change")}
+                  </>
+                ) : (
+                  <>
+                    <AddPatientIcon />
+                    {t("capture.assign")}
+                  </>
+                )}
+              </button>
+            ) : null}
+          </div>
+        </Card>
       ) : null}
       <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
         <div className="report-heading">
