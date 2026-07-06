@@ -1,7 +1,7 @@
 // Clinical Memory home screen (Today / Patients / Needs input tabs).
 // Extracted verbatim from MemoryScreens.tsx (no behavior change).
 import React from "react";
-import type { AftercareTemplate, AssignmentSuggestionResponse, AuthSession, ClinicMember, CreatePatientShareInput, DuplicateCheckResponse, LastVisitInfo, LotLedger, LotRecallResult, PatientAssignmentDraft, PatientMemoryDetailResponse, PatientMemoryFilter, PatientMemoryListResponse, PatientMemoryRow as ApiPatientMemoryRow, PatientShare, PatientSummary, SmartListCounts, SmartListKey, SmartListResponse, SmartPatientMatch, SmartPatientSearchResponse, SyncHealth, WorklistEntry, WorklistResponse } from "../../../domain/appTypes";
+import type { AftercareTemplate, AssignmentSuggestionResponse, AttentionItem, AttentionScope, AuthSession, ClinicMember, CreatePatientShareInput, DuplicateCheckResponse, LastVisitInfo, LotLedger, LotRecallResult, PatientAssignmentDraft, PatientMemoryDetailResponse, PatientMemoryFilter, PatientMemoryListResponse, PatientMemoryRow as ApiPatientMemoryRow, PatientShare, PatientSummary, SmartListCounts, SmartListKey, SmartListResponse, SmartPatientMatch, SmartPatientSearchResponse, SyncHealth, WorklistEntry, WorklistResponse } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
 import type { PatientEditDraft } from "../../../services/api/client";
 import { Input } from "../../../shared/ui/primitives";
@@ -15,7 +15,8 @@ import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import type { QaThreadSummary } from "../../qa/qaClient";
 import { ClinicalMemoryTab, PatientFilter, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, NeedsInputCardItem, StorageWarningDecision, buildNeedsInputItems, needsInputCardFromApi, buildTodayModel, buildPatientRows, patientRowFromApi, patientRowStub, patientRowFromSmartMatch, smartMatchBadges, todayNeedsInputActionLabel, activeSectionBadge, patientNeedsInputItemsFromApi, decisionActionForSession, decisionIdForSession, formatPatientLastVisit, visitCountLabel } from "./memoryModel";
 import { SearchIcon, FilterIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, SparkleIcon, ChevronIcon, OfflineIcon, InfoIcon } from "./MemoryIcons";
-import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading, NeedsInputDecisionCard } from "./MemoryCards";
+import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading } from "./MemoryCards";
+import { AttentionSweep } from "./AttentionSweep";
 import { PatientDecisionListSheet, SummaryReviewSheet, StorageReviewSheet, PatientRecapSheet, ChoosePatientResolver, AssignPatientResolver } from "./MemorySheets";
 import { PatientTimelineDetail } from "./PatientTimeline";
 import { SmartListsTab } from "./SmartListsTab";
@@ -27,6 +28,9 @@ import { useSync } from "../../../app/providers/SyncProvider";
 import { useActiveSession, useMemoryRefreshSignal, useSessionActions, useSessions } from "../../../app/providers/SessionStoreProvider";
 
 export const PATIENT_PAGE_SIZE = 25;
+// Backed-off memory-refresh poll ceiling. With 3s→30s exponential backoff this spans a few minutes
+// before ceding to the signal-driven refresh — long enough for a slow/parked rebuild, never infinite.
+const MEMORY_POLL_MAX_ATTEMPTS = 18;
 export function PatientsHome({
   initialPatientId,
   initialTab,
@@ -35,6 +39,7 @@ export function PatientsHome({
   onContinueSession,
   onViewingPatientChange,
   onStartVisit,
+  onOpenQaInbox,
 }: {
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
@@ -47,6 +52,8 @@ export function PatientsHome({
   /** AES-903 — start a fresh visit assigned to the patient (worklist quick action); marks the
    *  entry seen + navigates to the capture screen. */
   onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
+  /** Deep-link a sweep "Messages" item to the Q&A inbox thread (the sweep never reimplements reply). */
+  onOpenQaInbox?: () => void;
 }) {
   const t = useT();
   // Seam consumption (frontend-refactor plan §3, increment 6): the ~38 apiFetch-bound / session /
@@ -96,6 +103,11 @@ export function PatientsHome({
   const shareIncludeBrands = Boolean(auth?.tenant.shareIncludeBrands);
   const shareLanguage = auth?.tenant.reportLanguage || null;
   const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
+  // Follow an externally-driven tab change (e.g. the top-bar Attention indicator opening the sweep
+  // while already on this screen, where the mount initializer above wouldn't re-run).
+  React.useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
   const [query, setQuery] = React.useState("");
   const [patientFilter, setPatientFilter] = React.useState<PatientFilter>("recent");
   // AES-904 "Mine vs Clinic" on the patients list. Default Clinic (the whole shared base); Mine
@@ -103,6 +115,10 @@ export function PatientsHome({
   const [ownershipScope, setOwnershipScope] = React.useState<"mine" | "clinic">("clinic");
   const myUserId = auth?.user.id;
   const patientClinicianId = ownershipScope === "mine" && myUserId ? myUserId : undefined;
+  // The Close-the-day sweep defaults its scope by role: a doctor/owner clears their own doses/safety/
+  // messages (`mine`); reception (assistant/admin) coordinates the room, so intake/assignment (`clinic`).
+  const myRole = auth?.memberships.find((membership) => membership.tenantId === auth.tenant.id)?.role || auth?.user.persona || "doctor";
+  const attentionDefaultScope: AttentionScope = myRole === "assistant" || myRole === "admin" ? "clinic" : "mine";
   const [backendPatientRows, setBackendPatientRows] = React.useState<ApiPatientMemoryRow[]>([]);
   const [patientRowsLoading, setPatientRowsLoading] = React.useState(false);
   const [patientRowsError, setPatientRowsError] = React.useState(false);
@@ -164,6 +180,31 @@ export function PatientsHome({
     );
     return [...localExtras, ...backendCards].sort((a, b) => b.sortTime - a.sortTime);
   }, [needsInputRowsLoaded, needsInputRows, localNeedsInputItems, t]);
+  // The device storage warning is a client-only data-safety signal the backend roll-up can't see, so
+  // it's injected into the sweep as an S2 item (keeping the epic's "storage in the Basic ladder"),
+  // routed to the same StorageReviewSheet at its source.
+  const attentionClientItems = React.useMemo<AttentionItem[]>(
+    () =>
+      storageWarning
+        ? [
+            {
+              id: "client:storage-warning",
+              kind: "storage-warning",
+              tier: "S2",
+              dayGroup: "today",
+              sessionId: null,
+              patientId: null,
+              patientName: null,
+              clinicianId: null,
+              threadId: null,
+              reason: t("attention.reason.storage"),
+              key: null,
+              sortTime: null,
+            },
+          ]
+        : [],
+    [storageWarning, t],
+  );
   // First page: re-fetched from offset 0 whenever the tab, search query, filter, or a create
   // (patientListVersion) changes — keeping the list in sync with the shared search box.
   React.useEffect(() => {
@@ -189,11 +230,12 @@ export function PatientsHome({
     };
   }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
 
-  // Needs input tab: fetch every patient with a critical decision (a high limit — this inbox is
-  // small and not paginated). On failure we keep `needsInputRowsLoaded` false so the tab falls
-  // back to the local (offline) derivation.
+  // Backend needs-input rows (the single source of truth shared with the patient-card badge + the
+  // Today preview + the hero count). A high limit — this decision set is small and not paginated. On
+  // failure we keep `needsInputRowsLoaded` false so the surfaces fall back to the local (offline)
+  // derivation. Not tab-gated: the Today preview and hero read it too.
   React.useEffect(() => {
-    if (activeTab !== "needs-input" || !onListPatientMemory) return;
+    if (!onListPatientMemory) return;
     let cancelled = false;
     void onListPatientMemory({ filter: "needs-input", limit: 100, offset: 0 })
       .then((result) => {
@@ -207,7 +249,7 @@ export function PatientsHome({
     return () => {
       cancelled = true;
     };
-  }, [activeTab, onListPatientMemory, patientListVersion, memoryRefreshSignal]);
+  }, [onListPatientMemory, patientListVersion, memoryRefreshSignal]);
 
   // AES-204 — run the deterministic smart search whenever the Patients tab has a query.
   React.useEffect(() => {
@@ -364,27 +406,33 @@ export function PatientsHome({
 
   // Opening a patient whose memory is cold triggers a server-side (re)generation that finishes in a
   // few seconds — but a passive open gets no post-capture refresh ladder, so poll while it is
-  // "organizing" and stop the moment it flips to ready (capped, so it never spins forever).
+  // "organizing" and stop the moment it flips to ready. Track A: exponential BACKOFF (3s → ~30s)
+  // rather than a hard 12-attempt cap, so a slow rebuild — or a fair-use-PARKED one that only resumes
+  // next cycle / on upgrade — keeps refreshing calmly instead of either spinning fast forever or
+  // giving up at a fixed count. The pill shows the usage-limit state while parked (see MemoryUpdatingPill).
   React.useEffect(() => {
     if (!selectedPatientId || !onGetPatientMemory) return;
     if (selectedPatientDetail?.patient?.memoryStatus !== "updating") return;
     let cancelled = false;
     let attempts = 0;
-    const timer = window.setInterval(() => {
+    let timer = 0;
+    const poll = () => {
       attempts += 1;
-      if (cancelled || attempts > 12) {
-        window.clearInterval(timer);
-        return;
-      }
       void onGetPatientMemory(selectedPatientId)
         .then((detail) => {
           if (!cancelled) setPatientDetailCache((current) => ({ ...current, [selectedPatientId]: detail }));
         })
-        .catch(() => undefined);
-    }, 3000);
+        .catch(() => undefined)
+        .finally(() => {
+          if (cancelled || attempts >= MEMORY_POLL_MAX_ATTEMPTS) return;
+          const delay = Math.min(3000 * Math.pow(1.6, attempts - 1), 30000);
+          timer = window.setTimeout(poll, delay);
+        });
+    };
+    timer = window.setTimeout(poll, 3000);
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
     };
   }, [onGetPatientMemory, selectedPatientId, selectedPatientDetail?.patient?.memoryStatus]);
 
@@ -432,12 +480,32 @@ export function PatientsHome({
     openNeedsInputDecision(item.action, item.sessionId || patient?.latestSessionId);
   };
 
-  const handleNeedsInputAction = (item: NeedsInputCardItem) => {
-    if (item.action === "review-storage") {
+  // Route a sweep item to the SAME resolver it uses at its source. Assignment decisions open the
+  // in-place assign/choose resolver; a dose/verify/safety/suggestion opens the visit in Active
+  // Session (where its inline resolver lives); a message deep-links to the Q&A inbox thread.
+  const ATTENTION_RESOLVER_KINDS = new Set(["assign-patient", "choose-patient", "resolve-conflict", "verify"]);
+  const handleAttentionItem = (item: AttentionItem) => {
+    if (item.kind === "storage-warning") {
       setStorageReviewOpen(true);
       return;
     }
-    openNeedsInputDecision(item.action, item.sessionId, "needs-input");
+    if (item.kind === "qa-pending") {
+      onOpenQaInbox?.();
+      return;
+    }
+    if (!item.sessionId) return;
+    if (ATTENTION_RESOLVER_KINDS.has(item.kind)) {
+      openNeedsInputDecision(item.kind as PatientNeedsInputItem["action"], item.sessionId, "attention");
+      return;
+    }
+    onOpenSession(item.sessionId, { tab: "attention" });
+  };
+  const handleAttentionSelect = (item: AttentionItem) => {
+    if (item.kind === "qa-pending") {
+      onOpenQaInbox?.();
+      return;
+    }
+    if (item.sessionId) onOpenSession(item.sessionId, { tab: "attention" });
   };
 
   return (
@@ -574,7 +642,7 @@ export function PatientsHome({
           <h1>{t("patients.clinicalMemory")}</h1>
           <p>{t("patients.heroSubtitle")}</p>
         </div>
-        <button className="needs-input-pill" onClick={() => setActiveTab("needs-input")} type="button">
+        <button className="needs-input-pill" onClick={() => setActiveTab("attention")} type="button">
           <SparkleIcon />
           {needsInputCount ? t("patients.needYourInputCount", { n: needsInputCount }) : t("patients.allCaughtUp")}
           <ChevronIcon />
@@ -690,7 +758,7 @@ export function PatientsHome({
                     />
                   ))}
                   {needsInputOverflowCount > 0 ? (
-                    <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("needs-input")}>
+                    <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("attention")}>
                       {t("patients.needsInputSeeAll", { n: needsInputOverflowCount })}
                       <ChevronIcon />
                     </button>
@@ -822,6 +890,7 @@ export function PatientsHome({
                   patientName={patient.name}
                   summary={patient.summary}
                   summaryStatus={patient.memoryStatus}
+                  summaryStatusReason={patient.memoryStatusReason}
                   isPro={isPro}
                   tone={patient.needsInput ? "amber" : "green"}
                   onAction={() => handlePatientAction(patient)}
@@ -866,24 +935,16 @@ export function PatientsHome({
         />
       ) : null}
 
-      {activeTab === "needs-input" ? (
-        <div className="clinical-tab-panel" role="tabpanel">
-          <p className="clinical-helper">{t("patients.needsInputHelper")}</p>
-          <div className="needs-input-list">
-            {needsInputItems.length ? (
-              needsInputItems.map((item) => (
-                <NeedsInputDecisionCard
-                  item={item}
-                  key={item.id}
-                  onSelect={item.sessionId ? () => onOpenSession(item.sessionId!, { tab: "needs-input" }) : undefined}
-                  onPrimaryAction={() => handleNeedsInputAction(item)}
-                />
-              ))
-            ) : (
-              <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copy")} />
-            )}
-          </div>
-        </div>
+      {activeTab === "attention" ? (
+        <AttentionSweep
+          fetchAttention={memoryApi.fetchAttention}
+          defaultScope={attentionDefaultScope}
+          refreshSignal={memoryRefreshSignal}
+          clientItems={attentionClientItems}
+          nudgeEnabled
+          onItemPrimary={handleAttentionItem}
+          onItemSelect={handleAttentionSelect}
+        />
       ) : null}
         </>
       )}
@@ -896,7 +957,7 @@ export const clinicalTabs: Array<{ value: ClinicalMemoryTab; label: string; icon
   { value: "patients", label: "Patients", icon: <PatientsIcon /> },
   // Lists is Pro-only (AES-501/502); PatientsHome filters it out for Basic.
   { value: "lists", label: "Lists", icon: <ListsTabIcon /> },
-  { value: "needs-input", label: "Needs input", icon: <NeedsInputIcon /> },
+  { value: "attention", label: "Attention", icon: <NeedsInputIcon /> },
 ];
 
 function ListsTabIcon() {

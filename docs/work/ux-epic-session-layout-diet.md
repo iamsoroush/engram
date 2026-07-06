@@ -6,7 +6,7 @@
 (the zone stack → the patient strip + auto-collapse), and a new `AES-13xx` band in
 [`docs/ux/aesthetics-stories.md`](../ux/aesthetics-stories.md).
 
-> Priority **4 of 5**. Renders the [close-the-day](ux-epic-close-the-day.md) severity language as
+> Priority **4 of 5**. Renders the [the attention model](../ux/states.md#attention-model) severity language as
 > strip chips, and shares the report-first shell with [tier-convergence](ux-epic-tier-convergence.md)
 > — build all three at the seam.
 
@@ -75,7 +75,7 @@ presence (safety)**. Two states: **collapsed** (one line) and **expanded** (the 
 
 - **Identity:** avatar + name + visit ordinal + assignment state (`✓ assigned` / `Matched by AI` /
   soft-amber `Unassigned · Assign`).
-- **Severity chips** (from [close-the-day](ux-epic-close-the-day.md)): an amber `⚠ N to confirm`
+- **Severity chips** (from [the attention model](../ux/states.md#attention-model)): an amber `⚠ N to confirm`
   (the S2 verify count) and a red `🩹` safety chip when flags exist. Tapping a chip expands the strip
   **scrolled to that section** (the verify resolvers / the safety panel).
 - **Chevron** re-expands the whole strip.
@@ -89,7 +89,7 @@ presence (safety)**. Two states: **collapsed** (one line) and **expanded** (the 
 
 Inline confirms **stay in the report** where the data is (the `Confirm dose` box on the treatment row
 is already inside the report card — it does not move). The strip surfaces the *count*; the *fix* stays
-at its source (the [close-the-day](ux-epic-close-the-day.md) in-place rule).
+at its source (the [the attention model](../ux/states.md#attention-model) in-place rule).
 
 ### 3.2 Auto-collapse state machine (the core ask)
 

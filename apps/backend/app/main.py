@@ -94,3 +94,8 @@ app.include_router(feedback_api)
 from app.insights_api import insights_api  # noqa: E402
 
 app.include_router(insights_api)
+
+# Unified attention roll-up (Close-the-day sweep + indicator; AES-1001). Self-contained router.
+from app.attention_api import attention_api  # noqa: E402
+
+app.include_router(attention_api)

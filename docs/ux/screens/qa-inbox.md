@@ -2,9 +2,10 @@
 
 ## Route
 
-`/#qa-inbox` — Pro only (capability `post_session_qa`; hidden on Basic). Entry: a top-bar inbox
-icon beside Search with a pending-count badge (threads awaiting the doctor's approval; caps at
-`9+`). See [navigation.md](../navigation.md).
+`/#qa-inbox` — Pro only (capability `post_session_qa`; hidden on Basic). Entry: a plain top-bar inbox
+icon beside Search. Pending threads (awaiting the doctor's approval) are counted by the unified
+[Attention indicator](../navigation.md) (Messages tier) and listed in the Attention sweep's Messages
+section, which deep-links here. See [navigation.md](../navigation.md).
 
 ## Purpose
 

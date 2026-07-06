@@ -1,8 +1,10 @@
 import React from "react";
-import type { AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
+import type { AttentionCounts, AttentionResponse, AuthSession, CaptureDraft, SyncHealth } from "../../domain/appTypes";
 import type { Screen } from "../../domain/types";
 import { useT } from "../../shared/i18n";
 import { CaptureActions } from "../capture/components/CaptureActions";
+import { attentionBadgeCount, hasAttention, HIGHEST_TIER_TONE } from "../memory/components/attentionModel";
+import "../memory/attention.css";
 
 export function Shell({
   screen,
@@ -14,7 +16,9 @@ export function Shell({
   syncHealth,
   onLogout,
   onReplayGuide,
-  qaPendingCount = 0,
+  attentionCounts = null,
+  attentionHighestTier = null,
+  onOpenAttention,
 }: {
   screen: Screen;
   children: React.ReactNode;
@@ -25,7 +29,11 @@ export function Shell({
   syncHealth: SyncHealth;
   onLogout: () => void;
   onReplayGuide?: () => void;
-  qaPendingCount?: number;
+  /** Unified attention roll-up counts for the top-bar indicator (AES-1003); null while unknown. */
+  attentionCounts?: AttentionCounts | null;
+  attentionHighestTier?: AttentionResponse["highestTier"];
+  /** Opens the Close-the-day sweep (the Attention tab of Clinical Memory). */
+  onOpenAttention?: () => void;
 }) {
   const t = useT();
   const menuRef = React.useRef<HTMLDetailsElement>(null);
@@ -59,6 +67,13 @@ export function Shell({
   // The primary navigator stays the two workspaces (Session, Memory). Q&A is a triage *inbox*, not a
   // workspace — it lives as an icon + pending badge beside Search (Pro only), so the pill never crowds.
   const isPro = auth.tenant.tier !== "basic";
+  // The unified Attention indicator (AES-1003) merges the old needs-input + Q&A badges into one
+  // severity-coloured count. Surface-by-exception: it renders only when something is open (an empty
+  // top bar means the checks ran and passed). The "to-do" number is confirm + messages; a safety
+  // flag with nothing else to confirm shows a bare red dot (shown, never counted).
+  const attentionCount = attentionCounts ? attentionBadgeCount(attentionCounts) : 0;
+  const showAttention = Boolean(onOpenAttention && attentionCounts && hasAttention(attentionCounts));
+  const attentionTone = attentionHighestTier ? HIGHEST_TIER_TONE[attentionHighestTier] : "amber";
   // The clinical encounter is a "visit" everywhere in aesthetics chrome; therapy keeps "session".
   // Pick the primary-nav label by vertical so it matches the rest of the surface's vocabulary.
   const encounterNavKey = auth.tenant.vertical === "therapy" ? "nav.activeSession" : "nav.activeVisit";
@@ -100,18 +115,33 @@ export function Shell({
             {isPro ? (
               <button
                 aria-current={screen === "qa-inbox" ? "page" : undefined}
-                aria-label={qaPendingCount ? t("nav.qaInbox.waiting", { n: qaPendingCount }) : t("nav.qaInbox")}
+                aria-label={t("nav.qaInbox")}
                 className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
                 onClick={() => onNavigate("qa-inbox")}
                 title={t("nav.qaInbox")}
                 type="button"
               >
+                {/* Pending Q&A now rolls into the Attention indicator's "messages" — this stays as a
+                    plain workspace shortcut to the inbox (Library, routing, reply live only there). */}
                 <QaInboxNavIcon />
-                {qaPendingCount ? (
-                  <span className="app-qa-badge" aria-hidden="true">
-                    {qaPendingCount > 9 ? "9+" : qaPendingCount}
+              </button>
+            ) : null}
+            {showAttention ? (
+              <button
+                aria-label={attentionCount ? t("nav.attention.count", { n: attentionCount }) : t("nav.attention.safety")}
+                className="app-search-button app-attention-button"
+                onClick={onOpenAttention}
+                title={t("nav.attention")}
+                type="button"
+              >
+                <AttentionBellIcon />
+                {attentionCount ? (
+                  <span className={`app-attention-badge tone-${attentionTone}`} aria-hidden="true">
+                    {attentionCount > 9 ? "9+" : attentionCount}
                   </span>
-                ) : null}
+                ) : (
+                  <span className="app-attention-dot" aria-hidden="true" />
+                )}
               </button>
             ) : null}
           </div>
@@ -305,6 +335,15 @@ function SearchNavIcon() {
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M16.8 16.8 20 20" />
       <path d="M18 11.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+    </svg>
+  );
+}
+
+function AttentionBellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M12 4.5a4.75 4.75 0 0 0-4.75 4.75c0 4-1.5 5.25-2.25 6h14c-.75-.75-2.25-2-2.25-6A4.75 4.75 0 0 0 12 4.5Z" />
+      <path d="M10 18.5a2 2 0 0 0 4 0" />
     </svg>
   );
 }

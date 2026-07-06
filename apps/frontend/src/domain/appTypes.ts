@@ -150,6 +150,10 @@ export type PatientMemoryRow = {
   // Mock patient-memory lifecycle: "ready" once the (tier-aware) summary is generated,
   // "updating" while a recent change is being processed.
   memoryStatus?: "ready" | "updating" | string;
+  // Machine-readable reason for a stuck `updating` (M-P6): `usage_limit` when a fair-use-parked
+  // capture job froze the rebuild, so the pill shows the usage-limit state (and resumes polling with
+  // backoff) instead of an indefinite spinner. Null for an ordinary in-flight rebuild.
+  memoryStatusReason?: "usage_limit" | string | null;
   memoryUpdatedAt?: string | null;
   generatedSummary?: string | null;
   ruleBasedSummary?: string | null;
@@ -186,6 +190,48 @@ export type PatientMemoryListResponse = {
   limit: number;
   offset: number;
   total: number;
+};
+
+// --- Unified attention roll-up (Close-the-day / AES-1001) ---------------------------------------
+// The severity tier of a "needs you" signal. `S1` safety (shown, never counted), `S2` confirm (the
+// true "N to confirm"), `S3` suggested (optional one-tap), `qa` messages (async). `S4` notes never
+// roll up — they stay as fix-at-source footnotes on the session.
+export type AttentionTier = "S1" | "S2" | "S3" | "qa";
+
+export type AttentionScope = "mine" | "clinic";
+
+// One severity-tiered attention item. `reason` + `patientName` are verbatim clinical CONTENT (report
+// language, never translated); the chrome label is derived on the client from `kind`.
+export type AttentionItem = {
+  id: string;
+  kind: string;
+  tier: AttentionTier;
+  sessionId?: string | null;
+  patientId?: string | null;
+  patientName?: string | null;
+  clinicianId?: string | null;
+  threadId?: string | null;
+  reason?: string | null;
+  key?: string | null;
+  sortTime?: string | null;
+  dayGroup: "today" | "earlier";
+};
+
+export type AttentionCounts = {
+  confirm: number;
+  suggested: number;
+  messages: number;
+  safety: number;
+  total: number;
+};
+
+export type AttentionResponse = {
+  scope: AttentionScope;
+  counts: AttentionCounts;
+  // Highest open tier, for the indicator colour: safety > confirm > messages > suggested (null when
+  // everything is clear — an empty feed means the checks ran and passed).
+  highestTier: "safety" | "confirm" | "messages" | "suggested" | null;
+  items: AttentionItem[];
 };
 
 export type PatientMemoryTimelineSession = {

@@ -460,6 +460,63 @@ unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes
 
 ---
 
+## E10 — Close-the-day / unified attention (Both)
+*One severity-tiered attention model that every "needs you" signal maps into — a backend **roll-up**
+over existing sources (needs-input decisions, unconfirmed doses, detected safety, pending Q&A, the
+Batch-1 candidate suggestions), rendered in place and aggregated into the Close-the-day sweep. **Built
+and merged.** As-built: [screens/patients.md](screens/patients.md) "Attention Tab", [states.md](states.md)
+"Attention model", backend `GET /api/v1/attention` (`app/services/attention.py`).*
+
+### AES-1001 — Severity taxonomy + unified attention roll-up 〔Both · Dr/As/Rc · new〕
+As **any clinician**, I want one place that says how much is open and how bad it is, so that "needs
+you" is a single severity-tiered signal instead of four disconnected counts.
+- **Acceptance:** every signal maps to exactly one tier — **S1** safety (shown, opt-out, **never
+  counted**), **S2** confirm (doses + assignment decisions + inert-assignment conflict = the true "N
+  to confirm"), **S3** suggested (name-correction / unassign / reassignment / recheck), **qa** messages
+  (pending patient questions). **S4** notes never roll up. Backend `GET /attention?scope=mine|clinic`
+  is a pure roll-up over the existing sources (no new clinical logic); the calendar-day boundary uses
+  the client tz offset and carries prior-day items as an "earlier" group. Q&A is Pro-gated (Basic
+  contributes no messages).
+
+### AES-1002 — In-place severity language 〔Both · Dr/As · modify〕
+As a **clinician**, I want each item to keep its colour/label at its source, so that the aggregate and
+the in-session view never diverge. *(The verify-bar/safety-panel/suggestion-chip re-skin is shared
+with the session layout-diet strip; the shared tier→colour map lives in `features/memory/attention.css`.)*
+
+### AES-1003 — Unified Attention indicator 〔Both · All · new〕
+As a **clinician**, I want one top-bar indicator (a severity-coloured bell) instead of separate
+needs-input and Q&A badges, so that one glance answers "how much is open?".
+- **Acceptance:** merges the old needs-input + Q&A badges; the count is confirm + messages, coloured
+  by the highest open tier; a safety-only feed shows a bare red dot (shown, never counted).
+  Surface-by-exception — it renders only when something is open; tapping it opens the sweep. The Q&A
+  inbox stays reachable as a plain workspace icon (Library/routing/reply live only there).
+
+### AES-1004 — Close-the-day sweep lens 〔Both · Dr · new〕
+As a **doctor**, I want an end-of-day cross-session lens that clears what's open, resolve-in-place, so
+that "before I leave, clear what's open" has a surface.
+- **Acceptance:** the **Needs-input tab evolved into the Attention tab** — severity-ordered sections
+  (Confirm · Safety to review · Messages · Suggested) + an **"Earlier, still open"** carry-over group;
+  `N of M cleared` progress (never completion pressure); `Mine`/`Clinic` scope; a calm empty state
+  (surface-by-exception). Each action opens the **same** resolver its item uses at its source (inline
+  assign/choose, the visit in Active Session, or the Q&A inbox thread — the reply flow is never
+  reimplemented). Never a completion gate.
+
+### AES-1005 — Role & tier scoping 〔Both · Dr/As/Rc · new〕
+As **reception**, I want the sweep to default to intake/assignment (`Clinic`), while a **doctor**
+defaults to their own doses/safety/messages (`Mine`), so that each role sees their own attention.
+- **Acceptance:** default scope by role (assistant/admin → `Clinic`, doctor/owner → `Mine`); Basic's
+  ladder is naturally sparse (only deterministic S2 items) — a legible upgrade, never an empty Pro
+  teaser.
+
+### AES-1006 — Opt-in end-of-day nudge 〔Both · Dr · new〕
+As a **doctor**, I want a quiet end-of-day reminder that items are still open, so that I remember to
+clear them — **without being blocked**.
+- **Acceptance:** a pure, **dismissible** prompt shown only in the late-afternoon window when items are
+  open; per-day dismiss; never a gate or wall (never-block holds). *A persistent tenant/user opt-out
+  setting is the clean follow-up.*
+
+---
+
 ## E11 — User-authored treatment overlay (Pro)
 *Realises the deferred `edit` intent as a human-owned overlay (no AI). Data/contract layer **built**
 (AES-1101); the editing UI (AES-1102+) is a later epic. Mechanics:

@@ -36,8 +36,8 @@ It shows:
 - the `Today / up next` worklist (below), when relevant
 - session/visit cards for active or recent work
 - a compact `Needs your input` preview — **up to three** cards (preferring visits other than the
-  current one); when more need input, a `See N more in Needs input` overflow pill opens the
-  [Needs input tab](#needs-input-tab)
+  current one); when more need input, a `See N more in Attention` overflow pill opens the
+  [Attention tab](#attention-tab)
 - calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
 
 ### Today / up next (worklist)
@@ -126,7 +126,7 @@ Patient cards do **not** show an "active session" badge. Live/in-progress work b
 [Today tab](#today-tab); the Patients list stays a calm long-term memory surface.
 
 The needs-input label and its focused action are driven by the same backend-computed decision set
-that powers the [Needs input tab](#needs-input-tab), so a patient's card badge and the tab always
+that powers the [Attention tab](#attention-tab), so a patient's card badge and the tab always
 agree. The three needs-input categories are: `assign patient` (unassigned visit), `choose patient`
 (ambiguous/uncertain auto-match), and `verify patient` (an AI-created patient awaiting staff
 confirmation). A processed, assigned visit with a current report needs no input.
@@ -200,11 +200,40 @@ Backend: read-only, tenant-scoped, Pro-gated (`live_report_synthesis` capability
 aggregated in one ledger builder so the postponed AES-705 products/lots registry can layer on
 (canonical lots, expiry, per-product due-to-return precision) without reshaping any response.
 
-## Needs Input Tab
+## Attention Tab
 
-Needs input is a decision-first human-decision inbox. It is not a technical error queue and not a session list. It follows the shared [Needs input rules](../states.md#needs-input-rules).
+The **Close-the-day sweep** — one severity-tiered cross-session inbox that the old Needs-input tab
+evolved into. It is a decision-first human-decision surface, not a technical error queue and not a
+session list, and it follows the shared [Attention model](../states.md#attention-model). The backend
+`GET /api/v1/attention` roll-up feeds it; the same severity language drives the top-bar
+[Attention indicator](../navigation.md).
 
-Each card must answer:
+**Severity-ordered sections.** Every item maps to exactly one tier, and the sweep renders the
+non-empty ones in this order:
+
+- `Confirm` (S2, amber) — the true "N to confirm": unconfirmed carried-forward **doses**, an
+  AI-created patient to **verify**, a patient **conflict**, an **unassigned** visit, and an
+  inert-assignment conflict.
+- `Safety to review` (S1, red) — detected allergy / contraindication / consent flags. **Shown first
+  for salience but never counted** as a to-do (kept by default; you act only to reject a wrong one).
+- `Messages` (qa, violet, Pro) — patient questions awaiting a reply; **deep-links to the
+  [Q&A inbox](qa-inbox.md) thread** (the sweep never reimplements the reply flow).
+- `Suggested` (S3, blue) — optional one-tap suggestions: a suggested reassignment / name correction /
+  unassign, or a transcript-edit recheck.
+
+Low-confidence / missing-lot **notes (S4) never roll up** here — they stay as calm fix-at-source
+footnotes on the visit.
+
+**Carry-over.** The day lens is the user's calendar day, but nothing decays at midnight: items left
+undecided from prior days appear in a flat **`Earlier, still open`** group below today's sections.
+
+**Progress, scope, empty.** A `N of M cleared` line reassures (never completion pressure — leaving
+with items open is fine); a `Mine`/`Clinic` [scope toggle](../foundation.md) defaults by role
+(doctor/owner → `Mine`, reception → `Clinic`); an all-clear feed shows `All caught up — nothing needs
+you.` (surface-by-exception — the checks ran and passed).
+
+**Resolve in place.** Each item opens the *same* focused resolver it uses at its source — the sweep
+is a router + a list, never a new resolver. Each card must answer:
 
 - what decision is needed
 - which session or visit is involved
@@ -212,7 +241,9 @@ Each card must answer:
 - why user input is needed
 - the smallest focused action that resolves it
 
-The primary action must open a focused resolver, not simply redirect to the active session page. Selecting the card itself opens the visit in Active Session, where `Back` returns to Needs input, so Needs input cards do not show a separate `Open visit` action.
+The primary action opens that focused resolver; selecting the card itself opens the visit in Active
+Session, where `Back` returns to the Attention tab, so cards do not show a separate `Open visit`
+action.
 
 Example copy:
 
@@ -351,5 +382,5 @@ Screen-specific behavior:
 - Today and Patients continue to show locally saved memory.
 - Today may show `Offline · Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
 - Search may show `You're offline. Patient search may be limited.`
-- Needs input still only shows human-decision or data-safety items.
+- The Attention tab still only shows human-decision, clinical-review, or data-safety items.
 - Do not show sync queues, retry buttons, backend job language, or AI failure language on Today.
