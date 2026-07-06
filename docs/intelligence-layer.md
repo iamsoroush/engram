@@ -241,8 +241,9 @@ contract-level points:
 - Tabs renamed **Captures / Live report**, **centered in the Clinical report header**
   (desktop). The manual **Generate button is removed**; the Live report is always present.
 - Capture cards keep **type icons** and an inline **Edit** on each generated text block
-  (transcript/caption) — editing the capture's text, distinct from the
-  deferred report-`edit` intent.
+  (transcript/caption) — editing the capture's text, distinct from the report-`edit` intent, which
+  ships as a **human-authored treatment overlay** (AES-1102, no AI — see
+  [ux/screens/session-review.md](ux/screens/session-review.md)).
 - Each capture shows **effect chips** (a capture may carry several — e.g.
   `created_and_assigned`): "Patient (re)assigned → N · Undo", "New patient + assigned",
   "Added to report", "Out of context" (dimmed), plus calm processing/offline states. A
@@ -251,7 +252,10 @@ contract-level points:
   generalizes it.
 - **Suggested reassignment:** an implicit patient mention on an already-assigned visit is
   **not applied** — it shows a `Suggested: reassign to N · Apply / Dismiss` chip (and a
-  Needs-input item) the user can act on in one tap.
+  Needs-input item) the user can act on in one tap. The E1 correction chips
+  (`suggested_name_correction`, `suggested_unassign`) likewise **apply in one tap** on the resolver —
+  rename-in-place / unassign via their dedicated endpoints (see
+  [ux/screens/capture.md](ux/screens/capture.md) "Added chip kinds").
 - **Live report is a document, both tiers:** a clinic + patient header from template/DB
   (not AI). **Basic** = chronological captures + transcripts + images. **Pro** = the synthesized
   per-visit report: a deterministic baseline rebuilt as each capture lands, overwritten by the

@@ -11,9 +11,10 @@ under-designed strip; the "←Back" pill reads as an afterthought; Insights uses
 wide viewports; the landing page reads dated; dropdowns/disclosures are "not from the same
 universe." This doc grounds each observation in code and proposes a two-tier fix plan.
 
-**Scope boundary:** the session/capture surface and PatientsHome are being redesigned by
-[ux-epic-session-layout-diet.md](ux-epic-session-layout-diet.md) (and its sibling epics). This plan
-targets **the other surfaces + shared primitives only**; §4 lists what is explicitly deferred.
+**Scope boundary:** the session/capture surface and PatientsHome are being redesigned by the
+session-layout-diet epic (now built — [capture.md](../ux/screens/capture.md) "Patient strip") and its
+sibling epics. This plan targets **the other surfaces + shared primitives only**; §4 lists what is
+explicitly deferred.
 
 All paths below are relative to `apps/frontend/src/` unless noted.
 
@@ -304,7 +305,7 @@ lighthouse a11y unchanged; fa rendering reviewed side-by-side with en.
 
 ---
 
-## 4. Explicitly deferred to ux-epic-session-layout-diet (and PatientsHome wave)
+## 4. Explicitly deferred to the session-layout-diet epic (built) and PatientsHome wave
 
 - **Session/capture surface polish**: the zone stack, `.context-back-button` placement on
   `CaptureScreen.tsx:342`, the Sources drawer disclosure (`CaptureScreen.tsx:629`,

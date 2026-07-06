@@ -307,7 +307,8 @@ Four levers, in recommended order:
 
 ## 4. Treatment-overlay contract (mandatory integration)
 
-[ux-epic-treatment-overlay.md §4](ux-epic-treatment-overlay.md) hands this plan five requirements.
+The treatment-overlay epic (now built — [aesthetics-stories §E11](../ux/aesthetics-stories.md);
+surface [session-review.md](../ux/screens/session-review.md)) handed this plan five requirements.
 Mechanics, with ownership:
 
 1. **Stable treatment keys — recommendation (answers the epic's open question #1):
@@ -378,7 +379,7 @@ same v2 bump as the treatment keys, eval-gated. Its "synthesis still in flight s
 already served by `processing_status`. [tier-convergence](ux-epic-tier-convergence.md) — explicitly
 adds **no** synthesis or structure to Basic; no gating change; it *depends on* the skip-sentinel +
 deterministic-baseline seams this plan preserves. [unified-finder](ux-epic-unified-finder.md) /
-[session-layout-diet](ux-epic-session-layout-diet.md) — deterministic backend/frontend work, no
+session-layout-diet (built — [capture.md](../ux/screens/capture.md) "Patient strip") — deterministic backend/frontend work, no
 pipeline requirements.
 
 ---

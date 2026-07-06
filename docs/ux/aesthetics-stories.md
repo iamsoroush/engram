@@ -461,16 +461,16 @@ unless stated. Backend contracts: [docs/backend/aes-basic-api.md](../backend/aes
 ---
 
 ## E11 — User-authored treatment overlay (Pro)
-*Realises the deferred `edit` intent as a human-owned overlay (no AI). Data/contract layer **built**
-(AES-1101); the editing UI (AES-1102+) is a later epic. Mechanics:
-[pipeline-versioning D2](../architecture/pipeline-versioning.md),
-[backend/processing.md](../backend/processing.md).*
+*Realises the deferred `edit` intent as a human-owned overlay (no AI). Data/contract layer + the editing
+UI **built** (AES-1101–1105). Mechanics: [pipeline-versioning D2](../architecture/pipeline-versioning.md),
+[backend/processing.md](../backend/processing.md); the edit surface: [capture.md](screens/capture.md) +
+[session-review.md](screens/session-review.md).*
 
-### AES-1101 — `treatment_overlay` contract + stable treatment keys 〔Pro · Dr · new〕
+### AES-1101 — `treatment_overlay` contract + stable treatment keys 〔Pro · Dr · built〕
 As a **doctor**, I want a corrected treatment field (a mis-heard dose, a wrong lot) to be a durable,
 human-owned edit the AI can never silently overwrite, so that the record — and every projection built on
 it — reflects the truth I typed.
-- **Acceptance (DATA layer, no UI in this story):** deterministic content-anchored `treatmentKey`
+- **Acceptance (DATA layer):** deterministic content-anchored `treatmentKey`
   (Unicode-general norm, `areaCode`-anchored, ordinal on collision); `treatment_overlay` as the fourth
   overlay class (folded at render/projection via `effective_treatments`, excluded from restore, preserved
   + re-bound across re-synthesis with a no-LLM `{aiValue, value}` reconcile diff); the overlaid value is
@@ -478,9 +478,68 @@ it — reflects the truth I typed.
   carried-forward dose edit auto-satisfies the confirm blocker (Q4); owner-gated field-edit endpoints
   (`POST`/`DELETE /sessions/{id}/treatment-overlay`, field-edit only per Q2). Synthesis schema-v2 adds
   `areaCode`, `priorKey`, and a `lang` stamp; eval-gated (key-echo-stability case).
-- **Deferred (later epic):** AES-1102 inline field editing + provenance · AES-1103 synthesis-proof
-  reconcile UI · AES-1104 projection-correctness surfacing · AES-1105 attribution/policy gating ·
-  AES-1106 row add/remove · AES-1107 non-owner suggested correction.
+
+### AES-1102 — Inline field editing + provenance 〔Pro · Dr · built〕
+A quiet **✎** on each treatment row opens a compact per-field editor (area · product · brand · quantity ·
+lot); each changed field saves instantly as its own overlay entry — no synthesis, no AI budget. An edited
+field flips to a human-owned presentation: an **`✎ Edited by you`** chip (vs the AI spark) and a
+provenance subline that **preserves the AI/dictated value** (`AI Dose: ۲۰ واحد`). A human-confirmed field
+clears its low-confidence / missing-lot uncertainty chip.
+
+### AES-1103 — Synthesis-proof reconcile 〔Pro · Dr · built〕
+The overlay wins on render, but a disagreement is **surfaced, never silent**: the AI value stays visible on
+the provenance subline with one-tap **Use AI** (drops the overlay → the AI value returns); Keep-yours is
+the default (do nothing). *Q3's provenance subline and §3.3's reconcile are unified into one never-silent
+affordance because the backend ships a single `{aiValue, value}` pair (no edit-time vs post-synthesis
+distinction).* A re-key/removed edit that can't re-bind parks as an **orphan review chip** (never lost;
+re-binds when its row returns, or Discard).
+
+### AES-1104 — Projection correctness (lot/recall safety) 〔Pro · built〕
+Recall, lot-recall cohorts, smart lists, and patient-memory read the **overlaid** value (`effective_treatments`
+fold) — a corrected lot reaches the recall cohort. (Shipped with AES-1101's data layer.)
+
+### AES-1105 — Attribution + owner-default gating 〔Pro · Dr · built〕
+Every edit is attributed (`Edited by you` vs `Edited by a colleague`); the ✎ shows only when the viewer may
+edit (Pro, not read-only). Backend gates the write on the owner-class (`full`) preset. *(3-mode edit-policy
+presets remain a fast-follow.)*
+
+- **Deferred (⊕):** AES-1106 row add/remove · AES-1107 non-owner suggested correction.
+
+---
+
+## E13 — Session-screen layout diet (the patient strip)
+*Collapses identity + context + verify state + safety into one sticky **patient strip** above the report,
+so a phone above-the-fold becomes `[thin AI-usage bar] → [strip] → [report]` (nine zones → effectively
+two). A shared Basic+Pro shell (Pro lights up more chips). Surface:
+[capture.md](screens/capture.md) "Patient strip".*
+
+### AES-1301 — Unified patient strip 〔Basic+Pro · Dr · built〕
+One component absorbs the patient card + session-context digest + verify chip + safety chip, with a
+collapsed one-line state (avatar · name · visit ordinal · assignment state · `⚠ N to confirm` · `🩹` ·
+chevron) and an expanded full-stack state (patient actions + context + safety panel + AI-created-patient
+verify). Basic lights up fewer chips (no verify/safety — those are Pro).
+
+### AES-1302 — Auto-collapse state machine 〔Basic+Pro · Dr · built〕
+Pre-capture expanded → report-has-content collapsed → unassigned keeps `Assign` prominent → undo-all
+re-expands → historical collapsed. Manual override always wins. On **(re)assignment of a patient with
+history** the strip auto-surfaces that history; collapse waits for report-has-content **and**
+history-surfaced.
+
+### AES-1303 — Resolver placement 〔Pro · Dr · built〕
+Active patient conflicts stay in a **thin always-visible band above the report** (visible + resolvable in
+place, never buried); the AI-created-patient verify panel moves into the strip expansion (reached by the
+`⚠` chip). Never-block preserved: a blocker's chip is always visible.
+
+### AES-1304 — Safety chip + high-risk pin 〔Pro · built〕
+A red safety chip is always shown collapsed; a tenant **high-risk-clinic** setting
+(`high_risk_clinic` + Settings toggle) pins the full safety panel open — never a chip — for clinics where
+allergies/contraindications must always stay in view.
+
+### AES-1305 — Tier variants 〔Basic+Pro · built〕
+Basic and Pro share the strip shell; Pro simply lights up more chips (verify + safety). The AI layers are
+absent in Basic, not teased.
+
+- **Deferred (⊕):** AES-1306 responsive two-column strip-beside-report on tablet/landscape.
 
 ---
 

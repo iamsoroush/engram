@@ -12,10 +12,6 @@ These are the user-facing gaps that survived it:
   phone number + OTP credential; the auth follow-up from the launch epic.
 - **Password reset** — no self-service reset flow yet; a forgotten password currently needs an
   operator (owner sets a temp password via the Team screen, or manual intervention).
-- **One-tap apply for the E1 identity chips** (fast-follow from Track E1, 2026-07-06): the
-  `suggested_name_correction` / `suggested_unassign` chips render copy + route to "Assign
-  manually", but one-tap apply needs a dedicated backend endpoint (the assign endpoint only
-  reassigns). Assigned to Batch-2 Track B (it owns the resolver surface).
 
 Still-open infra items (monitoring overlay undeployed, MinIO root key, local-only backups by
 default, no resource limits, no staging, build-on-box deploys) live in

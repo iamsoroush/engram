@@ -9,11 +9,11 @@ sweep lens), [`docs/ux/screens/capture.md`](../ux/screens/capture.md) (in-place 
 and a new `AES-10xx` band in [`docs/ux/aesthetics-stories.md`](../ux/aesthetics-stories.md).
 
 > Priority **1 of 5** structural epics. Companion docs:
-> [`ux-epic-treatment-overlay.md`](ux-epic-treatment-overlay.md),
 > [`ux-epic-unified-finder.md`](ux-epic-unified-finder.md),
-> [`ux-epic-session-layout-diet.md`](ux-epic-session-layout-diet.md),
-> [`ux-epic-tier-convergence.md`](ux-epic-tier-convergence.md). This epic defines the **severity
-> language** the layout-diet epic renders as strip chips — build the two together at the seam.
+> [`ux-epic-tier-convergence.md`](ux-epic-tier-convergence.md); the treatment-overlay and
+> session-layout-diet epics are **built** (see [aesthetics-stories §E11/§E13](../ux/aesthetics-stories.md)).
+> This epic defines the **severity language** the layout-diet strip renders as chips
+> ([capture.md](../ux/screens/capture.md) "Patient strip").
 
 ---
 
@@ -82,7 +82,7 @@ Non-negotiables carried from [design-principles.md](../design-principles.md):
 ### 3.1 One severity ladder (the reusable contribution)
 
 Every attention signal maps to exactly one tier. Tier drives color, ordering, and whether it counts
-toward the aggregate. This is the shared language the [layout-diet strip](ux-epic-session-layout-diet.md)
+toward the aggregate. This is the shared language the [layout-diet strip](../ux/screens/capture.md)
 renders as chips and the sweep renders as sections.
 
 | Tier | Name | Colour | Requires | Examples | Counts in aggregate? |
@@ -222,7 +222,7 @@ inside items (a flag body, a dictated dose string) stays `reportLanguage`, per-l
 - **Synthesis still in flight:** an item that *might* become a blocker shows nothing yet — the
   session's `Checks pending · organizing` state is respected; the sweep never invents a premature
   "to confirm".
-- **Safety salience under collapse** (ties to [layout-diet](ux-epic-session-layout-diet.md)): a
+- **Safety salience under collapse** (ties to [layout-diet](../ux/screens/capture.md)): a
   safety flag must stay visible even when the patient strip is collapsed — a red S1 chip is always
   shown when flags exist, and a tenant setting can pin the full panel open for high-risk clinics.
 - **Never a completion gate:** ending the day with S2 open is allowed. If a gentle nudge is added
@@ -234,7 +234,7 @@ inside items (a flag body, a dictated dose string) stays `reportLanguage`, per-l
 ## 6. Incremental build plan + AES-### candidates
 
 Proposed as **candidate epic E10** (new band; not yet registered — this is a proposal). Build the
-severity language (E10.1–2) jointly with the [layout-diet strip](ux-epic-session-layout-diet.md).
+severity language (E10.1–2) jointly with the [layout-diet strip](../ux/screens/capture.md).
 
 1. **AES-1001 — Severity taxonomy + unified attention feed.** Define S1–S4 + Q&A; one backend
    aggregation over the existing sources (verify blockers, the needs-input decision set, detected

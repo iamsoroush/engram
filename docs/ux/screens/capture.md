@@ -26,10 +26,12 @@ untouched.
   in place as captures land. No AI synthesis, no verify bar, no safety panel; the header is
   lightweight (no `Complete` badge).
 - **Pro** — a unified, report-first surface with no tabs: the synthesized report is the primary
-  surface and the raw captures are demoted to a collapsible **Sources** drawer beneath it.
-  Top-to-bottom: AI usage notice → sticky verify bar → patient card → safety panel → session
-  context card → verify region → report card (with aftercare, feedback bar, and the Sources drawer
-  inside it).
+  surface and the raw captures are demoted to a collapsible **Sources** drawer beneath it. The chrome
+  above the report is deliberately thin (the **layout diet**), top-to-bottom: a thin AI-usage bar
+  (only near/at budget) → the one-line **patient strip** (identity + context + verify chip + safety
+  chip — see "Patient strip") → a thin conflict band only while a patient conflict is active → report
+  card (with aftercare, feedback bar, and the Sources drawer inside it). Everything the strip absorbs
+  is one tap away in its expansion.
 
 ## Capture actions
 
@@ -55,10 +57,12 @@ untouched.
 
 ## Patient assignment
 
-- A **patient card** always renders: avatar, assigned patient name + assignment source
-  (`Matched by AI`, manual, voice-reassigned), or capture-first copy when unassigned (soft amber
-  attention state, never an error). Actions: `Assign`/`Change` (opens the assignment bottom sheet
-  with suggested matches, search, and inline patient creation) and `History` (patient timeline).
+- Identity always renders in the **patient strip** (below): avatar, assigned patient name +
+  assignment source (`Matched by AI`, manual, voice-reassigned), or a soft-amber `Unassigned`
+  attention state (never an error) that keeps `Assign` prominent even collapsed. Actions live in the
+  strip's expansion: `Assign`/`Change` (opens the assignment bottom sheet with suggested matches,
+  search, and inline patient creation) and `History` (patient timeline). (Historical review keeps a
+  flat patient card instead of the strip — no pending actions to diet away.)
 - If audio transcription extracts a patient identity, a **deterministic** existing match assigns
   the visit with AI provenance; if nothing matches and the identity is usable, the backend creates
   and assigns an AI-origin patient. Assignment is stored as a timeline: the latest valid action
@@ -91,10 +95,15 @@ floor) creates + assigns the spoken patient and keeps the look-alike as a *"simi
 note (Fix 7). An **out-of-context** capture never files/creates a patient — its identity is downgraded
 to a suggestion (A-F4).
 
-Added chip kinds (E1) beyond reassign/create — each a visible, never-silent surface:
+Added chip kinds (E1) beyond reassign/create — each a visible, never-silent surface with **one-tap
+apply** on the resolver (Track B):
 
-- **Correct name to X?** (`suggested_name_correction`) — a same-patient name correction awaiting confirm.
-- **Unassign this visit?** (`suggested_unassign`) — from a detach/negation capture ("wrong patient, remove her").
+- **Correct name to X?** (`suggested_name_correction`) — one tap renames the assigned patient **in
+  place** (`POST /sessions/{id}/apply-name-correction`; an unverified AI record renames freely, a
+  verified chart needs the owner-class preset). No re-synthesis.
+- **Unassign this visit?** (`suggested_unassign`) — from a detach/negation capture ("wrong patient,
+  remove her"); one tap clears the patient via the assignment choke point
+  (`POST /sessions/{id}/unassign-patient`), consuming the capture's suggestion.
 - **Couldn't apply — assign manually** (`assignment_no_effect`) — an explicit instruction that matched/created nothing.
 - **similar-to-existing** note on a dead-zone create; **conflict** chip for a recovered-but-inert assignment.
 
@@ -115,11 +124,39 @@ shows the applied chip with a `· close match` note, the matched-vs-spoken line,
 per-tenant **match strictness** setting (Strict / Balanced / Lenient) lives on the
 [Settings page](account.md).
 
+## Patient strip
+
+The **patient strip** (`PatientStrip`, both tiers, active sessions) is the sticky one-line surface
+above the report that absorbs identity + session context + verify state + safety — the **layout
+diet** (nine stacked zones → strip → report). Two states:
+
+- **Collapsed (one line):** avatar · patient name · visit ordinal · assignment state (`✓ assigned` /
+  `Matched by AI` / soft-amber `Unassigned · Assign`) · an amber `⚠ N to confirm` chip (the blocker
+  count) · a red `🩹` safety chip when flags are on record · a chevron. Tapping a chip expands the
+  strip; the chevron toggles it. It stays **sticky** while scrolling a long report, so identity +
+  safety + count are always visible.
+- **Expanded:** patient actions (`Assign`/`Change`, `History`) · the full safety panel · the session
+  context digest · the AI-created-patient verify panel.
+
+**Auto-collapse state machine:** pre-capture the strip is **expanded** (a glance aid before you
+capture); once the **report has content** it **collapses** to one line; **undoing every capture**
+re-expands it; historical review is collapsed. An **unassigned** visit stays collapsed but keeps
+`Assign` prominent. **Manual override always wins** (a tap expands, the chevron collapses).
+**History auto-surfaces:** when a patient **with history** is assigned or reassigned, the strip
+auto-expands to that history — collapse waits until the report has content **and** the history has
+been surfaced (a new assignment event re-surfaces it).
+
+- **Basic** gets a simpler strip (identity + context, no verify/safety chips — those are Pro).
+- **Never bury safety:** a red safety chip is always shown collapsed; the tenant **high-risk-clinic**
+  setting ([Settings](account.md)) pins the *full* safety panel open above the report — never a chip.
+- **Conflicts are never buried:** an active patient conflict keeps a **thin, always-visible band**
+  above the report (resolvable in place); the strip expansion is a second entry point.
+
 ## Session context card
 
 When the session's patient becomes known — manual assign or AI match — a deterministic
-**session context card** (`SessionContextCard`, both tiers, zero AI) renders between the safety
-panel and the verify region. It answers, glanceably: who this is (visit ordinal, pinned key
+**session context card** (`SessionContextCard`, both tiers, zero AI) renders **inside the patient
+strip's expansion**. It answers, glanceably: who this is (visit ordinal, pinned key
 facts), what happened last (the full **last-visit digest** — notes, photo thumbnails, playable
 voice memos, `Same as last time` pre-fill), and progress (a compact **cross-visit photo strip**;
 tapping a thumb opens a before/after compare overlay). The patient's kept **safety flags** surface
@@ -131,39 +168,39 @@ the patient is removed or reassigned.
 - **Timeline round-trip:** `View full history` opens the patient timeline, which shows a
   persistent **`Back to this visit`** that restores the in-progress session exactly — the
   clinician can glance at history mid-capture and return in one tap.
-- **Auto-collapse:** the card is a *pre-capture* glance aid, so once the report has content it
-  **auto-collapses** to a single tappable line (visit ordinal + a `Show visit context` nudge; a
-  safety chip stays if flags are on record). A tap re-expands it and a chevron re-collapses it;
-  undoing every capture re-expands it. It is fully open before any captures exist.
+- **Collapse** is driven by the enclosing patient strip's state machine (above), not its own.
 - Backend: `GET /api/v1/patients/{id}/session-context`.
 
 ## Pro report surface
 
-### Verify bar and verify region
+### Verify chip and resolvers
 
-- A sticky **"N to confirm"** verify bar counts **blockers only** — unconfirmed carried-forward
-  doses and AI-created-patient identity (plus patient conflicts). `Review` jumps to the first
-  inline confirm. Soft warnings never feed it ("warnings over blocking"). While synthesis is still
-  in flight with no blockers yet it shows a quiet `Checks pending · organizing` state (calm blue,
-  no action); it renders **nothing** only once the report has settled clean — so an empty bar means
-  the checks ran, never "not yet checked".
-- The **verify region** above the report holds the patient-conflict resolver panels and the
-  AI-created-patient verification panel. Everything else confirms **inline where the data is**: a
-  carried-forward dose shows `Confirm dose` directly on its treatment row and flips to
-  `✓ Dose confirmed` in place; softer uncertainties render as calm gray footnotes beneath the
-  treatments list.
+- The strip's **`⚠ N to confirm`** chip counts **blockers only** — unconfirmed carried-forward doses
+  (that have a rendered row), AI-created-patient identity, and patient conflicts. Soft warnings never
+  feed it ("warnings over blocking"); it hides once the report settles clean. **Every counted blocker
+  has a reachable resolver** (a tested invariant): tapping the chip expands the strip and scrolls to
+  the topmost — the conflict band, the AI-created-patient panel in the strip, or the inline dose row.
+- **Patient conflicts** render in a **thin, always-visible band** above the report (the
+  `PatientConflictResolver`), resolvable in place — a name-correction / unassign applies in one tap,
+  or Keep-match / Create-new / Choose-another / Assign-manually. The **AI-created-patient** verify
+  panel lives in the strip expansion. Everything else confirms **inline where the data is**: a
+  carried-forward dose shows `Confirm dose` on its treatment row and flips to `✓ Dose confirmed` in
+  place (or is auto-satisfied by a dose edit — see the treatment overlay); coded uncertainties render
+  as calm notes beneath the treatments list (actionable — fix-at-source / open-source — where coded).
 
 ### Safety panel
 
 The synthesis detects clinical **safety flags** from the captures — allergy / contraindication /
-consent statements the clinician actually made — and surfaces them in a calm red/amber panel
-**above** the verify region (safety is highest priority). Flags are **opt-out**: every detected
-flag is shown and kept by default; the clinician acts only to reject (×) a wrong one. The panel is
-**not** a verify-bar blocker and never gates the report. A rejection persists (survives
-re-synthesis) and is logged as an AI-feedback signal. Non-rejected flags project onto the patient
-and resurface cross-visit in the session context card and the patient timeline. The flag body is
-clinical content in the report language and is never translated — only the chrome is bilingual.
-Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
+consent statements the clinician actually made — and surfaces them in a calm red/amber panel. It
+lives in the **patient strip** — always represented by the strip's red safety chip when collapsed,
+the full flag list in the expansion — **unless** the tenant is a **high-risk clinic**
+([Settings](account.md)), where the full panel is **pinned open above the report** and never collapses
+to a chip. Flags are **opt-out**: every detected flag is shown and kept by default; the clinician acts
+only to reject (×) a wrong one. The panel is **not** a blocker and never gates the report. A rejection
+persists (survives re-synthesis) and is logged as an AI-feedback signal. Non-rejected flags project
+onto the patient and resurface cross-visit in the session context card and the patient timeline. The
+flag body is clinical content in the report language and is never translated — only the chrome is
+bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
 
 ### Report card
 
@@ -180,13 +217,21 @@ Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   direction is per-line (RTL for Persian/Arabic content).
 - **Per-claim source citations:** report blocks and treatment rows carry a small `↗ source` tap
   that opens the cited capture.
-- **Fix at source:** soft extraction gaps (low confidence, missing lot) render as quiet inline
-  flags on the treatment row with a `Fix at source` deep-link that opens the originating capture in
-  the Sources drawer — correct the capture text and the AI re-extracts. There is **no direct
-  treatment-field edit**.
+- **Direct treatment-field edit (Pro, AES-1102).** Each treatment row carries a quiet **✎** that
+  opens a compact per-field editor (`area · product · brand · quantity · lot`); a change saves
+  **instantly** as a user-owned overlay — no re-synthesis, no AI budget — and is authoritative on
+  render (synthesis can never silently overwrite it). An edited field flips to an `✎ Edited by you`
+  chip with a provenance subline that keeps the AI/dictated value visible (`AI Dose: ۲۰ واحد`) and a
+  one-tap **Use AI** (revert); editing a carried-forward dose auto-satisfies its `Confirm dose`
+  blocker (Q4); a human-confirmed field clears its low-confidence/missing-lot chip; a re-key/removed
+  edit parks as an **orphan chip** (never lost). Full spec: [session review](session-review.md).
+- **Fix at source** remains for soft extraction gaps (low confidence, missing lot) — a `Fix at source`
+  deep-link opens the originating capture in the Sources drawer so the AI re-extracts (vs. the overlay,
+  which is a durable human override of the extracted value).
 - **Aftercare:** content-driven aftercare templates are AI-matched and auto-included (opt-out) —
   each shows with a remove (✕); dismissals persist across re-synthesis. When dictated aftercare
-  contradicts a protocol, the dictation wins and a conflict note is shown instead of the template.
+  contradicts a protocol, the dictation wins and a **conflict note** is shown (itself dismissable ✕,
+  writing `dismissed_aftercare`) instead of the template.
 - A quiet **report feedback bar** (thumbs rating, eval golden-set harvester) ends the report.
 
 ### Sources drawer and undo
@@ -235,9 +280,10 @@ Shared rules: [states](../states.md).
 ## Main Components
 
 - `Shell`, `CaptureActions`, `CaptureScreen` (composes region components from `CaptureRegions`)
-- `SessionVerifyBar`; `SessionReviewRegion` composes `PatientConflictResolver` + `AiCreatedPatientPanel` (CaptureBadges)
+- `PatientStrip` (absorbs identity + context + verify chip + safety chip; the auto-collapse machine)
+- `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (in the strip)
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
-- `LiveReportView` + `TreatmentsList`, the `sources-drawer`, `ReportFeedbackBar`
+- `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar`
 - `AiUsageNotice`
 - `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
   `PatientAssignmentSheet`
@@ -256,9 +302,13 @@ Shared rules: [states](../states.md).
 - `POST /api/v1/sessions/{id}/save` (auto-invoked via the outbox as captures sync)
 - `POST /api/v1/sessions/{id}/assign-patient` · `GET /api/v1/sessions/{id}/assignment-suggestion` ·
   `PATCH /api/v1/sessions/{id}` (rename, AI-created-patient verification)
+- `POST /api/v1/sessions/{id}/apply-name-correction` · `POST /api/v1/sessions/{id}/unassign-patient`
+  (E1 one-tap identity chips)
 - `POST /api/v1/sessions/{id}/safety-flag-rejection` ·
   `POST /api/v1/sessions/{id}/confirm-carried-forward` ·
   `POST /api/v1/sessions/{id}/aftercare-dismissal`
+- `POST` / `DELETE /api/v1/sessions/{id}/treatment-overlay` (AES-1102 field edit / Revert-to-AI)
+- `PATCH /api/v1/tenant/settings` (incl. `highRiskClinic` — pin the safety panel)
 - `GET /api/v1/patients/{id}/session-context` · `GET /api/v1/patients/search` ·
   `POST /api/v1/patients`
 - `GET /api/v1/ai-usage`

@@ -8,7 +8,7 @@
 `AES-14xx` band there.
 
 > Priority **5 of 5**. Shares the one-skeleton shell + patient strip with
-> [session-layout-diet](ux-epic-session-layout-diet.md); the teaser placement is
+> [session-layout-diet](../ux/screens/capture.md); the teaser placement is
 > [E8](../ux/aesthetics-stories.md).
 >
 > **Revised after owner review (2026-07-04).** The original framing ("put Basic onto Pro's
@@ -144,7 +144,7 @@ interaction model** — the acceptance test for the epic.
   [capture.md](../ux/screens/capture.md) states).
 - **Offline:** Basic is local-first; the shell change is presentational and offline-safe.
 - **Capability-gated zones:** the shared shell must omit the Pro-only zones cleanly in Basic (no empty
-  bands) — dovetails with the [layout-diet](ux-epic-session-layout-diet.md) strip (Basic lights up
+  bands) — dovetails with the [layout-diet](../ux/screens/capture.md) strip (Basic lights up
   fewer chips).
 - **Historical review:** Basic historical visits use the same feed-first structure; the document view
   is reachable for review/share.
