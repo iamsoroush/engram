@@ -52,10 +52,25 @@ section (the prose blocks mirror it) — one row per extracted treatment:
   counted by the sticky verify bar — the report never reads clean/`Complete` while a carried dose
   is unconfirmed (a dose is the one field where silent completion is a safety risk). A confirmed
   row flips to `✓ Dose confirmed` in place.
-- **Soft flags fix at source.** A low-confidence row and a missing-but-expected lot render quiet
-  inline flags with a `Fix at source` deep-link to the originating capture — correct the capture
-  text and the AI re-extracts. There is no direct treatment-field edit. Softer uncertainties render
-  as calm gray footnotes beneath the list — never blockers.
+- **Direct field edit (AES-1102) — a human overlay, never AI.** Each row carries a quiet **✎** that
+  opens a per-field editor (`area · product · brand · quantity · lot`). A change saves **instantly** as
+  a user-owned overlay (`POST /sessions/{id}/treatment-overlay`) — deterministic, no re-synthesis, no
+  AI budget — and is authoritative on render and in every projection (recall, lot-recall cohorts, smart
+  lists, patient memory read the overlaid value: the lot-recall safety case). An edited field flips to
+  an `✎ Edited by you` chip (attributed; `Edited by a colleague` for others), with a provenance subline
+  that **preserves the AI/dictated value** (`AI Dose: ۲۰ واحد` — the verbatim is demoted, never
+  destroyed) and a one-tap **Use AI** / **Revert** (`DELETE …/treatment-overlay`). Synthesis can update
+  the row freely but **can never overwrite a human value without it being seen** — a fresh-extraction
+  disagreement surfaces as `{aiValue, value}` (Keep-yours is the default; the provenance subline and the
+  reconcile are one surface, as the backend ships a single `{aiValue, value}` pair). Editing a
+  carried-forward dose auto-satisfies its `Confirm dose` blocker (Q4); a human-confirmed field clears its
+  low-confidence/missing-lot chip; a re-key/removed edit **parks as an orphan chip** (never lost,
+  re-binds when its row returns). The ✎ shows only when the viewer may edit (Pro, owner-default gating).
+- **Soft flags fix at source.** A low-confidence row and a missing-but-expected lot also render quiet
+  inline flags with a `Fix at source` deep-link to the originating capture — correct the capture text
+  and the AI re-extracts (vs. the overlay, a durable human override). Coded uncertainties with no inline
+  home render as calm notes beneath the list (actionable — fix-at-source / open-source — where coded),
+  never blockers.
 - Clinical content is verbatim, never translated; direction is per-line (a Farsi row keeps `Dysport`
   / `D-4471` LTR inside RTL text). Chrome is bilingual.
 

@@ -160,6 +160,10 @@ class Tenant(Base):
     # Story C (decision 2): may a curated patient share's plain-words treatment line include commercial
     # brand names? Default off (generic category only). Dose tables + lots stay always-withheld.
     share_include_brands: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # Session-layout-diet (AES-1304): a clinic self-declares "high-risk". When set, the session
+    # safety panel stays pinned open (never collapses to a chip in the patient strip). Generalizes to
+    # other safety-forward behaviors later; off by default.
+    high_risk_clinic: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # Post-session Q&A routing policy (Pro, AES-402; foundation §7). "ai_default" = a new patient
     # Q&A thread auto-routes to the patient's treating doctor (most recent/frequent); "manual" = the
     # thread starts unrouted and staff route it. Manual re-route is always available either way.

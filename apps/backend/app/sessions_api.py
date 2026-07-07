@@ -25,6 +25,7 @@ from app.schemas.sessions import (
 from app.services.ai_jobs import get_ai_job, recover_ai_jobs
 from app.services.assignment_suggestions import suggest_session_assignment
 from app.services.sessions import (
+    apply_patient_name_correction,
     assign_session_patient,
     confirm_carried_forward_dose,
     create_session,
@@ -39,6 +40,7 @@ from app.services.sessions import (
     set_safety_flag_rejected,
     set_treatment_overlay_edit,
     start_review,
+    unassign_session_patient,
     update_session,
 )
 from app.services.therapy_reporting import (
@@ -189,6 +191,29 @@ def assign_session_patient_route(
 ) -> dict[str, Any]:
     """Assign or clear the patient associated with a session."""
     return assign_session_patient(db, principal, session_id, request)
+
+
+@sessions_api.post("/sessions/{session_id}/apply-name-correction")
+def apply_name_correction_route(
+    session_id: str,
+    spokenName: str = Body(..., embed=True),
+    basisCaptureId: str | None = Body(default=None, embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """E1 one-tap: apply a `suggested_name_correction` — rename the assigned patient in place."""
+    return apply_patient_name_correction(db, principal, session_id, spokenName, basisCaptureId)
+
+
+@sessions_api.post("/sessions/{session_id}/unassign-patient")
+def unassign_session_patient_route(
+    session_id: str,
+    basisCaptureId: str | None = Body(default=None, embed=True),
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """E1 one-tap: apply a `suggested_unassign` — clear the visit's patient (detach/negation, A-F9)."""
+    return unassign_session_patient(db, principal, session_id, basisCaptureId)
 
 
 @sessions_api.get("/sessions/{session_id}/assignment-suggestion")

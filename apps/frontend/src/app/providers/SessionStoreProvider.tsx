@@ -12,11 +12,14 @@ import {
 } from "../../features/capture/captureModel";
 import { metadataRecord } from "../../features/capture/metadata";
 import {
+  applyNameCorrection,
+  applyUnassignSuggestion,
   assignSessionPatient,
   confirmCarriedForward,
   createPatient,
   deleteCapture,
   dismissAiPatientAction,
+  editTreatmentOverlay,
   fetchCapture,
   fetchSession,
   fetchSessionCaptures,
@@ -27,6 +30,7 @@ import {
   postFeedback,
   rejectSafetyFlag,
   saveSessionForProcessing,
+  revertTreatmentOverlay,
   searchPatients,
   setAftercareDismissed,
   updateCaptureCaption,
@@ -122,6 +126,14 @@ export type SessionActions = {
   fetchCaptureById: (captureId: string) => ReturnType<typeof fetchCapture>;
   dismissAftercareTemplate: (sessionId: string, templateId: string, dismissed: boolean) => Promise<void>;
   rejectSafetyFlagFromSession: (sessionId: string, flagKey: string) => Promise<void>;
+  /** E1 one-tap: apply a `suggested_name_correction` chip (rename the assigned patient in place). */
+  applyPatientNameCorrection: (sessionId: string, spokenName: string, basisCaptureId?: string) => Promise<void>;
+  /** E1 one-tap: apply a `suggested_unassign` chip (clear the visit's patient). */
+  unassignPatientFromSession: (sessionId: string, basisCaptureId?: string) => Promise<void>;
+  /** AES-1102: record a human field edit on a treatment row (user-owned overlay, no re-synthesis). */
+  editTreatmentField: (sessionId: string, treatmentKey: string, field: string, value: string) => Promise<void>;
+  /** AES-1103: Revert-to-AI / Use-AI — drop the overlay edit for (treatmentKey, field). */
+  revertTreatmentField: (sessionId: string, treatmentKey: string, field: string) => Promise<void>;
   selfHealStalePatient: (sessionId: string | undefined, deadPatientId?: string) => Promise<void>;
   assignPatientToSession: (
     sessionId: string,
@@ -633,6 +645,65 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
     [apiFetch, appT, applySessionUpdate, setToast],
   );
 
+  // E1 one-tap: apply a `suggested_name_correction` chip — rename the assigned patient in place
+  // (deterministic, no re-synthesis). Backend derives the rename from the spoken name + aliases.
+  const applyPatientNameCorrection = React.useCallback(
+    async (sessionId: string, spokenName: string, basisCaptureId?: string) => {
+      try {
+        const updated = await applyNameCorrection(apiFetch, sessionId, spokenName, basisCaptureId);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("capture.toastNameCorrected"));
+      } catch {
+        setToast(appT("capture.toastCouldNotCorrectName"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
+  // E1 one-tap: apply a `suggested_unassign` chip — clear the visit's patient via the assignment
+  // choke point (drops the wrong patient's flags/carry-forward/reconcile server-side).
+  const unassignPatientFromSession = React.useCallback(
+    async (sessionId: string, basisCaptureId?: string) => {
+      try {
+        const updated = await applyUnassignSuggestion(apiFetch, sessionId, basisCaptureId);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("memory.toastVisitUnassigned"));
+      } catch {
+        setToast(appT("capture.toastCouldNotUnassign"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
+  // AES-1102/1103: a human field edit on a treatment row — deterministic + instant (no re-synthesis,
+  // no AI budget). Authoritative on render; a later re-synthesis surfaces any disagreement, never
+  // overwrites. Revert drops the overlay so the AI value returns.
+  const editTreatmentField = React.useCallback(
+    async (sessionId: string, treatmentKey: string, field: string, value: string) => {
+      try {
+        const updated = await editTreatmentOverlay(apiFetch, sessionId, treatmentKey, field, value);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("capture.toastTreatmentUpdated"));
+      } catch {
+        setToast(appT("capture.toastCouldNotUpdateTreatment"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
+  const revertTreatmentField = React.useCallback(
+    async (sessionId: string, treatmentKey: string, field: string) => {
+      try {
+        const updated = await revertTreatmentOverlay(apiFetch, sessionId, treatmentKey, field);
+        applySessionUpdate(sessionId, updated);
+        setToast(appT("capture.toastTreatmentReverted"));
+      } catch {
+        setToast(appT("capture.toastCouldNotUpdateTreatment"));
+      }
+    },
+    [apiFetch, appT, applySessionUpdate, setToast],
+  );
+
   const ensurePatient = React.useCallback(
     async (draft: PatientAssignmentDraft): Promise<PatientSummary> => {
       if (draft.patientId) {
@@ -989,6 +1060,10 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       fetchCaptureById,
       dismissAftercareTemplate,
       rejectSafetyFlagFromSession,
+      applyPatientNameCorrection,
+      unassignPatientFromSession,
+      editTreatmentField,
+      revertTreatmentField,
       selfHealStalePatient,
       assignPatientToSession,
       searchPatientsForAssignment,
@@ -1018,6 +1093,10 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       fetchCaptureById,
       dismissAftercareTemplate,
       rejectSafetyFlagFromSession,
+      applyPatientNameCorrection,
+      unassignPatientFromSession,
+      editTreatmentField,
+      revertTreatmentField,
       selfHealStalePatient,
       assignPatientToSession,
       searchPatientsForAssignment,

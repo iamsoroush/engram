@@ -861,6 +861,9 @@ export async function updateTenantSettings(
     transcriptionLanguage?: string;
     reportLanguage?: string | null;
     matchStrictness?: string;
+    shareIncludeBrands?: boolean;
+    // Session-layout-diet (AES-1304): pin the session safety panel open (high-risk clinic).
+    highRiskClinic?: boolean;
     // AES-905 — per non-owner role preset, e.g. { assistant: "reassign" }. Admin-only on the backend.
     rolePermissions?: RolePermissions;
   },
@@ -1189,6 +1192,53 @@ export async function setAftercareDismissed(apiFetch: ApiFetch, sessionId: strin
     body: JSON.stringify({ templateId, dismissed }),
   });
   if (!response.ok) throw new Error("Could not update aftercare");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** E1 one-tap: apply a `suggested_name_correction` chip — rename the assigned patient in place. */
+export async function applyNameCorrection(apiFetch: ApiFetch, sessionId: string, spokenName: string, basisCaptureId?: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/apply-name-correction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ spokenName, basisCaptureId: basisCaptureId ?? null }),
+  });
+  if (!response.ok) throw new Error("Could not apply the name correction");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** E1 one-tap: apply a `suggested_unassign` chip — clear the visit's patient (detach/negation).
+ *  Distinct from `unassignSessionPatient` (the generic outbox unassign via assign-patient): this hits
+ *  the dedicated endpoint that also consumes the originating capture's suggestion so its chip clears. */
+export async function applyUnassignSuggestion(apiFetch: ApiFetch, sessionId: string, basisCaptureId?: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/unassign-patient`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ basisCaptureId: basisCaptureId ?? null }),
+  });
+  if (!response.ok) throw new Error("Could not unassign the visit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** AES-1102: record a human field edit on a treatment row as a user-owned overlay (deterministic,
+ *  instant, no re-synthesis). Returns the updated session with the folded value + reconcile signal. */
+export async function editTreatmentOverlay(apiFetch: ApiFetch, sessionId: string, treatmentKey: string, field: string, value: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/treatment-overlay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ treatmentKey, field, value }),
+  });
+  if (!response.ok) throw new Error("Could not save the treatment edit");
+  return normalizeApiSession((await response.json()) as Record<string, unknown>);
+}
+
+/** AES-1103: Revert-to-AI / Use-AI — drop the overlay edit for (treatmentKey, field). */
+export async function revertTreatmentOverlay(apiFetch: ApiFetch, sessionId: string, treatmentKey: string, field: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/treatment-overlay`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ treatmentKey, field }),
+  });
+  if (!response.ok) throw new Error("Could not revert the treatment edit");
   return normalizeApiSession((await response.json()) as Record<string, unknown>);
 }
 

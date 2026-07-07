@@ -162,6 +162,23 @@ export type SessionTreatment = {
   attributes?: Record<string, unknown> | null;
   /** Captures this treatment was extracted from — a tap opens the source capture (§2.3 traceability). */
   sourceCaptureIds?: string[];
+  /** Stable content-anchored key (AES-1101) a human field-edit overlay binds to; survives re-synthesis. */
+  treatmentKey?: string | null;
+  /** Fields on this row a clinician overrode via the treatment overlay (values already folded in). */
+  overlayEditedFields?: string[];
+};
+
+/** One human field-edit overlay entry on a treatment row (AES-1101). `aiValue` is the AI value the
+ *  human replaced, refreshed after a re-synthesis so a disagreement surfaces as `{aiValue, value}`. */
+export type TreatmentOverlayEntry = {
+  treatmentKey: string;
+  field: "area" | "product" | "brand" | "quantity" | "lot" | string;
+  value: string;
+  aiValue?: string | null;
+  editedByUserId?: string | null;
+  editedAt?: string | null;
+  /** Set when a re-synthesis couldn't re-bind the entry — surfaced as a review chip, never deleted. */
+  parked?: boolean;
 };
 
 /**
@@ -175,6 +192,8 @@ export type SessionTreatmentReview = {
   product?: string | null;
   /** Stable `area|product` key for a carried_forward item — what the confirm endpoint records (Q3). */
   key?: string | null;
+  /** Captures the coded uncertainty (S-F11) points at — a note deep-links to its source ("↗ source"). */
+  sourceCaptureIds?: string[];
 };
 
 export type SessionSummaries = {

@@ -59,13 +59,15 @@
   "src/features/capture/components/CaptureBadges.tsx": [
     ") ) : onSave ? (",
     ") : hasText ? ( // Tap the text itself to edit it inline — no separate Edit button. onSave ? (",
-    "Promise"
+    "Promise",
+    "void | Promise"
   ],
   "src/features/capture/components/CaptureDialogs.tsx": [
     "Promise"
   ],
   "src/features/capture/components/CaptureRegions.tsx": [
-    "Promise"
+    "Promise",
+    "void | Promise"
   ],
   "src/features/capture/components/CaptureScreen.tsx": [
     "0 ? ( // The raw captures, demoted to a collapsible \"Sources\" drawer beneath the report. Editing, // deleting, re-assigning and tapping into a capture all still live here (and via the report's // own source links). Auto-expanded while the report has no content yet.",
@@ -76,6 +78,7 @@
     "Promise"
   ],
   "src/features/capture/components/LiveReport.tsx": [
+    ") : fixable && onFixAtSource ? (",
     ") : freshness ? (",
     ") : isConfirmed ? (",
     ")) ) : isUpdating || session?.items.length ? (",
@@ -124,24 +127,12 @@
     "Promise"
   ],
   "src/features/patient-surface/PatientQaPage.tsx": [
-    "Ask a question",
-    "Ask your care team",
     "Couldn’t load your questions",
     "Engram",
-    "Have a question between visits? Send it here and your clinic will reply. Replies are reviewed by your clinician before you see them.",
     "Loading",
     "Loading your questions…",
-    "No questions yet. Ask your care team below.",
-    "Sent — your clinic will reply here.",
     "This link is no longer available",
-    "This question was closed by your clinic.",
-    "Try again",
-    "Waiting for your clinic to reply…",
-    "You asked",
-    "Your conversation",
-    "Your question",
-    "e.g. Is the swelling on my forehead normal?",
-    "verified by your clinic"
+    "Try again"
   ],
   "src/features/patient-surface/PatientSharePage.tsx": [
     "Aftercare",
@@ -157,7 +148,6 @@
   ],
   "src/features/qa/DoctorQaInbox.tsx": [
     ") : ( // Collapsed resolved conversation: one-line preview of the latest message.",
-    ") : draftPending ? (",
     ") : expanded && canReroute ? (",
     ") : item.needsApproval && pending ? ( // Collapsed open conversation: just the question awaiting a reply."
   ],

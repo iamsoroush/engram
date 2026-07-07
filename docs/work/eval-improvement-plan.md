@@ -205,9 +205,10 @@ cases is dormant.
    monthly steady-state. Thumbs-down `rating` rows (report/brief) are a **second increment** — they
    need the session's captures pulled for context, so v1 handles corrections/rejections only.
 
-**Treatment-overlay fold-in** ([ux-epic-treatment-overlay.md](ux-epic-treatment-overlay.md) open
-question #5): if that epic ships, a human treatment-field edit carries `treatmentKey + field +
-aiValue→value` — the most structured harvest signal available: it converts directly into
+**Treatment-overlay fold-in** (built — [aesthetics-stories §E11](../ux/aesthetics-stories.md); the
+overlay write harvests `kind=correction, ai_output_type=treatment`): a human treatment-field edit
+carries `treatmentKey + field + aiValue→value` — the most structured harvest signal available: it
+converts directly into
 **structured-field exact-match** treatments cases (transcript in → expected `quantity`/`lot` out),
 upgrading #3's tolerant matchers with field-level ground truth. Recommend answering that epic's
 question **yes**: harvest as `kind=correction, ai_output_type=treatment` with field granularity in

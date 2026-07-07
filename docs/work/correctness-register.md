@@ -136,9 +136,11 @@ Owner files: `services/qa.py`, `qa_knowledge/`, `qa_api.py`, `features/qa/*`,
 ### Track A/B/C addenda (UX tracks, unchanged scope plus)
 - **A:** memory-list poll with backoff + parked-budget usage-limit state mapping (M-P6 UI,
   M-P13 passive-list note).
-- **B:** phantom verify-count fix (already in brief); aftercare conflict-card dismiss writing
-  `dismissed_aftercare` (S-F11 UI); overlay UI reads folded/effective treatments + renders the
-  `{aiValue, value}` reconcile (S-F8 UI).
+- **B — LANDED** (Batch-2 session-surface, 2026-07-06): phantom verify-count fix + reachable-resolver
+  invariant; aftercare conflict-card dismiss writing `dismissed_aftercare` (S-F11 UI); coded review
+  items render actionably (no silent drop / double-surface); overlay UI reads folded/effective
+  treatments + renders the `{aiValue, value}` reconcile (S-F8 UI) + the E1 one-tap identity chips. Folded
+  into [capture.md](../ux/screens/capture.md) + [session-review.md](../ux/screens/session-review.md).
 - **C:** unchanged.
 
 ## Eval additions (golden-case classes, owner-approved 2026-07-05)

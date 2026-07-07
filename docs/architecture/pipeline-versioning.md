@@ -34,8 +34,10 @@
   edits on treatment rows, bound to a deterministic content-anchored `treatmentKey`, folded at
   render/projection (`services/treatment_overlay.py:effective_treatments`), re-bound after each
   synthesis (with a no-LLM `{aiValue, value}` reconcile diff), and excluded from restore. The
-  contract/mechanics (key spec, `priorKey` echo, language portability) are the DATA layer only — the
-  editing UI is a later epic. See D2 below + [backend/processing.md](../backend/processing.md).
+  **editing UI is now built** (AES-1102..1105 — the per-field ✎ editor, `Edited by you` +
+  provenance/reconcile, orphan chip, Q4 auto-confirm collapse —
+  [ux/screens/session-review.md](../ux/screens/session-review.md)). See D2 below +
+  [backend/processing.md](../backend/processing.md).
 
 **Pending:**
 

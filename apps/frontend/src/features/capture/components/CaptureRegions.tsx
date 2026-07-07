@@ -108,6 +108,8 @@ export function SessionReviewRegion({
   onCompleteAiCreatedPatient,
   patientConflicts,
   onAssignPatient,
+  onApplyNameCorrection,
+  onUnassign,
   onOpenResolver,
   onDismissConflict,
   regionRef,
@@ -117,6 +119,10 @@ export function SessionReviewRegion({
   onCompleteAiCreatedPatient?: CompleteAiCreatedPatient;
   patientConflicts: Array<{ captureId: string; suggestion: PatientConflictSuggestion | null }>;
   onAssignPatient?: (sessionId: string, draft: PatientAssignmentDraft) => Promise<void>;
+  /** E1 one-tap: apply a `suggested_name_correction` from the capture that raised it. */
+  onApplyNameCorrection?: (basisCaptureId: string, spokenName: string) => void | Promise<void>;
+  /** E1 one-tap: apply a `suggested_unassign` from the capture that raised it. */
+  onUnassign?: (basisCaptureId: string) => void | Promise<void>;
   onOpenResolver?: () => void;
   onDismissConflict: (captureId: string) => void;
   regionRef: React.RefObject<HTMLDivElement | null>;
@@ -133,6 +139,8 @@ export function SessionReviewRegion({
               suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
               basisCaptureId={conflict.captureId}
               onApply={onAssignPatient ? (draft) => onAssignPatient(session.id, draft) : undefined}
+              onApplyNameCorrection={onApplyNameCorrection ? (spokenName) => onApplyNameCorrection(conflict.captureId, spokenName) : undefined}
+              onUnassign={onUnassign ? () => onUnassign(conflict.captureId) : undefined}
               onChooseAnother={onOpenResolver}
               onDismiss={() => onDismissConflict(conflict.captureId)}
             />

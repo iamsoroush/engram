@@ -1,0 +1,270 @@
+/* Session-surface feature CSS (Batch-2 session-surface work: Track-B fast-follows + the
+   session-layout-diet and treatment-overlay epics). Co-located and feature-scoped so it stays out of
+   the shared token/primitive layer in styles.css (Track F owns those). References design tokens
+   read-only (var(--…)); it never defines them. Load-once via an import in CaptureScreen. */
+
+/* --- Track B: aftercare conflict/superseded dismiss --------------------------------------------- */
+/* A conflict/superseded note is opt-out too — a subtle × at the end of the amber note dismisses it
+   (writes dismissed_aftercare, persists across re-synthesis). Mirrors .aftercare-included-remove. */
+.aftercare-conflict-dismiss {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8935a;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.aftercare-conflict-dismiss:hover { background: #f6ecd0; color: #6b4e12; }
+
+/* --- Track B: coded review notes (uncertainty_reasons) render actionably ------------------------ */
+/* The reason takes the row; a source-correctable code's fix action / source link sits at the end. */
+.treatment-review-note-text { flex: 1 1 auto; }
+.treatment-review-notes li .treatment-fix-at-source,
+.treatment-review-notes li .source-citation { flex: 0 0 auto; margin-inline-start: 4px; }
+
+/* --- Session-layout-diet: the patient strip (AES-1301..1305) ------------------------------------ */
+/* The strip is sticky so identity + safety + verify count stay visible while reading a long report
+   (owner round-2 decision: pinned). It sits directly above the report card. */
+.patient-strip {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  margin-bottom: 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(20, 30, 55, 0.05);
+}
+.patient-strip.expanded { padding: 4px 4px 8px; background: #fbfcfe; }
+
+/* Collapsed: a single line — avatar · name · ordinal · state · chips · chevron. */
+.patient-strip-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  min-height: 44px;
+}
+.patient-strip-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #eef2f8;
+  color: #6b7a93;
+}
+.patient-strip-avatar svg { width: 17px; height: 17px; }
+.patient-strip-identity {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: start;
+  cursor: pointer;
+  overflow: hidden;
+}
+.patient-strip-identity strong { font-size: 0.9rem; color: #1f2a44; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.patient-strip-ordinal { flex: 0 0 auto; font-size: 0.76rem; color: #8a98ad; }
+.patient-strip-state { flex: 0 0 auto; font-size: 0.76rem; color: #3f8f5b; font-weight: 600; }
+.patient-strip-state.unassigned { color: #b7791f; }
+.patient-strip-line.unassigned { background: #fffaf0; border-radius: 14px; }
+.patient-strip-chips { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.patient-strip-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.patient-strip-chip.verify { background: #fdf3e2; color: #a15c15; }
+.patient-strip-chip.safety { background: #fdecec; color: #c0392b; padding: 3px 7px; }
+.patient-strip-assign {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: #b7791f;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.patient-strip-chevron {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #8a98ad;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 4px;
+  cursor: pointer;
+}
+
+/* Expanded: a header row (identity + actions) then the absorbed cards flow beneath. */
+.patient-strip-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px 6px;
+}
+.patient-strip-copy { flex: 1 1 auto; min-width: 0; }
+.patient-strip-copy strong { display: block; font-size: 0.92rem; color: #1f2a44; }
+.patient-strip-copy p { margin: 1px 0 0; font-size: 0.76rem; color: #8a98ad; }
+.patient-strip-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; }
+.patient-strip-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #e3e8f0;
+  border-radius: 999px;
+  background: #fff;
+  padding: 5px 11px;
+  font-size: 0.78rem;
+  color: #3a4a66;
+  cursor: pointer;
+}
+.patient-strip-action.primary { background: #b7791f; border-color: #b7791f; color: #fff; }
+.patient-strip-action svg { width: 14px; height: 14px; }
+/* The absorbed cards drop their own outer margins so they nest cleanly inside the strip. */
+.patient-strip .session-safety-panel,
+.patient-strip .session-context-card,
+.patient-strip-verify { margin: 6px 6px 0; }
+
+/* Active conflicts: a thin, always-visible band above the report (never buried in the strip). */
+.session-conflict-band {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .patient-strip { background: #161b26; border-color: #2a3140; }
+  .patient-strip.expanded { background: #131722; }
+  .patient-strip-avatar { background: #232a38; color: #9aa7bd; }
+  .patient-strip-identity strong, .patient-strip-copy strong { color: #e6ebf4; }
+  .patient-strip-action { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
+}
+
+/* --- Treatment overlay: inline field editor + provenance + reconcile (AES-1102..1105) ----------- */
+.treatment-edit-btn {
+  flex: 0 0 auto;
+  margin-inline-start: 4px;
+  border: 0;
+  background: transparent;
+  color: #8a98ad;
+  font-size: 0.82rem;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.treatment-edit-btn:hover { background: #eef2f8; color: #3a4a66; }
+/* "Edited by you" — human-owned provenance, visually distinct from the AI spark. */
+.treatment-edited-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-inline-start: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: #245c9c;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+/* The provenance/reconcile subline: the AI value stays visible (verbatim dictation for a dose); one
+   tap adopts it (Use AI = revert). Keep-yours is the default (the human value already leads). */
+.treatment-provenance {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: #6b7a90;
+}
+.treatment-provenance-text { flex: 1 1 auto; }
+.treatment-revert-btn {
+  flex: 0 0 auto;
+  border: 1px solid #d7deea;
+  background: #fff;
+  color: #3a4a66;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+.treatment-revert-btn:hover:not(:disabled) { background: #f2f6fc; }
+.treatment-revert-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* The compact per-field editor a row's ✎ opens. */
+.treatment-editor {
+  margin-top: 6px;
+  padding: 9px 10px;
+  border: 1px solid #e3e8f0;
+  border-radius: 10px;
+  background: #f8fafd;
+  display: grid;
+  gap: 7px;
+}
+.treatment-editor-field { display: grid; grid-template-columns: 68px 1fr; align-items: center; gap: 8px; }
+.treatment-editor-label { font-size: 0.74rem; color: #6b7a90; font-weight: 600; }
+.treatment-editor-field input {
+  border: 1px solid #d7deea;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-size: 0.82rem;
+  background: #fff;
+  min-width: 0;
+}
+.treatment-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
+.treatment-editor-cancel, .treatment-editor-save {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.treatment-editor-cancel { background: #eef2f8; color: #3a4a66; }
+.treatment-editor-save { background: #245c9c; color: #fff; }
+.treatment-editor-save:disabled, .treatment-editor-cancel:disabled { opacity: 0.55; cursor: default; }
+
+/* Parked overlay orphans — a calm review chip list (a lost human edit is never silent). */
+.treatment-orphans {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px dashed #d7c9a6;
+  background: #fffdf6;
+  display: grid;
+  gap: 6px;
+}
+.treatment-orphans li { display: flex; align-items: center; gap: 7px; font-size: 0.76rem; color: #6b5a2f; }
+.treatment-orphan-icon { flex: 0 0 auto; color: #b08a3a; }
+.treatment-orphan-text { flex: 1 1 auto; }
+
+@media (prefers-color-scheme: dark) {
+  .treatment-edited-chip { background: #16324e; color: #9cc6f5; }
+  .treatment-editor { background: #131722; border-color: #2a3140; }
+  .treatment-editor-field input { background: #0f131c; border-color: #2a3140; color: #e6ebf4; }
+  .treatment-revert-btn { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
+  .treatment-orphans { background: #1c1a12; border-color: #4a3f26; }
+}

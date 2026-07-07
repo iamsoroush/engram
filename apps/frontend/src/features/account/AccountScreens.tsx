@@ -13,6 +13,7 @@ type TenantSettingsUpdate = {
   appLanguage?: string;
   matchStrictness?: string;
   shareIncludeBrands?: boolean;
+  highRiskClinic?: boolean;
   rolePermissions?: RolePermissions;
 };
 
@@ -201,6 +202,22 @@ export function SettingsScreen({
             disabled={saving}
             checked={Boolean(auth.tenant.shareIncludeBrands)}
             onChange={(event) => save({ shareIncludeBrands: event.target.checked })}
+          />
+        </SettingRow>
+      </Card>
+
+      <Card className="settings-group">
+        <div className="settings-group-head">
+          <h2>{t("settings.safetyTitle")}</h2>
+          <p>{t("settings.safetyHint")}</p>
+        </div>
+        <SettingRow label={t("settings.highRiskLabel")} hint={t("settings.highRiskHint")}>
+          <input
+            type="checkbox"
+            aria-label={t("settings.highRiskAria")}
+            disabled={saving}
+            checked={Boolean(auth.tenant.highRiskClinic)}
+            onChange={(event) => save({ highRiskClinic: event.target.checked })}
           />
         </SettingRow>
       </Card>

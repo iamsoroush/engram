@@ -1,5 +1,5 @@
 import type { CaptureDraft, PatientSummary, PendingCapture, SafetyFlag, SafetyFlagKind } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation } from "../../domain/types";
+import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation, TreatmentOverlayEntry } from "../../domain/types";
 import type { AftercareTemplate } from "../../domain/appTypes";
 import { appDateTimeFormat } from "../../shared/lib/datetime";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
@@ -760,6 +760,26 @@ export function aiPatientActionForSession(session: CaptureSession | null) {
   return Object.keys(action).length ? action : null;
 }
 
+/**
+ * Whether an `ai_patient_action` is a blocker awaiting identity verification — i.e. an AI-*created*
+ * patient still flagged `needsVerification`. The SINGLE source of truth for both the verify-bar count
+ * (`patientVerifyNeeded`) and the resolver that renders it (`AiCreatedPatientPanel`), so the count can
+ * never diverge from a reachable resolver (INV-SILENT: every counted blocker has a resolver on screen).
+ * A merely *matched* action, or a created patient already `verified`, is NOT a blocker — it must not
+ * inflate the count (the phantom-verify-count bug: the count read "an action exists", the panel read
+ * "created + unverified"). Mirrors `AiCreatedPatientPanel`'s render guard exactly.
+ */
+export function aiCreatedPatientNeedsVerification(
+  action: Record<string, unknown> | null,
+  session: CaptureSession | null,
+): boolean {
+  if (!action) return false;
+  const patientId = metadataDisplay(action.patientId) || session?.patientId || "";
+  if (!patientId || action.action !== "created_and_assigned") return false;
+  const status = metadataDisplay(action.status);
+  return action.needsVerification !== false && status !== "verified";
+}
+
 export function activePatientAssignmentActionForSession(session: CaptureSession | null) {
   if (!session?.extractedMetadata) return null;
   const action = metadataRecord(session.extractedMetadata.active_patient_assignment_action || session.extractedMetadata.ai_patient_action);
@@ -849,8 +869,64 @@ export function workspaceTreatments(session: CaptureSession | null): SessionTrea
       sourceCaptureIds: Array.isArray(entry.sourceCaptureIds)
         ? entry.sourceCaptureIds.filter((id): id is string => typeof id === "string")
         : undefined,
+      // AES-1101: the stable key a human field-edit binds to + which fields were overridden (the
+      // payload already folds the human values into the row via effective_treatments).
+      treatmentKey: metadataText(entry.treatmentKey) || null,
+      overlayEditedFields: Array.isArray(entry.overlayEditedFields)
+        ? entry.overlayEditedFields.filter((field): field is string => typeof field === "string")
+        : undefined,
     }))
     .filter((treatment) => treatment.area || treatment.product);
+}
+
+/** Human field-edit overlay entries on this session's treatments (AES-1101) — the aiValue/attribution
+ *  lookup behind the "Edited by you" chip, provenance subline, and Revert-to-AI. */
+export function sessionTreatmentOverlay(session: CaptureSession | null): TreatmentOverlayEntry[] {
+  const raw = metadataRecord(session?.extractedMetadata).treatment_overlay;
+  if (!Array.isArray(raw)) return [];
+  const entries: TreatmentOverlayEntry[] = [];
+  for (const value of raw) {
+    const record = metadataRecord(value);
+    const treatmentKey = metadataText(record.treatmentKey);
+    const field = metadataText(record.field);
+    const val = metadataText(record.value);
+    if (!treatmentKey || !field || !val || (record.op && record.op !== "edit")) continue;
+    entries.push({
+      treatmentKey,
+      field,
+      value: val,
+      aiValue: metadataText(record.aiValue) || null,
+      editedByUserId: metadataText(record.editedByUserId) || null,
+      editedAt: metadataText(record.editedAt) || null,
+      parked: record.parked === true,
+    });
+  }
+  return entries;
+}
+
+/** Parked overlay orphans (AES-1101): edits a re-synthesis couldn't re-bind — surfaced as a review
+ *  chip so a human correction is never silently lost, and re-bound when its row reappears. */
+export function sessionTreatmentOverlayOrphans(session: CaptureSession | null): TreatmentOverlayEntry[] {
+  const raw = metadataRecord(session?.extractedMetadata).treatment_overlay_orphans;
+  if (!Array.isArray(raw)) return [];
+  const entries: TreatmentOverlayEntry[] = [];
+  for (const value of raw) {
+    const record = metadataRecord(value);
+    const treatmentKey = metadataText(record.treatmentKey);
+    const field = metadataText(record.field);
+    const val = metadataText(record.value);
+    if (!treatmentKey || !field || !val) continue;
+    entries.push({
+      treatmentKey,
+      field,
+      value: val,
+      aiValue: metadataText(record.aiValue) || null,
+      editedByUserId: metadataText(record.editedByUserId) || null,
+      editedAt: metadataText(record.editedAt) || null,
+      parked: true,
+    });
+  }
+  return entries;
 }
 
 /** Human "key·value" lines for a treatment's open technique attributes (needleGauge, depth, …). */
@@ -882,6 +958,9 @@ export function sessionTreatmentReview(session: CaptureSession | null): SessionT
       reason: metadataText(entry.reason),
       product: metadataText(entry.product) || null,
       key: metadataText(entry.key) || null,
+      sourceCaptureIds: Array.isArray(entry.sourceCaptureIds)
+        ? entry.sourceCaptureIds.filter((id): id is string => typeof id === "string")
+        : undefined,
     }))
     .filter((item) => item.reason);
 }
