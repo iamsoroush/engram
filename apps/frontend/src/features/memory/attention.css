@@ -1,0 +1,263 @@
+/* Close-the-day / unified attention (AES-1002/1003/1004).
+ *
+ * Feature-scoped styles for the severity-tiered sweep + the top-bar Attention indicator. Kept OUT of
+ * the global styles.css (a parallel track owns the design tokens) — this file only *reads* the shared
+ * tokens (colour, radius, spacing), so it stays theme-aware in light + dark for free. Imported by
+ * AttentionSweep.tsx and Shell.tsx. Tone → token map: safety=danger, confirm=warning,
+ * messages=violet, suggested=info, earlier=muted. */
+
+.attention-sweep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap, 1rem);
+}
+
+.attention-sweep-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.attention-sweep-heading h2 {
+  margin: 0;
+  font-size: var(--text-lg, 1.125rem);
+}
+
+.attention-progress {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-sm, 0.85rem);
+  color: var(--color-text-soft, #667);
+}
+
+/* Mine / Clinic scope toggle — a calm segmented control (reuses AES-904 semantics). */
+.attention-scope {
+  display: inline-flex;
+  border: 1px solid var(--color-border, #dde);
+  border-radius: var(--radius-pill, 999px);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.attention-scope button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.85rem;
+  font-size: var(--text-sm, 0.85rem);
+  color: var(--color-text-soft, #667);
+  cursor: pointer;
+}
+
+.attention-scope button.active {
+  background: var(--color-primary-soft, #eef);
+  color: var(--color-primary, #3355ee);
+  font-weight: 600;
+}
+
+/* AES-1006 — the opt-in, dismissible end-of-day reminder. Calm, non-blocking; never a gate. */
+.attention-nudge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--color-warning-soft, #f0e0b0);
+  background: var(--color-warning-soft, #fdf6e3);
+  border-radius: var(--radius-md, 10px);
+  font-size: var(--text-sm, 0.85rem);
+  color: var(--color-text, #223);
+}
+
+.attention-nudge-dismiss {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-soft, #667);
+  font-size: var(--text-sm, 0.85rem);
+  cursor: pointer;
+  text-decoration: underline;
+  flex-shrink: 0;
+}
+
+/* Severity sections — a left rail + section head carry the tier colour. */
+.attention-section {
+  border: 1px solid var(--color-border, #dde);
+  border-inline-start: 3px solid var(--tone-line, var(--color-border-strong, #ccd));
+  border-radius: var(--radius-md, 10px);
+  background: var(--color-surface, #fff);
+  padding: 0.5rem 0.75rem 0.75rem;
+}
+
+.attention-section + .attention-section {
+  margin-top: 0.75rem;
+}
+
+.attention-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.15rem 0 0.5rem;
+  font-size: var(--text-sm, 0.85rem);
+  text-transform: none;
+  color: var(--tone-line, var(--color-text, #223));
+}
+
+.attention-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--tone-soft, var(--color-surface-soft, #f2f2f6));
+  color: var(--tone-line, var(--color-text-soft, #667));
+  font-size: var(--text-xs, 0.72rem);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.attention-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* One resolve-in-place row: a body button (opens the source resolver) + a focused primary action. */
+.attention-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  border: 1px solid var(--color-border, #dde);
+  border-radius: var(--radius-md, 10px);
+  background: var(--color-surface, #fff);
+  overflow: hidden;
+}
+
+.attention-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  text-align: start;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.attention-card-body:disabled {
+  cursor: default;
+}
+
+.attention-card-title {
+  font-size: var(--text-md, 0.95rem);
+  font-weight: 600;
+  color: var(--color-text, #223);
+}
+
+.attention-card-reason {
+  font-size: var(--text-sm, 0.85rem);
+  color: var(--color-text-soft, #667);
+}
+
+.attention-card-action {
+  flex-shrink: 0;
+  align-self: center;
+  margin-inline-end: 0.55rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--tone-line, var(--color-primary, #3355ee));
+  border-radius: var(--radius-pill, 999px);
+  background: var(--tone-soft, var(--color-primary-soft, #eef));
+  color: var(--tone-line, var(--color-primary, #3355ee));
+  font-size: var(--text-sm, 0.85rem);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.attention-card-acted {
+  opacity: 0.55;
+}
+
+.attention-card-acted .attention-card-action {
+  border-color: var(--color-success, #2a8);
+  background: var(--color-success-soft, #e6f6ee);
+  color: var(--color-success, #2a8);
+}
+
+/* Tone variables per severity tier — set on the section + card, consumed by rails/pills above. */
+.attention-tone-red {
+  --tone-line: var(--color-danger, #d33);
+  --tone-soft: var(--color-danger-soft, #fdecec);
+}
+.attention-tone-amber {
+  --tone-line: var(--color-warning, #c98a00);
+  --tone-soft: var(--color-warning-soft, #fdf6e3);
+}
+.attention-tone-violet {
+  --tone-line: var(--violet, #7a5af8);
+  --tone-soft: var(--violet-soft, #efeafe);
+}
+.attention-tone-blue {
+  --tone-line: var(--color-info, #2b7de9);
+  --tone-soft: var(--color-info-soft, #e8f1fd);
+}
+.attention-tone-muted {
+  --tone-line: var(--color-text-soft, #667);
+  --tone-soft: var(--color-surface-soft, #f2f2f6);
+}
+
+/* Fair-use-parked memory rebuild (M-P6): a calm, static usage-limit pill (no spinner dots). */
+.memory-updating-pill-paused {
+  color: var(--color-warning, #c98a00);
+  background: var(--color-warning-soft, #fdf6e3);
+}
+
+/* --- Top-bar Attention indicator (AES-1003) ------------------------------------------------- */
+/* Reuses the .app-search-button footprint (see styles.css); only the badge tone is feature-owned. */
+.app-attention-badge {
+  position: absolute;
+  top: -2px;
+  inset-inline-end: -2px;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.28rem;
+  border-radius: var(--radius-pill, 999px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--color-warning, #c98a00);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-attention-badge.tone-red {
+  background: var(--color-danger, #d33);
+}
+.app-attention-badge.tone-amber {
+  background: var(--color-warning, #c98a00);
+}
+.app-attention-badge.tone-violet {
+  background: var(--violet, #7a5af8);
+}
+.app-attention-badge.tone-blue {
+  background: var(--color-info, #2b7de9);
+}
+
+/* Safety-only presence (nothing "to confirm", but a red flag exists) — a bare dot, never a number. */
+.app-attention-dot {
+  position: absolute;
+  top: 1px;
+  inset-inline-end: 1px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-danger, #d33);
+}

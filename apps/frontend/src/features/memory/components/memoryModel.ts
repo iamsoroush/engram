@@ -11,7 +11,8 @@ export type PatientBadgeKind = "needs-input" | "complete" | "neutral";
 /** A patient-card badge: localized text + a stable kind the UI branches on for styling. */
 export type PatientBadge = { label: string; kind: PatientBadgeKind };
 
-export type ClinicalMemoryTab = "today" | "patients" | "lists" | "needs-input";
+// The Needs-input tab evolved into the severity-tiered "Attention" sweep (Close-the-day / AES-1004).
+export type ClinicalMemoryTab = "today" | "patients" | "lists" | "attention";
 export type PatientFilter = "recent" | "active" | "all";
 export type ClinicalTone = "blue" | "green" | "amber";
 
@@ -43,6 +44,9 @@ export type PatientRowModel = {
   name: string;
   summary: string;
   memoryStatus: "ready" | "updating" | string;
+  // `usage_limit` when a fair-use-parked capture job froze the rebuild (M-P6) — the pill then shows
+  // the usage-limit state instead of an open-ended spinner. Null/absent for an ordinary rebuild.
+  memoryStatusReason?: string | null;
   badges: PatientBadge[];
   action: PatientPrimaryAction;
   actionLabel: string;
@@ -365,6 +369,7 @@ export function patientRowFromApi(row: ApiPatientMemoryRow, t: Translator): Pati
     name: row.displayName,
     summary: row.summary || t("memmodel.summary.none"),
     memoryStatus: row.memoryStatus === "updating" ? "updating" : "ready",
+    memoryStatusReason: row.memoryStatusReason ?? null,
     // "Active session" is intentionally not shown on patient cards — live work lives in Today.
     badges: patientBadges({ sessionCount: row.sessionCount, complete: Boolean(row.complete), needsInput, needsInputItems, t }),
     action: primary.action,

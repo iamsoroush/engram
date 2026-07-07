@@ -9,6 +9,9 @@ import type {
   AftercareTemplate,
   AftercareTemplateDraft,
   AssignmentSuggestionResponse,
+  AttentionItem,
+  AttentionResponse,
+  AttentionScope,
   CreatePatientShareInput,
   DuplicateCheckResponse,
   LastVisitInfo,
@@ -582,6 +585,58 @@ export async function fetchPatientMemory(
     limit: numberValue(payload.limit, limit),
     offset: numberValue(payload.offset, offset),
     total: numberValue(payload.total, items.length),
+  };
+}
+
+// --- Unified attention roll-up (Close-the-day sweep + indicator; AES-1001) ----------------------
+
+function normalizeAttentionItem(raw: Record<string, unknown>): AttentionItem {
+  const tier = raw.tier === "S1" || raw.tier === "S2" || raw.tier === "S3" || raw.tier === "qa" ? raw.tier : "S2";
+  return {
+    id: String(raw.id || ""),
+    kind: String(raw.kind || ""),
+    tier,
+    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : null,
+    patientId: typeof raw.patientId === "string" ? raw.patientId : null,
+    patientName: typeof raw.patientName === "string" ? raw.patientName : null,
+    clinicianId: typeof raw.clinicianId === "string" ? raw.clinicianId : null,
+    threadId: typeof raw.threadId === "string" ? raw.threadId : null,
+    reason: typeof raw.reason === "string" ? raw.reason : null,
+    key: typeof raw.key === "string" ? raw.key : null,
+    sortTime: typeof raw.sortTime === "string" ? raw.sortTime : null,
+    dayGroup: raw.dayGroup === "earlier" ? "earlier" : "today",
+  };
+}
+
+export async function fetchAttention(
+  apiFetch: ApiFetch,
+  { scope = "mine", tzOffsetMinutes }: { scope?: AttentionScope; tzOffsetMinutes?: number } = {},
+): Promise<AttentionResponse> {
+  const params = new URLSearchParams({ scope });
+  // The user's calendar-day boundary is theirs, not the server's — pass the client's tz offset so
+  // "today" vs the "Earlier" carry-over group is computed in local time.
+  const offset = typeof tzOffsetMinutes === "number" ? tzOffsetMinutes : -new Date().getTimezoneOffset();
+  params.set("tzOffsetMinutes", String(offset));
+  const response = await apiFetch(`${API_BASE}/attention?${params.toString()}`);
+  if (!response.ok) throw new Error("Could not load attention");
+  const payload = (await response.json()) as Record<string, unknown>;
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const rawCounts = (payload.counts && typeof payload.counts === "object" ? payload.counts : {}) as Record<string, unknown>;
+  const highest = payload.highestTier;
+  return {
+    scope: payload.scope === "clinic" ? "clinic" : "mine",
+    counts: {
+      confirm: numberValue(rawCounts.confirm, 0),
+      suggested: numberValue(rawCounts.suggested, 0),
+      messages: numberValue(rawCounts.messages, 0),
+      safety: numberValue(rawCounts.safety, 0),
+      total: numberValue(rawCounts.total, 0),
+    },
+    highestTier:
+      highest === "safety" || highest === "confirm" || highest === "messages" || highest === "suggested" ? highest : null,
+    items: rawItems
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map(normalizeAttentionItem),
   };
 }
 
@@ -1281,6 +1336,7 @@ function normalizePatientMemoryRow(raw: Record<string, unknown>): PatientMemoryR
     summary: String(raw.summary || "No memory summary yet."),
     summarySource: String(raw.summarySource || "fallback"),
     memoryStatus: raw.memoryStatus === "updating" ? "updating" : "ready",
+    memoryStatusReason: typeof raw.memoryStatusReason === "string" ? raw.memoryStatusReason : null,
     memoryUpdatedAt: typeof raw.memoryUpdatedAt === "string" ? raw.memoryUpdatedAt : null,
     generatedSummary: typeof raw.generatedSummary === "string" ? raw.generatedSummary : null,
     ruleBasedSummary: typeof raw.ruleBasedSummary === "string" ? raw.ruleBasedSummary : null,

@@ -1,6 +1,8 @@
 import React from "react";
 import type {
   AftercareTemplate,
+  AttentionCounts,
+  AttentionResponse,
   AuthSession,
   CaptureDraft,
   DevTier,
@@ -18,6 +20,7 @@ import {
   createPatientShare,
   deleteAftercareTemplate,
   createSession,
+  fetchAttention,
   fetchLastVisit,
   fetchSessionContext,
   fetchWorklist,
@@ -60,7 +63,7 @@ import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { CaptureDestinationPanel, PatientsHome, SearchHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
-import { fetchQaInbox, openQaChannel } from "../features/qa/qaClient";
+import { openQaChannel } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import { clearLocalCaptureData } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
@@ -145,7 +148,9 @@ function AppInner() {
     setCaptureReturnSession,
     accountReturnRef,
   } = useNavigation();
-  const [qaPendingCount, setQaPendingCount] = React.useState(0);
+  // Unified attention roll-up for the top-bar indicator (AES-1003): one count that merges the S2
+  // "to confirm" items with pending Q&A messages (safety keeps top salience but is never a to-do).
+  const [attention, setAttention] = React.useState<{ counts: AttentionCounts; highestTier: AttentionResponse["highestTier"] } | null>(null);
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -178,26 +183,32 @@ function AppInner() {
     }
   }, [auth, sync]);
 
-  // Pending-question count for the top-bar Q&A inbox badge (Pro only). Refreshed on login and
-  // whenever the inbox loads or the doctor sends/dismisses (the inbox calls onChanged → here).
-  const refreshQaPendingCount = React.useCallback(() => {
-    if (!canUseQa) {
-      setQaPendingCount(0);
+  // The indicator scope follows the sweep's role default (AES-1005): a doctor/owner clears their own
+  // doses/safety/messages (`mine`); reception (assistant/admin) coordinates intake (`clinic`).
+  const attentionScope = React.useMemo<"mine" | "clinic">(() => {
+    const role = auth?.memberships.find((m) => m.tenantId === auth.tenant.id)?.role || auth?.user.persona;
+    return role === "assistant" || role === "admin" ? "clinic" : "mine";
+  }, [auth]);
+
+  // Refreshed on login, on any memory-refresh signal (a capture/assignment lands), and on a gentle
+  // interval — a new patient question arrives out-of-band, so the indicator can't wait for a screen
+  // open. The doctor sending/dismissing a Q&A reply also refreshes it (the inbox calls onChanged).
+  const refreshAttention = React.useCallback(() => {
+    if (!auth || auth.user.persona === "patient-preview") {
+      setAttention(null);
       return;
     }
-    fetchQaInbox(apiFetch, "mine")
-      .then((response) => setQaPendingCount(response.total))
+    fetchAttention(apiFetch, { scope: attentionScope })
+      .then((response) => setAttention({ counts: response.counts, highestTier: response.highestTier }))
       .catch(() => undefined);
-  }, [apiFetch, canUseQa]);
+  }, [apiFetch, auth, attentionScope]);
 
   React.useEffect(() => {
-    refreshQaPendingCount();
-    // A new patient question arrives out-of-band (the patient asks on their public link), so the badge
-    // must not wait for the doctor to open the inbox — refresh it on a gentle interval too (Q-11).
-    if (!canUseQa) return;
-    const handle = window.setInterval(refreshQaPendingCount, 60_000);
+    refreshAttention();
+    if (!auth || auth.user.persona === "patient-preview") return;
+    const handle = window.setInterval(refreshAttention, 60_000);
     return () => window.clearInterval(handle);
-  }, [refreshQaPendingCount, canUseQa]);
+  }, [refreshAttention, memoryRefreshSignal, auth]);
 
   React.useEffect(() => {
     if (!auth || auth.user.persona === "patient-preview") return;
@@ -723,11 +734,19 @@ function AppInner() {
     ? "Patient history"
     : clinicalMemoryReturnContext?.tab === "today"
       ? "Today"
-      : clinicalMemoryReturnContext?.tab === "needs-input"
-        ? "Needs input"
+      : clinicalMemoryReturnContext?.tab === "attention"
+        ? "Attention"
         : clinicalMemoryReturnContext?.tab === "patients"
           ? "Patients"
           : "Clinical Memory";
+
+  // The top-bar Attention indicator opens the Close-the-day sweep — the Attention tab of Clinical
+  // Memory. Setting the return context to that tab makes PatientsHome land on (and switch to) it.
+  const openAttention = () => {
+    setCaptureReturnSession(null);
+    setClinicalMemoryReturnContext({ tab: "attention" });
+    navigateScreen("patients");
+  };
 
   const handleShellNavigate = (nextScreen: Screen) => {
     // Settings/Profile are utility pages reached from the account menu; remember where we came
@@ -870,7 +889,7 @@ function AppInner() {
     }
     if (screen === "qa-inbox" && canUseQa) {
       // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
-      return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshQaPendingCount} />;
+      return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshAttention} />;
     }
     if (screen === "search") {
       return <SearchHome onOpenSession={openMemorySession} sessions={sessions} syncHealth={syncHealth} />;
@@ -884,6 +903,7 @@ function AppInner() {
         onOpenSession={openMemorySession}
         onStartVisit={startVisitForPatient}
         onViewingPatientChange={setViewedPatient}
+        onOpenQaInbox={canUseQa ? () => navigateScreen("qa-inbox") : undefined}
       />
     );
   };
@@ -967,7 +987,9 @@ function AppInner() {
         screen={screen}
         syncHealth={syncHealth}
         onNavigate={handleShellNavigate}
-        qaPendingCount={qaPendingCount}
+        attentionCounts={attention?.counts ?? null}
+        attentionHighestTier={attention?.highestTier ?? null}
+        onOpenAttention={openAttention}
       >
         {pendingCaptureKind ? (
           <CaptureDestinationPanel

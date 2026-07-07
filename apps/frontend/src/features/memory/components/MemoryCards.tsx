@@ -309,6 +309,7 @@ export function PatientRow({
   patientName,
   summary,
   summaryStatus,
+  summaryStatusReason,
   isPro = false,
   tone = "green",
   onAction,
@@ -320,6 +321,7 @@ export function PatientRow({
   patientName: string;
   summary: string;
   summaryStatus?: string;
+  summaryStatusReason?: string | null;
   isPro?: boolean;
   tone?: ClinicalTone;
   onAction: () => void;
@@ -332,7 +334,7 @@ export function PatientRow({
       <div className="clinical-row-copy">
         <h3 data-content>{patientName}</h3>
         {latestVisitLabel ? <span className="patient-latest-visit" data-content>{latestVisitLabel}</span> : null}
-        <MemorySummary text={summary} status={summaryStatus} isPro={isPro} />
+        <MemorySummary text={summary} status={summaryStatus} statusReason={summaryStatusReason} isPro={isPro} />
         <div className="patient-memory-badges" aria-label={t("memcard.patientMemoryStatus")}>
           {badges.map((badge) => (
             // Style on the badge's stable `kind`, not its localized text (the old string-match broke under fa).
@@ -356,8 +358,13 @@ export function MemorySpark({ working }: { working?: boolean }) {
   );
 }
 
-export function MemoryUpdatingPill({ label }: { label?: string }) {
+export function MemoryUpdatingPill({ label, paused = false }: { label?: string; paused?: boolean }) {
   const t = useT();
+  // Parked by the fair-use limit (M-P6): the rebuild isn't actively spinning — it resumes next cycle
+  // / on upgrade — so drop the pulsing dots and show the calm usage-limit copy instead of a spinner.
+  if (paused) {
+    return <span className="memory-updating-pill memory-updating-pill-paused">{label ?? t("memcard.memoryPausedUsageLimit")}</span>;
+  }
   return (
     <span className="memory-updating-pill">
       <span className="memory-updating-dots" aria-hidden="true">
@@ -373,8 +380,9 @@ export function MemoryUpdatingPill({ label }: { label?: string }) {
 // The patient summary line on a card. Keeps the current text legible while a refresh is in flight
 // (a shimmer sweep + "Organizing memory" cue), then fades the new text in when it settles. The
 // `key={text}` remounts on a content swap so the fade-in plays.
-export function MemorySummary({ text, status, isPro }: { text: string; status?: string; isPro: boolean }) {
+export function MemorySummary({ text, status, statusReason, isPro }: { text: string; status?: string; statusReason?: string | null; isPro: boolean }) {
   const updating = status === "updating";
+  const paused = updating && statusReason === "usage_limit";
   return (
     <div className={`patient-memory-summary${updating ? " updating" : ""}`}>
       <p className="patient-memory-summary-text" dir={memoryTextDirection(text)} key={text}>
@@ -382,7 +390,7 @@ export function MemorySummary({ text, status, isPro }: { text: string; status?: 
         <span className="memory-text" data-content>{text}</span>
         <span className="memory-sweep" aria-hidden="true" />
       </p>
-      {updating ? <MemoryUpdatingPill /> : null}
+      {updating ? <MemoryUpdatingPill paused={paused} /> : null}
     </div>
   );
 }

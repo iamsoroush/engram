@@ -58,6 +58,12 @@
         "tags": []
       }
     },
+    "/api/v1/attention": {
+      "get": {
+        "operationId": "attention_feed_route_api_v1_attention_get",
+        "tags": []
+      }
+    },
     "/api/v1/auth/dev-login": {
       "post": {
         "operationId": "auth_dev_login_api_v1_auth_dev_login_post",
@@ -788,6 +794,17 @@
         "POST"
       ],
       "path": "/api/v1/ai-usage/dev/set"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/attention"
     },
     {
       "dependencies": [

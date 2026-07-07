@@ -122,7 +122,7 @@ back to unassigned. Please assign it again.` No error code, no stuck spinner, no
 - Active Session with no captures still shows the workspace and empty report surface.
 - Clinical Memory Today shows calm current-work copy instead of a blank dashboard.
 - Clinical Memory Patients shows searchable empty copy when no patient memory is available.
-- Clinical Memory Needs input says there is nothing urgent when no human decisions are waiting.
+- Clinical Memory Attention says `All caught up — nothing needs you.` when nothing is open.
 - Search shows empty copy before a query and when no loaded memory matches.
 - Session review capture list shows `No captures loaded for this session yet.`
 - Insights charts use a shared **placeholder block** (dashed frame, fixed min-height matching the
@@ -177,11 +177,41 @@ Fair-use AI metering (semantics: `docs/business/ai-usage-limits.md`; UI: `featur
   recording auto-stops and saves at 20 minutes.
 - Settings shows the "AI usage" card (ring + % + reset date). Basic (zero-AI) renders none of this.
 
+## Attention model
+
+Every "needs you" signal maps to exactly one **severity tier** — one shared language rendered in
+place (at each item's source) and aggregated into the cross-session **Close-the-day sweep** (the
+[Attention tab](screens/patients.md#attention-tab)) and the top-bar
+[Attention indicator](navigation.md). The backend `GET /api/v1/attention` roll-up computes it over the
+signals that already exist; it invents no new clinical logic.
+
+| Tier | Name | Colour | Requires | Counts toward the aggregate? |
+| --- | --- | --- | --- | --- |
+| **S1** | Safety | red | awareness (opt-out) | **No** — shown first for salience, never a to-do (kept by default; you act only to reject a wrong flag). |
+| **S2** | Confirm | amber | a decision | **Yes** — the true "N to confirm": unconfirmed carried-forward **doses**, AI-created patient **verify**, patient **conflict**, **unassigned** visit, inert-assignment conflict, and the client **storage warning**. |
+| **S3** | Suggested | blue | optional one-tap | Yes, as a separate "suggested" count: reassignment / name-correction / unassign / transcript recheck. |
+| **qa** | Messages | violet (Pro) | a reply | Yes, as a separate "messages" count; deep-links to the [Q&A inbox](screens/qa-inbox.md) thread. |
+
+`S4` **notes** (low-confidence extraction, missing lot) never roll up — they stay as calm gray
+fix-at-source footnotes on the visit.
+
+Rules:
+
+- **Never a blocker.** Attention is warnings / review markers; you can end the day with items open.
+- **Surface by exception.** An empty sweep means the checks *ran and passed*, never "not yet checked".
+- **Safety is shown, never counted.** Counting it would pressure a clinician to "clear" safety,
+  inverting the safe default.
+- **Carry-over.** The day lens is the user's calendar day; prior-day undecided items appear in an
+  `Earlier, still open` group so nothing decays at midnight.
+- **In place = aggregate.** Each item's per-session view (e.g. the verify bar's S2 count) is the same
+  number the roll-up sums, so the sweep and the session never diverge.
+
 ## Needs Input Rules
 
-Needs input contains only **critical** human-decision items, in three patient/AI categories plus one
-data-safety category. The categories are computed by the backend (the single source of truth shared
-by the patient-card needs-input badge and the Needs input tab, so they always agree):
+The needs-input **decision set** is the S2 patient-assignment subset of the [Attention model](#attention-model)
+above: **critical** human-decision items in three patient/AI categories plus one data-safety category.
+The categories are computed by the backend (the single source of truth shared by the patient-card
+needs-input badge and the Attention sweep, so they always agree):
 
 - **assign patient** — an unassigned visit with no usable candidate.
 - **choose patient** — an ambiguous/uncertain auto-match (a possible match, a national-ID conflict,

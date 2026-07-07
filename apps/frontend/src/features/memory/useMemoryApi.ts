@@ -2,6 +2,8 @@ import React from "react";
 import type {
   AftercareTemplate,
   AssignmentSuggestionResponse,
+  AttentionResponse,
+  AttentionScope,
   ClinicMember,
   CreatePatientShareInput,
   DuplicateCheckResponse,
@@ -30,6 +32,7 @@ import {
   fetchAssignmentSuggestion,
   fetchClinicMembers,
   fetchLastVisit,
+  fetchAttention,
   fetchLotLedger,
   fetchLotRecall,
   fetchPatientMemory,
@@ -67,6 +70,8 @@ export type MemoryApi = {
     offset?: number;
     clinicianId?: string;
   }) => Promise<PatientMemoryListResponse>;
+  /** Unified attention roll-up for the Close-the-day sweep (AES-1001). */
+  fetchAttention: (scope: AttentionScope) => Promise<AttentionResponse>;
   smartSearchPatients: (query: string) => Promise<SmartPatientSearchResponse>;
   duplicateCheckPatient: (body: { displayName?: string; nationalId?: string; phone?: string }) => Promise<DuplicateCheckResponse>;
   loadSessionCaptures: (sessionId: string) => Promise<CaptureItem[]>;
@@ -104,6 +109,7 @@ export function useMemoryApi(): MemoryApi {
     () => ({
       getPatientMemoryDetail: (patientId) => fetchPatientMemoryDetail(apiFetch, patientId),
       listPatientMemory: (params) => fetchPatientMemory(apiFetch, params),
+      fetchAttention: (scope) => fetchAttention(apiFetch, { scope }),
       smartSearchPatients: (query) => searchPatientsSmart(apiFetch, query),
       duplicateCheckPatient: (body) => checkDuplicatePatient(apiFetch, body),
       loadSessionCaptures: (sessionId) => fetchSessionCaptures(apiFetch, sessionId),

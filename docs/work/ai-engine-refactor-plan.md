@@ -370,7 +370,7 @@ Mechanics, with ownership:
      scope; this requirement only guarantees it won't be a disaster later.
 
 **Other UX epics checked for pipeline asks:**
-[close-the-day](ux-epic-close-the-day.md) — severity (S1–S4) is an explicit backend **roll-up over
+[the attention model](../ux/states.md#attention-model) — severity (S1–S4) is an explicit backend **roll-up over
 existing signals** (uncertainties, per-item confidence, safety flags, Q&A); no new synthesis fields
 required. Optional, deferred: machine-readable uncertainty reason codes (today free strings) would
 make the S2/S4 mapping less heuristic — a synthesis schema change, so if wanted it batches into the

@@ -25,7 +25,7 @@ The UX keeps capture first while moving long-term review toward Clinical Memory:
 - [Landing / Login / Sign-up](screens/login.md) (bilingual fa/en + RTL; self-serve clinic sign-up)
 - [First-run onboarding](screens/onboarding.md)
 - [Capture / Active Session](screens/capture.md)
-- [Clinical Memory](screens/patients.md) — Today, Patients, and Needs input tabs; Pro adds a
+- [Clinical Memory](screens/patients.md) — Today, Patients, and Attention tabs; Pro adds a
   deterministic **Lists** tab (smart lists + lot/product recall)
 - [Search](screens/search.md)
 - [Session review](screens/session-review.md)
@@ -51,7 +51,7 @@ The frontend is a single React app with hash-based screen selection:
 
 - Default: Active Session Workspace
 - `#active-session`: current active session workspace
-- `#patients`: Clinical Memory with Today, Patients, Needs input, and (Pro) Lists tabs
+- `#patients`: Clinical Memory with Today, Patients, Attention, and (Pro) Lists tabs
 - `#search`: local memory search
 - `#qa-inbox`: Q&A inbox (Pro; top-bar icon beside Search)
 - `#settings`, `#profile`: account pages (account menu)
