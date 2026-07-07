@@ -8,12 +8,13 @@
 //   - MemorySheets.tsx           resolver/review sheets
 //   - PatientTimeline.tsx        patient timeline detail + cards
 //   - PatientsHome.tsx           Clinical Memory home (Today/Patients/Needs input)
-//   - SearchHome.tsx             search home screen
 //   - CaptureDestinationPanel.tsx
+//
+// The old SearchHome (top-nav `/#search` local-substring screen) was retired by the unified finder
+// (features/finder) — its local-filter behavior survives only as the finder's offline fallback.
 //
 // These re-exports preserve the original public import surface so existing
 // imports (e.g. App.tsx) keep working unchanged.
 export { PatientsHome } from "./PatientsHome";
-export { SearchHome } from "./SearchHome";
 export { CaptureDestinationPanel } from "./CaptureDestinationPanel";
 export type { ClinicalMemoryReturnContext } from "./memoryModel";

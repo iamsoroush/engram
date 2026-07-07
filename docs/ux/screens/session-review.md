@@ -2,8 +2,8 @@
 
 ## Route
 
-No separate route. Opens inline from Clinical Memory patient detail/timeline or `/#search` using
-the Active Session Workspace structure ([capture.md](capture.md)).
+No separate route. Opens inline from Clinical Memory patient detail/timeline or a
+[finder](finder.md) visit result using the Active Session Workspace structure ([capture.md](capture.md)).
 
 ## Purpose
 

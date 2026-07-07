@@ -10,6 +10,7 @@ export function Shell({
   screen,
   children,
   onNavigate,
+  onOpenFinder,
   onCapture,
   captureContextLabel,
   auth,
@@ -23,6 +24,9 @@ export function Shell({
   screen: Screen;
   children: React.ReactNode;
   onNavigate: (screen: Screen) => void;
+  /** Open the unified finder overlay (the top-bar search affordance + desktop ⌘K launcher). Absent on
+   *  surfaces without the finder (e.g. therapy), where the search affordance is simply not rendered. */
+  onOpenFinder?: () => void;
   onCapture: (kind: CaptureDraft["kind"]) => void;
   captureContextLabel?: string;
   auth: AuthSession;
@@ -102,16 +106,20 @@ export function Shell({
                 </button>
               ))}
             </nav>
-            <button
-              aria-current={screen === "search" ? "page" : undefined}
-              aria-label={t("nav.search")}
-              className={`app-search-button ${screen === "search" ? "active" : ""}`}
-              onClick={() => onNavigate("search")}
-              title={t("nav.search")}
-              type="button"
-            >
-              <SearchNavIcon />
-            </button>
+            {/* The unified finder (AES-1201): opens the app-wide finder overlay — mobile-first full-screen
+                sheet; desktop also has a ⌘K launcher. Not a screen anymore, so no `aria-current`. Only
+                rendered where a finder is wired (aesthetics), not on the therapy surface. */}
+            {onOpenFinder ? (
+              <button
+                aria-label={t("nav.search")}
+                className="app-search-button"
+                onClick={onOpenFinder}
+                title={t("nav.search")}
+                type="button"
+              >
+                <SearchNavIcon />
+              </button>
+            ) : null}
             {isPro ? (
               <button
                 aria-current={screen === "qa-inbox" ? "page" : undefined}

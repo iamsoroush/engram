@@ -8,8 +8,7 @@
 | `/#active-session` | Active Session | Current session feed and capture dialogs. |
 | `/#patients` | Clinical Memory | Today, Patients, and Attention tabs (Pro adds Lists). The Attention tab is the severity-tiered [Close-the-day sweep](screens/patients.md#attention-tab). Patient rows open patient detail/timeline; the main view does not nest sessions under patients. |
 | `/#qa-inbox` | Q&A inbox (Pro) | **Pro only** — reached from a plain top-bar inbox icon beside Search (not the primary nav pill); hidden on Basic (capability `post_session_qa`). The pending-question count now rolls into the unified **Attention indicator** (Messages tier), not a separate Q&A badge. **Thread-centric**: one patient conversation per entry (chat bubbles + interleaved visit markers), threads awaiting approval first. Each pending question shows an AI-suggested reply the doctor can Send / edit / Dismiss (AES-402); `Mine`/`Clinic` scope, a routing-mode control, and **Re-route** to one of the patient's treating doctors. |
-| `/#search` | Search | Local search across loaded sessions and captures. Opening a session shows inline historical review. |
-| `/#settings` | Settings | Tenant preferences: app/transcription/report languages, patient-match strictness, patient sharing (include-brands), aftercare templates, the AI-usage card, plan/workspace rows, and admin-only role-permission presets. Reached from the account menu; has a Back action. See [Account](screens/account.md). |
+| `/#search` | Finder (overlay) | **Not a screen — a deep-link into the [finder](screens/finder.md) overlay.** Opens the app-wide finder over the Clinical-Memory workspace and normalizes the hash to `#patients`. The finder is the top-level retrieval surface (patients / today's visits / Pro lot recall); the old local-substring search screen was retired and survives only as the finder's offline fallback. || `/#settings` | Settings | Tenant preferences: app/transcription/report languages, patient-match strictness, patient sharing (include-brands), aftercare templates, the AI-usage card, plan/workspace rows, and admin-only role-permission presets. Reached from the account menu; has a Back action. See [Account](screens/account.md). |
 | `/#profile` | Profile | Signed-in user + tenant (name, role, clinic), account actions (logout), and admin debug. Reached from the account menu; has a Back action. |
 | `/#insights` | Insights (clinic analytics) | **Owner/admin only** — clinic activity, staff productivity, patient panel, and (Pro) treatment/product insights. Reached from the account menu (hidden for other roles); has a Back action. See [Insights](screens/insights.md). |
 | `/#team` | Team (member management) | **Owner/admin only** — add clinic members (doctor/assistant/admin) with a temporary password (or add an existing Engram account across clinics, no password), and change a member's role/status. Reached from the account menu (hidden for other roles) or the onboarding "Invite your team" link; has a Back action. See [Team](screens/team.md). |
@@ -31,11 +30,14 @@
   email/password form is available in every build.
 - A freshly signed-up founder additionally sees the first-run [onboarding](screens/onboarding.md) tour.
 - Patient-preview persona lands on a limited-access screen with only Logout.
+- **Any screen to the [finder](screens/finder.md):** the top-bar **magnifier** opens the app-wide
+  finder overlay (mobile-first full-screen sheet); on desktop **⌘K / Ctrl-K** opens it from anywhere.
+  It floats over the current screen — not a nav pill, not a route.
 
 ## Navigation Paths
 
-- Active Session to Clinical Memory or Search: compact top-left navigator in the mobile-first header.
-- Clinical Memory or Search to Active Session: compact top-left navigator in the mobile-first header; selected historical review closes when returning to Active Session.
+- Active Session to Clinical Memory: compact top-left navigator in the mobile-first header.
+- Clinical Memory to Active Session: compact top-left navigator in the mobile-first header; selected historical review closes when returning to Active Session.
 - Active Session to capture dialogs: sticky bottom actions `Audio`, `Take photo`, `Write note`; Audio shows `Tap to record`.
 - Clinical Memory/Search to capture destination choice: sticky bottom actions first show a compact destination chooser with current/recent sessions or a new session.
 - Active Session screen to a fresh draft context: `+ New visit`, shown only when the active visit has captures. (In aesthetics chrome the encounter reads "visit"; see the vocabulary note in [capture](screens/capture.md).)
@@ -43,15 +45,15 @@
 - Clinical Memory session cards to Active Session: select a Today, Attention, or patient timeline session card. Active Session shows a `Back` action that returns to the originating Clinical Memory tab or patient timeline.
 - Clinical Memory Attention tab (the Close-the-day sweep) to focused decision surface: each item opens the same resolver it uses at its source — assign / choose / verify patient, the dose/safety in Active Session, or the [Q&A inbox](screens/qa-inbox.md) thread. They do not primarily redirect to the active session page.
 - Top-bar **Attention indicator** (a severity-coloured bell beside Search, merging the former needs-input + Q&A badges): shown only when something is open; tapping it opens the Attention sweep. Q&A stays reachable as a plain inbox icon.
-- Search to session review: select a session row; the review opens inline using the Active Session Workspace structure.
-- Any screen to account pages: the **account menu** (top-right avatar) opens with an identity header, then the personal actions **Profile** and **Settings**, then a labelled **Clinic** section grouping the owner/admin clinic-management pages **Insights** + **Team** + **Plan** (the section and its items are hidden for other roles), then **Switch clinic** (multi-clinic users only), **Replay guide** (re-opens the first-run tour), and **Logout**. Each page has a **Back** action returning to the previous staff screen. Account/utility pages (Settings, Profile, Insights, Team, Plan, Switch clinic) **hide the capture bar** — there's no capture context there.
+- Finder to a patient timeline / session review / lot-recall cohort: select a finder result; a patient row opens the patient's Clinical-Memory file, a visit opens inline session review, and a Pro lot query opens the exact-match recall cohort. Selecting any result closes the overlay.- Any screen to account pages: the **account menu** (top-right avatar) opens with an identity header, then the personal actions **Profile** and **Settings**, then a labelled **Clinic** section grouping the owner/admin clinic-management pages **Insights** + **Team** + **Plan** (the section and its items are hidden for other roles), then **Switch clinic** (multi-clinic users only), **Replay guide** (re-opens the first-run tour), and **Logout**. Each page has a **Back** action returning to the previous staff screen. Account/utility pages (Settings, Profile, Insights, Team, Plan, Switch clinic) **hide the capture bar** — there's no capture context there.
 
 ### Back navigation (in-screen levels)
 
 The app is a single hash-routed page: top-level screen switches use `history.replaceState`, so they
 deliberately do **not** stack in history. In-screen levels opened *over* a screen — an open **patient
-file** (Clinical Memory), a **smart-list drill-in** (Lists tab), and a **historical visit review** —
-each push their own history entry, so a hardware/browser **Back** steps back one level (to the list)
+file** (Clinical Memory), a **smart-list drill-in** (Lists tab), a **historical visit review**, and
+the **[finder](screens/finder.md) overlay** — each push their own history entry, so a
+hardware/browser **Back** steps back one level (to the list, or closes the finder)
 instead of exiting the whole area; their in-screen back controls behave identically. The shared
 controller (`shared/lib/backStack.ts`) batches this so opening one level while another closes in the
 same render nets to no history churn.
