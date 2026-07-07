@@ -66,7 +66,9 @@ test.describe("P0-9 Q&A ask → inbox → send", () => {
       .poll(
         async () => {
           await patientPage.goto(`/qa/${publicToken}`);
-          return patientPage.getByText(/thanks for reaching out/i).count();
+          // Match the doctor's own appended sentence — deterministic regardless of the fallback
+          // draft's wording (which Q-10 marks "Starter reply — please review").
+          return patientPage.getByText(/Please rest and hydrate today\./i).count();
         },
         { timeout: 20_000 },
       )

@@ -22,21 +22,19 @@ test.describe("P0-4 capture unassigned → assign later", () => {
     await applyAuth(context, clinic.auth, { lang: "en" });
     const page = await context.newPage();
     await page.goto("/#patients");
-    await page.getByRole("tab", { name: "Needs input" }).click();
-
-    // The needs-input card opens the unassigned visit; the visit's "Assign" opens the resolver.
+    // The Needs-input tab is now the Attention sweep (Track A close-the-day); the unassigned
+    // visit surfaces as an "Assign patient" item whose action opens the resolver directly.
+    await page.getByRole("tab", { name: "Attention" }).click();
     await page.getByRole("button", { name: "Assign patient" }).first().click();
-    await page.getByRole("button", { name: "Assign", exact: true }).first().click();
-    const resolver = page.locator(".assignment-sheet");
+    const resolver = page.getByRole("dialog", { name: "Assign patient" });
     await expect(resolver).toBeVisible();
 
-    // The resolver surfaces the deterministic, recently-seen patient as a suggested match.
-    const suggestion = resolver.locator(".assignment-patient-row", { hasText: recentName });
-    await expect(suggestion).toBeVisible();
-    await expect(suggestion).toContainText("Last visit:");
+    // The resolver surfaces the deterministic, recently-seen patient as the top suggestion.
+    await expect(resolver.getByText(/Suggested/).first()).toBeVisible();
+    await expect(resolver.getByText(recentName).first()).toBeVisible();
 
-    // Selecting it files the visit; the resolver closes and the patient's visit is in view.
-    await suggestion.getByRole("button", { name: "Select" }).click();
+    // Its "Assign" action files the visit; the resolver closes and the patient's visit is in view.
+    await resolver.getByRole("button", { name: "Assign", exact: true }).first().click();
     await expect(resolver).toHaveCount(0);
     await expect(page.getByText(recentName).first()).toBeVisible();
 
