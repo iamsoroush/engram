@@ -217,46 +217,44 @@ test("Clinical Memory Patients renders memory-first cards with focused needs-inp
   await page.screenshot({ path: "test-results/clinical-memory-patients-desktop.png", fullPage: true });
 });
 
-test("Clinical Memory Needs input renders a decision-first inbox", async ({ page }) => {
+// The Attention tab is the backend-fed Close-the-day sweep (AES-1001) — items come from the
+// /attention roll-up, not client-derived from the session list. This is the hermetic render check
+// of the sweep's severity-tiered rows; the full resolver flow against a real backend is
+// p0-13-attention-sweep.spec.ts.
+const ATTENTION_ITEMS = [
+  { id: "a-assign", kind: "assign-patient", tier: "S2", sessionId: "session-unassigned", reason: "3 captures saved. I could not confidently attach this visit to a patient.", sortTime: now.toISOString(), dayGroup: "today" },
+  { id: "a-choose", kind: "resolve-conflict", tier: "S2", sessionId: "session-uncertain-match", reason: "This visit may belong to Soroush or Sara. Please choose the correct patient.", sortTime: now.toISOString(), dayGroup: "today" },
+  { id: "a-verify", kind: "verify", tier: "S2", sessionId: "session-ai-verify", patientName: "Sara", reason: "AI created this patient — confirm it's correct.", sortTime: now.toISOString(), dayGroup: "today" },
+];
+
+test("Clinical Memory Attention renders the severity-tiered sweep", async ({ page }) => {
+  await page.route("**/api/v1/attention**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: { scope: "mine", highestTier: "S2", counts: { confirm: 0, suggested: 3, messages: 0, safety: 0, total: 3 }, items: ATTENTION_ITEMS },
+    });
+  });
   await page.goto("/");
   if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
-  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
   await page.getByRole("button", { name: "Memory" }).click();
-  await page.getByRole("tab", { name: "Needs input" }).click();
+  await page.getByRole("tab", { name: "Attention" }).click();
 
-  await expect(page.getByText("A few things need your judgment to keep memory accurate and useful.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
-  await expect(page.getByText("Visit:").first()).toBeVisible();
-  await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
-  await expect(page.getByText("Needs input since:").first()).toBeVisible();
-  await expect(page.getByText("2 photos")).toBeVisible();
-  await expect(page.getByText("1 audio").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
-
-  await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
+  await expect(page.getByText("Unassigned visit").first()).toBeVisible();
   await expect(page.getByText("This visit may belong to Soroush or Sara. Please choose the correct patient.")).toBeVisible();
-  await expect(page.getByText("Needs input since:").nth(1)).toBeVisible();
-  await expect(page.getByText("Soroush").first()).toBeVisible();
-  await expect(page.getByText("Sara").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
 
-  // Routine summary confirmation is no longer a needs-input item; an AI-created patient awaiting
-  // verification is. Its focused action opens the visit (where the verify panel lives).
-  await expect(page.getByRole("heading", { name: "Verify AI-created patient" })).toBeVisible();
+  await expect(page.getByText("Patient conflict").first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Verify patient", exact: true })).toBeVisible();
   await expect(page.getByText("Summary ready for confirmation")).toHaveCount(0);
-  await expect(page.getByText("AI failed")).toHaveCount(0);
-  await expect(page.getByText(/retry transcription/i)).toHaveCount(0);
 
-  await page.screenshot({ path: "test-results/clinical-memory-needs-input-desktop.png", fullPage: true });
+  await page.screenshot({ path: "test-results/clinical-memory-attention-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "Patient match uncertain" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose patient", exact: true })).toBeVisible();
-  await page.screenshot({ path: "test-results/clinical-memory-needs-input-mobile.png", fullPage: true });
+  await page.screenshot({ path: "test-results/clinical-memory-attention-mobile.png", fullPage: true });
 });
 
 test("Assign patient opens a focused resolver and updates memory state", async ({ page }) => {
@@ -291,15 +289,19 @@ test("Assign patient opens a focused resolver and updates memory state", async (
 });
 
 test("Choose patient resolves an uncertain patient match without opening the visit", async ({ page }) => {
+  await page.route("**/api/v1/attention**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: { scope: "mine", highestTier: "S2", counts: { confirm: 0, suggested: 1, messages: 0, safety: 0, total: 1 }, items: [ATTENTION_ITEMS[1]] },
+    });
+  });
   await page.goto("/");
   if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
   }
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  // Navigate via the UI, not goto("/#patients") — a full reload races the app's
-  // restore-last-screen bootstrap against the URL hash and randomly lands on Active visit.
   await page.getByRole("button", { name: "Memory" }).click();
-  await page.getByRole("tab", { name: "Needs input" }).click();
+  await page.getByRole("tab", { name: "Attention" }).click();
 
   await page.getByRole("button", { name: "Choose patient", exact: true }).click();
   const resolver = page.getByRole("dialog", { name: "Choose patient" });

@@ -7,7 +7,7 @@ import { authPayload, installAppMocks } from "./_setup";
 // DATA verbatim ("Sara" stays "Sara") + Jalali dates; en unchanged; CORE journey works in both langs.
 
 type Lang = "fa" | "en";
-const FA = { today: "امروز", patients: "بیماران", needsInput: "نیازمند ورودی" };
+const FA = { today: "امروز", patients: "بیماران", needsInput: "توجه لازم" };
 const ISO = "2026-06-20T08:30:00.000Z";
 const SARA = { id: "p-sara", displayName: "Sara", lastVisit: ISO };
 // A visit assigned to Sara so the memory-first Patients tab renders a card for her.
@@ -48,7 +48,7 @@ async function chromeLeaks(page: import("@playwright/test").Page) {
     const clone = root.cloneNode(true) as HTMLElement;
     clone.querySelectorAll("[data-content]").forEach((n) => n.remove()); // drop legit-English patient data
     const text = clone.textContent || "";
-    const words = ["Today", "Patients", "Needs input", "Clinical Memory", "All caught up", "No patients", "Search patients", "Loading", "Searching"];
+    const words = ["Today", "Patients", "Needs input", "Attention", "Clinical Memory", "All caught up", "No patients", "Search patients", "Loading", "Searching"];
     return words.filter((w) => text.includes(w));
   });
 }
@@ -82,7 +82,7 @@ test.describe("S4 Clinical Memory — fa Persian + RTL, data verbatim, en unchan
     await openMemory(page);
     await expect(page.getByText("Today").first()).toBeVisible();
     await expect(page.getByText("Patients").first()).toBeVisible();
-    await expect(page.getByText("Needs input").first()).toBeVisible();
+    await expect(page.getByText("Attention").first()).toBeVisible();
   });
 
   for (const lang of ["fa", "en"] as Lang[]) {

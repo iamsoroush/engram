@@ -10,7 +10,7 @@ import { authPayload, installAppMocks, installQaMocks } from "./_setup";
 // Unambiguous English chrome (definitely translated, never data/config) — must NOT render under fa.
 const ENGLISH_CHROME = [
   "Settings", "Profile", "Logout", "Cancel", "Delete", "Clinical report", "Sources", "Copy link",
-  "Confirm dose", "Review", "Loading", "Searching", "All caught up", "No patients yet", "Needs input",
+  "Confirm dose", "Review", "Loading", "Searching", "All caught up", "No patients yet", "Needs input", "Attention",
   "Add capture", "New visit", "Add template", "Aftercare templates", "Capturing for", "Dose confirmed",
   "Fix at source", "Generating structured report", "Clinical Memory", "Patient history", "Send", "Dismiss",
   "Re-route", "Search patients", "Switch clinic", "Replay guide",
@@ -54,7 +54,7 @@ test.describe("S6 FINAL — no English chrome under fa across the authed aesthet
     await page.getByRole("heading", { name: /حافظهٔ بالینی/ }).first().waitFor();
     expect(await englishChromeOnScreen(page)).toEqual([]);
     // walk the tabs
-    for (const tab of ["بیماران", "نیازمند ورودی", "امروز"]) {
+    for (const tab of ["بیماران", "توجه لازم", "امروز"]) {
       await page.getByText(tab, { exact: true }).first().click().catch(() => {});
       expect(await englishChromeOnScreen(page)).toEqual([]);
     }
