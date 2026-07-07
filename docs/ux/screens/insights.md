@@ -40,7 +40,17 @@ fact, not just packaging.
 - **Compare to previous period** toggle → each KPI shows a **delta chip** (Δ% vs the equivalent prior
   window). Deltas are **neutral/informational** styling — never red-alarm (fewer filler visits is not
   inherently "bad").
-- **Sub-tabs**: `Overview · Team · Patients · Treatments`.
+- **Sub-tabs**: `Overview · Team · Patients · Treatments` — a **horizontal segmented control**
+  (the shared `Tabs` primitive; scrolls horizontally below 640px, never stacks). The Activity
+  chart's series toggle is the same segmented control, sitting at the inline-end of the card head.
+
+## Layout
+
+Inside the shared content column (`--content-max`, aligned with the topbar). **On tablet/desktop
+(≥768px) the cards flow in a two-column grid**: the KPI row, the time-series charts (Activity,
+Panel growth, Treatment mix) and long lists (Team members) span both columns; the donut, heatmap
+and recency/needs cards pair up two-up. Below 768px it is a single column. The grid mirrors under
+RTL (start→end reading order).
 
 ## Sub-tabs & visible data
 
@@ -128,8 +138,11 @@ slow.
 ## States
 
 - **Loading** — per-card **skeletons** (header stays interactive).
-- **Empty / not-enough-data** — per-card friendly empty state ("Not enough data yet"); important since
-  clinics are early/alpha. A brand-new clinic sees mostly empties, not zeros dressed as charts.
+- **Empty / not-enough-data** — a shared **placeholder block** (`ChartPlaceholder`): a fixed
+  min-height matching the chart it replaces, a dashed frame, a small icon, the "Not enough data yet"
+  label and a **"Try a longer date range" hint**. This keeps each card's visual weight so an
+  all-empty panel reads as intentional rather than collapsed/broken — important since clinics are
+  early/alpha. A brand-new clinic sees uniform placeholders, not zeros dressed as charts.
 - **Error** — calm inline retry per section, no modal.
 - **Basic on Treatments tab** — blurred preview + Pro upsell panel.
 

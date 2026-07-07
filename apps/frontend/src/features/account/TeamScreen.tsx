@@ -2,7 +2,7 @@ import React from "react";
 import type { ApiFetch, AuthSession } from "../../domain/appTypes";
 import { createTeamMember, fetchTeamMembers, type TeamMember, updateTeamMember } from "../../services/api/client";
 import { useT } from "../../shared/i18n";
-import { Badge, Button, Card, Input } from "../../shared/ui/primitives";
+import { Badge, Button, Card, Input, ScreenHeader } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
 
 const ROLE_VALUES = ["doctor", "assistant", "admin"] as const;
@@ -93,12 +93,7 @@ export function TeamScreen({ auth, apiFetch, onBack }: { auth: AuthSession; apiF
 
   return (
     <div className="account-screen" data-screen="team">
-      <div className="account-header">
-        <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> {t("team.back")}
-        </Button>
-        <h1>{t("team.title")}</h1>
-      </div>
+      <ScreenHeader title={t("team.title")} onBack={onBack} backLabel={t("team.back")} />
 
       <Card className="settings-group">
         <div className="settings-group-head">

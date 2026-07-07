@@ -14,7 +14,7 @@ import {
   type TeamResponse,
   type TreatmentsResponse,
 } from "./insightsApi";
-import { BarList, ColumnChart, Donut, Heatmap, SERIES_COLORS, StatCard, useNum } from "./charts";
+import { BarList, ChartPlaceholder, ColumnChart, Donut, Heatmap, SERIES_COLORS, StatCard, useNum } from "./charts";
 
 // --- Shared async loader ----------------------------------------------------------------------------
 type AsyncState<T> = { data: T | null; loading: boolean; error: number | null };
@@ -98,7 +98,7 @@ export function OverviewTab({ apiFetch, params, compare }: { apiFetch: ApiFetch;
   const needs = data.needsAttention;
 
   return (
-    <div className="stack">
+    <div className="ins-panel">
       <div className="ins-kpi-grid">
         <StatCard label={t("insights.kpi.visits")} value={data.kpis.visits.current} delta={data.kpis.visits} spark={kpiSpark("visits")} compare={compare} />
         <StatCard label={t("insights.kpi.newPatients")} value={data.kpis.newPatients.current} delta={data.kpis.newPatients} spark={kpiSpark("newPatients")} compare={compare} />
@@ -106,7 +106,7 @@ export function OverviewTab({ apiFetch, params, compare }: { apiFetch: ApiFetch;
         <StatCard label={t("insights.kpi.captures")} value={data.kpis.captures.current} delta={data.kpis.captures} spark={kpiSpark("captures")} compare={compare} />
       </div>
 
-      <Card className="ins-card">
+      <Card className="ins-card ins-card--wide">
         <div className="ins-card-head">
           <h2>{t("insights.activity.title")}</h2>
           <Tabs
@@ -132,7 +132,7 @@ export function OverviewTab({ apiFetch, params, compare }: { apiFetch: ApiFetch;
       <Card className="ins-card">
         <div className="ins-card-head"><h2>{t("insights.newReturning.title")}</h2></div>
         {nvr.new + nvr.returning === 0 ? (
-          <p className="ins-empty">{t("insights.empty")}</p>
+          <ChartPlaceholder label={t("insights.empty")} variant="chart" />
         ) : (
           <div className="ins-split">
             <Donut
@@ -198,7 +198,7 @@ export function TeamTab({ apiFetch, params }: { apiFetch: ApiFetch; params: Rang
   };
 
   return (
-    <div className="stack">
+    <div className="ins-panel">
       <Card className="ins-card">
         <div className="ins-card-head"><h2>{t("insights.team.workload")}</h2></div>
         <BarList
@@ -207,10 +207,10 @@ export function TeamTab({ apiFetch, params }: { apiFetch: ApiFetch; params: Rang
         />
       </Card>
 
-      <Card className="ins-card">
+      <Card className="ins-card ins-card--wide">
         <div className="ins-card-head"><h2>{t("insights.team.members")}</h2></div>
         {data.members.length === 0 ? (
-          <p className="ins-empty">{t("insights.empty")}</p>
+          <ChartPlaceholder label={t("insights.empty")} variant="list" />
         ) : (
           <ul className="ins-member-list">
             {data.members.map((m) => (
@@ -266,8 +266,8 @@ export function PatientsTab({ apiFetch, params }: { apiFetch: ApiFetch; params: 
   });
 
   return (
-    <div className="stack">
-      <Card className="ins-card">
+    <div className="ins-panel">
+      <Card className="ins-card ins-card--wide">
         <div className="ins-card-head"><h2>{t("insights.patients.recency")}</h2></div>
         <div className="ins-recency">
           <RecencyTile label={t("insights.patients.active")} sub={t("insights.patients.activeSub")} value={data.recency.active} />
@@ -289,10 +289,10 @@ export function PatientsTab({ apiFetch, params }: { apiFetch: ApiFetch; params: 
 
       <Card className="ins-card">
         <div className="ins-card-head"><h2>{t("insights.patients.sex")}</h2></div>
-        {sexSegments.length ? <Donut segments={sexSegments} centerValue={num(data.totalActive)} centerLabel={t("insights.patients.total")} /> : <p className="ins-empty">{t("insights.empty")}</p>}
+        {sexSegments.length ? <Donut segments={sexSegments} centerValue={num(data.totalActive)} centerLabel={t("insights.patients.total")} /> : <ChartPlaceholder label={t("insights.empty")} variant="chart" />}
       </Card>
 
-      <Card className="ins-card">
+      <Card className="ins-card ins-card--wide">
         <div className="ins-card-head"><h2>{t("insights.patients.growth")}</h2></div>
         <ColumnChart columns={growthCols} emptyLabel={t("insights.empty")} />
       </Card>
@@ -335,7 +335,7 @@ export function TreatmentsTab({ apiFetch, params, isPro }: { apiFetch: ApiFetch;
   };
 
   return (
-    <div className="stack">
+    <div className="ins-panel">
       <Card className="ins-card">
         <div className="ins-card-head"><h2>{t("insights.tx.top")}</h2></div>
         <BarList emptyLabel={t("insights.empty")} items={data.topTreatments.map((x) => ({ label: x.name, value: x.count, content: true }))} />
@@ -363,7 +363,7 @@ export function TreatmentsTab({ apiFetch, params, isPro }: { apiFetch: ApiFetch;
         <BarList emptyLabel={t("insights.empty")} items={data.topProducts.map((x) => ({ label: x.name, value: x.count, content: true }))} />
       </Card>
 
-      <Card className="ins-card">
+      <Card className="ins-card ins-card--wide">
         <div className="ins-card-head"><h2>{t("insights.tx.mix")}</h2></div>
         <ColumnChart
           emptyLabel={t("insights.empty")}

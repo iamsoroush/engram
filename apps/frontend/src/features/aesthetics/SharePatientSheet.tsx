@@ -314,7 +314,7 @@ export function SharePatientSheet({
                 </div>
               </div>
               {aftercareId && templates.length ? (
-                <select className="share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label={t("share.aftercareTemplateLabel")}>
+                <select className="select share-aftercare-select" value={aftercareId} onChange={(event) => setAftercareId(event.target.value)} aria-label={t("share.aftercareTemplateLabel")}>
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>{template.name}{template.procedureType ? ` · ${template.procedureType}` : ""}</option>
                   ))}

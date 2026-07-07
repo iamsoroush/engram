@@ -30,13 +30,13 @@
 
 .qa-inbox-head h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-xl);
 }
 
 /* Top-level Inbox | Library switch (same pill affordance as the scope toggle). */
 .qa-tabs {
   display: inline-flex;
-  border: 1px solid var(--border, #d8dde6);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -46,15 +46,15 @@
   background: transparent;
   padding: 6px 16px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #5b6472;
+  color: var(--color-muted);
   cursor: pointer;
 }
 
 .qa-tabs button.active {
-  background: #3753e6;
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--color-surface);
 }
 
 .qa-inbox-controls {
@@ -66,7 +66,7 @@
 
 .qa-scope {
   display: inline-flex;
-  border: 1px solid var(--border, #d8dde6);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -75,33 +75,26 @@
   border: none;
   background: transparent;
   padding: 6px 14px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #5b6472;
+  color: var(--color-muted);
   cursor: pointer;
 }
 
 .qa-scope button.active {
-  background: #3753e6;
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--color-surface);
 }
 
 .qa-routing {
-  font-size: 13px;
-  color: #5b6472;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.qa-routing select {
-  font: inherit;
-  font-size: 13px;
-  padding: 5px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border, #d8dde6);
-  background: #fff;
-}
+/* Routing dropdown uses the shared .select primitive; the label wrapper stays inline layout only. */
 
 .qa-card {
   display: flex;
@@ -142,7 +135,7 @@
 }
 
 .qa-chevron {
-  color: #97a1b0;
+  color: var(--color-muted-2);
 }
 
 /* One-line preview of the latest message in a collapsed, resolved conversation */
@@ -153,44 +146,34 @@
      forcing the card wider than the viewport. */
   min-width: 0;
   max-width: 100%;
-  font-size: 13.5px;
-  color: #5b6472;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Explicit, labelled disclosure for the full conversation (clearer than a bare chevron). */
+/* Full-thread disclosure. Layout comes from the shared .disclosure-row primitive; this only tints
+   it as a blue link and sizes the label. */
 .qa-expand-toggle {
-  align-self: flex-start;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  padding: 2px 0;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
+  color: var(--color-primary);
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #3753e6;
 }
-
-.qa-expand-toggle:hover {
+.qa-expand-toggle .disclosure-row-chevron {
+  color: var(--color-primary);
+}
+.qa-expand-toggle:hover .disclosure-row-body {
   text-decoration: underline;
-}
-
-.qa-expand-toggle .qa-chevron {
-  color: #3753e6;
 }
 
 .qa-preview-role {
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-muted);
 }
 
 .qa-preview-text {
-  color: #5b6472;
+  color: var(--color-muted);
 }
 
 .qa-msg-flush {
@@ -210,9 +193,9 @@
 
 .qa-msg {
   max-width: 86%;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: var(--text-md);
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
@@ -220,15 +203,15 @@
 
 .qa-msg.patient {
   align-self: flex-start;
-  background: #f5f7fb;
-  border: 1px solid #e6e9ef;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
   border-bottom-left-radius: 5px;
 }
 
 .qa-msg.clinic {
   align-self: flex-end;
-  background: #eef2ff;
-  border: 1px solid #dfe4ff;
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-border);
   border-bottom-right-radius: 5px;
 }
 
@@ -237,15 +220,15 @@
 }
 
 .qa-msg-meta {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-muted);
   margin-bottom: 2px;
 }
 
 .qa-msg-time {
   font-weight: 500;
-  color: #aab2c0;
+  color: var(--color-muted-2);
 }
 
 .qa-visit {
@@ -253,36 +236,36 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
-  color: #6b7280;
-  background: #eef1f6;
-  border: 1px solid #e2e6ee;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 3px 12px;
   margin: 2px 0;
 }
 
 .qa-visit-date {
-  color: #aab2c0;
+  color: var(--color-muted-2);
 }
 
 .qa-approve {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid #eef0f4;
+  border-top: 1px solid var(--color-border);
   padding-top: 10px;
 }
 
 .qa-resolved {
-  font-size: 12.5px;
-  color: #8a93a2;
+  font-size: var(--text-sm);
+  color: var(--color-muted-2);
 }
 
 /* Voice edit */
 .qa-voice-note {
-  font-size: 12.5px;
-  color: #2456d6;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
   font-weight: 600;
 }
 
@@ -293,7 +276,7 @@
   cursor: pointer;
   font: inherit;
   font-weight: 700;
-  color: #2456d6;
+  color: var(--color-primary);
   text-decoration: underline;
 }
 
@@ -312,9 +295,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #2456d6;
+  color: var(--color-primary);
   background: rgba(255, 255, 255, 0.55);
   border-radius: 12px;
 }
@@ -323,28 +306,28 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--border, #d8dde6);
-  background: #fff;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
   border-radius: 999px;
   padding: 7px 14px;
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #3753e6;
+  color: var(--color-primary);
 }
 
 .qa-voice-btn:hover {
-  background: #f1f4fb;
+  background: var(--color-primary-soft);
 }
 
 .qa-voice-live {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #b42318;
+  color: var(--color-danger);
 }
 
 .qa-voice-dot {
@@ -362,16 +345,16 @@
   padding: 4px 8px;
   cursor: pointer;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
 }
 
 .qa-voice-stop {
-  color: #3753e6;
+  color: var(--color-primary);
 }
 
 .qa-voice-cancel {
-  color: #8a93a2;
+  color: var(--color-muted-2);
 }
 
 .qa-voice-spinner {
@@ -379,7 +362,7 @@
   height: 14px;
   border-radius: 999px;
   border: 2px solid #c7d2fe;
-  border-top-color: #3753e6;
+  border-top-color: var(--color-primary);
   animation: qa-voice-spin 0.7s linear infinite;
 }
 
@@ -390,8 +373,8 @@
 }
 
 .qa-voice-error {
-  font-size: 12.5px;
-  color: #b42318;
+  font-size: var(--text-sm);
+  color: var(--color-danger);
 }
 
 .qa-card-top {
@@ -404,7 +387,7 @@
 
 .qa-patient {
   font-weight: 700;
-  font-size: 15px;
+  font-size: var(--text-md);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -412,16 +395,16 @@
 }
 
 .qa-asked {
-  font-size: 12px;
-  color: #97a1b0;
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
 }
 
 .qa-question {
-  background: #f5f7fb;
-  border: 1px solid #e6e9ef;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 10px 12px;
-  font-size: 14.5px;
+  font-size: var(--text-md);
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -430,14 +413,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #4b5563;
+  color: var(--color-text-soft);
 }
 
 .qa-draft-hint {
   font-weight: 500;
-  color: #8a93a2;
+  color: var(--color-muted-2);
   font-style: italic;
 }
 
@@ -459,7 +442,7 @@
 }
 
 .qa-reroute {
-  border: 1px solid var(--border, #d8dde6);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   padding: 0;
 }
@@ -468,13 +451,13 @@
   list-style: none;
   cursor: pointer;
   padding: 7px 12px;
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #3753e6;
+  color: var(--color-primary);
 }
 
 .qa-reroute[open] > summary {
-  border-bottom: 1px solid var(--border, #eef0f4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .qa-reroute-list {
@@ -491,22 +474,22 @@
   padding: 8px 10px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 
 .qa-reroute-list button:hover {
-  background: #f1f4fb;
+  background: var(--color-primary-soft);
 }
 
 .qa-reroute-list .qa-current {
-  color: #97a1b0;
-  font-size: 12px;
+  color: var(--color-muted-2);
+  font-size: var(--text-xs);
   padding: 6px 10px;
 }
 
 .qa-empty {
   text-align: center;
-  color: #8a93a2;
+  color: var(--color-muted-2);
   padding: 40px 0;
 }
 
@@ -514,9 +497,9 @@
 .qa-history > summary {
   list-style: none;
   cursor: pointer;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #5b6472;
+  color: var(--color-muted);
   padding: 2px 0;
 }
 
@@ -528,9 +511,9 @@
 }
 
 .qa-history-msg {
-  font-size: 13px;
+  font-size: var(--text-sm);
   line-height: 1.45;
-  border-inline-start: 3px solid #e2e6ee;
+  border-inline-start: 3px solid var(--color-border);
   padding-block: 2px;
   padding-inline-start: 10px;
 }
@@ -540,9 +523,9 @@
 }
 
 .qa-history-role {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #6b7280;
+  color: var(--color-muted);
   margin-bottom: 1px;
 }
 
@@ -552,9 +535,9 @@
 }
 
 .qa-history-time {
-  font-size: 10.5px;
+  font-size: var(--text-xs);
   font-weight: 500;
-  color: #aab2c0;
+  color: var(--color-muted-2);
 }
 
 /* --- Retrieval provenance chip on a ready draft (AES-410) --------------------------------------- */
@@ -562,14 +545,14 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid #dfe4ff;
-  background: #f4f6ff;
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-soft);
   border-radius: 999px;
   padding: 2px 10px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #3753e6;
+  color: var(--color-primary);
   cursor: pointer;
   max-width: 100%;
   overflow: hidden;
@@ -578,7 +561,7 @@
 }
 
 .qa-draft-provenance:hover {
-  background: #eaeeff;
+  background: var(--color-primary-soft);
 }
 
 /* Save a sent doctor reply into the library, straight from the thread. */
@@ -590,9 +573,9 @@
   padding: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #3753e6;
+  color: var(--color-primary);
   opacity: 0.85;
 }
 
@@ -625,13 +608,13 @@
 
 .qa-lib-section-head h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--text-md);
 }
 
 .qa-lib-count {
-  font-size: 12px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #8a93a2;
+  color: var(--color-muted-2);
 }
 
 .qa-lib-new {
@@ -639,8 +622,8 @@
 }
 
 .qa-lib-empty {
-  color: #8a93a2;
-  font-size: 13.5px;
+  color: var(--color-muted-2);
+  font-size: var(--text-sm);
   padding: 12px 0;
 }
 
@@ -650,10 +633,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  border: 1px solid #e6e9ef;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 12px 14px;
-  background: #fff;
+  background: var(--color-surface);
   min-width: 0;
 }
 
@@ -665,21 +648,21 @@
 }
 
 .qa-lib-row-title {
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   font-weight: 700;
-  color: #2a3342;
+  color: var(--color-text);
 }
 
 .qa-lib-row-question {
-  font-size: 12.5px;
-  color: #6b7280;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
   font-style: italic;
 }
 
 .qa-lib-row-answer {
-  font-size: 13.5px;
+  font-size: var(--text-sm);
   line-height: 1.5;
-  color: #384150;
+  color: var(--color-text-soft);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -692,10 +675,10 @@
 }
 
 .qa-lib-tag {
-  font-size: 11px;
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: #5b6472;
-  background: #eef1f6;
+  color: var(--color-muted);
+  background: var(--color-surface-soft);
   border-radius: 999px;
   padding: 1px 9px;
 }
@@ -713,9 +696,9 @@
   padding: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #3753e6;
+  color: var(--color-primary);
 }
 
 .qa-lib-link:hover {
@@ -723,13 +706,13 @@
 }
 
 .qa-lib-danger {
-  color: #b42318;
+  color: var(--color-danger);
 }
 
 /* Indexed sent reply — muted once excluded from retrieval. */
 .qa-lib-reply.qa-lib-excluded {
   opacity: 0.6;
-  background: #f7f8fa;
+  background: var(--color-surface-soft);
 }
 
 /* Inline add / edit form. */
@@ -737,10 +720,10 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border: 1px solid #dfe4ff;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 14px;
-  background: #f9faff;
+  background: var(--color-primary-soft);
 }
 
 .qa-lib-input,
@@ -754,14 +737,14 @@
 }
 
 .qa-lib-hint {
-  font-size: 11.5px;
-  color: #8a93a2;
+  font-size: var(--text-xs);
+  color: var(--color-muted-2);
 }
 
 .qa-lib-error {
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #b42318;
+  color: var(--color-danger);
 }
 
 .qa-lib-form-actions {

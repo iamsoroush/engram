@@ -301,7 +301,7 @@ function LineUpForm({
       )}
       <label className="worklist-lineup-field">
         <span>{t("needsinput.forDr")}</span>
-        <select aria-label={t("needsinput.doctorAria")} value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
+        <select className="select" aria-label={t("needsinput.doctorAria")} value={clinicianId} onChange={(event) => setClinicianId(event.target.value)}>
           {doctors.length === 0 ? <option value="">{t("needsinput.noDoctors")}</option> : null}
           {doctors.map((member) => (
             <option key={member.userId} value={member.userId} data-content>

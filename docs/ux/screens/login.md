@@ -18,12 +18,18 @@ see [frontend/i18n.md](../../frontend/i18n.md). (The shared seam lives in `share
 
 ### Landing (`LandingPage`)
 
-- A composed marketing page (two-column hero on desktop, single column on mobile): a stylized
-  in-product preview (capture bar with audio/photo/note) beside the copy + CTAs (**Create your
-  clinic** → sign-up, **Log in** → login), then **How it works**, a **trust/privacy** block, and a
-  **Plans** section with placeholder pricing.
+- A composed marketing page (two-column hero on desktop, single column on mobile). The hero pairs
+  the copy + CTAs (**Create your clinic** → sign-up, **Log in** → login) with a **tablet-framed
+  in-product preview** — the capture surface plus the report it produces (treatments + a green
+  "safety checked" chip) — over a soft primary/violet radial wash.
+- Below the hero, sections carry a distinct rhythm: alternating **soft bands**, per-section
+  **eyebrow** labels, **How it works** (numbered step cards with connecting arrows ≥860px),
+  **iconed trust cards**, a quiet **"used in Tehran clinics" social-proof strip** (placeholder logo
+  chips), and a **Plans** section with an elevated Pro card + a fair-use-AI footnote.
 - **Tier-honest:** Basic (the default for new sign-ups) is presented on its own; the AI layer is the
   Pro upgrade lane in Plans — not promised as a standard feature. Pricing amounts are placeholders.
+- **Bilingual:** all copy routes through `t()` with fa/en parity; every visual (bands, cards, arrows,
+  carets) mirrors under RTL via logical properties.
 
 ### Login (`LoginGate`)
 

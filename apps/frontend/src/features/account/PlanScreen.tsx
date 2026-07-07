@@ -2,7 +2,7 @@ import React from "react";
 import type { ApiFetch, AuthSession } from "../../domain/appTypes";
 import { setClinicPlan } from "../../services/api/client";
 import { useT } from "../../shared/i18n";
-import { Badge, Button, Card } from "../../shared/ui/primitives";
+import { Badge, Button, Card, ScreenHeader } from "../../shared/ui/primitives";
 
 const BASIC_FEATURE_KEYS = [
   "plan.basicFeature1",
@@ -99,12 +99,7 @@ export function PlanScreen({
 
   return (
     <div className="account-screen" data-screen="plan">
-      <div className="account-header">
-        <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> {t("plan.back")}
-        </Button>
-        <h1>{t("plan.title")}</h1>
-      </div>
+      <ScreenHeader title={t("plan.title")} onBack={onBack} backLabel={t("plan.back")} />
       <p className="muted plan-intro">
         {t("plan.intro")} <span data-content="clinic-name">{auth.tenant.name}</span> {t("plan.introOn")}{" "}
         <strong>{current === "pro" ? "Pro" : "Basic"}</strong>.

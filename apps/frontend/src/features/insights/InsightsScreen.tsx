@@ -1,9 +1,8 @@
 import React from "react";
 import type { ApiFetch, AuthSession } from "../../domain/appTypes";
 import { useT } from "../../shared/i18n";
-import { Button } from "../../shared/ui/primitives";
+import { ScreenHeader, Tabs } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
-import { Tabs } from "../../shared/ui/primitives";
 import type { RangeKey, RangeParams } from "./insightsApi";
 import { OverviewTab, PatientsTab, TeamTab, TreatmentsTab } from "./tabs";
 import "./insights.css";
@@ -56,12 +55,7 @@ export function InsightsScreen({ auth, apiFetch, onBack }: { auth: AuthSession; 
 
   return (
     <div className="account-screen" data-screen="insights">
-      <div className="account-header">
-        <Button className="account-back" onClick={onBack} size="sm" type="button" variant="secondary">
-          <span aria-hidden="true">←</span> {t("insights.back")}
-        </Button>
-        <h1>{t("insights.title")}</h1>
-      </div>
+      <ScreenHeader title={t("insights.title")} onBack={onBack} backLabel={t("insights.back")} />
 
       <div className="ins-controls">
         <SelectMenu ariaLabel={t("insights.rangeAria")} onChange={(v) => setRangePersisted(v as RangeKey)} options={rangeOptions} value={range} />

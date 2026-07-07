@@ -78,6 +78,44 @@ App() composition root
 - `src/services/storage`: IndexedDB/localStorage persistence boundaries.
 - `src/shared`: small UI primitives and environment config.
 
+## Shared UI primitives
+
+`src/shared/ui/primitives.tsx` holds the app's presentational building blocks. Beyond the base
+`Button`/`Card`/`Input`/`Badge`/`Dialog`/`Sheet`, these are the shared consistency primitives every
+screen composes from — build on them rather than re-styling per surface:
+
+- **`ScreenHeader` / `BackButton`** — the one back-button + title pattern for account/utility
+  screens (Settings, Profile, Team, Plan, Switch clinic, Insights). The back button is a ≥44px tap
+  target with an SVG chevron mirrored under RTL (points inline-start in both fa and en) — no literal
+  `←` glyph. Replaces the old copy-pasted `.account-header` + sub-44px `.account-back` pill.
+- **`Tabs`** — a horizontal segmented control (bordered pill, active state on the primary token,
+  `overflow-x` scroll below 640px). Used by Insights' section tabs and chart series toggle.
+- **`Select`** — a thin styled-native `<select>` wrapper (`appearance:none`, token border/radius,
+  SVG caret whose side mirrors under RTL, ≥44px). It is visually identical **closed** to the
+  portal'd **`SelectMenu`** (custom dropdown) — the two are one system: use `SelectMenu` for
+  long/portal-sensitive lists, `Select` (or the `.select` class on a native `<select>`) for short
+  native ones.
+- **`DisclosureRow`** — a full-width toggle row (≥44px, `aria-expanded`, chevron that rotates 90°
+  open and mirrors under RTL). Adopted on non-session surfaces (e.g. the Q&A thread expander); the
+  session-layout epic consumes the same primitive.
+
+## Design tokens & layout system
+
+`src/styles.css` opens with the token block (`:root`) — the single source for color, radius, space,
+text-size, shadow, **content-width** and **icon-size** scales. Rules reference tokens, not raw
+values:
+
+- **One primary blue** — `--color-primary` (`#075eff`). Buttons, tabs, links, focus rings and the
+  Q&A surface all resolve to it (the old `#2563eb`/`#3753e6` divergences were migrated). Every `.btn`
+  and interactive control carries a `:focus-visible` ring (`--color-primary-soft`).
+- **One content-width system** — `--content-max` (820px, aligned with the topbar) and
+  `--content-wide` (940px, the shell). Every primary column (account screens, Search, Q&A inbox,
+  Visit, Memory) and the bottom capture bar resolve to `--content-max`, so content no longer jumps
+  width between screens. New responsive work standardizes on the **640 / 768 / 1024** breakpoints.
+- **Icon-size tokens** — `--icon-xs/sm/md/lg` (14/16/18/22px); SVG sizing rules use them, not raw px.
+- Off-scale hex/radius literals that exactly matched a token were swept onto `var()`; `qaInbox.css`
+  (previously near-token-free) is fully tokenized.
+
 ## UX Principles
 
 - The default destination is `Capture`.

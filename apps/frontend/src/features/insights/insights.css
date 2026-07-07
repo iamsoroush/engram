@@ -158,3 +158,48 @@
 @media (min-width: 560px) {
   .ins-kpi-grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* Wide layout (T2.1): cards flow in a 2-column grid ≥768 inside the content column; the KPI grid,
+   the time-series charts, long lists, notes and the upsell span both columns. */
+.ins-panel {
+  display: grid;
+  gap: var(--section-gap);
+  grid-template-columns: 1fr;
+}
+.ins-panel > .ins-card { margin-block-end: 0; }
+.ins-panel > .ins-kpi-grid { margin-block-end: 0; }
+.ins-panel > .ins-note { margin-block: 0; }
+@media (min-width: 768px) {
+  .ins-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .ins-panel > .ins-kpi-grid,
+  .ins-panel > .ins-note,
+  .ins-panel > .ins-upsell,
+  .ins-card--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Empty-state placeholder (T2.1): fixed min-height matching the chart it replaces + dashed frame,
+   so an all-empty panel reads as intentional rather than collapsed/broken. */
+.ins-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  text-align: center;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+  color: var(--color-muted-2);
+  padding: var(--space-4);
+}
+.ins-placeholder--chart { min-block-size: 128px; }
+.ins-placeholder--heatmap { min-block-size: 148px; }
+.ins-placeholder--list { min-block-size: 96px; }
+.ins-placeholder-icon { inline-size: var(--icon-lg); block-size: var(--icon-lg); opacity: 0.7; }
+.ins-placeholder-label { font-size: var(--text-sm); font-weight: 600; color: var(--color-muted); }
+.ins-placeholder-hint { font-size: var(--text-xs); }

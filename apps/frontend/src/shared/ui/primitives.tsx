@@ -21,6 +21,98 @@ export function Card({ className, ...props }: ClassProps & React.HTMLAttributes<
   return <section className={cx("card", className)} {...props} />;
 }
 
+/** Directional chevron used by the back button + disclosure rows.
+ *  Points inline-start (LTR "←"); mirrored under [dir="rtl"] via CSS. */
+function ChevronBackGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="m15 5-7 7 7 7" />
+    </svg>
+  );
+}
+
+/** Forward chevron (LTR "›"): used by disclosure rows — points inline-end closed, rotates to ▼ open. */
+function ChevronForwardGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="m9 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+/** One shared back affordance: ≥44px tap target, RTL-mirrored SVG chevron (no `←` literal). */
+export function BackButton({
+  onBack,
+  label,
+  className,
+}: {
+  onBack: () => void;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <button className={cx("back-button", className)} onClick={onBack} type="button">
+      <span className="back-button-chevron" aria-hidden="true">
+        <ChevronBackGlyph />
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/** Shared screen header for account/utility screens: back button + title + optional actions. */
+export function ScreenHeader({
+  title,
+  onBack,
+  backLabel,
+  actions,
+}: {
+  title: ReactNode;
+  onBack: () => void;
+  backLabel: string;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="screen-header">
+      <BackButton onBack={onBack} label={backLabel} />
+      <h1>{title}</h1>
+      {actions ? <div className="screen-header-actions">{actions}</div> : null}
+    </div>
+  );
+}
+
+/** Thin styled-native `<select>` wrapper — one visual system with SelectMenu, keeps native a11y. */
+export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select className={cx("select", className)} {...props} />;
+}
+
+/** Full-width disclosure row: ≥44px, RTL-mirroring chevron that rotates 90° when open. */
+export function DisclosureRow({
+  open,
+  onToggle,
+  children,
+  className,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      className={cx("disclosure-row", open && "is-open", className)}
+      onClick={onToggle}
+      type="button"
+      aria-expanded={open}
+    >
+      <span className="disclosure-row-body">{children}</span>
+      <span className="disclosure-row-chevron" aria-hidden="true">
+        <ChevronForwardGlyph />
+      </span>
+    </button>
+  );
+}
+
 export function Badge({
   className,
   tone = "neutral",
