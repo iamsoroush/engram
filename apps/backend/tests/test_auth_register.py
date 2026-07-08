@@ -97,8 +97,21 @@ class RegisterHappyPathTests(unittest.TestCase):
         self.assertEqual(tenant.vertical, "aesthetics")
         self.assertEqual(tenant.tier, "basic")
         self.assertEqual(tenant.app_language, "fa")
+        # R1: report_language must be seeded (never NULL) so section titles localize from day one.
+        self.assertEqual(tenant.report_language, "fa")
         self.assertEqual(user.email, "dr@a.com")  # normalized to lowercase
         db.commit.assert_called_once()
+
+    def test_seeds_report_language_from_signup_language(self):
+        # R1: a NULL report_language falls back to English section titles even while the AI writes the
+        # body in the clinic's language — so a new tenant must carry an explicit report_language.
+        db = MagicMock()
+        db.execute.return_value = _result(None)
+        with patch.object(service, "issue_tokens", return_value=("a", "r")), patch.object(service, "profile_response", return_value="P"):
+            register(db, clinic_name="Glow", full_name="Dr A", email="en@b.com", password="longenough", app_language="en")
+        tenant = next(obj for obj in (call.args[0] for call in db.add.call_args_list) if isinstance(obj, Tenant))
+        self.assertEqual(tenant.report_language, "en")
+        self.assertIsNotNone(tenant.report_language)
 
     def test_unknown_language_defaults_to_persian(self):
         db = MagicMock()

@@ -27,9 +27,48 @@ function isPersianReport(reportLanguage?: string | null): boolean {
   return Boolean(reportLanguage && reportLanguage.trim().toLowerCase().startsWith("fa"));
 }
 
-/** Localized section title for the report language (the stored/English title by default). */
-function localizedSectionTitle(sectionId: string, fallback: string, reportLanguage?: string | null): string {
-  if (isPersianReport(reportLanguage)) return REPORT_SECTION_TITLES_FA[sectionId] || fallback;
+// Persian / Arabic script range — used to infer the report's language from its own content when the
+// tenant's `report_language` is unset (NULL), so section TITLES match the (Persian) body instead of
+// silently falling back to English headings (R1).
+const PERSIAN_SCRIPT_RE = /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/;
+
+/** Resolve whether the report should render Persian section titles.
+ *
+ * Order: an explicit `report_language` wins (fa → Persian; en/ar → not Persian, English headings).
+ * When it is NULL/unknown, infer from the report's OWN content script (the body the AI wrote follows
+ * the transcript), then fall back to the app language. This keeps titles and body in agreement even
+ * for a tenant whose `report_language` was never set. */
+function resolveReportIsPersian(
+  reportLanguage: string | null | undefined,
+  contentSample: string,
+  appLanguage: string | null | undefined,
+): boolean {
+  const rl = (reportLanguage || "").trim().toLowerCase();
+  if (rl.startsWith("fa")) return true;
+  if (rl.startsWith("en") || rl.startsWith("ar")) return false;
+  if (contentSample && PERSIAN_SCRIPT_RE.test(contentSample)) return true;
+  return (appLanguage || "").trim().toLowerCase().startsWith("fa");
+}
+
+/** A small text sample of the report's own content, to infer its language when unset. */
+function reportContentSample(
+  sections: Array<{ blocks?: StructuredReportBlock[] }>,
+  bodyParagraphs: string[],
+  treatments: SessionTreatment[],
+): string {
+  const parts: string[] = [];
+  for (const section of sections) for (const block of section.blocks || []) if (block.text) parts.push(block.text);
+  for (const paragraph of bodyParagraphs) parts.push(paragraph);
+  for (const treatment of treatments) {
+    if (treatment.area) parts.push(treatment.area);
+    if (treatment.product) parts.push(treatment.product);
+  }
+  return parts.join(" ");
+}
+
+/** Localized section title, given the already-resolved report-is-Persian flag (English by default). */
+function localizedSectionTitle(sectionId: string, fallback: string, isPersian: boolean): string {
+  if (isPersian) return REPORT_SECTION_TITLES_FA[sectionId] || fallback;
   return fallback;
 }
 
@@ -45,6 +84,7 @@ export function LiveReportView({
   canEditTreatments,
   currentUserId,
   reportLanguage,
+  appLanguage,
 }: {
   isPro: boolean;
   session: CaptureSession | null;
@@ -64,6 +104,8 @@ export function LiveReportView({
   currentUserId?: string | null;
   /** Report-content language — localizes the section titles (distinct from app UI language). */
   reportLanguage?: string | null;
+  /** App UI language — coarse fallback for the section-title language when reportLanguage is unset. */
+  appLanguage?: string | null;
 }) {
   // A document in both tiers: clinic + patient header from template/DB. Pro is a synthesized,
   // template-driven report; Basic is a clean chronological body with transcripts + images.
@@ -79,6 +121,7 @@ export function LiveReportView({
       canEditTreatments={canEditTreatments}
       currentUserId={currentUserId}
       reportLanguage={reportLanguage}
+      appLanguage={appLanguage}
     />
   ) : (
     <BasicLiveReport session={session} onResolveFile={onResolveFile} />
@@ -122,6 +165,7 @@ export function ProLiveReport({
   canEditTreatments,
   currentUserId,
   reportLanguage,
+  appLanguage,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
@@ -133,6 +177,7 @@ export function ProLiveReport({
   canEditTreatments?: boolean;
   currentUserId?: string | null;
   reportLanguage?: string | null;
+  appLanguage?: string | null;
 }) {
   const t = useT();
   const overlayEntries = sessionTreatmentOverlay(session);
@@ -149,6 +194,10 @@ export function ProLiveReport({
   const TREATMENT_SECTION_ID = "treatment-performed";
   const treatments = workspaceTreatments(session);
   const hasTreatmentSection = sections.some((section) => section.id === TREATMENT_SECTION_ID);
+  // Resolve the section-title language ONCE for the whole report: an explicit report_language wins,
+  // else infer from the report's own (Persian) content, else the app language (R1 — a NULL tenant
+  // report_language must not leave English headings above a Persian body).
+  const persianReport = resolveReportIsPersian(reportLanguage, reportContentSample(sections, bodyParagraphs, treatments), appLanguage);
   // Clinician-confirmation items the synthesis surfaced (ambiguous correction, carried-forward dose,
   // low confidence, missing lot, free-text uncertainty) from the coded uncertainty_reasons (S-F11) —
   // rendered inline on the matching row where they have a home, else as calm notes below the list.
@@ -233,7 +282,7 @@ export function ProLiveReport({
             const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && treatments.length > 0;
             return (
               <section className="workspace-report-section" key={section.id}>
-                {section.title ? <h3 data-testid="report-section-title" dir={textDirection(localizedSectionTitle(section.id, section.title, reportLanguage))}>{localizedSectionTitle(section.id, section.title, reportLanguage)}</h3> : null}
+                {section.title ? <h3 data-testid="report-section-title" dir={textDirection(localizedSectionTitle(section.id, section.title, persianReport))}>{localizedSectionTitle(section.id, section.title, persianReport)}</h3> : null}
                 {renderTreatmentTable ? (
                   <TreatmentsList
                     treatments={treatments}
@@ -241,7 +290,7 @@ export function ProLiveReport({
                     missingLotProducts={missingLotProducts}
                     onFixAtSource={onFixAtSource}
                     onOpenSource={onOpenSource}
-                    isPersian={isPersianReport(reportLanguage)}
+                    isPersian={persianReport}
                     carriedForwardReasons={carriedForwardReasons}
                     onConfirmCarried={onConfirmCarried}
                     reviewNotes={reviewNoteItems}
@@ -252,12 +301,12 @@ export function ProLiveReport({
                     onRevertField={onRevertTreatmentField}
                   />
                 ) : section.id === "media" ? (
-                  <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={isPersianReport(reportLanguage)} />
+                  <MediaSection blocks={section.blocks} onResolveFile={onResolveFile} isPersian={persianReport} />
                 ) : (
                   section.blocks.map((block, index) => (
                     <React.Fragment key={index}>
                       {formatReportBlock(block, onResolveFile)}
-                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersianReport(reportLanguage)} />
+                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={persianReport} />
                     </React.Fragment>
                   ))
                 )}
@@ -278,8 +327,8 @@ export function ProLiveReport({
       </section>
       {treatments.length && !hasTreatmentSection ? (
         <section className="structured-report-section treatments-performed">
-          <h3 dir={textDirection(localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage))}>
-            {localizedSectionTitle("treatment-performed", "Treatments performed", reportLanguage)}
+          <h3 dir={textDirection(localizedSectionTitle("treatment-performed", "Treatments performed", persianReport))}>
+            {localizedSectionTitle("treatment-performed", "Treatments performed", persianReport)}
           </h3>
           <TreatmentsList
             treatments={treatments}
@@ -287,7 +336,7 @@ export function ProLiveReport({
             missingLotProducts={missingLotProducts}
             onFixAtSource={onFixAtSource}
             onOpenSource={onOpenSource}
-            isPersian={isPersianReport(reportLanguage)}
+            isPersian={persianReport}
             carriedForwardReasons={carriedForwardReasons}
             onConfirmCarried={onConfirmCarried}
             reviewNotes={reviewNoteItems}

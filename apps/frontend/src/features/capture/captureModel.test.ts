@@ -13,6 +13,7 @@ import {
   preservedReportModelContext,
   safetyFlagKey,
   samePatientSummary,
+  treatmentAttributeLines,
   sessionKeptSafetyFlags,
   sessionRejectedSafetyFlags,
   sessionSafetyFlags,
@@ -158,6 +159,28 @@ describe("treatments", () => {
   it("flags a low-confidence treatment", () => {
     expect(isLowConfidenceTreatment({ confidence: 0.4 } as never)).toBe(true);
     expect(isLowConfidenceTreatment({ confidence: 0.9 } as never)).toBe(false);
+  });
+
+  it("renders only genuine technique attributes as lines, never status/uncertainty keys (R2)", () => {
+    const lines = treatmentAttributeLines({
+      attributes: {
+        needleGauge: "30G",
+        depth: "deep",
+        // Status / semantic keys schema-v3 lets the model drop into `attributes` — must NOT leak.
+        planned_vs_performed: "نامشخص",
+        low_confidence: true,
+        uncertaintyReason: "ambiguous_quantity",
+      },
+    } as never);
+    expect(lines).toEqual(["needle gauge: 30G", "depth: deep"]);
+    expect(lines.join(" ")).not.toContain("planned");
+    expect(lines.join(" ")).not.toContain("نامشخص");
+    expect(lines.join(" ")).not.toContain("low_confidence");
+  });
+
+  it("returns no attribute lines when there are no technique attributes", () => {
+    expect(treatmentAttributeLines({ attributes: { planned_vs_performed: "x" } } as never)).toEqual([]);
+    expect(treatmentAttributeLines({} as never)).toEqual([]);
   });
 });
 

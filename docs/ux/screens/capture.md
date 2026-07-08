@@ -239,7 +239,9 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
 - The raw captures live in a collapsible **`Sources · N`** drawer beneath the report: count badge,
   per-type chips (audio/photo/note), and a calm `Organizing…` pulse while captures are still being
   processed (hidden once done). It auto-expands while the report is still empty. All capture
-  edit/delete/reassign/open affordances live here.
+  edit/delete/reassign/open affordances live here. Each card plays/edits inline (audio has a compact
+  player; transcript/caption tap-to-edit); tapping an **audio** card's body opens its full detail
+  (larger player + transcript + metadata) — the player controls and inline editors keep their own taps.
 - **Undo last capture** sits in the drawer header — one tap removes the most recent capture
   without expanding the drawer. Undo and the per-capture **Delete** are the same **de-effecting
   removal**: reverting a capture reverts *its effects* — the patient it created or assigned (a

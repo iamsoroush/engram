@@ -66,6 +66,33 @@ export function VoiceMemoPlayer({
     audio.currentTime = (Number(event.target.value) / 100) * duration;
   };
 
+  // Some WAV/streamed blobs report `duration` as 0 or Infinity from `loadedmetadata` until the media
+  // engine scans to the end — Safari notably shows 0:00 where Chrome infers the length (R6). When the
+  // reported duration isn't a positive finite number, force a one-shot seek to the end so the engine
+  // computes the real duration, then reset the playhead. Guarded so it only runs while still unknown.
+  const readDuration = (audio: HTMLAudioElement) => {
+    const reported = audio.duration;
+    if (Number.isFinite(reported) && reported > 0) {
+      setDuration(reported);
+      return;
+    }
+    const onProbe = () => {
+      audio.removeEventListener("timeupdate", onProbe);
+      if (Number.isFinite(audio.duration) && audio.duration > 0) setDuration(audio.duration);
+      try {
+        audio.currentTime = 0;
+      } catch {
+        /* ignore — resetting the playhead is best-effort */
+      }
+    };
+    audio.addEventListener("timeupdate", onProbe, { once: true });
+    try {
+      audio.currentTime = 1e101; // clamped to the end by the browser; triggers a real duration scan
+    } catch {
+      audio.removeEventListener("timeupdate", onProbe);
+    }
+  };
+
   const pct = duration ? Math.min(100, (current / duration) * 100) : 0;
 
   return (
@@ -76,9 +103,10 @@ export function VoiceMemoPlayer({
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => {
+        onLoadedMetadata={(event) => readDuration(event.currentTarget)}
+        onDurationChange={(event) => {
           const d = event.currentTarget.duration;
-          if (Number.isFinite(d)) setDuration(d);
+          if (Number.isFinite(d) && d > 0) setDuration(d);
         }}
         onEnded={() => {
           setPlaying(false);
