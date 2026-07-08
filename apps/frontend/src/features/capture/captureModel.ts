@@ -929,12 +929,35 @@ export function sessionTreatmentOverlayOrphans(session: CaptureSession | null): 
   return entries;
 }
 
-/** Human "key·value" lines for a treatment's open technique attributes (needleGauge, depth, …). */
+// The genuine open TECHNIQUE-attribute keys a treatment row may surface as calm "label: value" lines.
+// The synthesis attaches an open `attributes` map to each treatment (needleGauge, depth, device, …),
+// but schema-v3 also lets the model drop STATUS / semantic keys in there (e.g. `planned_vs_performed`)
+// or coded uncertainties. Those must NEVER render as a raw technique line — they flow through the calm
+// review-note path (treatment_review / uncertaintyReasons) instead. So we whitelist technique keys and
+// drop everything else, which keeps a normal row clean and can never leak a raw status key (R2).
+const TECHNIQUE_ATTRIBUTE_KEYS = new Set<string>([
+  "needlegauge", "gauge", "needle",
+  "depth", "plane", "layer", "level",
+  "technique", "method", "approach", "device", "tool",
+  "cannula", "angle", "direction", "vector",
+  "sessions", "session", "passes", "threads", "thread",
+  "entrypoint", "entrypoints", "points", "injectionpoints", "injectionpoint",
+  "pattern", "dilution", "concentration", "anesthesia", "anesthetic",
+]);
+
+/** Whether an open-attribute key names a genuine technique attribute (vs a status / uncertainty code). */
+function isTechniqueAttributeKey(key: string): boolean {
+  return TECHNIQUE_ATTRIBUTE_KEYS.has(key.replace(/[_\s-]/g, "").toLowerCase());
+}
+
+/** Human "key·value" lines for a treatment's open TECHNIQUE attributes only (needleGauge, depth, …).
+ *  Status / uncertainty keys the model may place in `attributes` (planned_vs_performed, low_confidence,
+ *  …) are filtered out — they are surfaced through the calm review-note path, never as a raw line (R2). */
 export function treatmentAttributeLines(treatment: SessionTreatment): string[] {
   const attributes = treatment.attributes;
   if (!attributes || typeof attributes !== "object") return [];
   return Object.entries(attributes)
-    .filter(([, value]) => value != null && String(value).trim() !== "")
+    .filter(([key, value]) => value != null && String(value).trim() !== "" && isTechniqueAttributeKey(key))
     .map(([key, value]) => `${key.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase()}: ${String(value)}`);
 }
 

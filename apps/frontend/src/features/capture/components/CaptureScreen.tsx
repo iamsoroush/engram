@@ -100,6 +100,9 @@ export function CaptureScreen({
   const { offline } = useSync();
   const tenant = useAuth().auth?.tenant;
   const reportLanguage = tenant?.reportLanguage ?? null;
+  // Coarse fallback for the report section-title language when the tenant's report_language is NULL:
+  // the report body follows the transcript, so titles infer from content, then this app language (R1).
+  const appLanguage = tenant?.appLanguage ?? null;
   // Session-layout-diet: a high-risk clinic pins the full safety panel open (never a collapsed chip).
   const highRiskClinic = tenant?.highRiskClinic ?? false;
   const {
@@ -651,6 +654,7 @@ export function CaptureScreen({
               canEditTreatments={isPro && !readOnly}
               currentUserId={currentUserId}
               reportLanguage={reportLanguage}
+              appLanguage={appLanguage}
             />
           ) : (
             captureFeed

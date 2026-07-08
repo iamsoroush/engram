@@ -11665,19 +11665,24 @@ small {
 .therapy-released { display: inline-flex; align-items: center; gap: 8px; }
 .memory-updating-pill { font-size: var(--text-sm, 0.78rem); color: var(--color-muted, #52617e); }
 
-/* Pro synthesis — performed treatments list (structured at-a-glance store mirror). */
-.treatments-performed .treatments-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.treatments-performed .treatment-item {
+/* Pro synthesis — performed treatments list (structured at-a-glance store mirror). Scoped to
+   `.treatments-list` (not the outer `.treatments-performed` fallback wrapper) so the SAME styling
+   applies wherever the list renders — including the primary path where it renders in place of the
+   synthesis's `treatment-performed` prose section inside `.workspace-report-section`. Otherwise the
+   section's generic `ul` rule leaves default disc bullets + unstyled rows (the "empty circle", R3).
+   `ul.treatments-list` beats `.workspace-report-section ul` (equal specificity, later in source). */
+ul.treatments-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.treatments-list .treatment-item {
   font-size: var(--text-sm, 0.85rem); line-height: 1.45; padding: 8px 12px;
   border: 1px solid var(--color-border, var(--color-border)); border-radius: var(--radius-md, 10px);
   background: var(--color-surface, #fff); color: var(--color-text, #1b2433);
   display: flex; flex-direction: column; gap: 3px;
 }
 /* §2.3 low-confidence: tint the whole row + a quiet marker, never hide it. */
-.treatments-performed .treatment-item.low-confidence { border-color: #f5d9a8; background: #fffaf0; }
-.treatments-performed .treatment-attributes { font-size: var(--text-xs, 0.76rem); color: var(--color-muted, #52617e); }
-.treatments-performed .treatment-flag { color: var(--color-muted, #52617e); font-weight: 600; }
-.treatments-performed .treatment-flag.low { color: #8a5a12; }
+.treatments-list .treatment-item.low-confidence { border-color: #f5d9a8; background: #fffaf0; }
+.treatments-list .treatment-attributes { font-size: var(--text-xs, 0.76rem); color: var(--color-muted, #52617e); }
+.treatments-list .treatment-flag { color: var(--color-muted, #52617e); font-weight: 600; }
+.treatments-list .treatment-flag.low { color: #8a5a12; }
 /* §2.5 report-level "to confirm" trust pill in the meta strip. */
 .report-meta-confirm {
   font-size: 0.74rem; font-weight: 700; color: #8a5a12;
@@ -11714,7 +11719,7 @@ small {
 .report-review .report-review-confirm:disabled { opacity: 0.6; cursor: default; }
 .report-review .report-review-chip.confirmed { border-color: #bfe3c4; background: #f1faf2; color: #2f6b3a; }
 .report-review .report-review-chip-confirmed { flex: 0 0 auto; font-weight: 700; }
-.treatments-performed .treatment-flag.confirmed { color: #2f6b3a; }
+.treatments-list .treatment-flag.confirmed { color: #2f6b3a; }
 
 /* ============================================================================
    Public / first-run surfaces: landing, login, sign-up, onboarding.

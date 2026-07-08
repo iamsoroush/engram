@@ -222,10 +222,36 @@ export function LiveDraftCaptureItem({
     });
   };
 
+  // Restore click-to-open on the AUDIO card (session-surface refactor dropped it — R5): tapping the
+  // card body opens the full capture detail (larger player + transcript + metadata). Interactive
+  // controls — the inline player, the overflow menu, the tap-to-edit transcript, any button/link/input
+  // — are excluded so they keep their own behavior; only "empty" card space opens.
+  const OPEN_IGNORE_SELECTOR = "button, a, audio, input, textarea, summary, details, .capture-item-menu, .voice-memo-player";
+  const openCard = isAudio
+    ? (event: React.MouseEvent<HTMLElement>) => {
+        if ((event.target as HTMLElement).closest(OPEN_IGNORE_SELECTOR)) return;
+        onOpenCapture();
+      }
+    : undefined;
+  const openCardKey = isAudio
+    ? (event: React.KeyboardEvent<HTMLElement>) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenCapture();
+        }
+      }
+    : undefined;
+
   return (
     <article
       ref={rootRef}
-      className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}${assignmentInfo ? " is-assignment-source" : ""}`}
+      className={`live-draft-capture ${item.type}${outOfContext ? " is-out-of-context" : ""}${assignmentInfo ? " is-assignment-source" : ""}${openCard ? " is-openable" : ""}`}
+      onClick={openCard}
+      onKeyDown={openCardKey}
+      role={openCard ? "button" : undefined}
+      tabIndex={openCard ? 0 : undefined}
+      aria-label={openCard ? t("draft.openAudioDetail", { title }) : undefined}
     >
       <div className="live-draft-marker" aria-hidden="true">
         <CaptureTimelineIcon type={item.type} />

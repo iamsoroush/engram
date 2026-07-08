@@ -572,6 +572,12 @@ def register(
         tier=DEFAULT_SIGNUP_TIER,
         vertical="aesthetics",
         app_language=language,
+        # Seed the report language explicitly (never leave it NULL) so a new clinic's report section
+        # TITLES are localized from day one — a NULL report_language falls back to English headings even
+        # while the AI writes the body in the clinic's language (the R1 title/body mismatch). Mirror the
+        # sign-up language; the owner can still switch it in Settings. transcription_language keeps its
+        # "auto" server default (follow the captured audio).
+        report_language=language,
     )
     db.add(tenant)
     db.flush()  # assign tenant.id

@@ -219,7 +219,13 @@
 }
 
 /* --- Top-bar Attention indicator (AES-1003) ------------------------------------------------- */
-/* Reuses the .app-search-button footprint (see styles.css); only the badge tone is feature-owned. */
+/* Reuses the .app-search-button footprint (see styles.css); only the badge tone is feature-owned.
+   The bell must be the positioning context so the count badge / safety dot anchor to it — otherwise
+   the absolutely-positioned badge escapes to the nearest positioned ancestor (the page corner), which
+   is exactly the detached "8" the header rework left behind (R4). Mirrors `.app-qa-button`. */
+.app-attention-button {
+  position: relative;
+}
 .app-attention-badge {
   position: absolute;
   top: -2px;
