@@ -154,13 +154,6 @@
   margin-bottom: 10px;
 }
 
-@media (prefers-color-scheme: dark) {
-  .patient-strip { background: #161b26; border-color: #2a3140; }
-  .patient-strip.expanded { background: #131722; }
-  .patient-strip-avatar { background: #232a38; color: #9aa7bd; }
-  .patient-strip-identity strong, .patient-strip-copy strong { color: #e6ebf4; }
-  .patient-strip-action { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
-}
 
 /* --- Treatment overlay: inline field editor + provenance + reconcile (AES-1102..1105) ----------- */
 .treatment-edit-btn {
@@ -246,8 +239,9 @@
 .treatment-editor-save { background: #245c9c; color: #fff; }
 .treatment-editor-save:disabled, .treatment-editor-cancel:disabled { opacity: 0.55; cursor: default; }
 
-/* Parked overlay orphans — a calm review chip list (a lost human edit is never silent). */
-.treatment-orphans {
+/* Parked overlay orphans — a calm review chip list (a lost human edit is never silent).
+   `ul.` wins the bullet reset over the generic `.workspace-report-section ul` (see review-notes). */
+ul.treatment-orphans {
   list-style: none;
   margin: 10px 0 0;
   padding: 9px 11px;
@@ -261,10 +255,3 @@
 .treatment-orphan-icon { flex: 0 0 auto; color: #b08a3a; }
 .treatment-orphan-text { flex: 1 1 auto; }
 
-@media (prefers-color-scheme: dark) {
-  .treatment-edited-chip { background: #16324e; color: #9cc6f5; }
-  .treatment-editor { background: #131722; border-color: #2a3140; }
-  .treatment-editor-field input { background: #0f131c; border-color: #2a3140; color: #e6ebf4; }
-  .treatment-revert-btn { background: #1c2230; border-color: #2a3140; color: #cdd6e6; }
-  .treatment-orphans { background: #1c1a12; border-color: #4a3f26; }
-}

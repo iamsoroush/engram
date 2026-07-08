@@ -306,7 +306,7 @@ export function ProLiveReport({
                   section.blocks.map((block, index) => (
                     <React.Fragment key={index}>
                       {formatReportBlock(block, onResolveFile)}
-                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={persianReport} />
+                      <SourceCitation captureIds={block.sourceCaptureIds} onOpenSource={onOpenSource} />
                     </React.Fragment>
                   ))
                 )}
@@ -410,16 +410,18 @@ function TreatmentOverlayOrphans({
 function SourceCitation({
   captureIds,
   onOpenSource,
-  isPersian,
 }: {
   captureIds?: string[];
   onOpenSource?: (captureId: string) => void;
-  isPersian?: boolean;
 }) {
+  // The citation is a clinician action (chrome), so its label follows the APP language via t() —
+  // like every other action chip on the row. (It used to follow the report's content language,
+  // which put "منبع" next to an English "Fix at source" on the same row.)
+  const t = useT();
   const first = captureIds?.find((id) => typeof id === "string" && id.trim());
   if (!onOpenSource || !first) return null;
-  const label = isPersian ? "منبع" : "source";
-  const title = isPersian ? "نمایش ضبط منبع" : "Open the source capture";
+  const label = t("report.sourceCitation");
+  const title = t("report.sourceCitationTitle");
   const more = (captureIds?.length || 0) > 1 ? ` ·${captureIds?.length}` : "";
   return (
     <button type="button" className="source-citation" onClick={() => onOpenSource(first)} title={title}>
@@ -527,7 +529,7 @@ function TreatmentsList({
                 <span className="treatment-review-note-icon" aria-hidden="true">ⓘ</span>
                 <span className="treatment-review-note-text">{item.reason}</span>
                 {source && onOpenSource ? (
-                  <SourceCitation captureIds={item.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
+                  <SourceCitation captureIds={item.sourceCaptureIds} onOpenSource={onOpenSource} />
                 ) : fixable && onFixAtSource ? (
                   <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
                     {t("report.fixAtSource")}
@@ -635,11 +637,10 @@ function TreatmentRow({
         {/* A human-confirmed value clears the amber uncertainty chip (a human vouched for it). */}
         {lowConfidence && !editedFields.length ? <span className="treatment-flag low">{t("report.flagLowConfidence")}</span> : null}
         {lotMissing && !editedFields.includes("lot") ? <span className="treatment-flag low">{t("report.flagLotMissing")}</span> : null}
-        {fixable && !editedFields.length && onFixAtSource ? (
-          <button type="button" className="treatment-fix-at-source" onClick={onFixAtSource}>
-            {t("report.fixAtSource")}
-          </button>
-        ) : null}
+        {/* A low-confidence / missing-lot row is corrected via the inline ✎ Edit (an instant overlay
+            write — the treatment-overlay decision: never route a field correction through a
+            re-synthesis). "Fix at source" is gone from the row; the ↗ source citation stays for
+            traceability. Coded review NOTES with no editable row keep fix-at-source below the list. */}
         {editedFields.length ? (
           <span className="treatment-edited-chip">
             <span aria-hidden="true">✎</span>{" "}
@@ -648,7 +649,7 @@ function TreatmentRow({
               : t("overlay.editedByClinician")}
           </span>
         ) : null}
-        <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} isPersian={isPersian} />
+        <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} />
         {canEdit ? (
           <button type="button" className="treatment-edit-btn" onClick={() => setEditing((open) => !open)} aria-expanded={editing} aria-label={t("overlay.editRow")} title={t("overlay.editRow")}>
             <span aria-hidden="true">✎</span>

@@ -6789,7 +6789,10 @@ small {
 
 /* The synthesis's softer uncertainties (ambiguous notes) — calm gray footnotes under the treatments,
    never an alarming box. */
-.treatment-review-notes {
+/* `ul.` ties the generic `.workspace-report-section ul` (0,1,1) and wins by source order, so the
+   bullet reset actually applies — otherwise the generic disc + 18px gutter renders as an empty
+   "circle" on the review note (same specificity trap R3 fixed for `.treatments-list`). */
+ul.treatment-review-notes {
   list-style: none;
   margin: 10px 0 0;
   padding: 9px 11px;
