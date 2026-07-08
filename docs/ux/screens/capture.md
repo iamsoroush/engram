@@ -225,9 +225,13 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   one-tap **Use AI** (revert); editing a carried-forward dose auto-satisfies its `Confirm dose`
   blocker (Q4); a human-confirmed field clears its low-confidence/missing-lot chip; a re-key/removed
   edit parks as an **orphan chip** (never lost). Full spec: [session review](session-review.md).
-- **Fix at source** remains for soft extraction gaps (low confidence, missing lot) — a `Fix at source`
-  deep-link opens the originating capture in the Sources drawer so the AI re-extracts (vs. the overlay,
-  which is a durable human override of the extracted value).
+- **Correcting a treatment row** is the inline ✎ **Edit** (a durable, instant human overlay — never a
+  re-synthesis), plus the `↗ source` citation for traceability. The row itself carries **no** separate
+  "Fix at source" button (it duplicated the overlay path and contradicted the overlay decision).
+  `Fix at source` survives only on a **coded review note that has no editable row** (a soft gap —
+  low confidence / missing lot — surfaced beneath the list), where it deep-links to the capture so the
+  AI re-extracts. Action chips (source, edit) are chrome and follow the **app** language, not the
+  report language.
 - **Aftercare:** content-driven aftercare templates are AI-matched and auto-included (opt-out) —
   each shows with a remove (✕); dismissals persist across re-synthesis. When dictated aftercare
   contradicts a protocol, the dictation wins and a **conflict note** is shown (itself dismissable ✕,
