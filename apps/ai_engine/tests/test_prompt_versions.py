@@ -38,12 +38,14 @@ PINNED = {
     transcription: ("2026-07-05.transcription.v2", "413299ab0b3c6e9388938e1251ad730b9166d1483df27641a899aca2adbce5f5"),
     caption: ("2026-07-04.caption.v1", "b066644f987c727fac3f4d1e430b6856acaa79bbd7db406b763136ef79f1d634"),
     patient_memory: ("2026-07-05.patient_memory.v2", "f425a3fe2c1bb363f5df840866af784e0b40e05ceb253b1a2c8e8237ccb5330a"),
-    # v3 adds an UNCONDITIONAL cross-patient never-copy rule (Q-3) that renders on every path — so the
-    # no-exemplar hash changed from v2. The exemplar branch is pinned separately in
+    # v4 (G4): doctor sign-off name moved OUT of the static instruction block into the variable tail
+    # (rules block now byte-stable across doctors), + a follow-up thread-history tail segment + an
+    # aftercare reference. The exemplar branch is pinned separately in
     # ``test_qa_draft_exemplar_branch_is_pinned``.
-    qa_draft: ("2026-07-05.qa_draft.v3", "a698f8009ef0e8e97bcc7b6848a07a79b149c7a0a25073a11e28cc38f248ef0d"),
-    # v2 adds the same cross-patient never-copy rule to the voice-edit prompt (Q-3).
-    qa_revise: ("2026-07-05.qa_revise.v2", "02a8097f1e7b1384e336c78692790e9ca23b59966cd6bcd1849bbb5c788bb43a"),
+    qa_draft: ("2026-07-09.qa_draft.v4", "95e47ab7cb58df0e51cb2b07f8a370c24fdad735659e1a8a45ffdb6866b270d3"),
+    # v3 (G4): drop the doctor-wide `priorAnswers` block (noise + cross-patient leak surface on a
+    # voice-edit that revises a GIVEN draft) and reword the guard accordingly.
+    qa_revise: ("2026-07-09.qa_revise.v3", "1b0b1a270113b2fc88c731adb0e36393d9729cbb1d31a0ac04d38139ba2b210d"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
     # v4 (G3): explicit stable-prefix context layout — stable clinic/patient blocks, then captures as
     # one flat list, then the per-run volatile blocks LAST (sort_keys=False) — so run N+1 byte-extends
@@ -80,7 +82,7 @@ class PromptVersionPinTests(unittest.TestCase):
             }
         }
         actual = hashlib.sha256(qa_draft.build(context).encode("utf-8")).hexdigest()
-        self.assertEqual(actual, "4418230045126ee813c5b6a2a61556b995724d04ac652dc3b1e74038d703f3f9")
+        self.assertEqual(actual, "11e2f88528af6ed3570c312e40493981badd113c48b7c1651aa06708362b8daa")
 
 
 if __name__ == "__main__":
