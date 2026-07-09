@@ -660,11 +660,16 @@ def get_job_for_worker(db: DbSession, job_id: str) -> AiJob:
 
 def _aftercare_templates_for_synthesis(db: DbSession, tenant_id: uuid.UUID) -> list[dict[str, Any]]:
     """Compact list of the tenant's ACTIVE aftercare protocols for the synthesizer to match against."""
+    # Stable ORDER BY (G1): the templates serialize inside the synthesis context's stable clinic block,
+    # so a run-to-run row-order flip (Postgres returns unordered rows in arbitrary order) would break the
+    # prompt's byte-prefix cache. created_at + id is deterministic and never reorders across runs.
     rows = db.execute(
-        select(AftercareTemplate).where(
+        select(AftercareTemplate)
+        .where(
             AftercareTemplate.tenant_id == tenant_id,
             AftercareTemplate.is_active.is_(True),
         )
+        .order_by(AftercareTemplate.created_at, AftercareTemplate.id)
     ).scalars()
     return [
         {"id": str(template.id), "name": template.name, "procedureType": template.procedure_type, "body": template.body}
