@@ -18,15 +18,26 @@ from ai_engine.core.util import clamp_confidence, utc_now
 
 # v2 (2026-07-05): treatments gain a canonical English `areaCode` + an optional `priorKey` echo, the
 # envelope + every extracted payload gain a BCP-47 `lang` stamp, and free-string `uncertainties` are
-# joined by machine-readable `uncertaintyReasons` [{code,text}]. See docs/work/ai-engine-refactor-plan
-# §4. NOTE: the backend gates on this exact string (worker.py `is_synthesis`), so its copy in
-# `app/services/session_processing.py` MUST bump in lockstep.
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-05.session-synthesis-output.v2"
+# joined by machine-readable `uncertaintyReasons` [{code,text}].
+# v3 (2026-07-09, G7): TreatmentItem gains a first-class `status` (performed | planned | uncertain,
+# default performed) so a FUTURE-tense / stated-intent treatment («خواهیم کرد», "we'll do next time") is
+# classified as PLANNED and never counted as performed (rendered under Plan & follow-up, excluded from
+# recall/smart-lists/insights/memory). NOTE: the backend gates on this exact string (worker.py
+# `is_synthesis`), so its copy in `app/services/session_processing.py` MUST bump in lockstep.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-09.session-synthesis-output.v3"
+
+# Treatment lifecycle status (v3). Default `performed` so a pre-v3 output (no status) keeps parsing as a
+# performed treatment. `planned` = future-tense / stated intent, not done this visit. `uncertain` =
+# genuinely ambiguous whether it was performed (stays in the treatments list with low-confidence styling).
+TREATMENT_STATUSES = frozenset({"performed", "planned", "uncertain"})
+DEFAULT_TREATMENT_STATUS = "performed"
 
 # Closed machine-readable uncertainty reason vocabulary (the model picks one per uncertainty). Keeps the
 # human `uncertainties` sentences AND a code the close-the-day severity roll-up can map without heuristics.
+# `planned_vs_performed` (v3): the model is genuinely unsure whether a treatment was performed or only
+# planned — it emits status=uncertain AND this code so the review surface flags exactly that question.
 UNCERTAINTY_REASON_CODES = frozenset(
-    {"ambiguous_correction", "missing_lot", "low_confidence", "carried_forward_dose", "ambiguous_quantity", "other"}
+    {"ambiguous_correction", "missing_lot", "low_confidence", "carried_forward_dose", "ambiguous_quantity", "planned_vs_performed", "other"}
 )
 
 # Fixed section ids + order (rendered by the backend). `treatment-performed` is a PROSE MIRROR of
@@ -73,6 +84,9 @@ class TreatmentItem(BaseModel):
     quantityText: str | None = None
     lot: str | None = None
     confidence: float
+    # Lifecycle status (v3): performed (done this visit — default), planned (future-tense/stated intent),
+    # or uncertain (genuinely ambiguous). A `planned` treatment is stored but never counts as performed.
+    status: str = DEFAULT_TREATMENT_STATUS
     sourceCaptureIds: list[str]
     evidence: str | None = None
     carriedForward: bool
@@ -200,6 +214,7 @@ def _clean_synthesis_treatment(raw: Any, *, lang: str | None = None) -> dict[str
         quantityText=_text(raw.get("quantityText")),
         lot=_text(raw.get("lot")),
         confidence=clamp_confidence(raw.get("confidence")),
+        status=raw.get("status") if raw.get("status") in TREATMENT_STATUSES else DEFAULT_TREATMENT_STATUS,
         sourceCaptureIds=[str(value) for value in source_ids if isinstance(value, str)] if isinstance(source_ids, list) else [],
         evidence=_text(raw.get("evidence")),
         carriedForward=raw.get("carriedForward") is True,

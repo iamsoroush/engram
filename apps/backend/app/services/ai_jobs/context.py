@@ -22,6 +22,21 @@ __all__ = [
 ]
 
 
+# (G5) Transcription's ONLY legitimate use of the assigned patient is to spell/transliterate a name
+# ACTUALLY SPOKEN in the clip (paired with the prompt's never-copy-a-name counter-instruction). Names
+# serve that; nationalId/phone/DOB/email/sex do NOT — feeding them invites the model to "confirm" a
+# half-heard digit string from context (the exact failure the A-F5 name/ID cross-check guards). Send
+# only the name-spelling fields; keep the identifiers out of the payload at the source.
+_TRANSCRIPTION_PATIENT_NAME_FIELDS = ("status", "source", "patientId", "displayName", "legalFirstName", "legalLastName")
+
+
+def _name_only_assigned_patient(assigned_patient: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project the assigned patient to name-spelling fields only (drop nationalId/phone/DOB/email/sex)."""
+    if not isinstance(assigned_patient, dict):
+        return assigned_patient
+    return {key: assigned_patient[key] for key in _TRANSCRIPTION_PATIENT_NAME_FIELDS if key in assigned_patient}
+
+
 def generated_capture_text(value: Any) -> str | None:
     """Return generated/display text from a capture metadata field."""
     if isinstance(value, dict) and isinstance(value.get("text"), str):
@@ -93,7 +108,8 @@ def transcription_context_from_inputs(
         # falls back to a neutral "clinic" when absent — it never hardcodes a vertical.
         "domain": domain,
         "preferredLanguage": preferred_language,
-        "assignedPatient": assigned_patient,
+        # (G5) name-spelling fields only — nationalId/phone/DOB/email/sex are removed at the source.
+        "assignedPatient": _name_only_assigned_patient(assigned_patient),
         "patientSummarizedHistory": patient_history_summary,
         "session": {
             "id": str(session.id),
@@ -149,18 +165,21 @@ def build_transcription_context(db: DbSession, *, session: Session, capture: Cap
 def capture_enrichment_context_from_inputs(
     *,
     clinic: dict[str, Any],
-    assigned_patient: dict[str, Any] | None,
     preferred_language: str,
     capture_type: str,
     domain: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the Pro-only context for photo captioning / note decoration."""
+    """Build the Pro-only context for photo captioning.
+
+    (G5) The assigned patient's identity is deliberately NOT sent: the caption is a neutral objective
+    image→text extractor that is FORBIDDEN to use identity, so feeding the full patient record was a
+    pure leak surface with no benefit. Objective description needs no name.
+    """
     return {
         "schemaVersion": "2026-06-06.capture-enrichment-context.v1",
         "clinic": clinic,
         # Vertical-aware prompt framing; the worker falls back to a neutral "clinic" when absent.
         "domain": domain,
-        "assignedPatient": assigned_patient,
         "preferredLanguage": preferred_language,
         "captureType": capture_type,
     }
@@ -175,16 +194,14 @@ def build_capture_enrichment_context(db: DbSession, *, session: Session, capture
     `worker_job_payload`), so a Basic tenant's worker never enriches and never calls the gateway.
     """
     template = get_report_template(session.report_template_key)
-    patient_information = patient_information_from_assignment(db, session)
-    assigned_patient = patient_information if patient_information.get("status") == "assigned" else None
     domain = domain_descriptor(tenant_vertical(db, session.tenant_id))
+    # (G5) No patient identity: the caption is a neutral objective extractor, forbidden to use identity.
     return capture_enrichment_context_from_inputs(
         clinic={
             "name": template.clinic_name,
             "information": list(template.clinic_information),
             "assumptions": [f"{domain['label'].capitalize()} context."],
         },
-        assigned_patient=assigned_patient,
         preferred_language=tenant_transcription_language(db, session.tenant_id),
         capture_type=capture.capture_type.value,
         domain=domain,

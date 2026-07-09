@@ -223,6 +223,26 @@ def effective_treatments_from_metadata(metadata: dict[str, Any] | None) -> list[
     return folded
 
 
+def _is_planned(treatment: dict[str, Any]) -> bool:
+    """A treatment the model classified as planned (future-tense / stated intent), not performed (G7)."""
+    return isinstance(treatment, dict) and treatment.get("status") == "planned"
+
+
+def performed_treatments(session: Session) -> list[dict[str, Any]]:
+    """`effective_treatments` MINUS planned rows — the PERFORMED view (G7).
+
+    A `planned` treatment («خواهیم کرد» / "we'll do next time") is stored with its status but must NOT
+    count as performed anywhere: this is the read for the treatment-performed prose, recall / lot-recall
+    cohorts, smart lists, insights, and the patient-memory brief. `uncertain` rows stay in (flagged).
+    """
+    return [treatment for treatment in effective_treatments(session) if not _is_planned(treatment)]
+
+
+def performed_treatments_from_metadata(metadata: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """`performed_treatments` over a raw extracted_metadata dict (for SQL-projection read sites)."""
+    return [treatment for treatment in effective_treatments_from_metadata(metadata) if not _is_planned(treatment)]
+
+
 # --- The post-synthesis re-bind pass ----------------------------------------------------------------
 def rebind_treatment_overlay(
     fresh_treatments: list[dict[str, Any]] | None, overlay: list[dict[str, Any]] | None

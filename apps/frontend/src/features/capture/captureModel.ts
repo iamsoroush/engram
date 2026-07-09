@@ -865,6 +865,9 @@ export function workspaceTreatments(session: CaptureSession | null): SessionTrea
       lot: metadataText(entry.lot) || null,
       confidence: typeof entry.confidence === "number" ? entry.confidence : null,
       carriedForward: entry.carriedForward === true,
+      // (G7) lifecycle status: performed | planned | uncertain (absent ⇒ performed). Drives the
+      // performed-vs-planned split in LiveReport (planned renders under Plan & follow-up, not performed).
+      status: (entry.status === "planned" || entry.status === "uncertain" ? entry.status : "performed") as "performed" | "planned" | "uncertain",
       attributes: entry.attributes && typeof entry.attributes === "object" ? (entry.attributes as Record<string, unknown>) : null,
       sourceCaptureIds: Array.isArray(entry.sourceCaptureIds)
         ? entry.sourceCaptureIds.filter((id): id is string => typeof id === "string")
