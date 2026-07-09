@@ -49,14 +49,29 @@ class TranscriptionContextTests(unittest.TestCase):
         context = transcription_context_from_inputs(
             session=session,
             clinic={"name": "Engram Clinic", "assumptions": ["Persian/Iranian aesthetics clinic."]},
-            assigned_patient={"status": "assigned", "displayName": "Sara N.", "nationalId": "0012345678"},
+            assigned_patient={
+                "status": "assigned",
+                "displayName": "Sara N.",
+                "legalFirstName": "Sara",
+                "legalLastName": "N.",
+                "nationalId": "0012345678",
+                "phone": "+989120000000",
+                "dateOfBirth": "1990-01-01",
+                "email": "s@example.com",
+                "sex": "female",
+            },
             patient_history_summary="Prior cheek filler, no allergy noted.",
             captures=[previous_audio, previous_note, current_audio],
             current_capture_id=current_capture_id,
         )
 
         self.assertEqual(context["schemaVersion"], "2026-06-02.audio-transcription-context.v1")
+        # (G5) name-spelling fields kept; identifiers stripped at the source.
         self.assertEqual(context["assignedPatient"]["displayName"], "Sara N.")
+        self.assertEqual(context["assignedPatient"]["legalFirstName"], "Sara")
+        for identifier in ("nationalId", "phone", "dateOfBirth", "email", "sex"):
+            self.assertNotIn(identifier, context["assignedPatient"])
+        self.assertNotIn("0012345678", str(context))
         self.assertEqual(context["patientSummarizedHistory"], "Prior cheek filler, no allergy noted.")
         self.assertEqual(context["session"]["title"], "Cheek filler follow-up")
         self.assertEqual(context["previousTranscripts"][0]["text"], "Patient mentioned mild left cheek asymmetry.")
@@ -65,36 +80,24 @@ class TranscriptionContextTests(unittest.TestCase):
 
 
 class CaptureEnrichmentContextTests(unittest.TestCase):
-    def test_context_carries_clinic_patient_language_and_type(self):
+    def test_context_carries_clinic_language_and_type_but_no_patient_identity(self):
         context = capture_enrichment_context_from_inputs(
             clinic={"name": "Engram Clinic", "assumptions": ["Aesthetics clinic context."]},
-            assigned_patient={"status": "assigned", "displayName": "Sara N."},
             preferred_language="fa",
             capture_type="photo",
         )
 
         self.assertEqual(context["schemaVersion"], "2026-06-06.capture-enrichment-context.v1")
         self.assertEqual(context["clinic"]["name"], "Engram Clinic")
-        self.assertEqual(context["assignedPatient"]["displayName"], "Sara N.")
+        # (G5) the caption is a neutral objective extractor — no patient identity is sent at all.
+        self.assertNotIn("assignedPatient", context)
         self.assertEqual(context["preferredLanguage"], "fa")
         self.assertEqual(context["captureType"], "photo")
-
-    def test_unassigned_visit_carries_none_patient(self):
-        context = capture_enrichment_context_from_inputs(
-            clinic={"name": "Engram Clinic"},
-            assigned_patient=None,
-            preferred_language="auto",
-            capture_type="note",
-        )
-
-        self.assertIsNone(context["assignedPatient"])
-        self.assertEqual(context["captureType"], "note")
 
     def test_context_carries_vertical_domain(self):
         # The vertical-aware `domain` rides on the context so the worker prompt stays vertical-agnostic.
         context = capture_enrichment_context_from_inputs(
             clinic={"name": "Engram Clinic"},
-            assigned_patient=None,
             preferred_language="auto",
             capture_type="note",
             domain={"vertical": "therapy", "label": "psychotherapy practice"},
