@@ -677,6 +677,21 @@ def _aftercare_templates_for_synthesis(db: DbSession, tenant_id: uuid.UUID) -> l
     ]
 
 
+def _prior_safety_reconciliation(session: Session) -> dict[str, Any] | None:
+    """The prior synthesis's reconcile decisions + the candidate-set key they were computed over (G6).
+
+    Both are persisted on the session's extracted_metadata by the previous synthesis completion
+    (`safety_reconciliation` + `safety_reconciliation_keys`). Returns None unless BOTH are present — a
+    reassignment invalidates `safety_reconciliation`, so a stale cross-patient memo can never be reused.
+    """
+    metadata = session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
+    decisions = metadata.get("safety_reconciliation")
+    candidate_keys = metadata.get("safety_reconciliation_keys")
+    if isinstance(decisions, dict) and isinstance(candidate_keys, list):
+        return {"candidateKeys": [str(key) for key in candidate_keys], "decisions": decisions}
+    return None
+
+
 def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
     """Serialize job input needed by the AI engine worker."""
     # Live per-task model + reasoning-effort selection, resolved per request so a change applies to
@@ -759,6 +774,13 @@ def worker_job_payload(db: DbSession, job: AiJob) -> dict[str, Any]:
         # relevance — which apply this visit and flags any that conflict with the clinician's dictation.
         "aftercareTemplates": _aftercare_templates_for_synthesis(db, job.tenant_id),
     }
+    # (G6) Reconcile memo: hand the prior synthesis's reconcile decisions + the candidate-flag-set key
+    # they were computed over, so the worker can SKIP the second (selection-only) reconcile LLM call when
+    # this run's candidate set is byte-unchanged. Both present only after a prior ≥2-flag synthesis; a
+    # reassignment invalidates `safety_reconciliation` (so the memo can't reuse a stale cross-patient set).
+    prior_reconcile = _prior_safety_reconciliation(session)
+    if prior_reconcile is not None:
+        processing_context["priorSafetyReconciliation"] = prior_reconcile
     # `reportSynthesis` tells the worker to run the single-pass LLM synthesis (vs the legacy
     # placeholder pipeline). The backend only dispatches this job for synthesis-enabled tenants, so
     # the flag is the explicit contract; a gateway-less worker still degrades to the deterministic

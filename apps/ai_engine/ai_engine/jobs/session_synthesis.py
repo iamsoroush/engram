@@ -540,6 +540,22 @@ def session_progress_output(payload: dict[str, Any], stage: str) -> dict[str, An
 SYNTHESIS_MALFORMED_RETRY_LIMIT = 2
 
 
+def reconcile_memo_decisions(prior: Any, candidate_keys: list[str]) -> dict[str, Any] | None:
+    """Reuse the prior reconcile decisions when the candidate-flag set is byte-unchanged (G6).
+
+    `prior` is the context's `priorSafetyReconciliation` = {candidateKeys, decisions} from the previous
+    synthesis of this session. Returns the stored decisions to reuse (skip the LLM call) when the sorted
+    candidate keys match exactly; None to run a fresh reconcile.
+    """
+    if not isinstance(prior, dict):
+        return None
+    prior_keys = prior.get("candidateKeys")
+    prior_decisions = prior.get("decisions")
+    if not (isinstance(prior_keys, list) and isinstance(prior_decisions, dict)):
+        return None
+    return prior_decisions if sorted(str(key) for key in prior_keys) == sorted(candidate_keys) else None
+
+
 def report_synthesis_json_schema() -> dict[str, Any]:
     """JSON schema for the single-pass synthesis structured output (the A↔B contract)."""
     block = {
@@ -743,14 +759,27 @@ def completed_session_synthesis_output(payload: dict[str, Any]) -> dict[str, Any
         if isinstance(flag, dict) and flag.get("kind") and flag.get("text")
     ]
     if len(existing_flags) + len(new_flags) >= 2:
-        try:
-            decisions = reconcile_safety_flags(
-                {"existingFlags": existing_flags, "newFlags": new_flags, "aiModels": payload.get("aiModels")}
-            )
-            if decisions:
-                extracted_metadata["safety_reconciliation"] = decisions
-        except Exception:  # noqa: BLE001 — reconcile is additive; never fail the synthesis on it
-            pass
+        # (G6) Memoize the reconcile by candidate-flag-set key. Synthesis re-runs on every settle
+        # (queue-collapse) — often for a capture change that does NOT touch safety flags — so the SAME
+        # candidate set is reconciled again minutes apart. When the set is byte-unchanged from the prior
+        # synthesis of this session, reuse the stored decisions and SKIP the LLM call entirely (a saving
+        # that beats any prompt-cache win at this pass's ~364-token size). The candidate-set key is
+        # stamped into extracted_metadata so the NEXT run can compare against it.
+        candidate_keys = sorted({str(f.get("key")) for f in [*existing_flags, *new_flags] if isinstance(f, dict) and f.get("key")})
+        extracted_metadata["safety_reconciliation_keys"] = candidate_keys
+        memo = reconcile_memo_decisions(context.get("priorSafetyReconciliation"), candidate_keys)
+        if memo is not None:
+            # Unchanged candidate set → reuse the memoized decisions, no gateway call.
+            extracted_metadata["safety_reconciliation"] = memo
+        else:
+            try:
+                decisions = reconcile_safety_flags(
+                    {"existingFlags": existing_flags, "newFlags": new_flags, "aiModels": payload.get("aiModels")}
+                )
+                if decisions:
+                    extracted_metadata["safety_reconciliation"] = decisions
+            except Exception:  # noqa: BLE001 — reconcile is additive; never fail the synthesis on it
+                pass
     return {
         "status": "completed",
         "summary": synthesis["summary"],
