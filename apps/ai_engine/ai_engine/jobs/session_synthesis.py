@@ -74,13 +74,20 @@ def extracted_patient_information(captures: list[dict[str, Any]]) -> dict[str, A
 
 
 def flattened_processing_captures(processing_context: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return captures from the stable session-processing input context."""
-    captures = processing_context.get("captures") if isinstance(processing_context.get("captures"), dict) else {}
+    """Return captures from the stable session-processing input context.
+
+    (G3) captures is now a flat chronological list (append-only for prefix-cache stability); the legacy
+    grouped {audio, photos, text} dict is still tolerated so an in-flight pre-G3 payload processes.
+    """
+    captures = processing_context.get("captures")
+    if isinstance(captures, list):
+        return [capture for capture in captures if isinstance(capture, dict)]
     flattened: list[dict[str, Any]] = []
-    for group in ("audio", "photos", "text"):
-        values = captures.get(group)
-        if isinstance(values, list):
-            flattened.extend(capture for capture in values if isinstance(capture, dict))
+    if isinstance(captures, dict):
+        for group in ("audio", "photos", "text"):
+            values = captures.get(group)
+            if isinstance(values, list):
+                flattened.extend(capture for capture in values if isinstance(capture, dict))
     return flattened
 
 

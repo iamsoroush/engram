@@ -45,7 +45,10 @@ PINNED = {
     # v2 adds the same cross-patient never-copy rule to the voice-edit prompt (Q-3).
     qa_revise: ("2026-07-05.qa_revise.v2", "02a8097f1e7b1384e336c78692790e9ca23b59966cd6bcd1849bbb5c788bb43a"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
-    synthesis: ("2026-07-05.synthesis.v3", "c7fbf63b19deaee4a7fd9d7ab473d74753b5627ece4b2058baffee40e8effaf7"),
+    # v4 (G3): explicit stable-prefix context layout — stable clinic/patient blocks, then captures as
+    # one flat list, then the per-run volatile blocks LAST (sort_keys=False) — so run N+1 byte-extends
+    # run N for the gateway prefix cache. Serialization order changed → hash changed.
+    synthesis: ("2026-07-09.synthesis.v4", "dc01ced184e3465de7a215dede0dbef39d15d63469368e866d13a2476138e30b"),
 }
 
 

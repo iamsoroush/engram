@@ -7,7 +7,52 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-05.synthesis.v3"
+PROMPT_VERSION = "2026-07-09.synthesis.v4"
+
+# Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
+# `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
+# SYNTHESIS_LLM_EXCLUDED_KEYS + `ordered_synthesis_context`). Emitting the blocks in an explicit,
+# deterministic order — stable clinic/patient blocks, then captures as one flat append-only list, then
+# the per-run volatile blocks LAST — is what lets run N+1's serialized context byte-EXTEND run N's so
+# the gateway's exact-prefix cache actually applies. Do NOT re-sort keys here (sort_keys=False).
+_STABLE_KEYS: tuple[str, ...] = (
+    "schemaVersion",
+    "domain",
+    "clinic",
+    "reportLanguage",
+    "aftercareTemplates",
+    "assignedPatient",
+    "patientSummarizedHistory",
+    "patientSafetyFlags",
+    "referencePriorVisitTreatments",
+    "session",
+)
+_CAPTURES_KEY = "captures"
+_VOLATILE_KEYS: tuple[str, ...] = (
+    "changeset",
+    "priorDraftTreatments",
+    "priorReportModel",
+    "priorSafetyReconciliation",
+)
+_LLM_EXCLUDED_KEYS = frozenset({"rawReportTemplate"})
+
+
+def _ordered_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Re-key the context into the stable → captures → volatile layout (mirror of the backend)."""
+    known = set(_STABLE_KEYS) | {_CAPTURES_KEY} | set(_VOLATILE_KEYS) | _LLM_EXCLUDED_KEYS
+    ordered: dict[str, Any] = {}
+    for key in _STABLE_KEYS:
+        if key in context:
+            ordered[key] = context[key]
+    if _CAPTURES_KEY in context:
+        ordered[_CAPTURES_KEY] = context[_CAPTURES_KEY]
+    for key in _VOLATILE_KEYS:
+        if key in context:
+            ordered[key] = context[key]
+    for key in sorted(context):
+        if key not in known:
+            ordered[key] = context[key]
+    return ordered
 
 
 def build(processing_context: dict[str, Any]) -> str:
@@ -174,6 +219,7 @@ def build(processing_context: dict[str, Any]) -> str:
                 "ambiguous_quantity (the dose/amount itself is unclear), other (anything else). Return ONLY "
                 "strict JSON, no markdown, no code fences."
             ),
-            f"Session context (captures, prior report draft, changeset, prior-visit treatments):\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}",
+            f"Session context (stable clinic/patient blocks, then captures, then the per-run update "
+            f"blocks — changeset, prior draft, prior report):\n{json.dumps(_ordered_context(context), ensure_ascii=False, sort_keys=False)}",
         )
     )
