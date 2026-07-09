@@ -19,9 +19,15 @@ SESSION_PROCESSING_INPUT_VERSION = "2026-05-21.session-processing-input.v1"
 SESSION_PROCESSING_OUTPUT_VERSION = "2026-05-21.session-processing-output.v1"
 # Pro single-pass report synthesis + treatment extraction output (extends the processing output with
 # treatments[] and the fixed-id sections). Emitted by the AI engine, post-processed below.
-# v2 (2026-07-05): treatments carry areaCode/priorKey, envelopes carry a `lang` stamp. MUST stay
-# byte-identical to the ai_engine copy (`contracts/synthesis.py`) — worker.py gates `is_synthesis` on it.
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-05.session-synthesis-output.v2"
+# v2 (2026-07-05): treatments carry areaCode/priorKey, envelopes carry a `lang` stamp.
+# v3 (2026-07-09, G7): TreatmentItem carries a first-class `status` (performed|planned|uncertain). MUST
+# stay byte-identical to the ai_engine copy (`contracts/synthesis.py`) — worker.py gates `is_synthesis` on it.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-09.session-synthesis-output.v3"
+# Treatment statuses (v3). `planned` is stored but never counts as performed (excluded from the
+# performed views: treatment-performed prose, recall, smart lists, insights, patient memory).
+TREATMENT_STATUS_PERFORMED = "performed"
+TREATMENT_STATUS_PLANNED = "planned"
+TREATMENT_STATUS_UNCERTAIN = "uncertain"
 TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
 
 # --- Stable-prefix synthesis context layout (G3) -----------------------------------------------
@@ -107,6 +113,8 @@ _UNCERTAINTY_CODE_TO_CATEGORY = {
     "missing_lot": "missing_lot",
     "low_confidence": "low_confidence",
     "ambiguous_quantity": "ambiguous",
+    # (G7) the model is unsure whether a treatment was performed or only planned — surfaced for review.
+    "planned_vs_performed": "ambiguous",
     "other": "ambiguous",
 }
 
@@ -438,8 +446,16 @@ def bounded_prior_visit_treatments(db: DbSession, session: Session) -> list[dict
     for prior in prior_sessions:
         metadata = prior.extracted_metadata if isinstance(prior.extracted_metadata, dict) else {}
         treatments = metadata.get("treatments")
-        if isinstance(treatments, list) and treatments:
-            return [treatment for treatment in treatments if isinstance(treatment, dict)][:MAX_PRIOR_VISIT_TREATMENTS]
+        if isinstance(treatments, list):
+            # (G7) exclude planned rows: a carry-forward ("same as last time") references a performed
+            # dose, never a prior visit's stated intent that may not have happened.
+            performed = [
+                treatment
+                for treatment in treatments
+                if isinstance(treatment, dict) and treatment.get("status") != TREATMENT_STATUS_PLANNED
+            ]
+            if performed:
+                return performed[:MAX_PRIOR_VISIT_TREATMENTS]
     return []
 
 
@@ -499,6 +515,11 @@ def process_synthesized_treatments(
         if not isinstance(raw, dict):
             continue
         treatment = dict(raw)
+        # (G7) normalize status; a planned treatment is stored but never counts as performed and raises
+        # no dose-confirmation review items (there is no administered dose to confirm).
+        status = treatment.get("status")
+        treatment["status"] = status if status in {TREATMENT_STATUS_PERFORMED, TREATMENT_STATUS_PLANNED, TREATMENT_STATUS_UNCERTAIN} else TREATMENT_STATUS_PERFORMED
+        is_planned = treatment["status"] == TREATMENT_STATUS_PLANNED
         product = str(treatment.get("product") or treatment.get("area") or "treatment").strip() or "treatment"
         sources = treatment.get("sourceCaptureIds")
         treatment["sourceCaptureIds"] = (
@@ -525,7 +546,7 @@ def process_synthesized_treatments(
             )
         confidence = treatment.get("confidence")
         confidence = float(confidence) if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) else 0.0
-        if treatment.get("carriedForward") is True:
+        if treatment.get("carriedForward") is True and not is_planned:
             treatment["confidence"] = min(confidence, CARRY_FORWARD_MAX_CONFIDENCE)
             review.append(
                 _treatment_review_item(
@@ -536,7 +557,7 @@ def process_synthesized_treatments(
                     key=carried_forward_key(treatment),
                 )
             )
-        else:
+        elif not is_planned:
             treatment["confidence"] = confidence
             if confidence < LOW_CONFIDENCE_TREATMENT_THRESHOLD:
                 review.append(
@@ -547,8 +568,10 @@ def process_synthesized_treatments(
                         treatment["sourceCaptureIds"],
                     )
                 )
+        else:
+            treatment["confidence"] = confidence  # planned: kept, but no dose-confirmation review item
         attributes = treatment.get("attributes") if isinstance(treatment.get("attributes"), dict) else {}
-        if attributes.get("lotExpected") is True and not treatment.get("lot"):
+        if attributes.get("lotExpected") is True and not treatment.get("lot") and not is_planned:
             review.append(_treatment_review_item("missing_lot", f"Missing lot number for {product}.", product, treatment["sourceCaptureIds"]))
         processed.append(treatment)
     # (S-F11) Map coded uncertainties to review categories. Prefer the machine-readable
@@ -603,10 +626,14 @@ def _treatment_performed_line(treatment: dict[str, Any]) -> str | None:
 
 
 def render_treatment_performed_blocks(treatments: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Render the treatment-performed section blocks FROM treatments[] (prose mirror of the store)."""
+    """Render the treatment-performed section blocks FROM treatments[] (prose mirror of the store).
+
+    (G7) `planned` treatments are excluded — they were not performed this visit and render under Plan &
+    follow-up on the frontend, not in the treatment-performed section.
+    """
     blocks: list[dict[str, Any]] = []
     for treatment in treatments or []:
-        if not isinstance(treatment, dict):
+        if not isinstance(treatment, dict) or treatment.get("status") == TREATMENT_STATUS_PLANNED:
             continue
         line = _treatment_performed_line(treatment)
         if line:

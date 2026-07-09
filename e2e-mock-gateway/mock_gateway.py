@@ -45,7 +45,7 @@ def _synthesis(prompt: str) -> str:
         "treatments": [{
             "area": "left cheek", "product": "hyaluronic acid filler", "brand": "Juvederm",
             "quantity": 0.3, "unit": "mL", "quantityText": "0.3 mL", "lot": "D-4471",
-            "confidence": 0.92, "sourceCaptureIds": ids or [first], "evidence": "spoken",
+            "confidence": 0.92, "status": "performed", "sourceCaptureIds": ids or [first], "evidence": "spoken",
             "carriedForward": False, "supersedesCaptureId": None, "attributes": {"needleGauge": "27G"},
         }],
         "uncertainties": [],

@@ -47,10 +47,9 @@ PINNED = {
     # voice-edit that revises a GIVEN draft) and reword the guard accordingly.
     qa_revise: ("2026-07-09.qa_revise.v3", "1b0b1a270113b2fc88c731adb0e36393d9729cbb1d31a0ac04d38139ba2b210d"),
     safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
-    # v4 (G3): explicit stable-prefix context layout — stable clinic/patient blocks, then captures as
-    # one flat list, then the per-run volatile blocks LAST (sort_keys=False) — so run N+1 byte-extends
-    # run N for the gateway prefix cache. Serialization order changed → hash changed.
-    synthesis: ("2026-07-09.synthesis.v4", "dc01ced184e3465de7a215dede0dbef39d15d63469368e866d13a2476138e30b"),
+    # v4 (G3): explicit stable-prefix context layout. v5 (G7): treatment `status` classification
+    # (performed | planned | uncertain) + the planned_vs_performed uncertainty code.
+    synthesis: ("2026-07-09.synthesis.v5", "5031c38fdc8ccf936526b954146870c317822d8acd5c1bda8db04c1b618faebc"),
 }
 
 

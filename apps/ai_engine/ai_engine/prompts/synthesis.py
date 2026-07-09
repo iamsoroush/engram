@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-09.synthesis.v4"
+PROMPT_VERSION = "2026-07-09.synthesis.v5"
 
 # Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
 # `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
@@ -111,12 +111,13 @@ def build(processing_context: dict[str, Any]) -> str:
                 "quotes, and quantityText (e.g. «۲ سی‌سی») — never translate or romanize these, and never "
                 "normalize «۲» to \"2\" in quantityText.\n"
                 f"{vocab_line}"
-                "- treatments: one TreatmentItem per distinct performed treatment, with core fields "
+                "- treatments: one TreatmentItem per distinct treatment mentioned, with core fields "
                 "area, product, brand, quantity (number or null), unit, quantityText (VERBATIM original "
-                "script), lot (dictated or read off a product-label photo), confidence (0..1), "
-                "sourceCaptureIds, evidence, carriedForward, supersedesCaptureId, and an open attributes "
-                "map (needleGauge, depth, device, sessions, …). The treatment-performed section is a prose "
-                "MIRROR of treatments — keep them consistent.\n"
+                "script), lot (dictated or read off a product-label photo), confidence (0..1), status "
+                "(see TREATMENT STATUS below), sourceCaptureIds, evidence, carriedForward, "
+                "supersedesCaptureId, and an open attributes map (needleGauge, depth, device, sessions, "
+                "…). The treatment-performed section is a prose MIRROR of the PERFORMED treatments — keep "
+                "them consistent; do not list a planned treatment there.\n"
                 f"{area_code_line}"
                 "- priorKey: the context's prior-visit treatments (referencePriorVisitTreatments) and "
                 "prior-draft treatments each carry a stable `treatmentKey`. If a treatment you emit is THE "
@@ -152,6 +153,25 @@ def build(processing_context: dict[str, Any]) -> str:
                 "مثل دفعه قبل). Then set carriedForward=true, LOWER the confidence, cite the prior visit "
                 "in sourceCaptureIds/evidence, and copy the referenced prior-visit treatment. NEVER "
                 "silently materialize a prior dose without an explicit cue."
+            ),
+            (
+                "TREATMENT STATUS (performed vs planned) — set `status` on EVERY treatment:\n"
+                "- status='performed': the treatment was actually done THIS visit — a past/completed "
+                "statement («تزریق کردم», «زدم», «انجام شد», \"I injected\", \"we did\"). This is the DEFAULT.\n"
+                "- status='planned': the clinician states an INTENT or FUTURE action, not something done this "
+                "visit — future tense or a next-visit plan («خواهیم کرد», «تزریق می‌کنیم» meaning next time, "
+                "«دفعه بعد», «قراره», \"we'll do\", \"we plan to\", \"next session\", \"will inject\"). Still "
+                "emit the TreatmentItem (so the plan is recorded) but with status='planned'. A planned "
+                "treatment is NOT performed: do NOT put it in the treatment-performed prose, and do NOT "
+                "select an aftercare protocol for it (aftercare is for procedures actually performed).\n"
+                "- status='uncertain': genuinely ambiguous whether it was performed or only planned. Set "
+                "status='uncertain' AND add an uncertainties entry with code 'planned_vs_performed'.\n"
+                "Tense/intent decides status — NEVER the confidence field. A clear future-tense treatment is "
+                "status='planned' with normal confidence, not a low-confidence performed treatment.\n"
+                "Extract ONLY performed or planned treatments. Do NOT create a TreatmentItem for a treatment "
+                "the patient DECLINED / refused («قبول نکرد», «نخواست», \"the patient declined\") or one only "
+                "recalled from a PRIOR visit as history («دفعه قبل زده بودیم» — done before, not this visit) — "
+                "those are neither performed nor planned, so they are not treatments for this visit."
             ),
             (
                 "AFTERCARE SELECTION (intelligent, not keyword): the clinic's reusable aftercare protocols "
@@ -216,7 +236,8 @@ def build(processing_context: dict[str, Any]) -> str:
                 "machine-readable reason, EXACTLY one of: ambiguous_correction (correction vs addition is "
                 "unclear), missing_lot (a lot number is expected but absent), low_confidence (a product/"
                 "field the model is unsure of), carried_forward_dose (a dose carried from a prior visit), "
-                "ambiguous_quantity (the dose/amount itself is unclear), other (anything else). Return ONLY "
+                "ambiguous_quantity (the dose/amount itself is unclear), planned_vs_performed (unsure "
+                "whether a treatment was performed or only planned), other (anything else). Return ONLY "
                 "strict JSON, no markdown, no code fences."
             ),
             f"Session context (stable clinic/patient blocks, then captures, then the per-run update "

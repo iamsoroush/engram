@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from app.models import AiJob, AiJobStatus, AiJobType, Patient, Session, Tenant
-from app.services.treatment_overlay import effective_treatments
+from app.services.treatment_overlay import performed_treatments
 
 # Imitated AI-job latency. Short enough that the "updating → ready" transition is quick but visible,
 # and lands within the frontend's processing-refresh poll ladder.
@@ -580,7 +580,7 @@ def _session_treatments(session: Session, *, limit: int = 8) -> list[dict[str, A
     """Compact per-visit treatments for grounding — read the OVERLAID treatments so the memory brief
     quotes a clinician-corrected dose/lot, not the raw AI artifact (AES-1101, the lot-recall safety case)."""
     treatments: list[dict[str, Any]] = []
-    for item in effective_treatments(session)[:limit]:
+    for item in performed_treatments(session)[:limit]:
         compact = {key: item.get(key) for key in _TREATMENT_BRIEF_KEYS if item.get(key) not in (None, "")}
         if compact:
             treatments.append(compact)

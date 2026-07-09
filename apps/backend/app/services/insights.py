@@ -41,7 +41,7 @@ from app.models import (
     User,
 )
 from app.services.capabilities import LIVE_REPORT_SYNTHESIS, tenant_has_capability
-from app.services.treatment_overlay import effective_treatments_from_metadata
+from app.services.treatment_overlay import performed_treatments_from_metadata
 
 # --- Tunables ---------------------------------------------------------------------------------------
 RECENCY_ACTIVE_DAYS = 90       # last visit < 90d  → active
@@ -270,7 +270,7 @@ def _load_visits(db: DbSession, tenant_id: uuid.UUID, start: datetime, end: date
             continue
         # Overlaid treatments (report_version ⊕ overlay): a corrected lot/dose flows into the treatment
         # mix + recency cohorts, not the raw AI artifact (AES-1101).
-        treatments = effective_treatments_from_metadata(metadata if isinstance(metadata, dict) else None)
+        treatments = performed_treatments_from_metadata(metadata if isinstance(metadata, dict) else None)
         visits.append(VisitRow(session_id=sid, patient_id=pid, created_by_user_id=uid, when=anchor, treatments=treatments))
     return visits
 

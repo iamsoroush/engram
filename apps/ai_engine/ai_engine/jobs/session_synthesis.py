@@ -589,6 +589,7 @@ def report_synthesis_json_schema() -> dict[str, Any]:
             "quantityText": {"type": ["string", "null"]},
             "lot": {"type": ["string", "null"]},
             "confidence": {"type": "number"},
+            "status": {"type": "string", "enum": ["performed", "planned", "uncertain"]},
             "sourceCaptureIds": {"type": "array", "items": {"type": "string"}},
             "evidence": {"type": ["string", "null"]},
             "carriedForward": {"type": "boolean"},

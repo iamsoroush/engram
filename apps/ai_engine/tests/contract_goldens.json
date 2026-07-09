@@ -439,7 +439,7 @@
     "blank_summary": null,
     "json_array": null,
     "minimal": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "A visit summary.",
       "language": "mixed",
       "lang": null,
@@ -494,7 +494,7 @@
       "generatedBy": "ai-engine"
     },
     "full_fa": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "Follow-up gel touch-up.",
       "language": "fa",
       "lang": "fa",
@@ -562,6 +562,7 @@
           "quantityText": "۳ سی‌سی",
           "lot": null,
           "confidence": 0.9,
+          "status": "performed",
           "sourceCaptureIds": [
             "cap-a"
           ],
@@ -584,6 +585,7 @@
           "quantityText": null,
           "lot": null,
           "confidence": 0.0,
+          "status": "performed",
           "sourceCaptureIds": [],
           "evidence": null,
           "carriedForward": false,
@@ -643,7 +645,7 @@
       "generatedBy": "ai-engine"
     },
     "full_en_report_language": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "Summary.",
       "language": "en",
       "lang": "en",
@@ -698,7 +700,7 @@
       "generatedBy": "ai-engine"
     },
     "unknown_language_defaults_mixed": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "S",
       "language": "mixed",
       "lang": null,
@@ -748,7 +750,7 @@
       "generatedBy": "ai-engine"
     },
     "fenced": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "Fenced summary.",
       "language": "mixed",
       "lang": "fa",
@@ -803,7 +805,7 @@
       "generatedBy": "ai-engine"
     },
     "sections_not_list": {
-      "schemaVersion": "2026-07-05.session-synthesis-output.v2",
+      "schemaVersion": "2026-07-09.session-synthesis-output.v3",
       "summary": "S",
       "language": "mixed",
       "lang": null,
