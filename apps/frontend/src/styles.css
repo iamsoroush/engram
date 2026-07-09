@@ -5749,6 +5749,8 @@ small {
   display: grid;
   grid-template-columns: minmax(52px, 1fr) auto minmax(52px, 1fr);
   align-items: center;
+  column-gap: 12px; /* when the brand wraps to its own row the center column is empty — keep the
+                       action cluster (ending in the attention bell + its badge) off the avatar. */
   width: 100%;
   min-height: 76px;
   margin: 0 auto;
@@ -5763,6 +5765,12 @@ small {
 
 .topbar-left {
   grid-column: 1;
+}
+
+/* Pin the avatar menu to the far right so it never crowds the bell/badge to its left. */
+.user-menu {
+  grid-column: 3;
+  justify-self: end;
 }
 
 .topbar-brand {
@@ -6803,11 +6811,15 @@ ul.treatment-review-notes {
 }
 .treatment-review-notes li {
   display: flex;
+  align-items: flex-start; /* not the default `stretch` — else the pill (border-radius:999px) stretches
+                              to the multi-line note's full height and rounds into a big circle. */
   gap: 7px;
   color: #5a6b85;
   font-size: 0.78rem;
   line-height: 1.45;
 }
+.treatment-review-notes li .treatment-fix-at-source,
+.treatment-review-notes li .source-citation { align-self: flex-start; flex: 0 0 auto; }
 .treatment-review-note-icon { flex: 0 0 auto; color: #8a98ad; font-size: 0.82rem; }
 
 .report-view-switch {
