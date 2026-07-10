@@ -10,6 +10,18 @@ Use this file as the starting guide. Do not read the whole repository blindly. S
 
 ## 1. First step by task type
 
+### Every task — read these first
+
+Regardless of task type, read these two before anything else. They are the shared mental model the
+rest of the docs assume, and both are short:
+
+- `docs/product.md` — what Engram is: purpose, personas, verticals × tiers × surfaces, the core
+  loop, accepted behaviors.
+- `docs/design-principles.md` — the non-negotiable product/UX principles; a change that is locally
+  correct but violates one of these is wrong.
+
+Then continue with the task-type lists below.
+
 ### Frontend
 
 Read:
@@ -60,10 +72,8 @@ Read:
 
 ### UX / user-facing behavior
 
-Read:
+Read (on top of the every-task pair above):
 
-- `docs/product.md`
-- `docs/design-principles.md`
 - `docs/ux/foundation.md` (tier/persona/boundary decisions — read before designing any surface)
 - `docs/ux/overview.md`
 - `docs/intelligence-layer.md` (if the work touches capture→intent/apply behavior)
