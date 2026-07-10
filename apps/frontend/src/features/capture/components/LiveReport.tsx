@@ -27,6 +27,33 @@ function isPersianReport(reportLanguage?: string | null): boolean {
   return Boolean(reportLanguage && reportLanguage.trim().toLowerCase().startsWith("fa"));
 }
 
+// (G7) Planned treatments (future-tense / stated intent) rendered as a calm line under Plan & follow-up
+// — NOT as performed. The treatment content (area/product/dose) follows the report language; only the
+// "Planned" chrome label is localized via t(). A tap on the line opens its source capture.
+function PlannedTreatments({
+  treatments,
+  isPersian,
+  onOpenSource,
+}: {
+  treatments: SessionTreatment[];
+  isPersian: boolean;
+  onOpenSource?: (captureId: string) => void;
+}) {
+  const t = useT();
+  if (!treatments.length) return null;
+  return (
+    <ul className="report-planned-treatments" dir={isPersian ? "rtl" : "ltr"}>
+      {treatments.map((treatment, index) => (
+        <li className="report-planned-treatment" key={treatment.treatmentKey || `${treatment.area}-${treatment.product}-${index}`}>
+          <span className="report-planned-label">{t("report.plannedLabel")}</span>{" "}
+          <span className="report-planned-body" dir={textDirection(treatmentLabel(treatment))}>{treatmentLabel(treatment)}</span>
+          <SourceCitation captureIds={treatment.sourceCaptureIds} onOpenSource={onOpenSource} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Persian / Arabic script range — used to infer the report's language from its own content when the
 // tenant's `report_language` is unset (NULL), so section TITLES match the (Persian) body instead of
 // silently falling back to English headings (R1).
@@ -192,7 +219,13 @@ export function ProLiveReport({
   // renders in place of the synthesis's prose `treatment-performed` section (no duplicate), and as a
   // fallback below the report when no such section exists (e.g. the deterministic baseline).
   const TREATMENT_SECTION_ID = "treatment-performed";
+  const PLAN_SECTION_ID = "plan-followup";
   const treatments = workspaceTreatments(session);
+  // (G7) Split by lifecycle status: PLANNED treatments (future-tense / stated intent) are NOT performed
+  // — they never render in the treatment-performed table; they show as a calm "Planned" line under Plan
+  // & follow-up. PERFORMED + UNCERTAIN stay in the performed list (uncertain keeps low-confidence styling).
+  const performedTreatments = treatments.filter((treatment) => treatment.status !== "planned");
+  const plannedTreatments = treatments.filter((treatment) => treatment.status === "planned");
   const hasTreatmentSection = sections.some((section) => section.id === TREATMENT_SECTION_ID);
   // Resolve the section-title language ONCE for the whole report: an explicit report_language wins,
   // else infer from the report's own (Persian) content, else the app language (R1 — a NULL tenant
@@ -222,12 +255,12 @@ export function ProLiveReport({
     onConfirmCarriedForward && session ? (key: string) => onConfirmCarriedForward(session.id, key) : undefined;
   // Which review items already have an INLINE home on a rendered row (so a note would double-surface):
   // a carried-forward dose with a matching row, a missing-lot / low-confidence flag on a matching row.
-  const treatmentKeySet = new Set(treatments.map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`));
+  const treatmentKeySet = new Set(performedTreatments.map((treatment) => `${(treatment.area || "").trim()}|${(treatment.product || "").trim()}`));
   const missingLotInline = new Set(
-    treatments.filter((treatment) => !treatment.lot && treatment.product && missingLotProducts.has((treatment.product || "").trim())).map((treatment) => (treatment.product || "").trim()),
+    performedTreatments.filter((treatment) => !treatment.lot && treatment.product && missingLotProducts.has((treatment.product || "").trim())).map((treatment) => (treatment.product || "").trim()),
   );
   const lowConfidenceInline = new Set(
-    treatments.filter(isLowConfidenceTreatment).map((treatment) => (treatment.product || "").trim()).filter(Boolean),
+    performedTreatments.filter(isLowConfidenceTreatment).map((treatment) => (treatment.product || "").trim()).filter(Boolean),
   );
   const surfacedInline = (item: (typeof review)[number]): boolean => {
     if (item.category === "carried_forward") return Boolean(item.key && treatmentKeySet.has(item.key));
@@ -279,13 +312,13 @@ export function ProLiveReport({
           sections.map((section) => {
             // The treatment slot renders the structured table (single source of truth), not the
             // synthesis's prose mirror — unless extraction produced nothing, then keep the prose.
-            const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && treatments.length > 0;
+            const renderTreatmentTable = section.id === TREATMENT_SECTION_ID && performedTreatments.length > 0;
             return (
               <section className="workspace-report-section" key={section.id}>
                 {section.title ? <h3 data-testid="report-section-title" dir={textDirection(localizedSectionTitle(section.id, section.title, persianReport))}>{localizedSectionTitle(section.id, section.title, persianReport)}</h3> : null}
                 {renderTreatmentTable ? (
                   <TreatmentsList
-                    treatments={treatments}
+                    treatments={performedTreatments}
                     confirmedCarriedForward={confirmedCarriedForward}
                     missingLotProducts={missingLotProducts}
                     onFixAtSource={onFixAtSource}
@@ -310,6 +343,9 @@ export function ProLiveReport({
                     </React.Fragment>
                   ))
                 )}
+                {section.id === PLAN_SECTION_ID ? (
+                  <PlannedTreatments treatments={plannedTreatments} isPersian={persianReport} onOpenSource={onOpenSource} />
+                ) : null}
               </section>
             );
           })
@@ -325,13 +361,13 @@ export function ProLiveReport({
           <p className="report-doc-status">{t("report.buildsHere")}</p>
         )}
       </section>
-      {treatments.length && !hasTreatmentSection ? (
+      {performedTreatments.length && !hasTreatmentSection ? (
         <section className="structured-report-section treatments-performed">
           <h3 dir={textDirection(localizedSectionTitle("treatment-performed", "Treatments performed", persianReport))}>
             {localizedSectionTitle("treatment-performed", "Treatments performed", persianReport)}
           </h3>
           <TreatmentsList
-            treatments={treatments}
+            treatments={performedTreatments}
             confirmedCarriedForward={confirmedCarriedForward}
             missingLotProducts={missingLotProducts}
             onFixAtSource={onFixAtSource}
@@ -346,6 +382,16 @@ export function ProLiveReport({
             onEditField={onEditTreatmentField}
             onRevertField={onRevertTreatmentField}
           />
+        </section>
+      ) : null}
+      {/* (G7) Planned treatments when no Plan & follow-up section rendered to host them (deterministic
+          baseline, or the model emitted planned items but no plan section) — a calm standalone "Planned" block. */}
+      {plannedTreatments.length && !sections.some((section) => section.id === PLAN_SECTION_ID) ? (
+        <section className="structured-report-section treatments-planned">
+          <h3 dir={textDirection(localizedSectionTitle("plan-followup", "Plan & follow-up", persianReport))}>
+            {localizedSectionTitle("plan-followup", "Plan & follow-up", persianReport)}
+          </h3>
+          <PlannedTreatments treatments={plannedTreatments} isPersian={persianReport} onOpenSource={onOpenSource} />
         </section>
       ) : null}
       {/* Orphaned-overlay review chips (AES-1101): a human edit a re-synthesis couldn't re-bind — parked,

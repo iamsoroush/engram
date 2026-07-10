@@ -31,10 +31,12 @@ except NameError:
     pass
 
 from _common import (  # noqa: E402
+    EVAL_VOTES,
     capture_prompt_version,
     contains,
     env_models,
     exit_code,
+    gate_votes,
     gateway_configured,
     write_scorecard,
 )
@@ -276,20 +278,21 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
     records: list[dict[str, Any]] = []
     prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
+        def _attempt(case=case):
+            out = synthesize_session_report(_payload(case["captures"]))
+            if out is None:
+                return ["no usable output"], None
+            return run_gates(out, case), out
+
         try:
-            output = synthesize_session_report(_payload(case["captures"]))
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop scoring.
             print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
             print("  SKIP: gateway unreachable — remaining cases not scored.")
             break
-        if output is None:
-            print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output")
-            safety_fail += 1
-            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(output)
-        problems = run_gates(output, case)
-        flags = output.get("safetyFlags") or []
+        prompt_version = prompt_version or (capture_prompt_version(output) if output else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
+        flags = (output or {}).get("safetyFlags") or []
         summary = "; ".join(f"{f.get('kind')}={f.get('text')}" for f in flags) or "(none)"
         known = case.get("knownGap")
         if problems and known:
@@ -298,11 +301,11 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
             records.append({"id": case["name"], "safety": "known-gap", "judge": {}, "reasons": problems})
         elif problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}{votes_suffix}")
             records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": problems})
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}{votes_suffix}")
             records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
     return safety_pass, safety_fail, known_gap, records, prompt_version
 

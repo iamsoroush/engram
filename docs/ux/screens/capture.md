@@ -232,6 +232,12 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   low confidence / missing lot — surfaced beneath the list), where it deep-links to the capture so the
   AI re-extracts. Action chips (source, edit) are chrome and follow the **app** language, not the
   report language.
+- **Planned vs performed treatments.** The synthesis classifies each treatment by tense/intent. A
+  **performed** treatment renders in the `Treatment performed` table (an **uncertain** one stays there
+  with low-confidence styling); a **planned** treatment (future-tense / stated intent — «دفعه بعد لب رو
+  با ژل انجام می‌دیم») renders instead as a calm `Planned` line under **Plan & follow-up**, never as
+  performed. So a future-tense dictation no longer lands under "Treatment performed" with a heavy review
+  note; it is recorded as the plan it is (and never counts toward recall/lot cohorts/insights/memory).
 - **Aftercare:** content-driven aftercare templates are AI-matched and auto-included (opt-out) —
   each shows with a remove (✕); dismissals persist across re-synthesis. When dictated aftercare
   contradicts a protocol, the dictation wins and a **conflict note** is shown (itself dismissable ✕,

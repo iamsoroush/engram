@@ -33,6 +33,9 @@ _ARTIFACT_METADATA_KEYS = (
     # patient's flags at apply time, so restoring them is safe even after a reassignment.
     "uncertainty_reasons",
     "safety_reconciliation",
+    # (G6) the candidate-flag-set key the reconcile decisions were computed over — restored alongside
+    # `safety_reconciliation` so the reconcile memo stays consistent across a cache-restore.
+    "safety_reconciliation_keys",
     "lang",
     "treatment_review",
     "source_capture_ids",

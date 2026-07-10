@@ -1110,6 +1110,71 @@ def dispatch_qa_draft_job(db: DbSession, job: AiJob) -> None:
         db.commit()
 
 
+# Bound the most-recent-visit aftercare prose fed to the draft (native script, the aftercare the
+# patient was actually given). Enough to ground "never contradict the aftercare THIS patient was
+# given" without dumping the whole report.
+MAX_RECENT_AFTERCARE_CHARS = 800
+# The thread's own prior exchange (bounded) so a follow-up question is drafted WITH the earlier Q→A of
+# THIS conversation, not blind. Distinct from `priorAnswers`, which is doctor-wide (other patients).
+THREAD_HISTORY_TURNS = 4
+
+
+def _recent_visit_aftercare(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUID) -> str | None:
+    """The aftercare prose from this patient's most recent visit report (G4 grounding).
+
+    The synthesized report's `aftercare` section carries the effective aftercare the patient was given
+    (dictated instructions + the applied protocol's guidance). Feed it so the draft can honour the
+    prompt's "never contradict the aftercare THIS patient was given" rule instead of guessing. Bounded,
+    native script, most-recent visit only.
+    """
+    rows = db.execute(
+        select(Session.report_model)
+        .where(Session.tenant_id == tenant_id, Session.patient_id == patient_id, Session.report_model.is_not(None))
+        .order_by(func.coalesce(Session.captured_at, Session.updated_at, Session.created_at).desc())
+        .limit(RECENT_VISIT_SUMMARIES)
+    ).scalars()
+    for report_model in rows:
+        if not isinstance(report_model, dict):
+            continue
+        for section in report_model.get("sections") or []:
+            if not isinstance(section, dict) or section.get("id") != "aftercare":
+                continue
+            texts = [
+                block["text"].strip()
+                for block in section.get("blocks") or []
+                if isinstance(block, dict) and block.get("type") == "paragraph" and isinstance(block.get("text"), str) and block["text"].strip()
+            ]
+            if texts:
+                return " ".join(texts)[:MAX_RECENT_AFTERCARE_CHARS]
+    return None
+
+
+def _thread_prior_turns(db: DbSession, *, thread: QaThread, exclude_message_id: uuid.UUID) -> list[dict[str, Any]]:
+    """This thread's own prior sent Q→A exchanges (bounded), so a follow-up has conversational context.
+
+    Only ANSWERED exchanges (a doctor-verified reply exists), oldest-first, excluding the question now
+    being drafted. Thread-scoped (this patient) — unlike doctor-wide `priorAnswers`, this carries no
+    cross-patient leak risk.
+    """
+    replies_by_question: dict[uuid.UUID, str] = {}
+    messages = list(
+        db.execute(
+            select(QaMessage)
+            .where(QaMessage.tenant_id == thread.tenant_id, QaMessage.thread_id == thread.id)
+            .order_by(QaMessage.created_at)
+        ).scalars()
+    )
+    for message in messages:
+        if message.role == ROLE_DOCTOR and message.status == R_SENT and message.in_reply_to_id is not None:
+            replies_by_question[message.in_reply_to_id] = message.body
+    turns = [
+        {"question": message.body, "answer": replies_by_question[message.id]}
+        for message in messages
+        if message.role == ROLE_PATIENT and message.id != exclude_message_id and message.id in replies_by_question
+    ]
+    return turns[-THREAD_HISTORY_TURNS:]
+
+
 def _patient_qa_context(db: DbSession, patient: Patient | None, *, tenant_id: uuid.UUID) -> dict[str, Any]:
     """Compact, withholding-safe patient context for grounding a reply draft."""
     if patient is None:
@@ -1129,6 +1194,8 @@ def _patient_qa_context(db: DbSession, patient: Patient | None, *, tenant_id: uu
         "memorySummary": persisted_summary(patient),
         "history": (patient.notes or "").strip() or None,
         "recentVisitSummaries": recent_summaries,
+        # (G4) the aftercare THIS patient was actually given — grounds the prompt's never-contradict rule.
+        "recentAftercare": _recent_visit_aftercare(db, tenant_id=tenant_id, patient_id=patient.id),
     }
 
 
@@ -1236,7 +1303,6 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
     patient = db.get(Patient, job.patient_id)
     doctor_user_id = thread.assigned_doctor_user_id if thread else None
     doctor_name = _doctor_name(db, doctor_user_id) or CARE_TEAM_BYLINE
-    tenant = db.get(Tenant, job.tenant_id)
     patient_context = _patient_qa_context(db, patient, tenant_id=job.tenant_id)
     prior_answers = _prior_doctor_answers(db, tenant_id=job.tenant_id, doctor_user_id=doctor_user_id)
     # Retrieve the clinic's most relevant exemplars (templates + auto-indexed sent replies) so the
@@ -1272,8 +1338,10 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
             "patientContext": patient_context,
             "priorAnswers": prior_answers,
             "retrievedExemplars": retrieved,
+            # (G4) THIS thread's own earlier Q→A exchanges (bounded), so a follow-up question is drafted
+            # with the conversation's context — no cross-patient risk (thread == this patient).
+            "threadHistory": _thread_prior_turns(db, thread=thread, exclude_message_id=question.id) if thread else [],
             "doctorName": doctor_name,
-            "clinicName": tenant.name if tenant else None,
         },
         "deterministicFallback": {"draft": fallback_draft, "source": "mock-deterministic"},
     }
@@ -1496,7 +1564,9 @@ def qa_revise_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str
             "currentDraft": current_draft,
             "patientQuestion": question.body,
             "patientContext": patient_context,
-            "priorAnswers": _prior_doctor_answers(db, tenant_id=job.tenant_id, doctor_user_id=doctor_user_id),
+            # (G4) `priorAnswers` dropped: qa_revise applies the doctor's OWN spoken instruction to a
+            # GIVEN draft; other-thread answers are noise here (tone already comes from the draft), and
+            # they were a cross-patient leak surface. Removing them shrinks every voice-edit prompt.
             "doctorName": doctor_name,
             "voiceEndpoint": f"/internal/qa/voice/{job.id}",
         },

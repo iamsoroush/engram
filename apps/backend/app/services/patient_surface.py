@@ -37,7 +37,7 @@ from app.schemas.shares import PatientShareCreate
 from app.services.patients import get_patient
 from app.services.reporting import report_template_context
 from app.services.sessions import parse_uuid
-from app.services.treatment_overlay import effective_treatments
+from app.services.treatment_overlay import performed_treatments
 from app.storage import ObjectStore
 
 SHARE_SCHEMA_VERSION = "2026-06-12.patient-share.v1"
@@ -205,7 +205,7 @@ def _curated_treatment_lines(session: Session | None, *, include_brands: bool) -
     # Read the OVERLAID treatments (M-P4): a clinician-corrected area/product/brand must reach the
     # patient-facing "what we did" lines, not the raw AI artifact (the AES-1101 safety class).
     lines: list[str] = []
-    for treatment in effective_treatments(session):
+    for treatment in performed_treatments(session):
         if not isinstance(treatment, dict):
             continue
         area = str(treatment.get("area") or "").strip()

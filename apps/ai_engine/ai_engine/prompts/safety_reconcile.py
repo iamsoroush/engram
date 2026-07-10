@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "2026-07-04.safety_reconcile.v1"
+PROMPT_VERSION = "2026-07-10.safety_reconcile.v2"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -22,11 +22,19 @@ def build(payload: dict[str, Any]) -> str:
                 "- 'keep': a distinct, current safety fact — keep it.\n"
                 "- 'duplicate': states the SAME clinical concept as another flag — set ofKey to that other "
                 "flag's key (e.g. «آلرژی به پنی‌سیلین» and «حساسیت به پنی‌سیلین» are the same; keep one, mark "
-                "the rest duplicate).\n"
+                "the rest duplicate). Compare the clinical FACT, not the wording: the same "
+                "substance/procedure + the same concern + the same timeframe is the SAME concept even when "
+                "the sentences share almost no words (different word order, verb form, or «مصرف …»/«بیمار … "
+                "مصرف کرده» restructuring). WORKED EXAMPLE: existing «مصرف کورتون در ماه گذشته» + new "
+                "«بیمار ماه پیش کورتون مصرف کرده» → the new one is 'duplicate' ofKey the existing one. When "
+                "an EXISTING flag and a NEW flag are the same fact, keep the existing and mark the NEW one "
+                "duplicate.\n"
                 "- 'superseded': a later flag EXPLICITLY contradicts/updates this one — set ofKey to the "
                 "superseding flag's key (e.g. «بیمار باردار است» then «دیگر باردار نیست»). A superseded flag "
                 "is ANNOTATED, never deleted.\n"
                 "RULES:\n"
+                "- COMPLETE: return exactly ONE decision for EVERY flag given — every EXISTING flag AND "
+                "every NEW flag. Never omit a flag; deciding only the new arrivals is an error.\n"
                 "- SELECTION ONLY: emit keys + status, never any new/edited text. Every `key` MUST be one of "
                 "the given flags' keys; every `ofKey` MUST also be one of the given keys.\n"
                 "- BIAS TO KEEP (safety errs to inclusion): mark 'duplicate'/'superseded' ONLY when you are "

@@ -64,11 +64,12 @@ Manual re-enqueue: `POST /api/v1/captures/{capture_id}/retry-processing`.
   `intents` (`assignment` with `basis: explicit|implicit`, `append`, `out_of_context`). Malformed
   structured output is a retryable worker failure; malformed *intents* are dropped field-by-field so
   a usable transcript is never lost (`normalize_intents`).
-- The prompt is built from a tenant-scoped `transcriptionContext`: clinic assumptions, assigned
-  patient, session metadata, previous same-session transcripts and notes, safe patient-history
-  summary, the domain descriptor, and `preferredLanguage`. Transcription is verbatim in the spoken
-  language and **original script — never translated or romanized** (a romanized Persian transcript
-  breaks name matching).
+- The prompt is built from a tenant-scoped `transcriptionContext`: clinic assumptions, the assigned
+  patient's **name-spelling fields ONLY** (displayName + legal names — nationalId/phone/DOB/email/sex are
+  withheld so the model can't "confirm" a half-heard identifier from context; pairs with the A-F5 name/ID
+  cross-check), previous same-session transcripts and notes, safe patient-history summary, the domain
+  descriptor, and `preferredLanguage`. Transcription is verbatim in the spoken language and **original
+  script — never translated or romanized** (a romanized Persian transcript breaks name matching).
 - `detected_patient` remains as a compatibility projection of structured `patient_information`.
 
 ### Photo — Pro caption + enrichment attributes
@@ -78,7 +79,9 @@ Manual re-enqueue: `POST /api/v1/captures/{capture_id}/retry-processing`.
   worker-side** before sending (Pillow, longest edge 1280 px, JPEG q80, `detail: low`) since vision
   cost/latency scale with pixels.
 - The caption is a **neutral image→text extractor**: an objective description of what is visibly
-  present, in the source language/native script — never a diagnosis, severity, or "no signs of …".
+  present, in the source language/native script — never a diagnosis, severity, or "no signs of …". The
+  patient's identity is **not** sent to the caption job (an objective describer has no use for a name;
+  removing it closes a leak surface with no benefit).
 - Alongside the free-text caption the model emits optional structured attributes:
   `intents.out_of_context` (`present/reason/confidence`, reusing the OOC apply path) and `pairing`
   (`region`, `laterality`, `view`, `phase`, `isProductLabel`). Before/after pairing itself is a
@@ -138,19 +141,35 @@ a stale cross-patient version can't cache-restore ([pipeline-versioning](../arch
 ### Context
 
 The session-processing input (versioned `2026-05-21.session-processing-input.v1`, extended for
-synthesis) carries: `rawReportTemplate`, clinic, `assignedPatient` (DB assignment only),
-`patientSummarizedHistory`, processed captures (`audio→transcript`, `photo→caption+pairing`,
-`text→rawText` — text-only; OOC captures excluded), session metadata, `reportLanguage`, the domain
-descriptor, the **prior `report_model` + a changeset** (capture ids added/removed/edited since the
-last synthesis, enabling a stable targeted update), bounded **prior-visit `treatments[]`** (for
-"same as last time"), the clinic's `aftercareTemplates`, and the patient's existing
-`patientSafetyFlags`.
+synthesis) carries: clinic, `assignedPatient` (DB assignment only), `patientSummarizedHistory`,
+processed captures (`audio→transcript`, `photo→caption+pairing`, `text→rawText` — text-only; OOC
+captures excluded), `reportLanguage`, the domain descriptor, the **prior `report_model` + a changeset**
+(capture ids added/removed/edited since the last synthesis, enabling a stable targeted update), bounded
+**prior-visit `treatments[]`** (for "same as last time", performed rows only), the clinic's
+`aftercareTemplates`, and the patient's existing `patientSafetyFlags`.
+
+**Stable-prefix context layout (byte-cache design).** The context is serialized in an explicit,
+deterministic order — **(1) static instructions/schema framing, (2) clinic-stable block (domain,
+clinic, `reportLanguage`, `aftercareTemplates` — ordered `created_at,id`), (3) patient-stable block
+(`assignedPatient`, `patientSummarizedHistory`, `patientSafetyFlags`, `referencePriorVisitTreatments`),
+(4) `captures` as ONE flat append-only chronological list, (5) the per-run volatile tail (`changeset`,
+`priorDraftTreatments`, `priorReportModel`, and the reconcile memo) LAST** — instead of a
+`json.dumps(sort_keys=True)` that interleaves volatile keys among stable ones. `serialize_synthesis_context`
+(`services/session_processing.py`) is the byte authority; the ai_engine synthesis prompt mirrors the SAME
+ordering with `sort_keys=False` and stays in lockstep. So a re-synthesis minutes later (queue-collapse)
+byte-EXTENDS the prior prompt and the gateway's exact-prefix cache actually applies (see
+[architecture.md → the AI gateway](../architecture.md)). The session block is **id + title only** — the
+prior report is fed **exactly once** via `priorReportModel` (with `generatedAt`/`generatedBy` stripped);
+the old duplicate feed of `session.extracted_metadata` (the model's own full prior output) is gone, the
+single largest token cut. `rawReportTemplate` is not in the model-visible context (the section contract
+already encodes it). New context fields append to the volatile tail, never the stable region (standing
+rule: [technical-decisions.md](../technical-decisions.md)).
 
 ### Output — the A↔B contract
 
-Schema `2026-07-05.session-synthesis-output.v2` (extends `2026-05-21.session-processing-output.v1`).
+Schema `2026-07-09.session-synthesis-output.v3` (extends `2026-05-21.session-processing-output.v1`).
 **The backend gates on this exact string** (`worker.py` `is_synthesis`), so its copy in
-`app/services/session_processing.py` bumps in lockstep.
+`app/services/session_processing.py` bumps in lockstep. v3 adds the treatment `status` field.
 
 ```jsonc
 {
@@ -170,7 +189,7 @@ Schema `2026-07-05.session-synthesis-output.v2` (extends `2026-05-21.session-pro
   "safetyFlags": [ { "kind": "allergy|contraindication|consent", "text": "…", "sourceCaptureIds": ["…"], "lang": "fa|null" } ],
   "sourceReferences": [ { "type": "capture", "captureId": "…" } ],
   "uncertainties": [ "string" ],       // human sentences (unchanged) — drives review chips / Needs-input
-  "uncertaintyReasons": [ { "code": "ambiguous_correction|missing_lot|low_confidence|carried_forward_dose|ambiguous_quantity|other", "text": "string" } ],
+  "uncertaintyReasons": [ { "code": "ambiguous_correction|missing_lot|low_confidence|carried_forward_dose|ambiguous_quantity|planned_vs_performed|other", "text": "string" } ],
                                        // machine-readable companion to `uncertainties` (close-the-day severity roll-up)
   "generatedBy": "ai-engine", "generatedAt": "ISO-8601"
 }
@@ -184,7 +203,11 @@ Schema `2026-07-05.session-synthesis-output.v2` (extends `2026-05-21.session-pro
   "quantity": "number|null", "unit": "string|null",
   "quantityText": "string|null",        // VERBATIM, original script — display + audit
   "lot": "string|null",                 // dictated OR read from a product-label photo
-  "confidence": 0.0, "sourceCaptureIds": ["…"], "evidence": "string|null",
+  "confidence": 0.0,
+  "status": "performed|planned|uncertain",  // v3 — lifecycle (default performed when absent). PLANNED
+                                        // (future-tense/stated intent, «خواهیم کرد») is stored but NEVER
+                                        // counts as performed; UNCERTAIN stays flagged low-confidence.
+  "sourceCaptureIds": ["…"], "evidence": "string|null",
   "carriedForward": false,              // "same as last time"
   "supersedesCaptureId": "string|null", // corrections (auditable/undoable)
   "priorKey": "string|null",            // echoed treatmentKey of a prior row this continues — a re-bind
@@ -212,7 +235,8 @@ additive, no prompt change.
 backend on a re-dispatch caused by a user correction — fix-at-source edit, treatment-overlay edit, or
 assignment correction), the synthesis call runs on the configured **escalation tier** (`retry_tier`);
 a no-op when no escalation tier is configured. `PROMPT_VERSION` for synthesis is
-`2026-07-05.synthesis.v3` (the `.v3` bump adds the meta-speech exclusion clause below).
+`2026-07-09.synthesis.v5` (`.v4` = the stable-prefix context layout above; `.v5` = treatment status
+classification — performed/planned/uncertain — below).
 
 ### Extraction discipline (encoded in the prompt, asserted by evals)
 
@@ -231,6 +255,13 @@ a no-op when no escalation tier is configured. `PROMPT_VERSION` for synthesis is
   backend-side.
 - **Carry-forward:** only on an explicit "same as last time" cue → `carriedForward: true`, lower
   confidence, cite the prior visit. Never silently materialize a prior dose.
+- **Treatment status (performed vs planned):** classify each treatment by TENSE/INTENT, never by
+  confidence. A future-tense / stated-intent treatment («خواهیم کرد», "next session") is
+  `status:"planned"` (stored, but excluded from every performed view — treatment-performed prose,
+  recall/lot cohorts, smart lists, insights, patient-memory brief; selects no aftercare, raises no
+  dose-confirmation review item); a done-this-visit statement is `status:"performed"` (default);
+  genuinely ambiguous is `status:"uncertain"` + a `planned_vs_performed` uncertainty. A treatment the
+  patient **declined** or one recalled only as **prior-visit history** is neither — not extracted.
 - **Aftercare selection** (intelligent, not keyword): judged by clinical relevance against the
   clinic's `aftercareTemplates` — one selection per protocol whose procedure was actually performed
   (completeness), compared per-procedure only. `applies` = fits; `conflicts` = the clinician
@@ -261,7 +292,11 @@ text — dedup same-concept flags, keep distinct ones, supersede an explicit upd
 dropped), never merge across kinds, never drop a distinct allergy/contraindication. It is
 best-effort and additive: any failure or malformed output falls back to the deterministic union (the
 safety floor) without failing the synthesis. Decisions ship as
-`extracted_metadata.safety_reconciliation`. The deterministic **apply** layer
+`extracted_metadata.safety_reconciliation`. **Memoized by candidate-set key:** the call is skipped
+entirely when this run's candidate-flag set is byte-unchanged from the prior synthesis of the same
+session — the backend hands the prior decisions + the candidate-set key
+(`extracted_metadata.safety_reconciliation_keys`) as `priorSafetyReconciliation`, and the worker reuses
+them (a reassignment invalidates the decisions, so a stale cross-patient memo can't be reused). The deterministic **apply** layer
 (`apply_safety_reconciliation`) hardens this against a stale/cross-patient decision set: it re-validates
 each `ofKey` against the flags actually **visible on this patient** (an unresolved one downgrades to
 keep) and **breaks mutual-duplicate cycles** (each duplicate component keeps one canonical flag visible)
@@ -273,7 +308,11 @@ reassignment and recomputed for the corrected patient.
 `treatments[]` → `session.extracted_metadata.treatments` (post-processed — validate / supersede /
 carry-forward — then the queryable store behind recall, lot tracking, and smart lists: deterministic
 queries, not LLM jobs). The `treatment-performed` section is re-rendered **from** `treatments[]` so
-prose and store cannot diverge. `sections[]` → `report_model`; `summary` → `session.summary`; every
+prose and store cannot diverge. **A `planned` treatment is stored with its status but never counts as
+performed:** the `performed_treatments` view (`services/treatment_overlay.py`) — every performed
+consumer (treatment-performed prose, recall/lot cohorts, smart lists, insights, patient-memory brief +
+line-up recap, patient-surface "what we did", carry-forward reference) reads it, so a plan never
+pollutes the performed record. The frontend renders planned items under **Plan & follow-up**. `sections[]` → `report_model`; `summary` → `session.summary`; every
 image-block `captureId` is validated against the session's captures and unknowns are dropped.
 
 ### Hard constraints (always true)
@@ -376,7 +415,13 @@ and approves before anything reaches the patient.
   patient's prior answer or exemplar into this reply (take the shape, not another patient's specifics);
   escalation (red flags → clinic, no reassurance) and never-contradict-the-aftercare keep precedence.
   Prior answers also have a leading greeting **name** stripped backend-side before grounding (Q-3).
-  Invents no clinical facts.
+  Invents no clinical facts. Grounded in the aftercare THIS patient was actually given
+  (`patientContext.recentAftercare` = the latest visit report's aftercare prose) so the
+  never-contradict rule is enforceable, plus this thread's own prior Q→A exchange (`threadHistory`,
+  bounded) for follow-ups. The doctor sign-off name lives in the variable prompt tail (not the static
+  rules block) so the instruction prefix is byte-stable across doctors.
+  - **`qa_revise`** drops the doctor-wide `priorAnswers` — a voice edit revises a GIVEN draft, so
+    other-thread answers were noise + a cross-patient leak surface; tone comes from the current draft.
   - **Retrieval is backend-owned; the worker stays stateless.** The backend runs the hybrid
     lexical+embedding retrieval over `qa_knowledge_exemplars` (per-tenant, SQL-scoped) and hands the
     top-k as `retrievedExemplars: [{question, answer, source: template|sent_reply, score}]`. Embeddings

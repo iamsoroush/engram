@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime, timezone
 from typing import Any, Literal, NotRequired, TypedDict
 
@@ -18,10 +19,82 @@ SESSION_PROCESSING_INPUT_VERSION = "2026-05-21.session-processing-input.v1"
 SESSION_PROCESSING_OUTPUT_VERSION = "2026-05-21.session-processing-output.v1"
 # Pro single-pass report synthesis + treatment extraction output (extends the processing output with
 # treatments[] and the fixed-id sections). Emitted by the AI engine, post-processed below.
-# v2 (2026-07-05): treatments carry areaCode/priorKey, envelopes carry a `lang` stamp. MUST stay
-# byte-identical to the ai_engine copy (`contracts/synthesis.py`) — worker.py gates `is_synthesis` on it.
-SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-05.session-synthesis-output.v2"
+# v2 (2026-07-05): treatments carry areaCode/priorKey, envelopes carry a `lang` stamp.
+# v3 (2026-07-09, G7): TreatmentItem carries a first-class `status` (performed|planned|uncertain). MUST
+# stay byte-identical to the ai_engine copy (`contracts/synthesis.py`) — worker.py gates `is_synthesis` on it.
+SESSION_SYNTHESIS_OUTPUT_VERSION = "2026-07-09.session-synthesis-output.v3"
+# Treatment statuses (v3). `planned` is stored but never counts as performed (excluded from the
+# performed views: treatment-performed prose, recall, smart lists, insights, patient memory).
+TREATMENT_STATUS_PERFORMED = "performed"
+TREATMENT_STATUS_PLANNED = "planned"
+TREATMENT_STATUS_UNCERTAIN = "uncertain"
 TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
+
+# --- Stable-prefix synthesis context layout (G3) -----------------------------------------------
+#
+# The synthesis prompt is re-run on every settle (queue-collapse), minutes apart, inside the gateway's
+# prefix-cache TTL. Both providers cache on an EXACT byte-prefix match, so the ~10x cached-input
+# discount only lands if run N+1's serialized context byte-EXTENDS run N's. That requires an explicit,
+# deterministic layout — stable clinic/patient blocks first, captures as ONE flat append-only
+# chronological list, and the per-run volatile blocks (changeset, prior draft/report, reconcile memo)
+# LAST — instead of `json.dumps(sort_keys=True)`, which interleaves volatile keys alphabetically among
+# stable ones and re-prices the whole prompt on any change. `serialize_synthesis_context` below is the
+# authority; the ai_engine synthesis prompt (`prompts/synthesis.py`) mirrors this SAME ordering with
+# `sort_keys=False` and MUST stay in lockstep (like SESSION_SYNTHESIS_OUTPUT_VERSION).
+#
+# STANDING RULE (docs/technical-decisions.md): a NEW synthesis-context field appends to
+# SYNTHESIS_VOLATILE_KEYS (or, if genuinely tenant-stable, to the END of SYNTHESIS_STABLE_KEYS) —
+# never spliced into the middle of the stable region, which would move the cache boundary.
+SYNTHESIS_STABLE_KEYS: tuple[str, ...] = (
+    "schemaVersion",
+    "domain",
+    "clinic",
+    "reportLanguage",
+    "aftercareTemplates",
+    "assignedPatient",
+    "patientSummarizedHistory",
+    "patientSafetyFlags",
+    "referencePriorVisitTreatments",
+    "session",
+)
+SYNTHESIS_CAPTURES_KEY = "captures"
+SYNTHESIS_VOLATILE_KEYS: tuple[str, ...] = (
+    "changeset",
+    "priorDraftTreatments",
+    "priorReportModel",
+    "priorSafetyReconciliation",
+)
+# Carried on the payload for back-compat / other consumers, but never serialized into the model-visible
+# prompt (a `{{ patient_information }}/{{ body }}` skeleton the section contract already encodes).
+SYNTHESIS_LLM_EXCLUDED_KEYS: frozenset[str] = frozenset({"rawReportTemplate"})
+
+
+def ordered_synthesis_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Return the synthesis context re-keyed into the stable → captures → volatile layout (G3).
+
+    Pure + deterministic: stable keys first (fixed order), then the flat captures list, then the
+    volatile per-run blocks, then any leftover keys (sorted) appended to the volatile tail per the
+    standing rule. `SYNTHESIS_LLM_EXCLUDED_KEYS` are dropped from the model-visible context.
+    """
+    known = set(SYNTHESIS_STABLE_KEYS) | {SYNTHESIS_CAPTURES_KEY} | set(SYNTHESIS_VOLATILE_KEYS) | SYNTHESIS_LLM_EXCLUDED_KEYS
+    ordered: dict[str, Any] = {}
+    for key in SYNTHESIS_STABLE_KEYS:
+        if key in context:
+            ordered[key] = context[key]
+    if SYNTHESIS_CAPTURES_KEY in context:
+        ordered[SYNTHESIS_CAPTURES_KEY] = context[SYNTHESIS_CAPTURES_KEY]
+    for key in SYNTHESIS_VOLATILE_KEYS:
+        if key in context:
+            ordered[key] = context[key]
+    for key in sorted(context):
+        if key not in known:
+            ordered[key] = context[key]
+    return ordered
+
+
+def serialize_synthesis_context(context: dict[str, Any]) -> str:
+    """Serialize the synthesis context in the stable-prefix layout (byte-authoritative for the cache)."""
+    return json.dumps(ordered_synthesis_context(context), ensure_ascii=False, sort_keys=False)
 
 # Treatment post-processing thresholds (deterministic, clinical-safety guardrails over the LLM
 # output). A field that writes doses must surface uncertainty rather than silently commit.
@@ -40,6 +113,8 @@ _UNCERTAINTY_CODE_TO_CATEGORY = {
     "missing_lot": "missing_lot",
     "low_confidence": "low_confidence",
     "ambiguous_quantity": "ambiguous",
+    # (G7) the model is unsure whether a treatment was performed or only planned — surfaced for review.
+    "planned_vs_performed": "ambiguous",
     "other": "ambiguous",
 }
 
@@ -160,7 +235,7 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
     from app.services.verticals import domain_descriptor
 
     current_capture_ids = [str(capture.id) for capture in captures]
-    prior_report_model = session.report_model if isinstance(session.report_model, dict) else None
+    prior_report_model = _bounded_prior_report_model(session.report_model)
     changeset = _session_synthesis_changeset(current_capture_ids, synthesized_capture_ids(session))
     # The patient's EXISTING (cross-visit) safety flags, so the synthesis job can reconcile this visit's
     # newly-detected flags against them (dedup-by-meaning / supersede) — selection-only, keys out.
@@ -180,11 +255,11 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
         },
         "assignedPatient": assigned_patient,
         "patientSummarizedHistory": _patient_summarized_history(db, session),
-        "captures": {
-            "audio": [capture for capture in capture_inputs if capture["type"] == CaptureType.audio.value],
-            "photos": [capture for capture in capture_inputs if capture["type"] == CaptureType.photo.value],
-            "text": [capture for capture in capture_inputs if capture["type"] == CaptureType.note.value],
-        },
+        # (G3) ONE flat chronological list (already ordered by Capture.created_at), APPEND-ONLY across
+        # runs — NOT grouped by {audio, photos, text}. Grouping splices a new photo into the middle
+        # group, so run N+1's serialized captures no longer byte-extend run N's and the prefix cache
+        # breaks at the new capture; a flat chronological list appends at the end and extends the prefix.
+        "captures": capture_inputs,
         # Stable targeted update: the prior report draft + a changeset (capture ids added/removed
         # since the last synthesis) let the synthesizer recompute only what changed.
         "priorReportModel": prior_report_model,
@@ -197,18 +272,29 @@ def build_session_processing_input(db: DbSession, session: Session) -> SessionPr
         "priorDraftTreatments": stored_treatments(session),
         # Patient's existing cross-visit safety flags (for the synthesis job's safety-reconcile pass).
         "patientSafetyFlags": existing_safety_flags,
+        # (G2) id + title ONLY. The old block re-fed `session.extracted_metadata` — the model's OWN full
+        # prior output (progressive_report body, summaries, findings, treatments, safety flags) — a
+        # SECOND time alongside `priorReportModel`, plus `summary` (prior AI output) and per-run
+        # `updatedAt`/timestamps that churn bytes every run. That was the largest pure-noise blob in the
+        # system and a self-referential bias channel; `priorReportModel` is the one bounded prior-report
+        # representation the model needs.
         "session": {
             "id": str(session.id),
-            "tenantId": str(session.tenant_id),
-            "status": session.status.value,
             "title": session.title,
-            "summary": session.summary,
-            "metadata": session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {},
-            "createdAt": _iso(session.created_at),
-            "updatedAt": _iso(session.updated_at),
-            "capturedAt": _iso(session.captured_at),
         },
     }
+
+
+def _bounded_prior_report_model(report_model: Any) -> dict[str, Any] | None:
+    """The prior report model with self-referential provenance stripped (G2).
+
+    `priorReportModel` is the ONE bounded prior-report representation fed to synthesis (the update
+    anchor). Drop `generatedAt`/`generatedBy` — per-run timestamps + a self-referential stamp that add
+    byte churn and no grounding value; the sections/summary are what the update discipline needs.
+    """
+    if not isinstance(report_model, dict):
+        return None
+    return {key: value for key, value in report_model.items() if key not in {"generatedAt", "generatedBy"}}
 
 
 def deterministic_mock_session_processing_output(
@@ -360,8 +446,16 @@ def bounded_prior_visit_treatments(db: DbSession, session: Session) -> list[dict
     for prior in prior_sessions:
         metadata = prior.extracted_metadata if isinstance(prior.extracted_metadata, dict) else {}
         treatments = metadata.get("treatments")
-        if isinstance(treatments, list) and treatments:
-            return [treatment for treatment in treatments if isinstance(treatment, dict)][:MAX_PRIOR_VISIT_TREATMENTS]
+        if isinstance(treatments, list):
+            # (G7) exclude planned rows: a carry-forward ("same as last time") references a performed
+            # dose, never a prior visit's stated intent that may not have happened.
+            performed = [
+                treatment
+                for treatment in treatments
+                if isinstance(treatment, dict) and treatment.get("status") != TREATMENT_STATUS_PLANNED
+            ]
+            if performed:
+                return performed[:MAX_PRIOR_VISIT_TREATMENTS]
     return []
 
 
@@ -421,6 +515,11 @@ def process_synthesized_treatments(
         if not isinstance(raw, dict):
             continue
         treatment = dict(raw)
+        # (G7) normalize status; a planned treatment is stored but never counts as performed and raises
+        # no dose-confirmation review items (there is no administered dose to confirm).
+        status = treatment.get("status")
+        treatment["status"] = status if status in {TREATMENT_STATUS_PERFORMED, TREATMENT_STATUS_PLANNED, TREATMENT_STATUS_UNCERTAIN} else TREATMENT_STATUS_PERFORMED
+        is_planned = treatment["status"] == TREATMENT_STATUS_PLANNED
         product = str(treatment.get("product") or treatment.get("area") or "treatment").strip() or "treatment"
         sources = treatment.get("sourceCaptureIds")
         treatment["sourceCaptureIds"] = (
@@ -447,7 +546,7 @@ def process_synthesized_treatments(
             )
         confidence = treatment.get("confidence")
         confidence = float(confidence) if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) else 0.0
-        if treatment.get("carriedForward") is True:
+        if treatment.get("carriedForward") is True and not is_planned:
             treatment["confidence"] = min(confidence, CARRY_FORWARD_MAX_CONFIDENCE)
             review.append(
                 _treatment_review_item(
@@ -458,7 +557,7 @@ def process_synthesized_treatments(
                     key=carried_forward_key(treatment),
                 )
             )
-        else:
+        elif not is_planned:
             treatment["confidence"] = confidence
             if confidence < LOW_CONFIDENCE_TREATMENT_THRESHOLD:
                 review.append(
@@ -469,8 +568,10 @@ def process_synthesized_treatments(
                         treatment["sourceCaptureIds"],
                     )
                 )
+        else:
+            treatment["confidence"] = confidence  # planned: kept, but no dose-confirmation review item
         attributes = treatment.get("attributes") if isinstance(treatment.get("attributes"), dict) else {}
-        if attributes.get("lotExpected") is True and not treatment.get("lot"):
+        if attributes.get("lotExpected") is True and not treatment.get("lot") and not is_planned:
             review.append(_treatment_review_item("missing_lot", f"Missing lot number for {product}.", product, treatment["sourceCaptureIds"]))
         processed.append(treatment)
     # (S-F11) Map coded uncertainties to review categories. Prefer the machine-readable
@@ -525,10 +626,14 @@ def _treatment_performed_line(treatment: dict[str, Any]) -> str | None:
 
 
 def render_treatment_performed_blocks(treatments: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    """Render the treatment-performed section blocks FROM treatments[] (prose mirror of the store)."""
+    """Render the treatment-performed section blocks FROM treatments[] (prose mirror of the store).
+
+    (G7) `planned` treatments are excluded — they were not performed this visit and render under Plan &
+    follow-up on the frontend, not in the treatment-performed section.
+    """
     blocks: list[dict[str, Any]] = []
     for treatment in treatments or []:
-        if not isinstance(treatment, dict):
+        if not isinstance(treatment, dict) or treatment.get("status") == TREATMENT_STATUS_PLANNED:
             continue
         line = _treatment_performed_line(treatment)
         if line:
@@ -770,12 +875,17 @@ def _valid_dict_list(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
-def _flatten_capture_groups(captures: dict[str, Any]) -> list[SessionProcessingCaptureInput]:
+def _flatten_capture_groups(captures: Any) -> list[SessionProcessingCaptureInput]:
+    # (G3) captures is now a flat chronological list; tolerate the legacy grouped {audio,photos,text}
+    # dict so an in-flight pre-G3 payload still processes.
+    if isinstance(captures, list):
+        return [capture for capture in captures if isinstance(capture, dict)]
     flattened: list[SessionProcessingCaptureInput] = []
-    for group in ("audio", "photos", "text"):
-        values = captures.get(group)
-        if isinstance(values, list):
-            flattened.extend(capture for capture in values if isinstance(capture, dict))
+    if isinstance(captures, dict):
+        for group in ("audio", "photos", "text"):
+            values = captures.get(group)
+            if isinstance(values, list):
+                flattened.extend(capture for capture in values if isinstance(capture, dict))
     return flattened
 
 

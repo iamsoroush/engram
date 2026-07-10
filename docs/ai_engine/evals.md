@@ -27,6 +27,11 @@ fails. A new job's eval is added by dropping a `*_eval.py` in `apps/ai_engine/ev
 - **Safety gates** — deterministic matchers (substring / numeric-token / presence / no-Latin).
   **HARD pass/fail, block ship**: a wrong dose transcribed, a wrong patient auto-assigned, a
   diagnosis in a caption, an invented treatment/flag, a romanized Persian transcript.
+  **Majority voting (`EVAL_VOTES`)**: set `EVAL_VOTES=3` to re-sample a case only when it FAILS —
+  the case passes if a majority of attempts pass (`gate_votes` in `eval/_common.py`; a first-attempt
+  pass returns immediately, so the happy path costs one call). This separates single-sample LLM
+  variance from real prompt regressions; per-case output shows `[votes:n/N]` when re-voting fired.
+  The judge tier is never re-voted — it runs once on the deciding output.
 - **Quality — LLM-as-judge**, scored 0..1 against a per-eval rubric (hallucination, missing info,
   native-script fidelity, tone). **Advisory by default** — reported in the scorecard so prompt/model
   drift is visible, but LLM nondeterminism never flakes the suite red. `EVAL_STRICT_QUALITY=1`
@@ -44,8 +49,8 @@ scored on top with no code change.
 
 **`knownGap` (xfail):** a case may set `"knownGap": "<reason>"` when it fails due to a *documented
 model limitation* (not a harness bug). It is reported loudly (`KNOWN-GAP …`) but not counted as a
-blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always with a reason
-+ the intended fix.
+blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always with a
+reason plus the intended fix.
 
 The shared harness (tolerant Persian matching, the judge, the fixture store, the `knownGap` xfail, the
 exit-code policy, and the machine-readable scorecard) is `eval/_common.py`. **Every module uses it** —
@@ -82,7 +87,7 @@ full scorecard (every module's `self_tests_ok` + zeroed gateway metrics), which 
 | --- | --- | --- | --- |
 | `transcription_eval.py` | Audio transcription | Native script (no romanization), verbatim dose/brand/lot, digit handling, negation/laterality/allergy preserved; a confusable dose **minimal pair** gated both ways (`numbers` + `numbersForbidden`) | **Real audio** (9 live clips + the `t10`–`t14` edge batch pending) + self-tests + judge smoke |
 | `caption_eval.py` | Image caption | Neutral **objective** description — never a diagnosis; lot read off a label; an invented lot caught deterministically (`forbiddenPattern`); language; before/after `phase` | Harness green (self-tests + judge smoke); **real photos `p01`–`p06` pending** — scored the moment they land, no code change |
-| `treatments_eval.py` | Synthesis — `treatments[]` (+ real-clip synthesis path) | area/product/brand split, quantity/unit + **`quantityText` verbatim**, corrections vs additions, carry-forward, lot; **distractors** (plan/prior-visit/declined) not extracted; multi-capture correction | Synthetic Farsi dictations + **real full-visit clips `s01`–`s04`** (transcribe→synthesize, treatments+aftercare) when recorded |
+| `treatments_eval.py` | Synthesis — `treatments[]` (+ real-clip synthesis path) | area/product/brand split, quantity/unit + **`quantityText` verbatim**, corrections vs additions, carry-forward, lot; **planned-vs-performed** (G7 — a future-tense treatment is `status:planned`, counted under neither performed nor aftercare, not flagged `planned_vs_performed`; a mixed dictation splits performed+planned); **declined / prior-visit-recall** not extracted; multi-capture correction | Synthetic Farsi dictations (incl. the owner's planned-vs-performed golden cases) + **real full-visit clips `s01`–`s04`** (transcribe→synthesize, treatments+aftercare) when recorded |
 | `aftercare_conflict_eval.py` | Synthesis — `aftercareSelections` | Protocol completeness (per performed procedure) + dictation-vs-protocol **conflict** attribution; **restating** a protocol is `applies` not a conflict; an irrelevant protocol is not selected | Synthetic Farsi cases |
 | `safety_flags_eval.py` | Synthesis — `safetyFlags` | Right `kind` for stated allergy/contraindication/consent, grounded native-script text, **no invention** (clean visit / negation / **family-history / hypothetical / resolved / preference** → no flags); a flag from **any capture type** (note/photo, not only audio) | Synthetic Farsi cases |
 | `safety_reconcile_eval.py` | Cross-visit safety reconcile | Dedup same-concept (incl. cross-script), keep distinct (drug-family, added-severity), never merge kinds, **never drop a distinct allergy**; supersede is the ideal — a bare **keep** is reported as an **advisory**, only a *dropped* distinct flag fails | Synthetic candidate sets (incl. a realistic-scale panel) |
@@ -233,7 +238,8 @@ Two workflows, split by cost and determinism:
   (the `run_config` scorecard tag is designed to import into it cleanly).
 
 Beyond CI, the real gate on model/prompt behavior is the CLAUDE.md §4 rule: an agent changing an AI
-job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Next on the
-ladder (not yet built): **Stage 3**, a merge gate for AI-job PRs over the synthetic-gateway modules with
-a majority-of-3 flake policy for the single-call synthesis evals — promoted once Stage-2 trend data
-shows a stable baseline.
+job runs `run_all.py` where a gateway is reachable and must not regress the scorecard — with
+`EVAL_VOTES=3` so a red case means a majority-confirmed regression, not sampling noise. Next on the
+ladder (not yet wired into CI): **Stage 3**, promoting that `EVAL_VOTES=3` gateway run to a blocking
+merge gate for AI-job PRs — the voting harness already exists (see the safety-gates tier above);
+what's pending is only the CI wiring, once Stage-2 trend data shows a stable baseline.

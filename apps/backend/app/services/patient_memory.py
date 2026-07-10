@@ -39,7 +39,7 @@ from app.services.patient_memory_intelligence import (
 )
 from app.services.patient_safety import patient_safety_flags_payload
 from app.services.patients import get_patient, patient_payload
-from app.services.treatment_overlay import effective_treatments
+from app.services.treatment_overlay import performed_treatments
 from app.services.session_contracts import session_is_complete
 from app.services.session_processing import capture_is_out_of_context
 from app.services.sessions import parse_uuid
@@ -607,7 +607,7 @@ def _session_treatment_phrases(session: Session, limit: int = 2) -> list[str]:
     # Read the OVERLAID treatments (M-P4): a clinician-corrected dose/product/area must reach the
     # line-up card's "since last visit" recap, not the raw AI artifact (the AES-1101 safety class).
     phrases: list[str] = []
-    for item in effective_treatments(session):
+    for item in performed_treatments(session):
         if isinstance(item, dict) and (phrase := _treatment_phrase(item)):
             phrases.append(phrase)
         if len(phrases) >= limit:

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-PROMPT_VERSION = "2026-07-05.qa_revise.v2"
+PROMPT_VERSION = "2026-07-09.qa_revise.v3"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -22,17 +22,16 @@ def build(payload: dict[str, Any]) -> str:
                 "not present in the current draft, the spoken note, or the context. "
                 "Return STRICT JSON only: {\"mode\":\"revise\"|\"replace\",\"reply\":\"<final reply text>\"}."
             ),
-            # Cross-patient guard (Q-3): the PRIOR ANSWERS below are OTHER patients' conversations, kept
-            # only to match the doctor's voice. Never copy a dose, product, brand, lot, date, or a NAME
-            # from them (or anywhere outside the current draft + spoken note) into this reply.
+            # (G4) Cross-patient guard: never introduce a specific fact from outside the draft + spoken
+            # note + this patient's context. `priorAnswers` (doctor-wide, other patients) is no longer in
+            # the payload — the tone comes from the current draft, so it was noise and a leak surface.
             (
-                "CRITICAL cross-patient rule: the PRIOR ANSWERS are OTHER patients' conversations — use "
-                "them ONLY for the doctor's tone. NEVER copy a specific dose, product, brand, lot/batch "
-                "number, date, or a person's NAME from them into this reply; those belong to someone else."
+                "CRITICAL: NEVER introduce a specific dose, product, brand, lot/batch number, date, or a "
+                "person's NAME that is not already in the current draft, the spoken note, or THIS patient's "
+                "context — those would belong to someone else."
             ),
             f"Patient question:\n{qa.get('patientQuestion', '')}",
             f"Current draft reply:\n{qa.get('currentDraft', '')}",
             f"This patient's context:\n{json.dumps(qa.get('patientContext', {}), ensure_ascii=False, sort_keys=True)}",
-            f"The doctor's prior answers:\n{json.dumps(qa.get('priorAnswers', []), ensure_ascii=False, sort_keys=True)}",
         )
     )

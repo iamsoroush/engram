@@ -35,10 +35,12 @@ except NameError:
 
 from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
+    EVAL_VOTES,
     capture_prompt_version,
     contains,
     env_models,
     exit_code,
+    gate_votes,
     gateway_configured,
     load_fixtures,
     number_tokens,
@@ -182,16 +184,27 @@ CASES: list[dict[str, Any]] = [
         "captures": [_audio("c1", "اول یک سی‌سی ژل زدم بعد نیم سی‌سی دیگه هم اضافه کردم همون گونه")],
         "expect": {"count_min": 1, "items": [{"product": ["ژل", "gel"]}]},
     },
-    # --- (a) Distractor / negative classes: mentioned-but-not-done must NOT become a treatment. ------
+    # --- (a) Distractor / status classes: declined + prior-recall stay OUT; a future PLAN is extracted
+    #         as status='planned' (G7) — never counted as performed. ------------------------------------
     {
-        "name": "future plan only — nothing performed (dafe baad)",
+        # (G7) future plan only → ONE planned treatment, nothing performed (was: dropped entirely).
+        "name": "future plan only → planned, nothing performed (dafe baad)",
         "captures": [_audio("c1", "امروز کاری نکردیم، فقط گفتم دفعه بعد دو سی‌سی فیلر گونه می‌زنیم")],
-        "expect": {"count": 0, "items": []},
+        "lang_fa": True,
+        "expect": {"count": 1, "items": [{"product": ["فیلر", "filler", "ژل"], "status": "planned"}], "performedCount": 0, "plannedCount": 1},
     },
     {
-        "name": "performed + future plan — extract only the performed dose (plan is a distractor)",
+        # (G7) performed botox + planned filler → botox performed, filler planned (was: filler dropped).
+        "name": "performed + future plan → botox performed, filler planned",
         "captures": [_audio("c1", "بیست واحد بوتاکس روی پیشونی زدم. دفعه بعد دو سی‌سی فیلر لب هم می‌زنیم")],
-        "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 20}], "forbiddenQuantity": [2]},
+        "lang_fa": True,
+        "expect": {
+            "count": 2,
+            "items": [{"product": ["بوتاکس", "botox"], "quantity": 20, "status": "performed"}, {"product": ["فیلر", "filler", "ژل"], "status": "planned"}],
+            "performedCount": 1,
+            "plannedCount": 1,
+            "forbiddenQuantity": [2],
+        },
     },
     {
         "name": "prior-visit recall only — not performed this visit",
@@ -222,10 +235,53 @@ CASES: list[dict[str, Any]] = [
     },
     # --- (c) Structured-field exact-match: quantityText is the verbatim trust anchor. ----------------
     {
+        # quantityText is VERBATIM: this dictation speaks the dose in WORDS, so the text must keep
+        # the words (demanding digits contradicted the contract and failed a correct model);
+        # `quantity` carries the parsed NUMERIC 24 regardless of how it was spoken.
         "name": "quantityText verbatim (structured exact-match trust anchor)",
         "captures": [_audio("c1", "بیست و چهار واحد بوتاکس روی پیشونی زدم")],
         "lang_fa": True,
-        "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 24, "quantityTextContains": ["۲۴", "24"]}]},
+        "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 24, "quantityTextContains": ["بیست و چهار"]}]},
+    },
+    # (G7) planned vs performed — owner-approved golden cases (production-reported regression).
+    {
+        # The owner's real utterance: «we WILL inject gel for their lips» (future tense). Must be ONE
+        # planned treatment, nothing under performed, no aftercare, and NOT flagged planned_vs_performed
+        # (it is unambiguously future, not uncertain).
+        "name": "future-tense treatment is planned, not performed (owner clip)",
+        "captures": [_audio("c1", "از ژل برای لبشون تزریق خواهیم کرد")],
+        "lang_fa": True,
+        "expect": {
+            "count": 1,
+            "items": [{"product": ["ژل", "gel", "filler"], "status": "planned"}],
+            "performedCount": 0,
+            "plannedCount": 1,
+            "forbiddenUncertaintyCodes": ["planned_vs_performed"],
+            "forbiddenAftercare": True,
+        },
+        "aftercare_templates": AFTERCARE_TEMPLATES,
+    },
+    {
+        # Mixed: botox done THIS visit + lips planned for next time → botox performed, lips planned.
+        "name": "mixed performed + planned in one dictation",
+        "captures": [_audio("c1", "بیست واحد بوتاکس روی پیشونی زدم، دفعه بعد لب‌ها رو با ژل انجام می‌دیم")],
+        "lang_fa": True,
+        "expect": {
+            "count": 2,
+            "items": [
+                {"product": ["بوتاکس", "botox"], "quantity": 20, "status": "performed"},
+                {"product": ["ژل", "gel", "filler"], "status": "planned"},
+            ],
+            "performedCount": 1,
+            "plannedCount": 1,
+        },
+    },
+    {
+        # Consult-only (no treatment performed OR planned) stays empty — mirrors the s04 real clip.
+        "name": "consult only — no performed, no planned",
+        "captures": [_audio("c1", "فقط مشاوره بود، امروز هیچ تزریقی انجام نشد و برنامه‌ای هم برای تزریق نداریم")],
+        "lang_fa": True,
+        "expect": {"count": 0, "items": [], "performedCount": 0, "plannedCount": 0},
     },
 ]
 
@@ -271,12 +327,18 @@ def _match_item(actual: dict[str, Any], expected: dict[str, Any]) -> list[str]:
             problems.append(f"quantityText {token!r} not verbatim in {actual.get('quantityText')!r}")
     if expected.get("lot_present") and not actual.get("lot"):
         problems.append("lot expected but missing")
+    # (G7) lifecycle status: performed | planned | uncertain (default performed when absent).
+    if "status" in expected and (actual.get("status") or "performed") != expected["status"]:
+        problems.append(f"status {actual.get('status')!r}≠{expected['status']!r}")
     return problems
 
 
 def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
     """Apply the deterministic treatment gates to a synthesis output; return failures (empty == pass)."""
     treatments = [t for t in (output.get("treatments") or []) if isinstance(t, dict)]
+    # (G7) performed view = NOT planned (performed + uncertain); planned view = status planned.
+    performed = [t for t in treatments if (t.get("status") or "performed") != "planned"]
+    planned = [t for t in treatments if t.get("status") == "planned"]
     expect = case["expect"]
     notes: list[str] = []
     if "count" in expect and len(treatments) != expect["count"]:
@@ -300,16 +362,30 @@ def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
         contains(t.get("brand"), brand_token) and not contains(t.get("product"), brand_token) for t in treatments
     ):
         notes.append(f"brand '{brand_token}' not split into the brand field (product leaked it)")
-    # Distractor guard: a dose that was only PLANNED / recalled from a prior visit / declined must not
-    # be extracted as a performed treatment. Each forbidden value must not appear as any treatment's
-    # quantity (nor verbatim in its quantityText).
+    # Distractor guard: a dose recalled from a prior visit / declined must not be extracted as a
+    # PERFORMED treatment. (G7) A PLANNED dose is legitimately extracted with status='planned', so the
+    # guard is scoped to the performed set — a planned dose no longer trips it, but a performed one does.
     for value in expect.get("forbiddenQuantity", []):
         token = str(value).rstrip("0").rstrip(".") if isinstance(value, float) else str(value)
         if any(
             t.get("quantity") == value or token in number_tokens(str(t.get("quantityText") or ""))
-            for t in treatments
+            for t in performed
         ):
-            notes.append(f"distractor dose {value} extracted as a performed treatment (plan/history/declined)")
+            notes.append(f"distractor dose {value} extracted as a performed treatment (history/declined)")
+    # (G7) planned-vs-performed gates. `performedCount` = treatments NOT classified planned (performed +
+    # uncertain); `plannedCount` = planned rows. So a clear future-tense treatment records nothing under
+    # performed. `forbiddenUncertaintyCodes` asserts a code is absent (a CLEAR planned case must NOT also
+    # raise planned_vs_performed). `forbiddenAftercare` asserts a planned-only visit selects no aftercare.
+    if "performedCount" in expect and len(performed) != expect["performedCount"]:
+        notes.append(f"performed count {len(performed)}≠{expect['performedCount']}")
+    if "plannedCount" in expect and len(planned) != expect["plannedCount"]:
+        notes.append(f"planned count {len(planned)}≠{expect['plannedCount']}")
+    reason_codes = {r.get("code") for r in (output.get("uncertaintyReasons") or []) if isinstance(r, dict)}
+    for code in expect.get("forbiddenUncertaintyCodes", []):
+        if code in reason_codes:
+            notes.append(f"uncertainty code {code!r} present but should be absent")
+    if expect.get("forbiddenAftercare") and (output.get("aftercareSelections") or []):
+        notes.append("aftercare selected for a treatment that was not performed (planned)")
     # Greedily match each expected item to some actual treatment.
     for expected_item in expect.get("items", []):
         if not any(not _match_item(actual, expected_item) for actual in treatments):
@@ -430,6 +506,53 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expectGatesPass": False,
         "expectReasonContains": "key-echo",
     },
+    # (G7) planned-vs-performed gate self-tests.
+    {
+        "name": "planned status matched + zero performed PASSES",
+        "output": _output([{"product": "ژل", "status": "planned"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["ژل"], "status": "planned"}], "performedCount": 0, "plannedCount": 1}},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "a planned treatment counted as performed FAILS performedCount",
+        "output": _output([{"product": "ژل", "status": "performed"}]),
+        "case": {"expect": {"count": 1, "items": [], "performedCount": 0, "plannedCount": 1}},
+        "expectGatesPass": False,
+        "expectReasonContains": "planned count",
+    },
+    {
+        "name": "wrong status FAILS the status matcher",
+        "output": _output([{"product": "ژل", "status": "performed"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["ژل"], "status": "planned"}]}},
+        "expectGatesPass": False,
+        "expectReasonContains": "status",
+    },
+    {
+        "name": "absent status defaults to performed for the matcher",
+        "output": _output([{"product": "بوتاکس"}]),
+        "case": {"expect": {"count": 1, "items": [{"product": ["بوتاکس"], "status": "performed"}]}},
+        "expectGatesPass": True,
+    },
+    {
+        "name": "forbidden planned_vs_performed code present FAILS",
+        "output": {"treatments": [{"product": "ژل", "status": "planned"}], "uncertaintyReasons": [{"code": "planned_vs_performed", "text": "x"}]},
+        "case": {"expect": {"count": 1, "items": [], "forbiddenUncertaintyCodes": ["planned_vs_performed"]}},
+        "expectGatesPass": False,
+        "expectReasonContains": "planned_vs_performed",
+    },
+    {
+        "name": "aftercare selected for a planned-only visit FAILS forbiddenAftercare",
+        "output": {"treatments": [{"product": "ژل", "status": "planned"}], "aftercareSelections": [{"templateId": "tmpl-filler", "status": "applies"}]},
+        "case": {"expect": {"count": 1, "items": [], "forbiddenAftercare": True}},
+        "expectGatesPass": False,
+        "expectReasonContains": "aftercare selected",
+    },
+    {
+        "name": "planned-only visit with no aftercare PASSES forbiddenAftercare",
+        "output": {"treatments": [{"product": "ژل", "status": "planned"}], "aftercareSelections": []},
+        "case": {"expect": {"count": 1, "items": [{"product": ["ژل"], "status": "planned"}], "forbiddenAftercare": True, "performedCount": 0}},
+        "expectGatesPass": True,
+    },
 ]
 
 
@@ -461,20 +584,21 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
     records: list[dict[str, Any]] = []
     prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
+        def _attempt(case=case):
+            out = synthesize_session_report(_payload(case["captures"], case.get("prior"), case.get("aftercare_templates")))
+            if out is None:
+                return ["no usable output (malformed/empty)"], None
+            return run_gates(out, case), out
+
         try:
-            output = synthesize_session_report(_payload(case["captures"], case.get("prior")))
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop scoring.
             print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
             print("  SKIP: gateway unreachable — remaining cases not scored.")
             break
-        if output is None:
-            print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output (malformed/empty)")
-            safety_fail += 1
-            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(output)
-        problems = run_gates(output, case)
-        treatments = output.get("treatments") or []
+        prompt_version = prompt_version or (capture_prompt_version(output) if output else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
+        treatments = (output or {}).get("treatments") or []
         summary = "; ".join(
             f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}{'(cf)' if t.get('carriedForward') else ''}{'(sup)' if t.get('supersedesCaptureId') else ''}"
             for t in treatments
@@ -486,11 +610,11 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
             records.append({"id": case["name"], "safety": "known-gap", "judge": {}, "reasons": problems})
         elif problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}{votes_suffix}")
             records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": problems})
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}{votes_suffix}")
             records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
     return safety_pass, safety_fail, known_gap, records, prompt_version
 
@@ -524,33 +648,34 @@ def run_synthesis_fixtures() -> tuple[int, int, int, list[dict[str, Any]], str |
         if spec is None:
             print(f"  [{index}] SKIP {name}: {fixture.get('error', 'no sibling .json with expected facts')}")
             continue
-        try:
+        def _attempt(fixture=fixture, spec=spec):
             transcription = transcribe_audio_content(fixture["media"].read_bytes(), {**TRANSCRIPTION_FIXTURE_CONTEXT})
             transcript = (transcription or {}).get("transcript") or ""
-            output = synthesize_session_report(_payload([_audio("s1", transcript)], aftercare_templates=AFTERCARE_TEMPLATES))
+            out = synthesize_session_report(_payload([_audio("s1", transcript)], aftercare_templates=AFTERCARE_TEMPLATES))
+            if out is None:
+                return ["no usable output"], None
+            found: list[str] = []
+            if spec.get("treatments"):
+                found.extend(run_gates(out, {"expect": spec["treatments"], "lang_fa": spec.get("lang_fa")}))
+            by_id = {s.get("templateId"): s.get("status") for s in (out.get("aftercareSelections") or []) if isinstance(s, dict)}
+            for template_id, expected_status in (spec.get("aftercare") or {}).items():
+                actual = by_id.get(template_id)
+                if actual is None:
+                    found.append(f"aftercare {template_id}: MISSING (expected {expected_status})")
+                elif not _aftercare_status_ok(expected_status, actual):
+                    found.append(f"aftercare {template_id}: {actual}≠{expected_status}")
+            return found, out
+
+        try:
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001 — gateway/ffmpeg error: report and stop scoring fixtures.
             print(f"  [{index}] ERROR {name}: transcribe/synthesize failed: {exc!r}")
             print("  SKIP: gateway/ffmpeg unreachable — synthesis fixtures not scored.")
             break
-        if output is None:
-            print(f"  [{index}] SAFETY FAIL {name}: synthesis returned no usable output")
-            safety_fail += 1
-            records.append({"id": name, "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(output)
+        prompt_version = prompt_version or (capture_prompt_version(output) if output else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
 
-        problems: list[str] = []
-        if spec.get("treatments"):
-            problems.extend(run_gates(output, {"expect": spec["treatments"], "lang_fa": spec.get("lang_fa")}))
-        by_id = {s.get("templateId"): s.get("status") for s in (output.get("aftercareSelections") or []) if isinstance(s, dict)}
-        for template_id, expected_status in (spec.get("aftercare") or {}).items():
-            actual = by_id.get(template_id)
-            if actual is None:
-                problems.append(f"aftercare {template_id}: MISSING (expected {expected_status})")
-            elif not _aftercare_status_ok(expected_status, actual):
-                problems.append(f"aftercare {template_id}: {actual}≠{expected_status}")
-
-        summary = "; ".join(f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}" for t in (output.get("treatments") or [])) or "(no treatments)"
+        summary = "; ".join(f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}" for t in ((output or {}).get("treatments") or [])) or "(no treatments)"
         known = spec.get("knownGap")
         if problems and known:
             known_gap += 1
@@ -558,11 +683,11 @@ def run_synthesis_fixtures() -> tuple[int, int, int, list[dict[str, Any]], str |
             records.append({"id": name, "safety": "known-gap", "judge": {}, "reasons": problems})
         elif problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {name}  → {summary}  | {', '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {name}  → {summary}  | {', '.join(problems)}{votes_suffix}")
             records.append({"id": name, "safety": "fail", "judge": {}, "reasons": problems})
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {name}  → {summary}")
+            print(f"  [{index}] SAFETY PASS {name}  → {summary}{votes_suffix}")
             records.append({"id": name, "safety": "pass", "judge": {}, "reasons": []})
     return safety_pass, safety_fail, known_gap, records, prompt_version
 
