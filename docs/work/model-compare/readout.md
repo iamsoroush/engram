@@ -33,6 +33,14 @@
   **$0.0021/min**, zero safety events — vs `gemini-3.5-flash`'s marginally-lower CER (0.058) bought with **100 s**
   latency, **$0.0098/min (4.7×)**, a drug-token error (T03), and the same 50%+ 503 rate. Not close.
 
+- **Canonical audio format — `OGG/Opus 32 kbps`, 16 kHz mono (`MP3 32 kbps` equivalent fallback).** Storing
+  this instead of today's WAV PCM cuts upload + MinIO bytes **~8×** (1.92 MB/min → 0.24 MB/min) at **zero
+  accuracy cost** — CER is flat across all formats and dose capture is indistinguishable from WAV. **Reject
+  Opus 16 kbps** (15.9×): it drops colloquial doses (T05 1/8 vs WAV 7/8). Do it **server-side on
+  transcode-on-ingest** (accept the browser's native opus/AAC, normalize once, store only the canonical
+  format) — client-side Opus re-encode is unreliable on Safari; the gateway needs no change (the worker
+  already re-encodes to FLAC before every call). See the Audio-format section.
+
 - **Usage-limit consequence.** Staying on the low champion set leaves the budget picture unchanged:
   **~$2.9/seat/mo** and **~823 effective visits per $10/seat** (3.4× the 240 actual visits/seat/mo). Moving to
   the mid champion (`gpt-5.4-mini` everywhere) → **$5.23/seat/mo, ~459 eff-visits (1.9×)**; to preserve today's
@@ -158,6 +166,97 @@ synthesizer as well as the best.
 weakness, not a discriminator. `gemini-3.1-flash-lite` wins decisively: equal accuracy, 20× faster, 4.7×
 cheaper, reliable.
 
+## Audio-format comparison (transcription add-on)
+
+**Framing — the win is storage/upload, not accuracy.** Two facts bound this study: (1) the worker
+**already re-encodes every upload to FLAC 16 kHz mono before the gateway** (`audio_to_flac_mono_16khz_base64`
+in `jobs/capture_audio.py`), so the gateway **never sees the stored format** — it always transcribes FLAC,
+and a storage change implicates **no gateway allowlist change**; (2) the frontend currently re-encodes the
+browser's *already-compressed* speech (Chrome webm/opus, Safari mp4/AAC) **up** to WAV PCM 16 kHz mono
+(~1.92 MB/min) before upload — that WAV re-encode is what inflates uploads + MinIO storage. So the grid
+measures a **stored-format → FLAC → gateway** pipeline; accuracy is the guardrail, **bytes/min** the metric.
+Grid run on the transcription champion **`gemini-3.1-flash-lite`**, 12 clips × 6 formats × 3 samples, with
+the two dose-critical clips re-confirmed at 8 samples. (This is an independent fresh sweep; its WAV control
+below is the internal baseline — the ~1-clip / ~2 pp-CER gap vs the transcription table above is sample draw
+plus a stricter per-clip CER gate on T03's correct-but-compact lot, and the format verdict uses within-sweep
+deltas, so it is unaffected.)
+
+**Size — the metric (bytes/min, all 16 kHz mono):**
+
+| Format | bytes/min | MB/min | × smaller vs WAV |
+| --- | --: | --: | --: |
+| WAV PCM (control) | 1,920,423 | 1.92 | 1.0× |
+| FLAC (lossless) | 990,970 | 0.99 | 1.9× |
+| MP3 64 kbps | 485,837 | 0.49 | 4.0× |
+| **OGG/Opus 32 kbps** | **235,976** | **0.24** | **8.1×** |
+| **MP3 32 kbps** | **243,236** | **0.24** | **7.9×** |
+| OGG/Opus 16 kbps | 120,678 | 0.12 | 15.9× |
+
+**Accuracy — the guardrail (number-normalized CER + clinical tokens, vs the WAV control):**
+
+| Format | mean CER | Δ CER vs WAV | clips pass (maj/3) |
+| --- | --: | --: | --: |
+| WAV (control) | 0.083 | — | 10/12 |
+| FLAC | 0.075 | −0.8 pp | 10/12 |
+| MP3 64 kbps | 0.077 | −0.6 pp | 9/12 |
+| OGG/Opus 32 kbps | 0.081 | −0.2 pp | 10/12 |
+| MP3 32 kbps | 0.081 | −0.2 pp | 10/12 |
+| OGG/Opus 16 kbps | 0.076 | −0.7 pp | 9/12 |
+
+**CER is flat (0.075–0.083) across every format — every delta is ≤ 0, all well inside the +0.5 pp rule.**
+Expected: Gemini normalizes input to 16 kHz mono internally and the worker re-encodes to FLAC anyway, so a
+lossy *stored* codec can only hurt via detail lost before the FLAC step. Two clips fail on **every** format
+for **model-inherent, not format** reasons — **T03** (the lot «وی ال ام دو دو نه یک» is captured correctly
+but rendered compactly as "VLM2291", inflating character CER) and **T08** (the model Persian-izes the English
+terms). They are constants, not discriminators.
+
+**The deciding signal — colloquial-dose robustness (8 samples on the dose/drug clips):**
+
+| Format | T05 doses («بیست و چهار واحد … یه سی‌سی») | T04 drug names |
+| --- | --: | --: |
+| WAV (control) | 7/8 | 8/8 |
+| MP3 32 kbps | 7/8 | 7/8 |
+| OGG/Opus 32 kbps | 5/8 | 7/8 |
+| OGG/Opus 16 kbps | **1/8** (7 dose-error events) | 7/8 |
+
+At **16 kbps Opus loses doses on fast colloquial speech**: T05 collapses to **1/8** — a statistically clear
+regression (95% CI well below WAV). The two **~8× formats are statistically indistinguishable from WAV**
+(opus32 5/8, mp3_32 7/8; CIs overlap WAV's 7/8). Drug-name capture (T04) is format-independent (~7–8/8 all).
+
+**Verdict** (decision rule: *smallest format with zero clinical-token regressions and CER within +0.5 pp of
+WAV*):
+
+- **Canonical target = the ~8× tier: `OGG/Opus 32 kbps` (16 kHz mono), `MP3 32 kbps` an equivalent fallback.**
+  ~8× smaller uploads/storage than today's WAV, zero CER regression, dose accuracy indistinguishable from WAV.
+  Opus 32 kbps is marginally smallest (8.1×) and is the codec Chrome already records; MP3 32 kbps had marginally
+  better dose retention (7/8 vs 5/8, within noise) and decodes everywhere.
+- **Reject `OGG/Opus 16 kbps` (15.9×)** despite the extra 2× — a real, severe colloquial-dose regression. The
+  saving is not worth dropping clinical doses.
+- Standardizing to **one** stored format stays **mandatory** (browsers diverge: Chrome webm/opus, Safari
+  mp4/AAC); this experiment only picks the canonical TARGET.
+
+**Production change (sketch — not implemented).** The ~8× win comes from **not storing WAV**, and the
+conversion should run **server-side on ingest**:
+
+1. **Server-side transcode-on-ingest, not client-side re-encode.** Client-side re-encoding to Opus needs
+   WebCodecs `AudioEncoder`, whose **Opus support is patchy/absent on Safari** → a per-browser fork. Instead
+   **drop the frontend WAV re-encode**, upload the browser's *native* compressed blob (Chrome webm/opus,
+   Safari mp4/AAC — both already ≈ target size, so mobile upload already drops ~8–10×), and **transcode once on
+   the backend** to canonical OGG/Opus 32 kbps 16 kHz mono, store **only** that, discard the native blob
+   (Chrome's Opus is near-passthrough; only Safari's AAC needs a real re-encode). ffmpeg is already in the
+   worker path.
+2. **Backend validation + duration handling.** On ingest, `ffprobe`-validate the blob is decodable audio and
+   reject non-audio; measure duration from the **native** blob (per-minute transcription billing must not
+   change) and enforce the 20-min `MAX_RECORDING_SECONDS` cap **server-side** (today frontend-only); canonical
+   Opus preserves duration.
+3. **Gateway format allowlist — no change needed.** The worker re-encodes to FLAC before every gateway call,
+   so the gateway keeps receiving FLAC. *(Optional later optimization: skip the worker FLAC step and send Opus
+   straight to the gateway to save CPU — that would need the gateway to accept OGG/Opus, a one-line allowlist
+   add on our own gateway; worth a direct-send probe first, out of scope here.)*
+
+Artifact: [readout-data/audio_format.json](readout-data/audio_format.json) — full grid (sizes, per-clip CER,
+safety events) + the 8-sample dose confirmation.
+
 ## Cost & usage-limit projection
 
 Method: the measured **10-capture Persian visit** synthesis cost per model (reproducing
@@ -230,3 +329,5 @@ equals the incumbent; the mid per-job optimum equals all-mid (`gpt-5.4-mini` win
 - `judge_summary.json` — blind pairwise win counts. `reliability_first_pass.json` — the 503 rates.
 - `visit_cost.json` — measured 10-capture visit synthesis cost. `projection.json` — full scenario matrix
   (coalesced + per-capture, light/typical/heavy).
+- `audio_format.json` — audio-format grid: bytes/min per format, per-clip CER + clinical-token safety events
+  across the six-format grid, and the 8-sample colloquial-dose confirmation.

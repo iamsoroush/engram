@@ -1,0 +1,713 @@
+{
+  "model": "gemini-3.1-flash-lite",
+  "note": "Each stored format is transcoded (ffmpeg, 16 kHz mono) then run through the PRODUCTION transcription path, which itself re-encodes to FLAC 16 kHz mono before the gateway. So the gateway always receives FLAC; the stored format only affects upload+storage bytes and whatever a lossy stored codec loses before the FLAC step. 3 samples/clip/format; T04/T05 confirmation at 8 samples.",
+  "size_table": {
+    "wav": {
+      "total_bytes": 4251816,
+      "total_min": 2.214,
+      "bytes_per_min": 1920423,
+      "x_vs_wav": 1.0
+    },
+    "flac": {
+      "total_bytes": 2194008,
+      "total_min": 2.214,
+      "bytes_per_min": 990970,
+      "x_vs_wav": 1.9
+    },
+    "opus32": {
+      "total_bytes": 522451,
+      "total_min": 2.214,
+      "bytes_per_min": 235976,
+      "x_vs_wav": 8.1
+    },
+    "opus16": {
+      "total_bytes": 267181,
+      "total_min": 2.214,
+      "bytes_per_min": 120678,
+      "x_vs_wav": 15.9
+    },
+    "mp3_64": {
+      "total_bytes": 1075644,
+      "total_min": 2.214,
+      "bytes_per_min": 485837,
+      "x_vs_wav": 4.0
+    },
+    "mp3_32": {
+      "total_bytes": 538524,
+      "total_min": 2.214,
+      "bytes_per_min": 243236,
+      "x_vs_wav": 7.9
+    }
+  },
+  "grid": {
+    "wav": {
+      "clips_passed": 10,
+      "n_clips": 12,
+      "mean_cer": 0.083,
+      "mean_wer": 0.157,
+      "mean_latency_s": 6.0,
+      "n_safety_events": 0
+    },
+    "flac": {
+      "clips_passed": 10,
+      "n_clips": 12,
+      "mean_cer": 0.075,
+      "mean_wer": 0.13,
+      "mean_latency_s": 6.5,
+      "n_safety_events": 1
+    },
+    "opus32": {
+      "clips_passed": 10,
+      "n_clips": 12,
+      "mean_cer": 0.081,
+      "mean_wer": 0.158,
+      "mean_latency_s": 7.3,
+      "n_safety_events": 1
+    },
+    "opus16": {
+      "clips_passed": 9,
+      "n_clips": 12,
+      "mean_cer": 0.076,
+      "mean_wer": 0.143,
+      "mean_latency_s": 8.8,
+      "n_safety_events": 3
+    },
+    "mp3_64": {
+      "clips_passed": 9,
+      "n_clips": 12,
+      "mean_cer": 0.077,
+      "mean_wer": 0.138,
+      "mean_latency_s": 9.4,
+      "n_safety_events": 2
+    },
+    "mp3_32": {
+      "clips_passed": 10,
+      "n_clips": 12,
+      "mean_cer": 0.081,
+      "mean_wer": 0.16,
+      "mean_latency_s": 6.7,
+      "n_safety_events": 1
+    }
+  },
+  "grid_safety": {
+    "wav": [],
+    "flac": [
+      {
+        "clip": "T05",
+        "sample": 2,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      }
+    ],
+    "opus32": [
+      {
+        "clip": "T05",
+        "sample": 2,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      }
+    ],
+    "opus16": [
+      {
+        "clip": "T04",
+        "sample": 2,
+        "type": "transcription_drug_error",
+        "detail": "missing drug لیدوکائین"
+      },
+      {
+        "clip": "T05",
+        "sample": 0,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      },
+      {
+        "clip": "T05",
+        "sample": 1,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      }
+    ],
+    "mp3_64": [
+      {
+        "clip": "T05",
+        "sample": 0,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      },
+      {
+        "clip": "T05",
+        "sample": 1,
+        "type": "transcription_dose_error",
+        "detail": "missing dose 1"
+      }
+    ],
+    "mp3_32": [
+      {
+        "clip": "T04",
+        "sample": 2,
+        "type": "transcription_drug_error",
+        "detail": "missing drug ایزوترتینوئین"
+      }
+    ]
+  },
+  "per_clip": {
+    "wav": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.005,
+        "mean_wer": 0.021
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.237,
+        "mean_wer": 0.588
+      },
+      "T04": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.022,
+        "mean_wer": 0.106
+      },
+      "T05": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.107,
+        "mean_wer": 0.334
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.055,
+        "mean_wer": 0.154
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.468,
+        "mean_wer": 0.286
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.071,
+        "mean_wer": 0.291
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.021,
+        "mean_wer": 0.064
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.007,
+        "mean_wer": 0.035
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      }
+    },
+    "flac": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.247,
+        "mean_wer": 0.588
+      },
+      "T04": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.023,
+        "mean_wer": 0.091
+      },
+      "T05": {
+        "k": 2,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.053,
+        "mean_wer": 0.152
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.042,
+        "mean_wer": 0.103
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.468,
+        "mean_wer": 0.286
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.042,
+        "mean_wer": 0.25
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.016,
+        "mean_wer": 0.059
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.007,
+        "mean_wer": 0.035
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      }
+    },
+    "opus32": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 1,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.202,
+        "mean_wer": 0.529
+      },
+      "T04": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.031,
+        "mean_wer": 0.121
+      },
+      "T05": {
+        "k": 2,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.053,
+        "mean_wer": 0.182
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.073,
+        "mean_wer": 0.18
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.481,
+        "mean_wer": 0.357
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.08,
+        "mean_wer": 0.291
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.038,
+        "mean_wer": 0.14
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.01,
+        "mean_wer": 0.053
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.01,
+        "mean_wer": 0.041
+      }
+    },
+    "opus16": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.005,
+        "mean_wer": 0.021
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.258,
+        "mean_wer": 0.647
+      },
+      "T04": {
+        "k": 2,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.037,
+        "mean_wer": 0.151
+      },
+      "T05": {
+        "k": 1,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.047,
+        "mean_wer": 0.182
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.036,
+        "mean_wer": 0.077
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.468,
+        "mean_wer": 0.286
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.042,
+        "mean_wer": 0.25
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.017,
+        "mean_wer": 0.064
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.007,
+        "mean_wer": 0.035
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      }
+    },
+    "mp3_64": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.232,
+        "mean_wer": 0.549
+      },
+      "T04": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.034,
+        "mean_wer": 0.136
+      },
+      "T05": {
+        "k": 1,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.04,
+        "mean_wer": 0.152
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.055,
+        "mean_wer": 0.077
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.477,
+        "mean_wer": 0.333
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.056,
+        "mean_wer": 0.271
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.02,
+        "mean_wer": 0.082
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.01,
+        "mean_wer": 0.053
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      }
+    },
+    "mp3_32": {
+      "T01": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.005,
+        "mean_wer": 0.021
+      },
+      "T02": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      },
+      "T03": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.242,
+        "mean_wer": 0.588
+      },
+      "T04": {
+        "k": 2,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.037,
+        "mean_wer": 0.151
+      },
+      "T05": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.067,
+        "mean_wer": 0.212
+      },
+      "T06": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.055,
+        "mean_wer": 0.103
+      },
+      "T07": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.005,
+        "mean_wer": 0.021
+      },
+      "T08": {
+        "k": 0,
+        "n": 3,
+        "maj": false,
+        "mean_cer": 0.485,
+        "mean_wer": 0.452
+      },
+      "T09": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.042,
+        "mean_wer": 0.208
+      },
+      "T10": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.025,
+        "mean_wer": 0.106
+      },
+      "T11": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.01,
+        "mean_wer": 0.053
+      },
+      "T12": {
+        "k": 3,
+        "n": 3,
+        "maj": true,
+        "mean_cer": 0.0,
+        "mean_wer": 0.0
+      }
+    }
+  },
+  "dose_confirmation_8samples": {
+    "('wav', 'T04')": {
+      "pass": 8,
+      "n": 8,
+      "safety": 0
+    },
+    "('wav', 'T05')": {
+      "pass": 7,
+      "n": 8,
+      "safety": 1
+    },
+    "('opus32', 'T04')": {
+      "pass": 7,
+      "n": 8,
+      "safety": 1
+    },
+    "('opus32', 'T05')": {
+      "pass": 5,
+      "n": 8,
+      "safety": 3
+    },
+    "('opus16', 'T04')": {
+      "pass": 7,
+      "n": 8,
+      "safety": 1
+    },
+    "('opus16', 'T05')": {
+      "pass": 1,
+      "n": 8,
+      "safety": 7
+    },
+    "('mp3_32', 'T04')": {
+      "pass": 7,
+      "n": 8,
+      "safety": 1
+    },
+    "('mp3_32', 'T05')": {
+      "pass": 7,
+      "n": 8,
+      "safety": 1
+    }
+  }
+}

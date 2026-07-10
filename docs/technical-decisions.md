@@ -14,6 +14,11 @@ $10/seat) — and `gemini-3.5-flash` is disqualified operationally (46–56% HTT
 gateway gains `gpt-5.6` access. Fallout fixed alongside: `services/ai_usage/pricing.py` rates
 refreshed to live 2026-07-10 pricing (the meter was under-pricing Gemini jobs 2.5–3.75×), and the
 systemic C34 name-leak got a synthesis v17 prompt guard + a permanent eval case.
+The audio-format add-on's verdict: canonical stored format should move WAV PCM → **OGG/Opus
+32 kbps 16 kHz mono** (~8× smaller uploads + MinIO storage, zero accuracy cost; Opus 16 kbps
+rejected — it drops colloquial doses), implemented server-side as transcode-on-ingest; the gateway
+path is unaffected because the worker already re-encodes to FLAC per call. Implementation is a
+pending epic — not yet built.
 
 ## Eval gates vote majority-of-N on failure (2026-07-10)
 
