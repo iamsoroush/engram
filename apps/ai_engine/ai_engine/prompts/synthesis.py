@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-10.synthesis.v13"
+PROMPT_VERSION = "2026-07-10.synthesis.v16"
 
 # Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
 # `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
@@ -161,7 +161,10 @@ def build(processing_context: dict[str, Any]) -> str:
                 "- CORRECTION (supersede): on an explicit correction cue (اشتباه گفتم، منظورم…بود، "
                 "\"actually\", \"make that\") OR the same area+product+unit simply restated with a new "
                 "quantity. Emit ONE corrected TreatmentItem and set supersedesCaptureId to the captureId "
-                "of the superseded statement (auditable/undoable).\n"
+                "of the superseded statement (auditable/undoable). This applies EQUALLY to an inline "
+                "self-correction within a single capture («یک سی‌سی ژل توی لب ... منظورم یک و نیم سی‌سی "
+                "بود» in one capture): one corrected item, supersedesCaptureId = that same capture's id "
+                "— never null just because the correction happened in the same breath.\n"
                 "- ADDITION: on an additive cue (هم…هم، اضافه، \"another\") OR a different area/product. "
                 "Emit a separate TreatmentItem for each.\n"
                 "- PROSE after a correction states ONLY the final corrected value. Never restate the "
@@ -196,8 +199,11 @@ def build(processing_context: dict[str, Any]) -> str:
                 "visit — future tense or a next-visit plan («خواهیم کرد», «تزریق می‌کنیم» meaning next time, "
                 "«دفعه بعد», «قراره», \"we'll do\", \"we plan to\", \"next session\", \"will inject\"). Still "
                 "emit the TreatmentItem (so the plan is recorded) but with status='planned'. A planned "
-                "treatment is NOT performed: do NOT put it in the treatment-performed prose, and do NOT "
-                "select an aftercare protocol for it (aftercare is for procedures actually performed).\n"
+                "treatment is NOT performed: do NOT put it in the treatment-performed prose, do NOT "
+                "select an aftercare protocol for it (aftercare is for procedures actually performed), "
+                "and do NOT emit missing-detail uncertainties for it (missing_lot / missing brand / "
+                "missing dose) — those details cannot exist before the treatment is performed, and each "
+                "one costs the clinician a needless confirmation.\n"
                 "- status='uncertain': genuinely ambiguous whether it was performed or only planned. Set "
                 "status='uncertain' AND add an uncertainties entry with code 'planned_vs_performed'.\n"
                 "Tense/intent decides status — NEVER the confidence field. A clear future-tense treatment is "
@@ -277,9 +283,12 @@ def build(processing_context: dict[str, Any]) -> str:
                 "\"stop the recording\". NEVER let such administrative/meta instructions leak into the "
                 "report — not the summary, not any section's prose, not a treatment, aftercare, or safety "
                 "flag. Extract ONLY the clinical substance of the visit (assessment, what was performed, "
-                "plan, genuine allergy/contraindication/consent). If a capture is ENTIRELY meta/"
-                "administrative with no clinical content, contribute nothing from it. A scheduling or "
-                "app-command sentence is never a treatment and never a safety flag."
+                "plan, genuine allergy/contraindication/consent). When an administrative sentence carries "
+                "a clinically relevant FACT (e.g. the next-visit timing inside «بگو نوبت بعدی رو دو هفته "
+                "دیگه ثبت کنه»), state the fact in the plan («نوبت بعدی: دو هفته دیگر») — NEVER quote or "
+                "paraphrase the instruction itself. If a capture is ENTIRELY meta/administrative with no "
+                "clinical content, contribute nothing from it. A scheduling or app-command sentence is "
+                "never a treatment and never a safety flag."
             ),
             (
                 "uncertainties: a list of items, each an object {code, text}. `text` is a short "
@@ -288,8 +297,11 @@ def build(processing_context: dict[str, Any]) -> str:
                 "unclear), missing_lot (a lot number is expected but absent), low_confidence (a product/"
                 "field the model is unsure of), carried_forward_dose (a dose carried from a prior visit), "
                 "ambiguous_quantity (the dose/amount itself is unclear), planned_vs_performed (unsure "
-                "whether a treatment was performed or only planned), other (anything else). Return ONLY "
-                "strict JSON, no markdown, no code fences."
+                "whether a treatment was performed or only planned), other (anything else). Every "
+                "uncertainty costs the clinician a confirmation tap, so emit one ONLY for a genuine "
+                "ambiguity: never to restate a fact already recorded (a clearly-planned treatment being "
+                "planned is the `status` field, not an uncertainty), and never two entries for the same "
+                "underlying unknown. Return ONLY strict JSON, no markdown, no code fences."
             ),
             f"Session context (stable clinic/patient blocks, then captures, then the per-run update "
             f"blocks — changeset, prior draft, prior report):\n{json.dumps(_ordered_context(context), ensure_ascii=False, sort_keys=False)}",

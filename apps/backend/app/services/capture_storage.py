@@ -38,6 +38,21 @@ def object_key_for_source(tenant_id: uuid.UUID, session_id: uuid.UUID, capture_i
     return f"tenants/{tenant_id}/sessions/{session_id}/captures/{capture_id}/source/{artifact_id}"
 
 
+def note_detail_with_file_fallback(detail: str, content: bytes) -> str:
+    """A note's text travels in metadata `detail` — the uploaded file is only a mirror.
+
+    The synthesis context reads ONLY `metadata.detail` for notes, so an API client that sends just
+    the file would get a silently hollow report. When `detail` is empty, derive it from the file's
+    UTF-8 text (non-decodable content leaves detail as given).
+    """
+    if detail.strip():
+        return detail
+    try:
+        return content.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return detail
+
+
 def validate_wav_pcm_16k_mono(content: bytes) -> None:
     if len(content) < 44 or content[0:4] != b"RIFF" or content[8:12] != b"WAVE":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio must be WAV PCM 16-bit mono 16kHz")
@@ -315,6 +330,8 @@ async def upload_source_capture(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Capture file is empty")
     if capture_type == CaptureType.audio:
         validate_wav_pcm_16k_mono(content)
+    if capture_type == CaptureType.note:
+        detail = note_detail_with_file_fallback(detail, content)
     byte_size = len(content)
     checksum = hashlib.sha256(content).hexdigest()
     content_type = "audio/wav" if capture_type == CaptureType.audio else file.content_type or "application/octet-stream"
