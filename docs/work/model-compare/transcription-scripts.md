@@ -7,6 +7,9 @@ Pull each capture's source audio via `GET /api/v1/captures/{id}/file-content` **
 stack's backend (`http://localhost:8010`, dev-login token)** — a worktree dev stack's cloned
 database has the session's rows, but its per-worktree MinIO bucket does NOT have the audio objects,
 so pulling from a worktree stack 404s. The script text IS the reference transcript.
+**Durable copies** (survive any app-stack lifecycle) live on the shared infra MinIO in bucket
+`engram-eval-fixtures` under `model-compare/transcription/T01.wav … T12.wav` — future comparisons
+should pull from there.
 
 **Scoring** (agent implements, independent of `apps/ai_engine/eval/`): CER/WER against the script
 after NFC normalization (`ی/ي`, `ک/ك`, ZWNJ/space tolerant), plus clinical-token accuracy — every
