@@ -901,9 +901,14 @@ export function MediaSection({
 export function BasicLiveReport({
   session,
   onResolveFile,
+  suppressTeaser = false,
 }: {
   session: CaptureSession | null;
   onResolveFile: (endpoint: string) => Promise<string>;
+  /** Hide the report's own Try-Pro teaser. Set when the document renders inside the capture screen's
+   *  "View as document" panel, where the single consolidated teaser already sits at the foot of the
+   *  primary feed (one Try-Pro per screen — E8 / tier-convergence AES-1406). */
+  suppressTeaser?: boolean;
 }) {
   const t = useT();
   const items = session?.items || [];
@@ -916,7 +921,7 @@ export function BasicLiveReport({
           <p className="report-doc-status">{t("report.basicEmpty")}</p>
         )}
       </section>
-      {items.length ? (
+      {items.length && !suppressTeaser ? (
         <TryProTeaser
           className="report-teaser"
           title={t("report.tryProTitle")}
