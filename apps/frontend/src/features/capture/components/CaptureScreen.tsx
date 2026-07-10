@@ -15,6 +15,7 @@ import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion, AiCreatedPatientPanel, PatientConflictResolver } from "./CaptureBadges";
 import { NextLinedUpBar, SessionSafetyPanel } from "./CaptureRegions";
 import { PatientStrip } from "./PatientStrip";
+import { ReportHistoryButton } from "../reportHistory";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture, ordinalWord } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
@@ -607,6 +608,10 @@ export function CaptureScreen({
                 <ShareIcon />
                 <span className="report-share-button-label">{t("capture.share")}</span>
               </button>
+            ) : null}
+            {/* E14 report version-history — the sole mount surface; all history UI is self-contained. */}
+            {isPro && activeSession && activeSession.items.length ? (
+              <ReportHistoryButton session={activeSession} canRestore={!isHistorical && !readOnly} />
             ) : null}
           </div>
         </div>

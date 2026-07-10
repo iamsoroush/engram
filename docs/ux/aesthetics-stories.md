@@ -653,6 +653,50 @@ captures / extracted findings / report prose is a larger later migration; find-o
 
 ---
 
+## E14 — Report version history (Pro)
+*Exposes the content-addressed `session_report_versions` store (pipeline-versioning) as a navigable
+history UI, replacing the bare "Undo last capture" button with navigate → preview → restore. Built
+(v1). Mechanics: [pipeline-versioning](../architecture/pipeline-versioning.md); surface:
+[screens/capture.md](screens/capture.md) "Report history".*
+
+### AES-1401 — Report version timeline 〔Pro · Dr/As · built〕
+As a **doctor**, I want a quiet **History** affordance on the report card that opens a timeline of every
+stored version — time, a trigger label (photo added / transcript edited / …), capture count, demoted
+provenance — so that I can see how the report evolved instead of a one-way Undo.
+- **Acceptance:** newest-first list from `GET /sessions/{id}/report-versions`; the current version tagged
+  `Current`; Pro only (Basic has no synthesis chain). Trigger labels are **chrome** — the backend sends a
+  structured `{kind, count?}`, the client localizes it (fa/en). Empty/1-version → calm empty state.
+
+### AES-1402 — Read-only version preview (overlay-on-top) 〔Pro · Dr/As · built〕
+As a **doctor**, I want to tap a version and see that report **read-only**, with a
+`Viewing the version from HH:MM · Back to current` banner, so that I can inspect a past state without
+changing anything.
+- **Acceptance:** renders the version's artifacts through the same report presentation (`canEditTreatments`
+  off); the **live user-state overlay** (rejected flags / dismissed aftercare / confirmed doses /
+  treatment edits) is applied on top so a decision is never time-traveled away (pipeline-versioning D2).
+  In-sheet preview (not time-travel-in-place) keeps the CaptureScreen mount to a single header affordance.
+
+### AES-1403 — Revert-restore (owner-only) 〔Pro · Dr · built〕
+As a **visit owner**, I want to **restore** the report to an earlier version, so that a later capture that
+made the report worse can be rolled back — the richer face of undo.
+- **Acceptance:** `POST /sessions/{id}/report-versions/{vid}/restore` returns the session to that version's
+  capture set by de-effecting the captures added after it, reusing the **exact undo machinery** (P0-8
+  semantics shared); **owner-only** (`can_remove_capture`), gated behind a confirmation naming how many
+  captures are removed. Offered **only for versions reachable by removal** (subset of the current set); a
+  non-linear version is **preview-only** with a calm note. `409` when unreachable. **No pipeline change.**
+
+### AES-1404 — Quick undo stays 〔Pro · Dr · built〕
+As a **doctor**, I want "Undo last capture" to remain the one-tap shortcut in the Sources drawer, so that
+the common case stays instant while the timeline is its richer, multi-step face.
+- **Acceptance:** the Sources-drawer Undo is unchanged (it is "restore the previous version", N=1, on the
+  same `DELETE /captures/{id}` de-effect path).
+
+- **Deferred (⊕, fast-follows):**
+  AES-1405 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
+  AES-1406 **time-travel-in-place** preview; AES-1407 **field-level version diffs**; AES-1408 **D5
+  GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
+  fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

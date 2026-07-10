@@ -11,12 +11,23 @@ from app.auth.service import audit
 from app.models import Artifact, Capture, CaptureStatus, CaptureType, Patient, PatientStatus, Session, SessionStatus
 from app.schemas.captures import CaptureUpdate
 from app.schemas.patients import AssignPatientRequest
-from app.services.capture_storage import artifact_payload, capture_payload, get_capture_for_tenant, session_payload
+from app.services.capture_storage import (
+    artifact_payload,
+    capture_payload,
+    get_capture_for_tenant,
+    get_session_for_tenant,
+    session_payload,
+)
 from app.services.feedback import record_capture_text_correction, record_feedback_event
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
 from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
 from app.services.patients import AI_CREATED_PATIENT_NOTE
-from app.services.report_versions import find_report_version_for_current_set, restore_report_version
+from app.services.report_versions import (
+    find_report_version_for_current_set,
+    get_session_report_version,
+    restore_report_version,
+    version_removal_target,
+)
 from app.services.sessions import parse_uuid
 from app.services.synthesis_escalation import mark_synthesis_escalation
 
@@ -380,6 +391,98 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     if cached_version is None:
         # Never-seen capture set → recompute the live report from the remaining captures (no-op while
         # the capture chain is still processing). A cache-hit above already restored it deterministically.
+        from app.services.ai_jobs import regenerate_session_report_if_idle
+
+        regenerate_session_report_if_idle(
+            db,
+            tenant_id=principal.tenant_id,
+            session_id=session.id,
+            created_by_user_id=principal.user_id,
+            force=True,
+        )
+        db.refresh(session)
+    return {"session": session_payload(session, db)}
+
+
+def restore_session_report_version(
+    db: DbSession, principal: CurrentPrincipal, session_id: str, version_id: str
+) -> dict[str, Any]:
+    """Restore a session's report to a stored version (E14 revert semantics; owner-only).
+
+    Returns the session to the target version's capture set by soft-deleting the captures added after it,
+    reusing the **exact** capture-removal de-effect machinery so restore semantics are shared with
+    :func:`delete_capture` / undo (P0-8): ``apply_active_patient_assignment`` → orphan-AI-patient archive →
+    cache-hit ``restore_report_version`` (or recompute) → patient safety re-sync. This is undo generalized
+    from one step to N; per-capture ``delete_capture`` is unchanged (byte-for-byte).
+
+    Raises 403 for a non-owner, 409 when the version isn't reachable by removal alone (a version that
+    included a now-deleted capture, or that needs an out-of-context toggle — preview-only in v1).
+    """
+    session = get_session_for_tenant(
+        db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True
+    )
+    if not can_remove_capture(session, principal):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the clinician who owns this session can restore its report versions.",
+        )
+    version = get_session_report_version(db, session, version_id)
+    removal = version_removal_target(db, session, version)
+    if removal is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This version can't be restored — it includes captures no longer present.",
+        )
+    if not removal:
+        # The version already equals the current capture set: nothing to de-effect.
+        return {"session": session_payload(session, db)}
+
+    # De-effect every capture added after the target version, in one pass — mirrors delete_capture over a
+    # set. Patients CREATED by the removed captures are collected before delete so orphans are archived.
+    now = datetime.now(timezone.utc)
+    created_patient_ids: list[uuid.UUID] = []
+    for capture in removal:
+        created = _patient_created_by_capture(session, capture.id)
+        if created is not None:
+            created_patient_ids.append(created)
+        capture.status = CaptureStatus.deleted
+        capture.capture_metadata = {
+            **(capture.capture_metadata or {}),
+            "deleted_at": now.isoformat(),
+            "deleted_by_user_id": str(principal.user_id),
+        }
+        mark_session_draft_after_capture_delete(session, str(capture.id), now)
+    # Flush the soft-deletes before recomputing (autoflush=False) so the timeline/version lookups below
+    # see the reduced capture set — same ordering constraint delete_capture documents.
+    db.flush()
+    apply_active_patient_assignment(db, session)
+    for patient_id in created_patient_ids:
+        _archive_orphaned_ai_patient(db, principal, patient_id)
+    # The reduced set now equals the target version's set → cache-hit restore that exact report_version
+    # deterministically (no LLM). If a surviving capture was edited after the version, the set hash differs
+    # → fall through to a recompute over the current captures (honest: the captures changed).
+    cached_version = find_report_version_for_current_set(db, session)
+    if cached_version is not None:
+        restore_report_version(session, cached_version)
+        if session.patient_id is not None and isinstance(session.extracted_metadata.get("safety_flags"), list):
+            restored_patient = db.get(Patient, session.patient_id)
+            if restored_patient is not None:
+                sync_patient_safety_flags(restored_patient, session)
+                reconciliation = session.extracted_metadata.get("safety_reconciliation")
+                if isinstance(reconciliation, dict):
+                    apply_safety_reconciliation(restored_patient, reconciliation)
+    audit(
+        db,
+        tenant_id=principal.tenant_id,
+        actor_user_id=principal.user_id,
+        action="session.restore_report_version",
+        target_type="session",
+        target_id=session.id,
+        details={"version_id": str(version.id), "removed_capture_ids": [str(c.id) for c in removal]},
+    )
+    db.commit()
+    db.refresh(session)
+    if cached_version is None:
         from app.services.ai_jobs import regenerate_session_report_if_idle
 
         regenerate_session_report_if_idle(
