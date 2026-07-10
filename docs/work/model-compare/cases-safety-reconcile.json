@@ -1,0 +1,112 @@
+{
+  "version": "2026-07-10.v1",
+  "job": "safety_reconcile",
+  "note": "Input per case: {existingFlags, newFlags} as safety_reconcile.build() consumes them (each flag {key, kind, text}). Keys are 'kind|text'. Verdicts are read per key from the decisions output.",
+  "cases": [
+    {
+      "id": "R01",
+      "name": "exact duplicate",
+      "existing": [{ "kind": "allergy", "text": "آلرژی به پنی‌سیلین" }],
+      "new": [{ "kind": "allergy", "text": "آلرژی به پنی‌سیلین" }],
+      "checks": { "duplicatePairs": [["allergy|آلرژی به پنی‌سیلین", "allergy|آلرژی به پنی‌سیلین"]] }
+    },
+    {
+      "id": "R02",
+      "name": "synonym duplicate (آلرژی/حساسیت)",
+      "existing": [{ "kind": "allergy", "text": "آلرژی به سولفانامید" }],
+      "new": [{ "kind": "allergy", "text": "حساسیت به سولفانامید" }],
+      "checks": { "duplicatePairs": [["allergy|آلرژی به سولفانامید", "allergy|حساسیت به سولفانامید"]] }
+    },
+    {
+      "id": "R03",
+      "name": "reworded-fact duplicate (verb restructuring)",
+      "existing": [{ "kind": "contraindication", "text": "مصرف ایزوترتینوئین در شش ماه گذشته" }],
+      "new": [{ "kind": "contraindication", "text": "بیمار شش ماه پیش ایزوترتینوئین مصرف کرده" }],
+      "checks": { "duplicatePairs": [["contraindication|مصرف ایزوترتینوئین در شش ماه گذشته", "contraindication|بیمار شش ماه پیش ایزوترتینوئین مصرف کرده"]] }
+    },
+    {
+      "id": "R04",
+      "name": "drug-family distinct — both kept",
+      "existing": [{ "kind": "allergy", "text": "آلرژی به پنی‌سیلین" }],
+      "new": [{ "kind": "allergy", "text": "حساسیت به آموکسی‌سیلین" }],
+      "checks": { "keepAll": ["allergy|آلرژی به پنی‌سیلین", "allergy|حساسیت به آموکسی‌سیلین"] }
+    },
+    {
+      "id": "R05",
+      "name": "explicit update → superseded (keep = partial, drop = fail)",
+      "existing": [{ "kind": "contraindication", "text": "بیمار باردار است" }],
+      "new": [{ "kind": "contraindication", "text": "بارداری به پایان رسیده و دیگر باردار نیست" }],
+      "checks": { "supersededOld": "contraindication|بیمار باردار است" },
+      "flex": "Strict PASS: old flag superseded (annotated). Partial: old kept standing. FAIL: old marked duplicate (a distinct fact dropped)."
+    },
+    {
+      "id": "R06",
+      "name": "cross-kind never merged",
+      "existing": [{ "kind": "allergy", "text": "حساسیت به لاتکس" }],
+      "new": [{ "kind": "consent", "text": "رضایت‌نامه لاتکس‌فری امضا شد" }],
+      "checks": { "keepAll": ["allergy|حساسیت به لاتکس", "consent|رضایت‌نامه لاتکس‌فری امضا شد"] }
+    },
+    {
+      "id": "R07",
+      "name": "cross-script duplicate",
+      "existing": [{ "kind": "allergy", "text": "آلرژی به پنی‌سیلین" }],
+      "new": [{ "kind": "allergy", "text": "Penicillin allergy" }],
+      "checks": { "duplicatePairs": [["allergy|آلرژی به پنی‌سیلین", "allergy|Penicillin allergy"]] }
+    },
+    {
+      "id": "R08",
+      "name": "scale: 10 existing + 2 buried duplicates — complete decisions, distinct all kept",
+      "existing": [
+        { "kind": "allergy", "text": "آلرژی به سولفانامید" },
+        { "kind": "allergy", "text": "حساسیت به آسپرین" },
+        { "kind": "allergy", "text": "آلرژی به ید" },
+        { "kind": "allergy", "text": "حساسیت به لاتکس" },
+        { "kind": "contraindication", "text": "مصرف ایزوترتینوئین در شش ماه گذشته" },
+        { "kind": "contraindication", "text": "سابقه اسکار کلوئیدی" },
+        { "kind": "contraindication", "text": "تبخال فعال در محل درمان" },
+        { "kind": "contraindication", "text": "مصرف داروی ضدانعقاد" },
+        { "kind": "consent", "text": "رضایت‌نامه لیزر امضا شد" },
+        { "kind": "consent", "text": "رضایت عکس‌برداری گرفته شد" }
+      ],
+      "new": [
+        { "kind": "allergy", "text": "حساسیت به سولفانامید" },
+        { "kind": "contraindication", "text": "بیمار شش ماه پیش ایزوترتینوئین مصرف کرده" }
+      ],
+      "checks": {
+        "decisionsComplete": true,
+        "duplicatePairs": [
+          ["allergy|آلرژی به سولفانامید", "allergy|حساسیت به سولفانامید"],
+          ["contraindication|مصرف ایزوترتینوئین در شش ماه گذشته", "contraindication|بیمار شش ماه پیش ایزوترتینوئین مصرف کرده"]
+        ],
+        "keepAll": [
+          "allergy|حساسیت به آسپرین",
+          "allergy|آلرژی به ید",
+          "allergy|حساسیت به لاتکس",
+          "contraindication|سابقه اسکار کلوئیدی",
+          "contraindication|تبخال فعال در محل درمان",
+          "contraindication|مصرف داروی ضدانعقاد",
+          "consent|رضایت‌نامه لیزر امضا شد",
+          "consent|رضایت عکس‌برداری گرفته شد"
+        ]
+      }
+    },
+    {
+      "id": "R09",
+      "name": "no-op: distinct existing, no new",
+      "existing": [
+        { "kind": "allergy", "text": "آلرژی به ید" },
+        { "kind": "contraindication", "text": "سابقه اسکار کلوئیدی" }
+      ],
+      "new": [],
+      "checks": { "keepAll": ["allergy|آلرژی به ید", "contraindication|سابقه اسکار کلوئیدی"] }
+    },
+    {
+      "id": "R10",
+      "name": "richer text adds severity — information, not duplication",
+      "existing": [{ "kind": "allergy", "text": "حساسیت به لیدوکائین" }],
+      "new": [{ "kind": "allergy", "text": "حساسیت به لیدوکائین با سابقه تورم شدید صورت" }],
+      "checks": { "keepAll": ["allergy|حساسیت به لیدوکائین", "allergy|حساسیت به لیدوکائین با سابقه تورم شدید صورت"] },
+      "flex": "Marking the SHORTER one duplicate-of-the-richer is acceptable partial credit (no information lost); dropping the richer one is a FAIL."
+    }
+  ]
+}

@@ -1,0 +1,100 @@
+{
+  "version": "2026-07-10.v1",
+  "job": "qa_revise",
+  "note": "Input per case: the qaRevise payload as qa_revise.build() consumes it (patientQuestion, currentDraft, voiceEditTranscript as the edit instruction text, patientContext). doctorName «دکتر آزمون» signs the draft. These synthetic text edits complement — do not replace — the owner-supplied r01–r10 voice fixtures.",
+  "cases": [
+    {
+      "id": "V01",
+      "name": "soften tone, keep clinical content",
+      "qa": {
+        "patientQuestion": "بعد از بوتاکس کی میتونم ورزش کنم؟",
+        "currentDraft": "تا ۲۴ ساعت از ورزش سنگین پرهیز کنید. در صورت بروز علائم غیرعادی با کلینیک تماس بگیرید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "لحنش رو گرم‌تر و دوستانه‌تر کن.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["۲۴", "24"], ["تماس", "کلینیک"]] }, "signOff": true }
+    },
+    {
+      "id": "V02",
+      "name": "add an instruction the doctor dictates",
+      "qa": {
+        "patientQuestion": "لبم بعد از فیلر ورم داره، چیکار کنم؟",
+        "currentDraft": "ورم خفیف در روزهای اول طبیعی است. در صورت تشدید با کلینیک تماس بگیرید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "بگو کمپرس سرد هم بذاره.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["کمپرس سرد"], ["تماس", "کلینیک"]] }, "signOff": true }
+    },
+    {
+      "id": "V03",
+      "name": "remove a sentence on request",
+      "qa": {
+        "patientQuestion": "بعد از بوتاکس چه مراقبتی لازمه؟",
+        "currentDraft": "تا ۴ ساعت دراز نکشید. ناحیه را ماساژ ندهید. در صورت نگرانی با کلینیک تماس بگیرید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "جمله مربوط به ماساژ رو حذف کن.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["۴ ساعت", "چهار ساعت"]], "forbidden": ["ماساژ"] }, "signOff": true }
+    },
+    {
+      "id": "V04",
+      "name": "doctor replaces a number explicitly",
+      "qa": {
+        "patientQuestion": "کی میتونم ورزش کنم؟",
+        "currentDraft": "تا ۲۴ ساعت از ورزش سنگین پرهیز کنید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "به‌جای ۲۴ بگو ۴۸ ساعت.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["۴۸", "48"]], "forbidden": ["۲۴ ساعت", "24 ساعت"] }, "signOff": true }
+    },
+    {
+      "id": "V05",
+      "name": "shorten without inventing",
+      "qa": {
+        "patientQuestion": "قرمزی بعد از لیزر طبیعیه؟",
+        "currentDraft": "قرمزی خفیف تا چند روز پس از لیزر طبیعی است و به‌تدریج برطرف می‌شود. از دست‌کاری ناحیه خودداری کنید و ضدآفتاب استفاده کنید. اگر قرمزی شدید شد یا تاول دیدید، حتماً با کلینیک تماس بگیرید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "خلاصه‌ترش کن.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "forbiddenNumerics": true, "mustContainAnyGroups": [["تماس", "کلینیک"]] }, "signOff": true },
+      "flex": "No number exists in the draft or edit — a shortened reply that introduces one (e.g. «تا ۳ روز») is an invention."
+    },
+    {
+      "id": "V06",
+      "name": "escalation line survives a shorten request",
+      "qa": {
+        "patientQuestion": "بعد از تزریق کمی سرگیجه دارم، طبیعیه؟",
+        "currentDraft": "سرگیجه خفیف گاهی پیش می‌آید و معمولاً زودگذر است. لطفاً امروز استراحت کنید. در صورت ادامه یا تشدید سرگیجه حتماً با کلینیک تماس بگیرید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "فقط خلاصه‌ترش کن.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["تماس", "مراجعه", "کلینیک"]] }, "signOff": true }
+    },
+    {
+      "id": "V07",
+      "name": "full replacement dictated",
+      "qa": {
+        "patientQuestion": "کی برای جلسه بعد بیام؟",
+        "currentDraft": "برای جلسه بعد، هفته آینده مراجعه کنید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "کلاً عوضش کن. بگو جلسه بعد سه هفته دیگه است و قبلش با کلینیک هماهنگ کنه.",
+        "patientContext": {}
+      },
+      "checks": { "reply": { "mustContainAnyGroups": [["سه هفته", "۳ هفته"], ["هماهنگ", "تماس"]], "forbidden": ["هفته آینده"] }, "signOff": true }
+    },
+    {
+      "id": "V08",
+      "name": "language purity under edit",
+      "qa": {
+        "patientQuestion": "پماد رو چند بار در روز بزنم؟",
+        "currentDraft": "پماد را طبق دستور دو بار در روز استفاده کنید.\n\nدکتر آزمون",
+        "voiceEditTranscript": "اضافه کن که قبل از پماد دست‌ها شسته بشه.",
+        "patientContext": {}
+      },
+      "checks": {
+        "reply": { "mustContainAnyGroups": [["دست", "شست"], ["دو بار", "۲ بار"]] },
+        "latin": { "forbidLatin": true, "allow": [] },
+        "signOff": true
+      }
+    }
+  ]
+}

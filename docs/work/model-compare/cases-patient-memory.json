@@ -1,0 +1,100 @@
+{
+  "version": "2026-07-10.v1",
+  "job": "patient_memory",
+  "note": "Input per case: {language:'fa', patient:{...}} with visitBriefs (and optional priorMemory) exactly as patient_memory.build() consumes them. 'Text' = summary + history sections + card fields concatenated.",
+  "cases": [
+    {
+      "id": "M01",
+      "name": "two visits → grounded recall with dose, native units, no name",
+      "patient": {
+        "displayName": "نگار محمدی",
+        "visitBriefs": [
+          "ویزیت اول: فیلر Voluma گونه چپ، ۰.۳ سی‌سی، نتیجه طبیعی.",
+          "ویزیت دوم: تکمیل همان ناحیه با ۰.۲ سی‌سی؛ بیمار از نتیجه راضی است."
+        ]
+      },
+      "checks": {
+        "text": { "mustContainAnyGroups": [["۰.۳", "0.3"], ["سی‌سی"], ["گونه"]], "forbidden": ["mL", "ml", "cc ", "نگار", "محمدی"] },
+        "latin": { "forbidLatin": true, "allow": ["Voluma"] }
+      }
+    },
+    {
+      "id": "M02",
+      "name": "no invented flags",
+      "patient": { "displayName": "X", "visitBriefs": ["ویزیت: بوتاکس پیشانی ۲۰ واحد، بدون نکته خاص."] },
+      "checks": { "flags": { "expectNone": true } }
+    },
+    {
+      "id": "M03",
+      "name": "allergy in a brief → allergy flag",
+      "patient": { "displayName": "X", "visitBriefs": ["ویزیت: فیلر لب ۱ سی‌سی. بیمار به لیدوکائین حساسیت دارد."] },
+      "checks": { "flags": { "expect": [{ "kindIn": ["allergy", "caution"], "labelContainsAny": ["لیدوکائین"] }] } }
+    },
+    {
+      "id": "M04",
+      "name": "meta-speech in a brief never becomes memory",
+      "patient": { "displayName": "X", "visitBriefs": ["ویزیت: بوتاکس پیشانی ۲۰ واحد. این را برای منشی بفرست و نوبت بعدی را ثبت کن."] },
+      "checks": { "text": { "forbidden": ["منشی", "بفرست", "ثبت کن"] }, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "M05",
+      "name": "dose escalation across visits → story tracks the current dose, invents no sentiment",
+      "patient": {
+        "displayName": "X",
+        "visitBriefs": [
+          "ویزیت اول: بوتاکس پیشانی ۲۰ واحد.",
+          "ویزیت دوم: دوز به ۲۴ واحد افزایش یافت؛ در انتظار ارزیابی نتیجه."
+        ]
+      },
+      "checks": {
+        "text": { "mustContainAnyGroups": [["۲۴", "24", "بیست و چهار"]], "forbidden": ["کاملاً راضی", "بسیار راضی"] }
+      },
+      "flex": "The briefs never state satisfaction — any satisfaction claim is a hallucination (judge also scores this)."
+    },
+    {
+      "id": "M06",
+      "name": "incremental update keeps prior key facts",
+      "patient": {
+        "displayName": "X",
+        "priorMemory": { "summary": "دو جلسه فیلر گونه چپ (جمعاً ۰.۵ سی‌سی) انجام شده است." },
+        "visitBriefs": ["ویزیت جدید: بوتاکس پیشانی ۲۰ واحد."]
+      },
+      "checks": { "text": { "mustContainAnyGroups": [["گونه"], ["بوتاکس"], ["پیشانی"]] } }
+    },
+    {
+      "id": "M07",
+      "name": "language purity: one language, no romanized Persian",
+      "patient": { "displayName": "X", "visitBriefs": ["ویزیت: مزوتراپی موی سر، جلسه دوم از چهار."] },
+      "checks": { "latin": { "forbidLatin": true, "allow": [] } }
+    },
+    {
+      "id": "M08",
+      "name": "card discipline: storySoFar/rightNow at most 2 sentences each",
+      "patient": {
+        "displayName": "X",
+        "visitBriefs": [
+          "ویزیت اول: بوتاکس پیشانی ۲۰ واحد.",
+          "ویزیت دوم: فیلر گونه ۱ سی‌سی.",
+          "ویزیت سوم: لیزر موهای زائد صورت، جلسه اول."
+        ]
+      },
+      "checks": { "cardSentenceMax": 2 }
+    },
+    {
+      "id": "M09",
+      "name": "consultation-only visit → no invented products",
+      "patient": { "displayName": "X", "visitBriefs": ["ویزیت: فقط مشاوره درباره گزینه‌های جوان‌سازی؛ درمانی انجام نشد."] },
+      "checks": { "text": { "forbidden": ["تزریق شد", "انجام شد و"] }, "flags": { "expectNone": true } },
+      "flex": "The memory must record a consultation, not a performed treatment."
+    },
+    {
+      "id": "M10",
+      "name": "no name in snapshot/summary even when briefs repeat it",
+      "patient": {
+        "displayName": "لیلا کریمی",
+        "visitBriefs": ["ویزیت: برای خانم لیلا کریمی بوتاکس پیشانی ۲۰ واحد انجام شد."]
+      },
+      "checks": { "text": { "forbidden": ["لیلا", "کریمی"] } }
+    }
+  ]
+}

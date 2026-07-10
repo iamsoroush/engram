@@ -1,0 +1,115 @@
+# Model comparison — all AI jobs, two price brackets
+
+Process doc + owner-designed fixtures (create → run → fold the readout → delete). Every case file
+here is **owner-designed and frozen**: executing agents implement the scorers and run the matrix;
+they do not add, remove, or reinterpret cases.
+
+## What is being decided
+
+A **low-cost champion** and a **mid-cost champion** across the text AI jobs, plus the **price
+consequence** of adopting each (how `visit_cost` and the AI-usage-limit headroom of
+`docs/business/ai-usage-limits.md` §2–3 move vs today).
+
+| Bracket | Candidates | Applies to |
+| --- | --- | --- |
+| Low-cost | `gpt-5.4-nano` vs `gemini-3.1-flash-lite` | every text job below |
+| Mid-cost | `gpt-5.6-luna` vs `gemini-3.5-flash` | every text job below |
+| Transcription (audio) | `gemini-3.1-flash-lite` vs `gemini-3.5-flash` | transcription only |
+
+Jobs and their case files (captioning is explicitly out of scope):
+
+| Job | Cases | Incumbent |
+| --- | --- | --- |
+| Report synthesis | [cases-synthesis.json](cases-synthesis.json) (34) | `gpt-5.4-nano` @ effort=low |
+| Patient memory | [cases-patient-memory.json](cases-patient-memory.json) (10) | `gemini-3.1-flash-lite` (fallback) |
+| Safety reconcile | [cases-safety-reconcile.json](cases-safety-reconcile.json) (10) | `gemini-3.1-flash-lite` (fallback) |
+| Q&A draft | [cases-qa-draft.json](cases-qa-draft.json) (12) | `gemini-3.1-flash-lite` (fallback) |
+| Q&A revise | [cases-qa-revise.json](cases-qa-revise.json) (8) | `gemini-3.1-flash-lite` (fallback) |
+| Transcription | owner-supplied audio fixtures (see below) | `gemini-3.1-flash-lite` |
+
+## How to run a case
+
+- Build each job's prompt with its production builder in `ai_engine/prompts/` — `synthesis.build`,
+  `patient_memory.build`, `safety_reconcile.build`, `qa_draft.build`, `qa_revise.build` — feeding
+  the case's payload in the exact shape that builder consumes (each case file's `note` states it;
+  mirror `app/services/session_processing.py::_capture_input` for synthesis captures). Do not
+  modify any prompt.
+- Call the gateway (`https://gw.engram.ir/v1/chat/completions`, key from the ai-engine env) with
+  `response_format=json_schema` using the job's schema from `ai_engine/contracts` where the
+  production path does. If a provider rejects json_schema, report it as a finding.
+- **3 samples per case per model**; a case's verdict per model is the majority. Report per-sample
+  rates too.
+
+**Transcription** is the one job whose evaluation data cannot be synthesized (audio is never
+auto-generated — owner rule). Use the owner-supplied clips in the eval fixture store with their
+reference transcripts, but score independently of the in-repo eval code: CER/WER overall, exact
+accuracy on clinical tokens (doses, units, drug/brand names, lots), and romanization rate (Persian
+rendered in Latin = fail). Same 3-samples-per-clip, both candidate models.
+
+## Scoring semantics (deterministic; implement once, no imports from `apps/ai_engine/eval/`)
+
+Persian matching is substring-based after Unicode NFC normalization; treat `ی/ي`, `ک/ك`, and
+ZWNJ/space as equivalent.
+
+Synthesis (`cases-synthesis.json`) — "prose" = summary + section texts + uncertainty texts:
+
+- `treatmentCount` (int or `{min,max}`); `treatments[]` each matching a distinct emitted item:
+  `productAny`/`areaContainsAny`/`quantityTextContainsAny`/`brandContainsAny`/`unitAny` (substring
+  any-of), `quantity` (numeric), `lot` (exact), `statusIn`, `supersedesRequired` (non-null
+  `supersedesCaptureId`), `attributesContainAny`.
+- `flags`: `expectNone`, or `expect[]` of `{kindIn, textContainsAny}` (distinct matches; no
+  unexpected flag when `expectNone`).
+- `prose`: `mustContainAnyGroups` + `forbidden`; `sectionRules[]` (per-section `forbidden`);
+  `summaryForbidden`; `uncertainties` (`expectNone` | `mustCodeAny`).
+- `aftercare`: `selected[]` `{templateId, statusIn}` + `notSelected[]`. Cases with
+  `useAftercareTemplates` get the file's `aftercareTemplates` in context, serialized the way
+  `_aftercare_templates_for_synthesis` sends them.
+- `image`: `referencedOnce`; `latin`: `forbidLatinProse` + `allow`.
+
+Patient memory — "text" = summary + history sections + card fields: `text` (same
+mustContain/forbidden shape), `flags` (`expectNone` | `expect[]` with `labelContainsAny`),
+`latin`, `cardSentenceMax` (max sentence-final marks per card field).
+
+Safety reconcile: `duplicatePairs` (exactly ONE of the pair marked duplicate, `ofKey` = the other;
+neither dropped), `keepAll` (every key decided keep), `supersededOld` (old key annotated
+superseded), `decisionsComplete` (one decision per given flag).
+
+Q&A draft / revise — "reply" = the drafted text: `reply` (mustContainAnyGroups/forbidden/
+`forbiddenNumerics` = no digit or number-word duration/dose), `signOff` (doctor name present),
+`latin`.
+
+`flex` notes name acceptable-alternative outcomes: score the strict rule as PASS, record the flex
+alternative as *partial* (both columns in the readout).
+
+**Safety events** (tabulate separately; any occurrence disqualifies that model for that job
+regardless of averages): wrong dose, invented treatment, dropped expected allergy/contraindication,
+fabricated flag on `expectNone`, superseded value restated in prose, patient name in summary/memory,
+cross-patient number copied into a reply, a reply contradicting the patient's own aftercare, a
+reconcile decision that DROPS a distinct safety flag, transcription dose/drug-token errors.
+
+## Quality judging (secondary, blind)
+
+Pairwise per case within each bracket, judge = a model in neither bracket (e.g. `gpt-5.4-mini` on
+the same gateway), identities hidden, order randomized. Judge scores break ties and inform the
+memo; they never override deterministic safety events.
+
+## Cost & usage-limit projection
+
+1. Per model, measure real per-run cost from the gateway's priced usage fields:
+   - synthesis: reproduce ai-usage-limits §1's 10-capture visit (coalesced + per-capture modes);
+   - each other job: mean cost over its case set (report tokens in/out too);
+   - transcription: mean $/audio-minute over the fixture clips.
+2. Recompute §2's `visit_cost` and $/seat/mo (light/typical/heavy, Pro volume assumptions from
+   `compute-cost-model.md` §2) for four adoption scenarios: **all-low champion set**, **all-mid
+   champion set**, and each bracket's per-job mixed optimum.
+3. Report: $/visit, $/seat/mo per scenario, **effective visits per $10/seat budget** (the usage-
+   limit headroom) vs today's baseline, and what `ai_budget_usd_per_seat` would need to be to keep
+   today's headroom under a pricier winner.
+
+## Deliverable
+
+`docs/work/model-compare/readout.md` — verdict first (low-cost champion, mid-cost champion, per-job
+exceptions if a bracket winner loses a specific job, usage-limit consequence of each adoption
+scenario), then per-job deterministic tables, the safety-event table, judge win-rates, cost/latency
+tables, and raw per-case JSON artifacts alongside. No production config, prompt, or eval-suite
+changes; scripts stay in a scratch dir.

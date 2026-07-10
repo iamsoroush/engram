@@ -1,0 +1,439 @@
+{
+  "version": "2026-07-10.v1",
+  "author": "owner-designed (see README.md for scoring semantics — agents execute, do not redesign cases)",
+  "aftercareTemplates": [
+    {
+      "id": "tmpl-botox",
+      "procedure": "botox",
+      "title": "مراقبت بعد از بوتاکس",
+      "body": "تا ۴ ساعت دراز نکشید. تا ۳ روز از آفتاب مستقیم دوری کنید. ناحیه تزریق را ماساژ ندهید."
+    },
+    {
+      "id": "tmpl-filler",
+      "procedure": "filler",
+      "title": "مراقبت بعد از فیلر",
+      "body": "تا ۲۴ ساعت آرایش نکنید. کمپرس سرد برای کاهش تورم. تا ۲ هفته از حرارت زیاد (سونا/سولاریوم) پرهیز کنید."
+    },
+    {
+      "id": "tmpl-laser",
+      "procedure": "laser",
+      "title": "مراقبت بعد از لیزر",
+      "body": "تا ۱۰ روز ضدآفتاب قوی استفاده کنید. از لایه‌بردار و رتینول تا یک هفته استفاده نکنید."
+    }
+  ],
+  "cases": [
+    {
+      "id": "C01",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "امروز ۲۰ واحد بوتاکس روی پیشانی تزریق شد." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["بوتاکس"], "quantity": 20, "unitAny": ["واحد"], "statusIn": ["performed"] }],
+        "prose": { "mustContainAnyGroups": [["پیشانی"]] }
+      }
+    },
+    {
+      "id": "C02",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشونی زدم." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["بوتاکس"], "quantity": 20, "quantityTextContainsAny": ["بیست واحد"], "statusIn": ["performed"] }]
+      }
+    },
+    {
+      "id": "C03",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "یک سی‌سی ژل توی لب بالا و ده واحد بوتاکس بین ابروها تزریق کردم." }],
+      "checks": {
+        "treatmentCount": 2,
+        "treatments": [
+          { "productAny": ["ژل", "فیلر"], "quantity": 1, "areaContainsAny": ["لب"], "statusIn": ["performed"] },
+          { "productAny": ["بوتاکس"], "quantity": 10, "areaContainsAny": ["ابرو"], "statusIn": ["performed"] }
+        ]
+      }
+    },
+    {
+      "id": "C04",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "فیلر Juvederm Voluma برای گونه راست تزریق شد، یک سی‌سی، لات VLM-2291." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["فیلر", "ژل"], "quantity": 1, "brandContainsAny": ["Voluma"], "lot": "VLM-2291", "statusIn": ["performed"] }],
+        "latin": { "forbidLatinProse": true, "allow": ["Juvederm", "Voluma", "VLM-2291", "VLM", "2291"] }
+      }
+    },
+    {
+      "id": "C05",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "مزوتراپی پوست سر با سوزن سی و دو انجام شد، عمق چهار میلی‌متر." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["مزوتراپی"], "statusIn": ["performed"], "attributesContainAny": ["۳۲", "32", "سی و دو", "۴", "4", "چهار"] }]
+      }
+    },
+    {
+      "id": "C06",
+      "category": "core",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "نیم سی‌سی فیلر برای خط خنده چپ و یک و نیم سی‌سی برای گونه چپ تزریق شد." }],
+      "checks": {
+        "treatmentCount": 2,
+        "treatments": [
+          { "productAny": ["فیلر", "ژل"], "quantity": 0.5, "areaContainsAny": ["خط خنده"], "statusIn": ["performed"] },
+          { "productAny": ["فیلر", "ژل"], "quantity": 1.5, "areaContainsAny": ["گونه"], "statusIn": ["performed"] }
+        ]
+      }
+    },
+    {
+      "id": "C07",
+      "category": "correction",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "یک سی‌سی ژل توی لب تزریق شد... نه، منظورم یک و نیم سی‌سی بود." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["ژل", "فیلر"], "quantity": 1.5, "statusIn": ["performed"], "supersedesRequired": true }],
+        "prose": { "forbidden": ["یک سی‌سی ژل"] }
+      }
+    },
+    {
+      "id": "C08",
+      "category": "correction",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی تزریق شد." },
+        { "id": "c2", "type": "audio", "text": "ببخشید، دوز درست بیست و چهار واحد شد، همون بیست و چهار واحد ثبت بشه." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["بوتاکس"], "quantity": 24, "statusIn": ["performed"], "supersedesRequired": true }],
+        "prose": { "mustContainAnyGroups": [["۲۴", "24", "بیست و چهار"]], "forbidden": ["بیست واحد", "۲۰ واحد"] }
+      }
+    },
+    {
+      "id": "C09",
+      "category": "correction",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "ژل گونه چپ دو سی‌سی تزریق شد." },
+        { "id": "c2", "type": "audio", "text": "ژل گونه چپ سه سی‌سی." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["ژل", "فیلر"], "quantity": 3, "areaContainsAny": ["گونه"], "statusIn": ["performed"], "supersedesRequired": true }],
+        "prose": { "forbidden": ["دو سی‌سی", "۲ سی‌سی"] }
+      }
+    },
+    {
+      "id": "C10",
+      "category": "correction",
+      "reportLanguage": "fa",
+      "flex": "Ambiguous correction-vs-addition. PASS iff BOTH treatments are emitted AND an uncertainty with code ambiguous_correction exists. A silent overwrite (1 treatment, no uncertainty) is a FAIL.",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "دو سی‌سی ژل برای گونه تزریق شد." },
+        { "id": "c2", "type": "audio", "text": "ژل سه سی‌سی." }
+      ],
+      "checks": {
+        "treatmentCount": { "min": 2, "max": 2 },
+        "uncertainties": { "mustCodeAny": ["ambiguous_correction"] }
+      }
+    },
+    {
+      "id": "C11",
+      "category": "status",
+      "reportLanguage": "fa",
+      "captures": [
+        {
+          "id": "c1",
+          "type": "note",
+          "text": "امروز بیست واحد بوتاکس روی پیشانی تزریق کردم، لات D-4471. برای جلسه بعد قراره یک سی‌سی ژل برای لب پایین تزریق کنیم، هنوز انجام نشده."
+        }
+      ],
+      "checks": {
+        "treatmentCount": 2,
+        "treatments": [
+          { "productAny": ["بوتاکس"], "quantity": 20, "lot": "D-4471", "statusIn": ["performed"] },
+          { "productAny": ["ژل", "فیلر"], "quantity": 1, "statusIn": ["planned"] }
+        ],
+        "sectionRules": [{ "sectionId": "treatment-performed", "forbidden": ["ژل لب", "لب پایین"] }],
+        "uncertainties": { "expectNone": true }
+      }
+    },
+    {
+      "id": "C12",
+      "category": "status",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "پیشنهاد بوتاکس پیشانی دادم ولی بیمار قبول نکرد، شاید جلسه بعد تصمیم بگیره." }],
+      "checks": { "treatmentCount": 0, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "C13",
+      "category": "status",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "دفعه قبل بوتاکس پیشانی زده بودیم، امروز فقط معاینه و بررسی نتیجه بود، تزریق جدیدی انجام نشد." }],
+      "checks": { "treatmentCount": 0 }
+    },
+    {
+      "id": "C14",
+      "category": "status",
+      "reportLanguage": "fa",
+      "flex": "Ambiguous tense. PASS iff the single treatment's status is planned OR uncertain (with planned_vs_performed uncertainty when uncertain). status=performed is a FAIL.",
+      "captures": [{ "id": "c1", "type": "audio", "text": "در مورد تزریق ژل لب صحبت کردیم و یک سی‌سی مشخص شد." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["ژل", "فیلر"], "statusIn": ["planned", "uncertain"] }]
+      }
+    },
+    {
+      "id": "C15",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "بیمار به لیدوکائین حساسیت داره، برای همین از کرم بی‌حسی بدون لیدوکائین استفاده شد. ده واحد بوتاکس زیر چشم تزریق شد." }],
+      "checks": {
+        "treatmentCount": 1,
+        "flags": { "expect": [{ "kindIn": ["allergy"], "textContainsAny": ["لیدوکائین"] }] }
+      }
+    },
+    {
+      "id": "C16",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "قبلاً به پنی‌سیلین حساسیت داشت ولی تست جدید منفی بود و مشکلی نداره. یک سی‌سی ژل لب تزریق شد." }],
+      "checks": { "treatmentCount": 1, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "C17",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "مادرش به بی‌حسی موضعی حساسیت داره ولی خود بیمار تا حالا هیچ واکنشی نداشته. بوتاکس پیشانی ده واحد انجام شد." }],
+      "checks": { "treatmentCount": 1, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "C18",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "اگر باردار بود بوتاکس نمی‌زدیم، ولی باردار نیست. بیست واحد بوتاکس پیشانی تزریق شد." }],
+      "checks": { "treatmentCount": 1, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "C19",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "بیمار سه ماه پیش ایزوترتینوئین مصرف می‌کرده، برای همین لیزر فعلاً انجام نمی‌دیم و به جلسه دیگه موکول شد." }],
+      "checks": {
+        "treatmentCount": 0,
+        "flags": { "expect": [{ "kindIn": ["contraindication"], "textContainsAny": ["ایزوترتینوئین"] }] }
+      }
+    },
+    {
+      "id": "C20",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "جلسه اول لیزر موهای زائد صورت انجام شد. رضایت‌نامه لیزر هم امضا شد." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["لیزر"], "statusIn": ["performed"] }],
+        "flags": { "expect": [{ "kindIn": ["consent"], "textContainsAny": ["رضایت"] }] }
+      }
+    },
+    {
+      "id": "C21",
+      "category": "safety",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "هیچ سابقه حساسیت یا بیماری خاصی نداره. یک سی‌سی فیلر گونه راست تزریق شد." }],
+      "checks": { "treatmentCount": 1, "flags": { "expectNone": true } }
+    },
+    {
+      "id": "C22",
+      "category": "meta",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس پیشانی زدم. این گزارش رو برای منشی بفرست و بگو نوبت بعدی رو دو هفته دیگه ثبت کنه." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["بوتاکس"], "quantity": 20, "statusIn": ["performed"] }],
+        "prose": { "forbidden": ["منشی", "بفرست", "ثبت کنه"] }
+      }
+    },
+    {
+      "id": "C23",
+      "category": "meta",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "یک سی‌سی ژل توی گونه چپ تزریق شد." },
+        { "id": "c2", "type": "audio", "text": "ضبط رو متوقف کن و فایل ویزیت قبلی رو از سیستم پاک کن." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "prose": { "mustContainAnyGroups": [["گونه"]], "forbidden": ["ضبط", "پاک کن", "سیستم"] }
+      }
+    },
+    {
+      "id": "C24",
+      "category": "aftercare",
+      "reportLanguage": "fa",
+      "useAftercareTemplates": true,
+      "captures": [{ "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی تزریق شد." }],
+      "checks": {
+        "treatmentCount": 1,
+        "aftercare": { "selected": [{ "templateId": "tmpl-botox", "statusIn": ["applies"] }], "notSelected": ["tmpl-filler", "tmpl-laser"] }
+      }
+    },
+    {
+      "id": "C25",
+      "category": "aftercare",
+      "reportLanguage": "fa",
+      "useAftercareTemplates": true,
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی تزریق شد. تا یک هفته از آفتاب مستقیم دوری کنه." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "aftercare": { "selected": [{ "templateId": "tmpl-botox", "statusIn": ["conflicts"] }], "notSelected": ["tmpl-filler", "tmpl-laser"] }
+      },
+      "flex": "The botox template says «۳ روز» sun avoidance; the dictation says one week for the SAME topic → conflicts. Record superseded as partial credit (defensible but not the STEP-3 answer)."
+    },
+    {
+      "id": "C26",
+      "category": "aftercare",
+      "reportLanguage": "fa",
+      "useAftercareTemplates": true,
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس پیشانی و یک سی‌سی فیلر گونه چپ انجام شد. مراقبت‌ها طبق معمول، بدون لیزر." }
+      ],
+      "checks": {
+        "treatmentCount": 2,
+        "aftercare": {
+          "selected": [
+            { "templateId": "tmpl-botox", "statusIn": ["applies"] },
+            { "templateId": "tmpl-filler", "statusIn": ["applies"] }
+          ],
+          "notSelected": ["tmpl-laser"]
+        }
+      }
+    },
+    {
+      "id": "C27",
+      "category": "aftercare",
+      "reportLanguage": "fa",
+      "useAftercareTemplates": true,
+      "captures": [
+        {
+          "id": "c1",
+          "type": "audio",
+          "text": "بیست واحد بوتاکس پیشانی تزریق شد. مراقبت بعد از درمان رو خودم می‌گم: تا شش ساعت دراز نکشد، تا یک هفته از آفتاب دوری کند، ناحیه را ماساژ ندهد و ورزش سنگین تا دو روز ممنوع."
+        }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "aftercare": { "selected": [{ "templateId": "tmpl-botox", "statusIn": ["superseded"] }], "notSelected": ["tmpl-filler", "tmpl-laser"] }
+      }
+    },
+    {
+      "id": "C28",
+      "category": "language",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "ده واحد بوتاکس خط اخم تزریق شد، لات B-9905." }],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "productAny": ["بوتاکس"], "quantity": 10, "lot": "B-9905" }],
+        "latin": { "forbidLatinProse": true, "allow": ["B-9905", "B", "9905"] }
+      }
+    },
+    {
+      "id": "C29",
+      "category": "language",
+      "reportLanguage": "en",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی و یک سی‌سی ژل توی گونه چپ تزریق شد، لات D-1234." }
+      ],
+      "checks": {
+        "treatmentCount": 2,
+        "prose": { "mustContainAnyGroups": [["botox", "Botox", "botulinum"], ["forehead"], ["cheek"]], "forbidden": ["بوتاکس", "پیشانی", "گونه"] },
+        "treatments": [{ "productAny": ["Botox", "botox"], "quantity": 20, "lot": "D-1234" }]
+      }
+    },
+    {
+      "id": "C30",
+      "category": "language",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "برای گونه راست فیلر Juvederm Voluma یک سی‌سی تزریق شد و جواب خوبی گرفتیم." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "treatments": [{ "brandContainsAny": ["Voluma"] }],
+        "latin": { "forbidLatinProse": true, "allow": ["Juvederm", "Voluma"] }
+      }
+    },
+    {
+      "id": "C31",
+      "category": "structure",
+      "reportLanguage": "fa",
+      "useAftercareTemplates": true,
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی تزریق شد، لات D-4471." },
+        { "id": "c2", "type": "audio", "text": "یک سی‌سی ژل توی گونه چپ." },
+        { "id": "c3", "type": "audio", "text": "نیم سی‌سی فیلر خط خنده راست." },
+        { "id": "c4", "type": "audio", "text": "مزوتراپی موی سر هم انجام شد." },
+        { "id": "c5", "type": "photo", "text": "نمای روبه‌روی صورت پس از تزریق، بدون کبودی مشهود." },
+        { "id": "c6", "type": "audio", "text": "این عکس رو هم برای پرونده نگه دار و یادم بنداز به آزمایشگاه زنگ بزنم." },
+        { "id": "c7", "type": "audio", "text": "برای لب پایین هم نیم سی‌سی فیلر تزریق شد." },
+        { "id": "c8", "type": "audio", "text": "تا بیست و چهار ساعت ناحیه‌های تزریق ماساژ داده نشه." }
+      ],
+      "checks": {
+        "treatmentCount": 5,
+        "prose": {
+          "mustContainAnyGroups": [["پیشانی"], ["گونه"], ["خط خنده"], ["مو", "سر"], ["لب"]],
+          "forbidden": ["یادم بنداز", "آزمایشگاه", "نگه دار"]
+        },
+        "image": { "referencedOnce": ["c5"] }
+      }
+    },
+    {
+      "id": "C32",
+      "category": "structure",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "بیست واحد بوتاکس روی پیشانی تزریق شد." },
+        { "id": "c2", "type": "photo", "text": "نمای نزدیک پیشانی پس از تزریق." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "image": { "referencedOnce": ["c2"] },
+        "prose": { "forbidden": ["بدون عارضه", "نتیجه عالی"] }
+      },
+      "flex": "The photo caption is a neutral extractor output — the report must not invent clinical judgments (e.g. 'no complications') from it."
+    },
+    {
+      "id": "C33",
+      "category": "structure",
+      "reportLanguage": "fa",
+      "captures": [
+        { "id": "c1", "type": "audio", "text": "سلام، خوبید؟ بفرمایید بشینید. چای میل دارید؟" },
+        { "id": "c2", "type": "audio", "text": "یک سی‌سی ژل توی لب بالا تزریق شد." }
+      ],
+      "checks": {
+        "treatmentCount": 1,
+        "prose": { "mustContainAnyGroups": [["لب"]], "forbidden": ["چای", "بفرمایید", "بشینید"] }
+      }
+    },
+    {
+      "id": "C34",
+      "category": "structure",
+      "reportLanguage": "fa",
+      "captures": [{ "id": "c1", "type": "audio", "text": "برای خانم مریم رضایی امروز ده واحد بوتاکس خط اخم زدم." }],
+      "checks": {
+        "treatmentCount": 1,
+        "summaryForbidden": ["مریم رضایی", "مریم", "رضایی"]
+      },
+      "flex": "Patient identity belongs to assignment, not report prose — the summary must read clinically without the name."
+    }
+  ]
+}
