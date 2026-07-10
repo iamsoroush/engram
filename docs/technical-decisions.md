@@ -1,5 +1,20 @@
 # Technical Decisions
 
+## Model comparison verdict: keep the incumbent split; mid bracket rejected (2026-07-10)
+
+A 74-case owner-designed comparison (all text AI jobs + transcription + audio formats; readout in
+`docs/work/model-compare/` until folded) validated the current production config as the champion:
+`gpt-5.4-nano` for synthesis + safety-reconcile (blind judge 30–4 on synthesis, cheaper than the
+Gemini peer), `gemini-3.1-flash-lite` for qa_draft / patient-memory / transcription (the OpenAI
+models leak a cross-patient dose on Q&A 3/3; Gemini doesn't — the split exploits opposite safety
+personalities). The mid bracket (`gpt-5.4-mini`, subbed for the unavailable `gpt-5.6-luna`) buys
+~equal quality at ~3.5× token cost — halving usage-limit headroom (823 → 459 effective visits per
+$10/seat) — and `gemini-3.5-flash` is disqualified operationally (46–56% HTTP-503 under load,
+40–100 s latency, ~9× nano cost). Revisit only when a provider ships a new price-class or the
+gateway gains `gpt-5.6` access. Fallout fixed alongside: `services/ai_usage/pricing.py` rates
+refreshed to live 2026-07-10 pricing (the meter was under-pricing Gemini jobs 2.5–3.75×), and the
+systemic C34 name-leak got a synthesis v17 prompt guard + a permanent eval case.
+
 ## Eval gates vote majority-of-N on failure (2026-07-10)
 
 Single-sample LLM variance was indistinguishable from prompt regressions: a ~80-call `run_all` run

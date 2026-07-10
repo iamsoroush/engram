@@ -451,6 +451,19 @@ CASES: list[dict[str, Any]] = [
         },
         "judge": True,
     },
+    {
+        # PATIENT-IDENTITY EXCLUSION: a dictated name identifies the patient (assignment) but is never
+        # report content — the model-comparison readout (C34) showed every candidate leaking it into the
+        # summary before the v17 prompt guard. The clinical fact must still surface.
+        "name": "dictated patient name → identifies, never appears in report prose",
+        "captures": [_audio("c1", "برای خانم مریم رضایی امروز ده واحد بوتاکس خط اخم زدم")],
+        "expect": {
+            "sectionsNonEmpty": ["treatment-performed"],
+            "surfacesAny": [["بوتاکس", "botox"], ["اخم"]],
+            "forbiddenAnywhere": ["مریم", "رضایی"],
+        },
+        "judge": True,
+    },
 ]
 
 

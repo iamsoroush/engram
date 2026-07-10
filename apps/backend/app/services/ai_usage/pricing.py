@@ -2,8 +2,9 @@
 
 Rates are the owner-supplied provider rates that the self-hosted gateway (gw.engram.ir) bills against
 (the gateway adds no per-token cost). LLM/vision tasks are priced per token; transcription is priced
-per audio-minute. Confirmed live 2026-07-02: transcription `gemini-3.1-flash-lite`, synthesis
-`gpt-5.4-nano`. Change a rate here and the whole meter recomputes.
+per audio-minute. Confirmed against live provider pricing 2026-07-10 (model-comparison readout):
+transcription `gemini-3.1-flash-lite`, synthesis `gpt-5.4-nano`. Change a rate here and the whole
+meter recomputes.
 
 Cost is computed in micro-dollars (int) to avoid float drift in the accumulator.
 """
@@ -14,10 +15,11 @@ from typing import Any
 # ($/1M input tokens, $/1M output tokens) for chat/vision LLM tasks, by model id.
 LLM_TOKEN_RATES_USD_PER_M: dict[str, tuple[float, float]] = {
     "gpt-5.4-nano": (0.20, 1.25),
-    "gpt-5.4-mini": (0.40, 1.60),
+    "gpt-5.4-mini": (0.75, 4.50),
     "gpt-5.4": (2.00, 8.00),
     "gemini-2.5-flash": (0.30, 2.50),
-    "gemini-3.1-flash-lite": (0.10, 0.40),
+    "gemini-3.1-flash-lite": (0.25, 1.50),
+    "gemini-3.5-flash": (1.50, 9.00),
 }
 _DEFAULT_LLM_RATE = (0.20, 1.25)
 

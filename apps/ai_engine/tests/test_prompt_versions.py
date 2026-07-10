@@ -49,7 +49,7 @@ PINNED = {
     safety_reconcile: ("2026-07-10.safety_reconcile.v2", "7e62cc375a4747e7ae890d5328a368faac59715ab5ef5671a070686ac7c77167"),
     # v4 (G3): explicit stable-prefix context layout. v5 (G7): treatment `status` classification
     # (performed | planned | uncertain) + the planned_vs_performed uncertainty code.
-    synthesis: ("2026-07-10.synthesis.v16", "40346e31ad1ddcb1642f9a9773e5e0794bcbaff9f7b610199fc7afe4d0c125c5"),
+    synthesis: ("2026-07-10.synthesis.v17", "c82fdd3d7e651532541701fb1db32248bf878ed92504c2e8fbe6965888a47b93"),
 }
 
 
