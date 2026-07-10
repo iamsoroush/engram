@@ -117,6 +117,19 @@ an AI-created patient, assign a patient, or a queued assignment in the outbox) r
 retrying, and shows one calm warning — `That patient record is no longer available — the visit was set
 back to unassigned. Please assign it again.` No error code, no stuck spinner, no manual cache reset.
 
+## Permission & retryable states
+
+Two failure classes that look alike but must never behave alike (shared views: `shared/ui/StateViews`):
+
+- **Permission denied (403).** A role mismatch on an owner/admin-gated surface. Retrying can never
+  grant access, so the **permission state carries no Retry** — a calm lock glyph + "You don't have
+  access to this page · limited to clinic owners and admins." The **primary** guard is the route guard
+  (a non-owner hash-navigating to `#insights`/`#team`/`#plan` is redirected to `#patients` before the
+  screen renders — see [navigation.md](navigation.md)); this state is the belt-and-suspenders for a
+  race or a server-side role change that still 403s.
+- **Retryable failure.** A transient/network/5xx error. This — and only this — reserves the
+  `Try again` copy + a **Retry** button. Never label a permission failure "try again".
+
 ## Empty
 
 - Active Session with no captures still shows the workspace and empty report surface.
@@ -275,5 +288,4 @@ Avoid ambiguous labels such as `Today · 4:23 PM` or `Updated today` when the UI
 ## Known Gaps
 
 - No dedicated not-found route.
-- No detailed permission-denied UI for staff/admin role mismatches.
 - Critical browser storage quota handling needs a polished warning and recovery path.

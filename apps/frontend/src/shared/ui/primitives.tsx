@@ -149,23 +149,33 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cx("skeleton", className)} />;
 }
 
+/** The single segmented control for the app (tabs, scope/series toggles). Renders proper tab
+ *  semantics (`role="tab"` + `aria-selected`, matching the clinical-tabs pattern). Pass `ariaLabel`
+ *  to name the group and an optional per-option `testId`. */
 export function Tabs<T extends string>({
   value,
   options,
   onChange,
+  ariaLabel,
+  className,
 }: {
   value: T;
-  options: Array<{ value: T; label: string }>;
+  options: Array<{ value: T; label: string; testId?: string }>;
   onChange: (value: T) => void;
+  ariaLabel?: string;
+  className?: string;
 }) {
   return (
-    <div className="tabs" role="tablist">
+    <div className={cx("tabs", className)} role="tablist" aria-label={ariaLabel}>
       {options.map((option) => (
         <button
           className={cx("tab", value === option.value && "tab-active")}
           key={option.value}
+          data-testid={option.testId}
           onClick={() => onChange(option.value)}
           type="button"
+          role="tab"
+          aria-selected={value === option.value}
         >
           {option.label}
         </button>
