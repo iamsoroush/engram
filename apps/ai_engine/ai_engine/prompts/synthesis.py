@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-10.synthesis.v16"
+PROMPT_VERSION = "2026-07-10.synthesis.v17"
 
 # Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
 # `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
@@ -181,7 +181,8 @@ def build(processing_context: dict[str, Any]) -> str:
                 "PROSE only and never rewrites quantityText, which stays verbatim as spoken); if it "
                 "appears anywhere, rewrite that sentence with only the final value. (2) confirm every "
                 "prose sentence is written in the report language the instructions state — no sentence "
-                "may fall back to the captures' language.\n"
+                "may fall back to the captures' language. (3) confirm the patient's name appears nowhere "
+                "in the summary, sections, or uncertainties.\n"
                 "- AMBIGUOUS (cannot tell correction from addition): DO NOT silently overwrite. Emit BOTH "
                 "treatments AND add a clear sentence to uncertainties describing the ambiguity."
             ),
@@ -274,6 +275,13 @@ def build(processing_context: dict[str, Any]) -> str:
                 "patient is NOT pregnant; a condition mentioned only to be denied is not a current state. "
                 "Matching a keyword in the kind list (باردار, حساسیت, …) is NOT enough — the flag must "
                 "state THIS patient's CURRENT allergy/contraindication/consent state."
+            ),
+            (
+                "PATIENT IDENTITY IS NOT REPORT CONTENT: the report renders under the patient's own "
+                "header, and a dictated name is how the patient gets IDENTIFIED (assignment) — never what "
+                "the report says. When the clinician dictates a name («برای خانم مریم رضایی ده واحد "
+                "بوتاکس زدم»), extract the clinical fact and refer to «بیمار»: the patient's name (first, "
+                "last, or both) appears NOWHERE in the summary, sections, or uncertainties."
             ),
             (
                 "META-SPEECH EXCLUSION (administrative / non-clinical talk): a capture can interleave "
