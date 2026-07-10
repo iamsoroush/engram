@@ -126,8 +126,12 @@ GUARDRAIL, size the metric.
   work around.
 - Report: bytes/min per format, accuracy deltas vs the WAV control per model, and a verdict by the
   decision rule — **the smallest format with zero clinical-token regressions and CER within +0.5pp
-  absolute of WAV**. If a compressed format wins, sketch (do not implement) the production change:
-  upload the recorder's native/compressed blob, backend validation + duration handling, gateway
+  absolute of WAV**. If a compressed format wins, sketch (do not implement) the production change.
+  Standardization to ONE canonical stored format stays mandatory (browsers record divergent
+  containers — Chrome webm/opus, Safari mp4/AAC); the experiment only picks the canonical TARGET.
+  The sketch must weigh where the conversion runs — client-side re-encode (WebCodecs opus support
+  is patchy on Safari) vs server-side transcode-on-ingest (accept the native blob, normalize once,
+  store only the canonical format) — plus backend validation + duration handling and the gateway
   format allowlist.
 
 ## Deliverable
