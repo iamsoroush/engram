@@ -108,6 +108,28 @@ memo; they never override deterministic safety events.
    limit headroom) vs today's baseline, and what `ai_budget_usd_per_seat` would need to be to keep
    today's headroom under a pricier winner.
 
+## Audio-format comparison (transcription add-on)
+
+Framing (owner decision): the win to chase is **~10× smaller uploads/storage at equal accuracy**,
+not better accuracy. The browser already records compressed speech (MediaRecorder opus/AAC); our
+frontend re-encodes to WAV PCM 16 kHz mono (~1.92 MB/min), and Gemini normalizes ALL input audio to
+16 kHz mono internally and bills by duration — so richer formats cannot help accuracy or cost, but
+compressed formats cut mobile upload time and MinIO storage compounding ~10×. Accuracy is the
+GUARDRAIL, size the metric.
+
+- Source: the 12 WAV masters of session `ab64916e-…` (content held constant).
+- Grid (transcode locally with ffmpeg, always 16 kHz mono): WAV PCM (control), FLAC, OGG/Opus
+  32 kbps, OGG/Opus 16 kbps, MP3 64 kbps, MP3 32 kbps.
+- Both transcription candidates × 6 formats × 12 clips × 3 samples; score with the same
+  transcription scorer (clinical-token accuracy + number-normalized CER). A gateway/provider
+  rejecting a format is a FINDING to report (the gateway is ours and extensible), not a reason to
+  work around.
+- Report: bytes/min per format, accuracy deltas vs the WAV control per model, and a verdict by the
+  decision rule — **the smallest format with zero clinical-token regressions and CER within +0.5pp
+  absolute of WAV**. If a compressed format wins, sketch (do not implement) the production change:
+  upload the recorder's native/compressed blob, backend validation + duration handling, gateway
+  format allowlist.
+
 ## Deliverable
 
 `docs/work/model-compare/readout.md` — verdict first (low-cost champion, mid-cost champion, per-job
