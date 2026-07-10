@@ -1,6 +1,12 @@
+import base64
+import shutil
+import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
+from ai_engine.core.media import audio_duration_seconds
+from ai_engine.jobs.capture_audio import _transcription_audio_payload
 from ai_engine.processing import (
     audio_to_flac_mono_16khz_base64,
     completed_audio_metadata,
@@ -195,6 +201,63 @@ class StructuredTranscriptionTests(unittest.TestCase):
 
         self.assertIn("intents", output)
         self.assertIsNone(output["intents"])
+
+
+class TranscriptionAudioPayloadTests(unittest.TestCase):
+    """Direct-send (gate G2): the stored canonical MP3 goes to the gateway as-is; everything else and
+    the kill-switch fall back to the format-agnostic FLAC re-encode."""
+
+    def _payload(self, content, content_type, *, direct=True):
+        with patch("ai_engine.jobs.capture_audio.transcription_direct_send_enabled", return_value=direct), \
+             patch("ai_engine.jobs.capture_audio.audio_to_flac_mono_16khz_base64", return_value="FLAC_B64"):
+            return _transcription_audio_payload(content, content_type)
+
+    def test_canonical_mp3_sends_bytes_directly(self):
+        data, fmt = self._payload(b"MP3DATA", "audio/mpeg")
+        self.assertEqual(fmt, "audio/mp3")
+        self.assertEqual(data, base64.b64encode(b"MP3DATA").decode("ascii"))
+
+    def test_mp3_content_type_with_params_is_stripped(self):
+        _data, fmt = self._payload(b"MP3DATA", "audio/mp3; codecs=mp3")
+        self.assertEqual(fmt, "audio/mp3")
+
+    def test_legacy_wav_falls_back_to_flac(self):
+        data, fmt = self._payload(b"RIFFWAV", "audio/wav")
+        self.assertEqual((data, fmt), ("FLAC_B64", "audio/flac"))
+
+    def test_missing_content_type_falls_back_to_flac(self):
+        data, fmt = self._payload(b"RAW", None)
+        self.assertEqual((data, fmt), ("FLAC_B64", "audio/flac"))
+
+    def test_kill_switch_forces_flac_even_for_mp3(self):
+        data, fmt = self._payload(b"MP3DATA", "audio/mpeg", direct=False)
+        self.assertEqual((data, fmt), ("FLAC_B64", "audio/flac"))
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg/ffprobe not installed")
+class AudioDurationMeteringTests(unittest.TestCase):
+    """Per-minute transcription billing must stay duration-priced across the storage-format change:
+    the duration probe must return real seconds for the canonical MP3 (not just legacy WAV)."""
+
+    def _encode(self, args, suffix):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = f"{tmp}/tone{suffix}"
+            subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                 "-f", "lavfi", "-i", "sine=frequency=440:duration=2.0", "-ac", "1", "-ar", "16000", *args, out],
+                check=True,
+            )
+            return open(out, "rb").read()
+
+    def test_duration_measured_for_mp3_and_wav(self):
+        for label, args, suffix in [
+            ("canonical mp3", ["-c:a", "libmp3lame", "-b:a", "32k", "-f", "mp3"], ".mp3"),
+            ("legacy wav", ["-c:a", "pcm_s16le", "-f", "wav"], ".wav"),
+        ]:
+            with self.subTest(fmt=label):
+                dur = audio_duration_seconds(self._encode(args, suffix))
+                self.assertIsNotNone(dur)
+                self.assertAlmostEqual(dur, 2.0, delta=0.2)
 
 
 if __name__ == "__main__":

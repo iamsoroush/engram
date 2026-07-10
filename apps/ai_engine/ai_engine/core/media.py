@@ -6,7 +6,9 @@ cost scales with pixels). Failures here surface as ``RuntimeError`` (audio) or a
 the original bytes (image), so a downscale can never break captioning.
 """
 import base64
+import os
 import subprocess
+import tempfile
 from io import BytesIO
 
 from ai_engine.core.errors import ConversionFailed
@@ -55,15 +57,25 @@ def audio_to_flac_mono_16khz_base64(content: bytes) -> str:
 
 
 def audio_duration_seconds(content: bytes) -> float | None:
-    """Best-effort audio duration (seconds) via ffprobe, for per-minute transcription pricing."""
-    cmd = [
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=nokey=1:noprint_wrappers=1", "pipe:0",
-    ]
+    """Best-effort audio duration (seconds) via ffprobe, for per-minute transcription pricing.
+
+    Probes a temp FILE, not ``pipe:0``: ffprobe reports ``Duration: N/A`` over a non-seekable pipe for
+    the container formats we now store (compressed MP3) — and even for WAV on some ffmpeg builds — which
+    would silently drop transcription to the token-estimate pricing fallback. A seekable file yields the
+    real duration for every format, so per-minute billing stays duration-priced across the storage change.
+    """
     try:
-        result = subprocess.run(cmd, input=content, capture_output=True, check=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "audio")
+            with open(path, "wb") as handle:
+                handle.write(content)
+            result = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nokey=1:noprint_wrappers=1", path],
+                capture_output=True, check=True,
+            )
         value = result.stdout.decode("utf-8", errors="replace").strip()
-        return float(value) if value else None
+        return float(value) if value and value != "N/A" else None
     except Exception:
         return None
 

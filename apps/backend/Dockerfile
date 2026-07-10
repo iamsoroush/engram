@@ -5,6 +5,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# ffmpeg/ffprobe: transcode-on-ingest normalizes every capture-audio upload to the canonical stored
+# format (MP3 16 kHz mono) and probes its duration (app/services/audio.py).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

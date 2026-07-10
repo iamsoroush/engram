@@ -366,6 +366,9 @@ export function AudioDialog({
 }) {
   const t = useT();
   const [seconds, setSeconds] = React.useState(0);
+  // Mirror of `seconds` readable inside the recorder's onstop closure: the elapsed recording time is
+  // the optimistic capture duration shown pre-sync (the backend measures the real duration on ingest).
+  const secondsRef = React.useRef(0);
   const [recorder, setRecorder] = React.useState<MediaRecorder | null>(null);
   const [audioUrl, setAudioUrl] = React.useState("");
   const [error, setError] = React.useState("");
@@ -387,7 +390,11 @@ export function AudioDialog({
 
   React.useEffect(() => {
     const timer = window.setInterval(() => {
-      setSeconds((value) => (recordingState === "recording" ? value + 1 : value));
+      setSeconds((value) => {
+        const next = recordingState === "recording" ? value + 1 : value;
+        secondsRef.current = next;
+        return next;
+      });
     }, 1000);
     return () => window.clearInterval(timer);
   }, [recordingState]);
@@ -395,6 +402,7 @@ export function AudioDialog({
   React.useEffect(() => {
     if (!open) return;
     setSeconds(0);
+    secondsRef.current = 0;
     chunksRef.current = [];
     discardNextStopRef.current = false;
     saveOnStopRef.current = false;
@@ -443,6 +451,9 @@ export function AudioDialog({
               detail: "Clinical audio captured and saved to the backend.",
               file: blob,
               filename,
+              // Optimistic duration for the pre-sync UI; the backend measures the real duration on
+              // ingest (the client no longer re-encodes to compute it).
+              metadata: { duration: secondsRef.current },
             }).then(() => setRecordingState("saved"));
             return;
           }

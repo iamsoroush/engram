@@ -89,6 +89,26 @@ Postgres artifact rows store:
 
 The database is the authority for ownership, authorization, and artifact meaning. MinIO is the binary store.
 
+## Capture Audio Format
+
+Capture audio is **transcoded on ingest** to exactly ONE canonical stored format — **MP3 32 kbps,
+16 kHz mono** — regardless of what the browser recorded (Chrome `webm/opus`, Safari `mp4/AAC`) or
+what older clients send (WAV). `upload_source_capture` normalizes once with ffmpeg
+(`app/services/audio.py`), stores only the canonical bytes with content-type `audio/mpeg`, measures
+duration server-side (ffprobe) into `capture_metadata.duration`, and rejects non-audio. The backend
+image installs ffmpeg. This is ~8× smaller than the former WAV-PCM-16k store (~1.92 MB/min →
+~0.24 MB/min) at zero transcription-accuracy cost.
+
+- **Canonical = MP3** (not Opus): it plays natively in `<audio>` with exact duration + seek on Chrome
+  and Safari, incl. iOS, through the byte-range path, and is universally decodable. Flipping the
+  canonical to Opus (marginally smaller) is a one-place change in `audio.py`, gated on an iOS-Safari
+  playback re-test.
+- **Mixed store, no migration:** existing WAV artifacts stay readable/playable — readers serve the
+  stored `artifact.mime_type` (byte-range aware), so old WAV and new MP3 both work. Only new captures
+  are canonical.
+- The transcription worker sends the stored canonical MP3 straight to the gateway (no per-call FLAC
+  re-encode); see [ai_engine/processing](../ai_engine/processing.md).
+
 ## Upload Safety
 
 The backend must not report upload success until:

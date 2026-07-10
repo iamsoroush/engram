@@ -70,11 +70,11 @@ rather than prop-threading. See [frontend overview](frontend/overview.md#composi
 
 ### Capture
 
-1. User records audio, takes/selects a photo, or writes a note.
+1. User records audio, takes/selects a photo, or writes a note. Audio uploads as recorded (the browser's native container — Chrome `webm/opus`, Safari `mp4/AAC`), not a client WAV re-encode.
 2. Browser writes the source blob into IndexedDB before attempting network upload.
 3. UI confirms local safety using the shared UX state language.
 4. The outbox attempts upload to the backend when possible.
-5. Backend stores the source file and session metadata.
+5. Backend stores the source file and session metadata. Capture audio is transcoded on ingest (ffmpeg) to ONE canonical stored format — MP3 16 kHz mono, ~8× smaller than the old WAV-PCM store — with duration measured server-side; see [storage](backend/storage.md).
 6. On an AI-capable tenant, the backend creates a queued capture processing job and dispatches it to Celery (in per-session capture order). On aesthetics Basic — zero AI capabilities — no job is created; the report rebuilds synchronously.
 7. Browser removes the pending outbox entry and keeps a synced local cache copy.
 8. The worker transcribes/captions the capture through the gateway and reports start/complete/fail back to the backend; failures retry with bounded backoff and are swept by the recovery beat.
