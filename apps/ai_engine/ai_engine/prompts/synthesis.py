@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-09.synthesis.v5"
+PROMPT_VERSION = "2026-07-10.synthesis.v13"
 
 # Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
 # `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
@@ -35,6 +35,10 @@ _VOLATILE_KEYS: tuple[str, ...] = (
     "priorSafetyReconciliation",
 )
 _LLM_EXCLUDED_KEYS = frozenset({"rawReportTemplate"})
+
+# Full names for the language directive: a bare code ("en") is a weak signal against the prompt's
+# Persian worked examples; the spelled-out name is what actually holds the prose language.
+_LANGUAGE_NAMES = {"fa": "Persian (Farsi)", "en": "English"}
 
 
 def _ordered_context(context: dict[str, Any]) -> dict[str, Any]:
@@ -81,9 +85,17 @@ def build(processing_context: dict[str, Any]) -> str:
         + "Leave null only when no anatomical area is stated.\n"
     )
     report_language = context.get("reportLanguage")
-    language_directive = (
-        f"Write all report prose in {report_language} using its native script."
+    language_name = (
+        _LANGUAGE_NAMES.get(report_language.strip().lower(), report_language.strip())
         if isinstance(report_language, str) and report_language.strip()
+        else None
+    )
+    language_directive = (
+        f"Write ALL report prose in {language_name} using its native script — EVERY sentence of the "
+        "summary, sections, and uncertainties, even when the captures are in another language. The "
+        "worked examples in these instructions are Persian for illustration only; they never change "
+        "the report language."
+        if language_name
         else "Write all report prose in the language the captures use (the report template's default)."
     )
     vocab_line = vocabulary_line(label, vocabulary)
@@ -102,11 +114,15 @@ def build(processing_context: dict[str, Any]) -> str:
                 f"- sections: populate these fixed section ids, in this order: {section_lines}. Each "
                 "section has id, title, and blocks. A block is either {\"type\":\"paragraph\",\"text\":...} "
                 "or {\"type\":\"image\",\"captureId\":<a photo captureId from the context>,\"caption\":...}. "
+                "Reference each photo captureId in AT MOST ONE image block across the whole report. "
                 "Leave a section's blocks empty ([]) when the captures do not support it — never pad it.\n"
                 f"- {language_directive} Write the DESCRIPTIVE treatment fields — area, product (the "
                 "generic/category, e.g. فیلر/ژل, بوتاکس), and unit (e.g. واحد, سی‌سی) — in the REPORT "
-                "LANGUAGE using its native script; prefer the clinician's own word when they gave one. "
-                "Do NOT emit an English category (\"filler\", \"botox\", \"unit\") in a Persian report. "
+                "LANGUAGE using its native script; prefer the clinician's own word when they gave one "
+                "in that language. "
+                "Do NOT emit an English category (\"filler\", \"botox\", \"unit\") in a Persian report, "
+                "and do NOT emit a Persian category in an English report — map it to the standard "
+                "English term («بوتاکس» → Botox, «ژل/فیلر» → filler, «واحد» → unit, «سی‌سی» → cc). "
                 "Keep VERBATIM in their original script: brand names, lot numbers, patient/clinician "
                 "quotes, and quantityText (e.g. «۲ سی‌سی») — never translate or romanize these, and never "
                 "normalize «۲» to \"2\" in quantityText.\n"
@@ -116,7 +132,10 @@ def build(processing_context: dict[str, Any]) -> str:
                 "script), lot (dictated or read off a product-label photo), confidence (0..1), status "
                 "(see TREATMENT STATUS below), sourceCaptureIds, evidence, carriedForward, "
                 "supersedesCaptureId, and an open attributes map (needleGauge, depth, device, sessions, "
-                "…). The treatment-performed section is a prose MIRROR of the PERFORMED treatments — keep "
+                "…). `quantity` is the NUMERIC value regardless of how it was spoken — parse number words "
+                "(«سه سی‌سی» → quantity 3, «بیست واحد» → 20) as well as digits; `quantityText` stays "
+                "VERBATIM as spoken/written — never rewrite digits as words or words as digits there. "
+                "The treatment-performed section is a prose MIRROR of the PERFORMED treatments — keep "
                 "them consistent; do not list a planned treatment there.\n"
                 f"{area_code_line}"
                 "- priorKey: the context's prior-visit treatments (referencePriorVisitTreatments) and "
@@ -145,6 +164,21 @@ def build(processing_context: dict[str, Any]) -> str:
                 "of the superseded statement (auditable/undoable).\n"
                 "- ADDITION: on an additive cue (هم…هم، اضافه، \"another\") OR a different area/product. "
                 "Emit a separate TreatmentItem for each.\n"
+                "- PROSE after a correction states ONLY the final corrected value. Never restate the "
+                "superseded value anywhere in the sections (not even as \"corrected from …\") — the "
+                "supersede chain in treatments[] is the audit trail; the report reads as if the final "
+                "value was always the value. WORKED EXAMPLE: dictation says «بیست واحد بوتاکس تزریق شد» "
+                "then a later capture corrects «دوز درست بیست و چهار واحد شد». WRONG prose: «ابتدا بیست "
+                "واحد گفته شد اما با اصلاح بیست و چهار واحد ثبت شد» (narrates the correction). RIGHT "
+                "prose: «بیست و چهار واحد بوتاکس روی پیشانی تزریق شد» — the old value appears NOWHERE "
+                "in any section.\n"
+                "- FINAL CHECK before returning: (1) for every correction you emitted, scan your summary, "
+                "sections, and uncertainties for the SUPERSEDED value (when SCANNING, treat digits and "
+                "words as the same value — «بیست واحد» = «۲۰ واحد»; this equivalence is for scanning "
+                "PROSE only and never rewrites quantityText, which stays verbatim as spoken); if it "
+                "appears anywhere, rewrite that sentence with only the final value. (2) confirm every "
+                "prose sentence is written in the report language the instructions state — no sentence "
+                "may fall back to the captures' language.\n"
                 "- AMBIGUOUS (cannot tell correction from addition): DO NOT silently overwrite. Emit BOTH "
                 "treatments AND add a clear sentence to uncertainties describing the ambiguity."
             ),
@@ -174,27 +208,34 @@ def build(processing_context: dict[str, Any]) -> str:
                 "those are neither performed nor planned, so they are not treatments for this visit."
             ),
             (
-                "AFTERCARE SELECTION (intelligent, not keyword): the clinic's reusable aftercare protocols "
-                "are in the context as `aftercareTemplates` [{id, name, procedureType, body}]. Decide by "
-                "CLINICAL RELEVANCE — judge the procedure, not a word match — and return one entry per "
-                "applicable protocol in `aftercareSelections` [{templateId, status, note}].\n"
-                "- COMPLETENESS: emit a selection for EVERY protocol whose procedure was actually performed "
-                "this visit (one per treatment area/product, e.g. a botox+filler visit → BOTH the botox and "
-                "filler protocols). Do not omit an applicable protocol just because another one conflicts. "
-                "Omit only protocols whose procedure was NOT performed; return [] if none were performed or "
-                "there are no templates.\n"
-                "- PER-PROCEDURE: compare a protocol ONLY against what the clinician dictated about that "
-                "SAME procedure/area — never judge the botox protocol against a filler instruction.\n"
-                "- status='applies': that procedure's protocol fits and the clinician dictated nothing that "
-                "contradicts it. note=null.\n"
-                "- status='conflicts': the clinician DICTATED aftercare for that procedure that DIFFERS from "
-                "its protocol (e.g. botox protocol says avoid sun 3 days, clinician said 1 week). The "
-                "clinician's words win — set note to ONE sentence in the report language naming the specific "
-                "difference and quoting both values.\n"
-                "- status='superseded': the clinician dictated their OWN full aftercare that REPLACES that "
-                "protocol entirely. note = one short sentence in the report language saying so.\n"
-                "Prefer the clinician's dictated aftercare over a fixed protocol whenever they differ; never "
-                "silently include a protocol that contradicts what the clinician said."
+                "AFTERCARE SELECTION — follow these four steps IN ORDER for `aftercareSelections` "
+                "[{templateId, status, note}] over the context's `aftercareTemplates` [{id, name, "
+                "procedureType, body}]:\n"
+                "STEP 1 — SELECT: every protocol whose procedure was PERFORMED this visit gets exactly one "
+                "selection entry (botox+filler visit → BOTH the botox and filler protocols, always). A "
+                "mention that a procedure was NOT done («بدون لیزر») only omits THAT procedure's protocol — "
+                "it never reduces the others. Returning [] when performed procedures have matching "
+                "templates is ALWAYS wrong; [] is only for no-performed-procedures or no-templates.\n"
+                "STEP 2 — for each selected protocol, default status='applies' (note=null). A dictation "
+                "that says nothing about this protocol, or RESTATES its own advice (same value, reworded), "
+                "is 'applies'.\n"
+                "STEP 3 — upgrade to status='conflicts' ONLY when a dictated instruction meets ALL of: "
+                "(a) it concerns THIS procedure — an instruction naming a procedure or its area binds only "
+                "to that procedure's protocol; a generic instruction is tested against each protocol via "
+                "(b); (b) the protocol's OWN body addresses the SAME literal topic (a sun rule can conflict "
+                "only with a protocol whose body mentions sun; a body that mentions only heat/sauna is a "
+                "DIFFERENT topic — no conflict); (c) the VALUES differ (3 days vs 1 week). Then note = ONE "
+                "report-language sentence quoting both values. If any of (a)(b)(c) fails, stay 'applies'.\n"
+                "WORKED EXAMPLE — dictation: «تا یک هفته از آفتاب پرهیز کنه»; botox protocol body: «تا ۳ "
+                "روز از آفتاب مستقیم پرهیز»; filler protocol body: «تا ۲ هفته از حرارت زیاد (سونا) "
+                "پرهیز». Botox → 'conflicts' (both address SUN; one week ≠ three days — quote both). "
+                "Filler → 'applies' (its body never mentions sun; heat/sauna is a different topic). "
+                "Always apply this exact pattern: flag the protocol whose body shares the instruction's "
+                "topic, keep the other at applies.\n"
+                "STEP 4 — status='superseded' when the clinician dictated their OWN full aftercare "
+                "REPLACING that protocol; note = one short report-language sentence saying so.\n"
+                "The clinician's words always win over a protocol; never silently include a protocol that "
+                "contradicts what they said."
             ),
             (
                 "SAFETY FLAGS (highest priority — surface, never gate): scan EVERY capture for any ALLERGY, "
@@ -214,9 +255,19 @@ def build(processing_context: dict[str, Any]) -> str:
                 "allergy or contraindication from the treatment itself, and NEVER emit a negative/absence "
                 "statement (no «no known allergies», no «مشکلی نداشت»). Set sourceCaptureIds to the "
                 "captureId(s) that state it.\n"
-                "- Safety errs toward INCLUSION: when a statement plausibly reads as an allergy / "
-                "contraindication / consent concern, include it — the clinician removes a wrong one. Return "
-                "[] only when no capture states any such thing."
+                "- Safety errs toward INCLUSION: when a statement about this patient's current state "
+                "plausibly reads as an allergy / contraindication / consent concern, include it — the "
+                "clinician removes a wrong one. Return [] when no capture states any such thing.\n"
+                "- NOT a flag — CHECK BEFORE EMITTING each flag: re-read the WHOLE sentence (and any later "
+                "capture). If the sentence itself negates, resolves, or attributes the condition to someone "
+                "else, do NOT emit it: a RESOLVED or negated concern («قبلاً به پنی‌سیلین حساسیت داشت ولی "
+                "تست جدید منفی بود» — the capture itself says it no longer applies); a FAMILY member's "
+                "condition («مادرش آلرژی داره» — someone else, not this patient); a HYPOTHETICAL the "
+                "capture negates. WORKED EXAMPLE: «اگر باردار بود بوتاکس نمی‌زدیم، ولی باردار نیست» — "
+                "WRONG: a pregnancy contraindication flag. RIGHT: no flag at all — the sentence states the "
+                "patient is NOT pregnant; a condition mentioned only to be denied is not a current state. "
+                "Matching a keyword in the kind list (باردار, حساسیت, …) is NOT enough — the flag must "
+                "state THIS patient's CURRENT allergy/contraindication/consent state."
             ),
             (
                 "META-SPEECH EXCLUSION (administrative / non-clinical talk): a capture can interleave "

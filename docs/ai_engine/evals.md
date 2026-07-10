@@ -27,6 +27,11 @@ fails. A new job's eval is added by dropping a `*_eval.py` in `apps/ai_engine/ev
 - **Safety gates** — deterministic matchers (substring / numeric-token / presence / no-Latin).
   **HARD pass/fail, block ship**: a wrong dose transcribed, a wrong patient auto-assigned, a
   diagnosis in a caption, an invented treatment/flag, a romanized Persian transcript.
+  **Majority voting (`EVAL_VOTES`)**: set `EVAL_VOTES=3` to re-sample a case only when it FAILS —
+  the case passes if a majority of attempts pass (`gate_votes` in `eval/_common.py`; a first-attempt
+  pass returns immediately, so the happy path costs one call). This separates single-sample LLM
+  variance from real prompt regressions; per-case output shows `[votes:n/N]` when re-voting fired.
+  The judge tier is never re-voted — it runs once on the deciding output.
 - **Quality — LLM-as-judge**, scored 0..1 against a per-eval rubric (hallucination, missing info,
   native-script fidelity, tone). **Advisory by default** — reported in the scorecard so prompt/model
   drift is visible, but LLM nondeterminism never flakes the suite red. `EVAL_STRICT_QUALITY=1`
@@ -44,8 +49,8 @@ scored on top with no code change.
 
 **`knownGap` (xfail):** a case may set `"knownGap": "<reason>"` when it fails due to a *documented
 model limitation* (not a harness bug). It is reported loudly (`KNOWN-GAP …`) but not counted as a
-blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always with a reason
-+ the intended fix.
+blocking failure — and if it starts passing, that is surfaced too. Use sparingly, always with a
+reason plus the intended fix.
 
 The shared harness (tolerant Persian matching, the judge, the fixture store, the `knownGap` xfail, the
 exit-code policy, and the machine-readable scorecard) is `eval/_common.py`. **Every module uses it** —
@@ -233,7 +238,8 @@ Two workflows, split by cost and determinism:
   (the `run_config` scorecard tag is designed to import into it cleanly).
 
 Beyond CI, the real gate on model/prompt behavior is the CLAUDE.md §4 rule: an agent changing an AI
-job runs `run_all.py` where a gateway is reachable and must not regress the scorecard. Next on the
-ladder (not yet built): **Stage 3**, a merge gate for AI-job PRs over the synthetic-gateway modules with
-a majority-of-3 flake policy for the single-call synthesis evals — promoted once Stage-2 trend data
-shows a stable baseline.
+job runs `run_all.py` where a gateway is reachable and must not regress the scorecard — with
+`EVAL_VOTES=3` so a red case means a majority-confirmed regression, not sampling noise. Next on the
+ladder (not yet wired into CI): **Stage 3**, promoting that `EVAL_VOTES=3` gateway run to a blocking
+merge gate for AI-job PRs — the voting harness already exists (see the safety-gates tier above);
+what's pending is only the CI wiring, once Stage-2 trend data shows a stable baseline.

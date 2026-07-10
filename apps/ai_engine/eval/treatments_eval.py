@@ -35,10 +35,12 @@ except NameError:
 
 from _common import (  # noqa: E402
     AUDIO_SUFFIXES,
+    EVAL_VOTES,
     capture_prompt_version,
     contains,
     env_models,
     exit_code,
+    gate_votes,
     gateway_configured,
     load_fixtures,
     number_tokens,
@@ -233,10 +235,13 @@ CASES: list[dict[str, Any]] = [
     },
     # --- (c) Structured-field exact-match: quantityText is the verbatim trust anchor. ----------------
     {
+        # quantityText is VERBATIM: this dictation speaks the dose in WORDS, so the text must keep
+        # the words (demanding digits contradicted the contract and failed a correct model);
+        # `quantity` carries the parsed NUMERIC 24 regardless of how it was spoken.
         "name": "quantityText verbatim (structured exact-match trust anchor)",
         "captures": [_audio("c1", "بیست و چهار واحد بوتاکس روی پیشونی زدم")],
         "lang_fa": True,
-        "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 24, "quantityTextContains": ["۲۴", "24"]}]},
+        "expect": {"count": 1, "items": [{"product": ["بوتاکس", "botox"], "quantity": 24, "quantityTextContains": ["بیست و چهار"]}]},
     },
     # (G7) planned vs performed — owner-approved golden cases (production-reported regression).
     {
@@ -579,20 +584,21 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
     records: list[dict[str, Any]] = []
     prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
+        def _attempt(case=case):
+            out = synthesize_session_report(_payload(case["captures"], case.get("prior"), case.get("aftercare_templates")))
+            if out is None:
+                return ["no usable output (malformed/empty)"], None
+            return run_gates(out, case), out
+
         try:
-            output = synthesize_session_report(_payload(case["captures"], case.get("prior"), case.get("aftercare_templates")))
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001 — gateway/network: report and stop scoring.
             print(f"  [{index}] ERROR {case['name']}: synthesis failed: {exc!r}")
             print("  SKIP: gateway unreachable — remaining cases not scored.")
             break
-        if output is None:
-            print(f"  [{index}] SAFETY FAIL {case['name']}: synthesis returned no usable output (malformed/empty)")
-            safety_fail += 1
-            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(output)
-        problems = run_gates(output, case)
-        treatments = output.get("treatments") or []
+        prompt_version = prompt_version or (capture_prompt_version(output) if output else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
+        treatments = (output or {}).get("treatments") or []
         summary = "; ".join(
             f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}{'(cf)' if t.get('carriedForward') else ''}{'(sup)' if t.get('supersedesCaptureId') else ''}"
             for t in treatments
@@ -604,11 +610,11 @@ def run_cases() -> tuple[int, int, int, list[dict[str, Any]], str | None]:
             records.append({"id": case["name"], "safety": "known-gap", "judge": {}, "reasons": problems})
         elif problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {case['name']}  → {summary}  | {', '.join(problems)}{votes_suffix}")
             records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": problems})
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}")
+            print(f"  [{index}] SAFETY PASS {case['name']}  → {summary}{votes_suffix}")
             records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": []})
     return safety_pass, safety_fail, known_gap, records, prompt_version
 
@@ -642,33 +648,34 @@ def run_synthesis_fixtures() -> tuple[int, int, int, list[dict[str, Any]], str |
         if spec is None:
             print(f"  [{index}] SKIP {name}: {fixture.get('error', 'no sibling .json with expected facts')}")
             continue
-        try:
+        def _attempt(fixture=fixture, spec=spec):
             transcription = transcribe_audio_content(fixture["media"].read_bytes(), {**TRANSCRIPTION_FIXTURE_CONTEXT})
             transcript = (transcription or {}).get("transcript") or ""
-            output = synthesize_session_report(_payload([_audio("s1", transcript)], aftercare_templates=AFTERCARE_TEMPLATES))
+            out = synthesize_session_report(_payload([_audio("s1", transcript)], aftercare_templates=AFTERCARE_TEMPLATES))
+            if out is None:
+                return ["no usable output"], None
+            found: list[str] = []
+            if spec.get("treatments"):
+                found.extend(run_gates(out, {"expect": spec["treatments"], "lang_fa": spec.get("lang_fa")}))
+            by_id = {s.get("templateId"): s.get("status") for s in (out.get("aftercareSelections") or []) if isinstance(s, dict)}
+            for template_id, expected_status in (spec.get("aftercare") or {}).items():
+                actual = by_id.get(template_id)
+                if actual is None:
+                    found.append(f"aftercare {template_id}: MISSING (expected {expected_status})")
+                elif not _aftercare_status_ok(expected_status, actual):
+                    found.append(f"aftercare {template_id}: {actual}≠{expected_status}")
+            return found, out
+
+        try:
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001 — gateway/ffmpeg error: report and stop scoring fixtures.
             print(f"  [{index}] ERROR {name}: transcribe/synthesize failed: {exc!r}")
             print("  SKIP: gateway/ffmpeg unreachable — synthesis fixtures not scored.")
             break
-        if output is None:
-            print(f"  [{index}] SAFETY FAIL {name}: synthesis returned no usable output")
-            safety_fail += 1
-            records.append({"id": name, "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(output)
+        prompt_version = prompt_version or (capture_prompt_version(output) if output else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
 
-        problems: list[str] = []
-        if spec.get("treatments"):
-            problems.extend(run_gates(output, {"expect": spec["treatments"], "lang_fa": spec.get("lang_fa")}))
-        by_id = {s.get("templateId"): s.get("status") for s in (output.get("aftercareSelections") or []) if isinstance(s, dict)}
-        for template_id, expected_status in (spec.get("aftercare") or {}).items():
-            actual = by_id.get(template_id)
-            if actual is None:
-                problems.append(f"aftercare {template_id}: MISSING (expected {expected_status})")
-            elif not _aftercare_status_ok(expected_status, actual):
-                problems.append(f"aftercare {template_id}: {actual}≠{expected_status}")
-
-        summary = "; ".join(f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}" for t in (output.get("treatments") or [])) or "(no treatments)"
+        summary = "; ".join(f"{t.get('product')}/{t.get('quantityText') or t.get('quantity')}" for t in ((output or {}).get("treatments") or [])) or "(no treatments)"
         known = spec.get("knownGap")
         if problems and known:
             known_gap += 1
@@ -676,11 +683,11 @@ def run_synthesis_fixtures() -> tuple[int, int, int, list[dict[str, Any]], str |
             records.append({"id": name, "safety": "known-gap", "judge": {}, "reasons": problems})
         elif problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {name}  → {summary}  | {', '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {name}  → {summary}  | {', '.join(problems)}{votes_suffix}")
             records.append({"id": name, "safety": "fail", "judge": {}, "reasons": problems})
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {name}  → {summary}")
+            print(f"  [{index}] SAFETY PASS {name}  → {summary}{votes_suffix}")
             records.append({"id": name, "safety": "pass", "judge": {}, "reasons": []})
     return safety_pass, safety_fail, known_gap, records, prompt_version
 

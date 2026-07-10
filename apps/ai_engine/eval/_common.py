@@ -55,6 +55,42 @@ def gateway_configured() -> bool:
     return transcription_is_configured()
 
 
+# Stage-3 flake policy (eval plan I5): majority-of-N with FAIL-ONLY retries. Default 1 = exactly
+# one attempt per case (no behavior change, no extra spend). Merge gates run with EVAL_VOTES=3 so
+# single-sample LLM variance can't flip a verdict while a real regression (repeated failure) still
+# fails. Only deterministic gates participate; judge tiers stay advisory and are never re-voted.
+EVAL_VOTES = max(1, int(os.environ.get("EVAL_VOTES", "1") or "1"))
+
+
+def gate_votes(run_once, *, votes: int | None = None):
+    """Run one gateway case with fail-only majority voting.
+
+    ``run_once() -> (problems, payload)`` performs the model call + deterministic gates; an empty
+    ``problems`` list is a pass. A first-attempt pass returns immediately (one call — the common
+    path). On failure the case re-runs until either verdict holds a majority of ``votes``.
+    Exceptions (gateway unreachable) propagate to the module's existing handler.
+
+    Returns ``(problems, payload, attempts)`` from the deciding attempt.
+    """
+    total = EVAL_VOTES if votes is None else max(1, votes)
+    fails = 0
+    passes = 0
+    last_fail = None
+    for attempt in range(1, total + 1):
+        problems, payload = run_once()
+        if problems:
+            fails += 1
+            last_fail = (problems, payload)
+        else:
+            passes += 1
+        if passes > total // 2:
+            return [], payload, attempt
+        if fails > total // 2:
+            return last_fail[0], last_fail[1], attempt
+    # Exhausted without a strict majority (even N): fail wins ties — conservative.
+    return (last_fail[0] if last_fail else []), (last_fail[1] if last_fail else None), total
+
+
 # --- Tolerant matching primitives ---------------------------------------------------------------
 #
 # The model's Persian output varies cosmetically (Arabic vs Persian letter forms, ZWNJ vs space,

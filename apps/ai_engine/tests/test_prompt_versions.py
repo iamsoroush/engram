@@ -37,19 +37,19 @@ CANONICAL_CONTEXT = {
 PINNED = {
     transcription: ("2026-07-05.transcription.v2", "413299ab0b3c6e9388938e1251ad730b9166d1483df27641a899aca2adbce5f5"),
     caption: ("2026-07-04.caption.v1", "b066644f987c727fac3f4d1e430b6856acaa79bbd7db406b763136ef79f1d634"),
-    patient_memory: ("2026-07-05.patient_memory.v2", "f425a3fe2c1bb363f5df840866af784e0b40e05ceb253b1a2c8e8237ccb5330a"),
+    patient_memory: ("2026-07-10.patient_memory.v3", "2e1fa0bf18073f9d911e6b4607857e51bfbc067a9b4a9ff9168192d6d9790c36"),
     # v4 (G4): doctor sign-off name moved OUT of the static instruction block into the variable tail
     # (rules block now byte-stable across doctors), + a follow-up thread-history tail segment + an
     # aftercare reference. The exemplar branch is pinned separately in
     # ``test_qa_draft_exemplar_branch_is_pinned``.
-    qa_draft: ("2026-07-09.qa_draft.v4", "95e47ab7cb58df0e51cb2b07f8a370c24fdad735659e1a8a45ffdb6866b270d3"),
+    qa_draft: ("2026-07-10.qa_draft.v7", "2b7a46699f73dcdf872b2a5073e7eb846a5d23fe410daaec513c2c7fd0d442df"),
     # v3 (G4): drop the doctor-wide `priorAnswers` block (noise + cross-patient leak surface on a
     # voice-edit that revises a GIVEN draft) and reword the guard accordingly.
     qa_revise: ("2026-07-09.qa_revise.v3", "1b0b1a270113b2fc88c731adb0e36393d9729cbb1d31a0ac04d38139ba2b210d"),
-    safety_reconcile: ("2026-07-04.safety_reconcile.v1", "0d2383985d8fb5d814175f4dc246d5ce9c6a9686904d275b0808154f7820e974"),
+    safety_reconcile: ("2026-07-10.safety_reconcile.v2", "7e62cc375a4747e7ae890d5328a368faac59715ab5ef5671a070686ac7c77167"),
     # v4 (G3): explicit stable-prefix context layout. v5 (G7): treatment `status` classification
     # (performed | planned | uncertain) + the planned_vs_performed uncertainty code.
-    synthesis: ("2026-07-09.synthesis.v5", "5031c38fdc8ccf936526b954146870c317822d8acd5c1bda8db04c1b618faebc"),
+    synthesis: ("2026-07-10.synthesis.v13", "c09059a67fcd1c358168a6ef88f185b9a53e740b8e997e1fc3b5fbc1fe44d94c"),
 }
 
 
@@ -81,7 +81,7 @@ class PromptVersionPinTests(unittest.TestCase):
             }
         }
         actual = hashlib.sha256(qa_draft.build(context).encode("utf-8")).hexdigest()
-        self.assertEqual(actual, "11e2f88528af6ed3570c312e40493981badd113c48b7c1651aa06708362b8daa")
+        self.assertEqual(actual, "06a875c9c3facd9c37c45c102002a1dc5b79264c9e133caba92b4f606a62e98c")
 
 
 if __name__ == "__main__":

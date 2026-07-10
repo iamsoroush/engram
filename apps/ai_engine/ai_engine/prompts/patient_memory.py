@@ -6,7 +6,7 @@ from typing import Any
 
 from ai_engine.prompts._shared import domain_framing
 
-PROMPT_VERSION = "2026-07-05.patient_memory.v2"
+PROMPT_VERSION = "2026-07-10.patient_memory.v3"
 
 
 def build(payload: dict[str, Any]) -> str:
@@ -29,12 +29,16 @@ def build(payload: dict[str, Any]) -> str:
             (
                 "Update this patient's memory from the prior memory and the new visit briefs below. "
                 "Each visit brief may include the treatments performed that visit (product, dose, area, "
-                "lot) — use them to ground recall in specifics (e.g. 'last visit: Voluma 0.3 mL, left "
-                "cheek'), quoting doses verbatim. Produce a warm, assistant-voiced brief — natural "
+                "lot) — use them to ground recall in specifics (e.g. in a Persian brief: «ویزیت قبل: "
+                "ولوما ۰.۳ سی‌سی، گونه چپ»), quoting doses verbatim. Write UNITS in the brief's language "
+                "and script (Persian: «سی‌سی», «واحد» — never mL/cc/u inside a Persian brief); brand "
+                "names and lot numbers keep their original form. Produce a warm, assistant-voiced brief — natural "
                 "sentences, never a form or bullet dump. Synthesize across visits, but do NOT invent "
                 "clinical facts, names, products, or doses that are not present in the briefs. Do NOT "
                 "include the patient's name in any field — it is already shown beside this text in the "
-                "UI; use pronouns or omit the subject. Keep the card summary to 1-2 sentences. "
+                "UI; use pronouns or omit the subject (if the patient is «نگار محمدی», write «بیمار» or "
+                "drop the subject — the name itself never appears in any field, first or last). Keep "
+                "the card summary to 1-2 sentences. "
                 "Also produce a compact 'card' for the line-up worklist: 'storySoFar' and 'rightNow' are "
                 "EACH at most 2 short sentences; 'flags' surfaces only genuinely important "
                 "allergy/consent/preference/caution items actually found in the briefs — return an empty "
@@ -57,7 +61,7 @@ def build(payload: dict[str, Any]) -> str:
             (
                 "Return ONLY strict JSON (no markdown, no code fences) with EXACTLY this shape:\n"
                 '{"summary": "<1-2 sentence card summary>", '
-                '"history": {"snapshot": "<one line: patient + current focus>", '
+                '"history": {"snapshot": "<one line: the current clinical focus — never the patient\'s name>", '
                 '"sections": [{"label": "Story so far", "body": "<2-4 sentences>"}, '
                 '{"label": "Worth remembering", "body": "<preferences, cautions, recurring themes>"}, '
                 '{"label": "Right now", "body": "<open threads / next visit>"}], "visits": []}, '

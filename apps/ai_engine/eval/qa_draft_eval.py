@@ -38,12 +38,14 @@ except NameError:
 
 from _common import (  # noqa: E402
     DEFAULT_MIN_SCORE,
+    EVAL_VOTES,
     STRICT_QUALITY,
     canon,
     capture_prompt_version,
     contains,
     env_models,
     exit_code,
+    gate_votes,
     gateway_configured,
     judge,
     latin_offenders,
@@ -568,24 +570,33 @@ def run_cases() -> tuple[int, int, int, int, str | None]:
     safety_pass = safety_fail = quality_pass = quality_fail = 0
     prompt_version: str | None = None
     for index, case in enumerate(CASES, start=1):
+        def _attempt(case=case):
+            out = completed_qa_draft_output(_payload(case))
+            if not str(out.get("source") or "").startswith("ai:"):
+                # Fallback output counts as a fail vote; the deciding output's source is re-checked
+                # below so the WARN-not-scored semantics are preserved.
+                return ["model output unusable; fell back to deterministic"], out
+            return run_gates(_reply(out), case["qa"], case["expect"]), out
+
         try:
-            output = completed_qa_draft_output(_payload(case))
+            problems, output, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001
             print(f"  [{index}] ERROR {case['id']} {case['name']}: job failed: {exc!r}")
             print("  SKIP: gateway unreachable — cases not scored.")
             break
-        if not str(output.get("source") or "").startswith("ai:"):
+        if not str((output or {}).get("source") or "").startswith("ai:"):
             print(f"  [{index}] WARN {case['id']}: model output unusable; fell back to deterministic — not scored")
             continue
         prompt_version = prompt_version or capture_prompt_version(output)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
         reply = _reply(output)
-        problems = run_gates(reply, case["qa"], case["expect"])
         if problems:
             safety_fail += 1
-            print(f"  [{index}] SAFETY FAIL {case['id']} {case['name']}: {'; '.join(problems)}")
+            print(f"  [{index}] SAFETY FAIL {case['id']} {case['name']}: {'; '.join(problems)}{votes_suffix}")
         else:
             safety_pass += 1
-            print(f"  [{index}] SAFETY PASS {case['id']} {case['name']}  → {reply[:80]!r}")
+            print(f"  [{index}] SAFETY PASS {case['id']} {case['name']}  → {reply[:80]!r}{votes_suffix}")
+        # Judge tier stays OUTSIDE the vote (advisory, never re-voted) — once, on the final reply.
         if case.get("judge"):
             try:
                 result = judge_reply(_reference(case["qa"]), reply, list(JUDGE_DIMENSIONS))

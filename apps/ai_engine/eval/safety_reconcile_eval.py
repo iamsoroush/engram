@@ -24,7 +24,7 @@ try:
 except NameError:
     pass
 
-from _common import capture_prompt_version, env_models, write_scorecard  # noqa: E402
+from _common import EVAL_VOTES, capture_prompt_version, env_models, gate_votes, write_scorecard  # noqa: E402
 from ai_engine.processing import reconcile_safety_flags, transcription_is_configured  # noqa: E402
 
 
@@ -185,27 +185,30 @@ def main() -> int:
     records: list[dict[str, Any]] = []
     for index, case in enumerate(CASES, start=1):
         payload = {"existingFlags": case["existing"], "newFlags": case["new"], "aiModels": {}}
+
+        def _attempt(case=case, payload=payload):
+            out = reconcile_safety_flags(payload)
+            if out is None:
+                return ["reconcile returned no usable output"], None
+            # A check returns (ok, note) or, for the advisory-tier supersede case, (ok, advisory, note);
+            # advisory passes stay passes (empty problems) so voting never turns an advisory into a fail.
+            result = case["check"](out)
+            return ([] if result[0] else [result[-1]]), out
+
         try:
-            decisions = reconcile_safety_flags(payload)
+            problems, decisions, attempts = gate_votes(_attempt)
         except Exception as exc:  # noqa: BLE001
             print(f"ERROR: gateway call failed on case {index} ({case['name']}): {exc!r}")
             print("SKIP: gateway unreachable — eval not run.")
             return 0
-        if decisions is None:
-            print(f"[{index}] FAIL  {case['name']}: reconcile returned no usable output")
-            failed += 1
-            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": ["no usable output"]})
-            continue
-        prompt_version = prompt_version or capture_prompt_version(decisions)
-        # A check returns (ok, note) or, for the advisory-tier supersede case, (ok, advisory, note).
-        result = case["check"](decisions)
-        if len(result) == 3:
-            ok, advisory, note = result
-        else:
-            ok, note = result
-            advisory = False
-        if ok:
-            print(f"[{index}] PASS  {case['name']}")
+        prompt_version = prompt_version or (capture_prompt_version(decisions) if decisions else None)
+        votes_suffix = f"  [votes:{attempts}/{EVAL_VOTES}]" if attempts > 1 else ""
+        if not problems:
+            # Re-derive the advisory tier from the DECIDING output (checks are pure over the decisions).
+            result = case["check"](decisions)
+            advisory = result[1] if len(result) == 3 else False
+            note = result[-1]
+            print(f"[{index}] PASS  {case['name']}{votes_suffix}")
             passed += 1
             reasons: list[str] = []
             if advisory:
@@ -214,9 +217,9 @@ def main() -> int:
                 reasons = [f"advisory: {note}"]
             records.append({"id": case["name"], "safety": "pass", "judge": {}, "reasons": reasons})
         else:
-            print(f"[{index}] FAIL  {case['name']}  | {note}")
+            print(f"[{index}] FAIL  {case['name']}  | {problems[0]}{votes_suffix}")
             failed += 1
-            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": [note]})
+            records.append({"id": case["name"], "safety": "fail", "judge": {}, "reasons": [problems[0]]})
     total = passed + failed
     advisory_suffix = f" ({advisories} advisory)" if advisories else ""
     print(f"\nSafety reconcile eval: {passed}/{total} passed{advisory_suffix}.")
