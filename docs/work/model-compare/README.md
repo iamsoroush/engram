@@ -25,7 +25,7 @@ Jobs and their case files (captioning is explicitly out of scope):
 | Safety reconcile | [cases-safety-reconcile.json](cases-safety-reconcile.json) (10) | `gemini-3.1-flash-lite` (fallback) |
 | Q&A draft | [cases-qa-draft.json](cases-qa-draft.json) (12) | `gemini-3.1-flash-lite` (fallback) |
 | Q&A revise | [cases-qa-revise.json](cases-qa-revise.json) (8) | `gemini-3.1-flash-lite` (fallback) |
-| Transcription | owner-supplied audio fixtures (see below) | `gemini-3.1-flash-lite` |
+| Transcription | [transcription-scripts.md](transcription-scripts.md) (T01–T12, owner-recorded) | `gemini-3.1-flash-lite` |
 
 ## How to run a case
 
@@ -41,10 +41,12 @@ Jobs and their case files (captioning is explicitly out of scope):
   rates too.
 
 **Transcription** is the one job whose evaluation data cannot be synthesized (audio is never
-auto-generated — owner rule). Use the owner-supplied clips in the eval fixture store with their
-reference transcripts, but score independently of the in-repo eval code: CER/WER overall, exact
-accuracy on clinical tokens (doses, units, drug/brand names, lots), and romanization rate (Persian
-rendered in Latin = fail). Same 3-samples-per-clip, both candidate models.
+auto-generated — owner rule). The owner records the T01–T12 scripts in
+[transcription-scripts.md](transcription-scripts.md) as one fresh dev-app session (one recording
+per script, in order); the script text is the reference. Pull the recordings' source audio via the
+capture API and score as that file specifies: CER/WER, exact clinical-token accuracy (doses, units,
+drug/brand names, lot digits), romanization rate (Persian in Latin = fail). Same 3-samples-per-clip,
+both candidate models.
 
 ## Scoring semantics (deterministic; implement once, no imports from `apps/ai_engine/eval/`)
 
