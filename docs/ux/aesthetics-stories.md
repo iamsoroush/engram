@@ -515,6 +515,28 @@ clear them — **without being blocked**.
   open; per-day dismiss; never a gate or wall (never-block holds). *A persistent tenant/user opt-out
   setting is the clean follow-up.*
 
+### AES-1007 — One attention count across the bell + Today chip 〔Both · Dr/As/Rc · modify〕
+As **any clinician**, I want the top-bar bell and the Clinical-Memory "needs your input" chip to show
+the **same** number, so that "how much needs me?" never disagrees with itself. *(Refines AES-1003.)*
+- **Acceptance:** the hero chip is fed the same `attentionBadgeCount` (confirm + messages) the bell
+  shows (App threads it down); **surface-by-exception** — the chip is hidden when the count is 0 (no
+  "All caught up" pill). When the Today "Needs your input" preview is empty **but** the sweep still has
+  open items (earlier days / messages), that section points to the sweep («See all N in Attention»)
+  instead of claiming "all caught up", so the chip, the bell, and the section can never contradict.
+  As-built: [screens/patients.md](screens/patients.md).
+
+### AES-1008 — Per-visit grouping in the Close-the-day sweep 〔Both · Dr/As · modify〕
+As a **doctor**, I want a visit with several open confirmations to appear as **one** grouped row
+(«{patient} — N to confirm») rather than N sibling cards, so that a heavily-uncertain visit doesn't
+flood the sweep and bury the other items. *(Refines AES-1004.)*
+- **Acceptance:** within each sweep section (and the `Earlier, still open` group), confirm-tier (S2)
+  items sharing a `sessionId` collapse into one grouped row leading with the patient name (or
+  «This visit» when unassigned) + «N to confirm»; a lone confirmation and every non-confirm item stay
+  as their normal detailed rows, in order; the group's single action opens the visit — the same
+  per-source resolvers walk its confirmations in place (a **list-shape** change, not a new flow).
+  Section counts and the `N of M cleared` progress still count individual items. As-built:
+  [screens/patients.md](screens/patients.md).
+
 ---
 
 ## E11 — User-authored treatment overlay (Pro)
@@ -650,6 +672,44 @@ opens from anywhere without a keyboard dependency on mobile.
 As a **doctor**, I want the finder to also search capture/report *content*, so that I can find a visit
 by what was said, not just by patient/lot. **Deferred candidate** — backend global content search across
 captures / extracted findings / report prose is a larger later migration; find-only in v1.
+
+---
+
+## E14 — Clinical Memory & top-bar UI-review refinements
+*Accepted items from the 2026-07-10 UI expert review — trust/coherence + polish on the Clinical Memory
+screen and the app top bar. The unified-count and sweep-grouping items from the same review live in
+[E10](#e10--close-the-day--unified-attention-both) (AES-1007 / AES-1008).*
+
+### AES-1401 — One shared timestamp formatter 〔Both · All · modify〕
+As **any clinician**, I want every clock time in a card to use one convention, so that a visit card
+never shows `Visit: … 17:43` directly above `Updated: 5:43 PM`.
+- **Acceptance:** a single clock formatter (`shared/lib/datetime.formatTime`) drives the visit card's
+  `Visit:` / `Updated:` lines, the patient-card "Latest visit", and the capture "updated" labels —
+  **24-hour everywhere** (Persian digits under fa via the `fa-IR` locale, 24h under en). The `Visit:`
+  line derives from the visit timestamp so its date localizes (`Today` → «امروز»). Decision: en clock =
+  24h ([technical-decisions](../technical-decisions.md)).
+
+### AES-1402 — Drop the marketing subtitle on Clinical Memory 〔Both · All · modify〕
+As **any clinician**, I want the Clinical Memory heading to orient without a marketing sentence, so that
+every phone visit isn't taxed a self-praising text row (it violated the calm-professional principle it
+cited).
+- **Acceptance:** the "Your calm, intelligent assistant…" subtitle is removed; the heading + attention
+  chip + search already orient. If it must live somewhere, it belongs in onboarding.
+
+### AES-1403 — Legible primary nav at every width 〔Both · All · modify〕
+As a **new user**, I want the Visit/Memory nav pills identifiable at phone widths, so that two
+near-abstract glyphs aren't the only cue.
+- **Acceptance:** the `Visit` / `Memory` labels are kept at **all** widths (the action cluster is
+  compacted on phones so the full Pro row — nav + search + Q&A + bell + avatar — still fits one line at
+  390px), plus a **decisively stronger selected state** (full-primary ring + heavier weight) so the
+  active pill reads even where a glyph would otherwise be icon-only.
+
+### AES-1404 — Balanced top bar on tablet 〔Both · All · modify〕
+As a **tablet user**, I want the top bar to read as intentional, so that the brand doesn't float
+mid-bar with leftover space.
+- **Acceptance:** the `Engram` wordmark is anchored to the inline-start (far-left; far-right under RTL)
+  **before** the nav cluster, with the avatar pinned to the inline-end and the single flexible gap
+  between them — no mid-bar float. Phones keep the two-row restack (brand on top).
 
 ---
 

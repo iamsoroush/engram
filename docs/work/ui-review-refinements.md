@@ -2,8 +2,15 @@
 
 Process doc (create → decide → fold accepted items into stories/system-state → delete). Review ran
 against the main dev stack (`en` chrome demo tenant, Pro doctor persona) at 390×844 and 768×1024;
-screenshots under the session scratchpad (`ui-review/`). Items are **proposals** — none are
-implemented; the owner picks what becomes an AES-### story.
+screenshots under the session scratchpad (`ui-review/`). Items are **proposals** — the owner picks
+what becomes an AES-### story.
+
+> **Shipped (2026-07-11).** Items **#1, #2, #5, #7, #9, #10** are built + folded into stories +
+> system-state docs: #1 → AES-1007, #2 → AES-1008 (both under
+> [aesthetics-stories.md](../ux/aesthetics-stories.md) E10); #5/#7/#9/#10 → AES-1401–1404 (E14). See
+> [screens/patients.md](../ux/screens/patients.md), [states.md](../ux/states.md) (Time Labels +
+> Attention model), and [technical-decisions.md](../technical-decisions.md). **Still open:** #3, #4,
+> #6, #8, #11, #12. Delete this doc once those are decided/shipped too.
 
 ## P1 — trust & coherence (recommend doing first)
 

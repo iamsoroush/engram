@@ -5657,13 +5657,16 @@ small {
 }
 
 @media (max-width: 620px) {
-  .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* Phones restack into two rows: brand on top, the action cluster + avatar below. Target the actual
+     grid (.topbar-inner) — the old rule set columns on .topbar, which is display:block (a no-op). */
+  .topbar-inner {
+    grid-template-columns: 1fr auto;
   }
 
   .topbar-brand {
     grid-column: 1 / -1;
     grid-row: 1;
+    justify-self: start;
   }
 
   .topbar-left {
@@ -5674,20 +5677,30 @@ small {
   .user-menu {
     grid-column: 2;
     grid-row: 2;
+    justify-self: end;
   }
 
   .user-menu summary {
     max-width: 190px;
   }
 
-  /* Icon-only primary nav on phones so the navigator + Search + Q&A + user menu fit one row with
-     clear spacing (with labels the row overflowed and the user menu was clipped). */
-  .nav-label {
-    display: none;
+  /* Keep the Visit/Memory labels on phones too (#9), so compact the rest of the action cluster to
+     make room: content-width nav pills, slightly smaller round buttons, and a tighter row gap. */
+  .topbar-left {
+    gap: 8px;
+  }
+
+  .app-navigator {
+    grid-template-columns: repeat(2, auto);
   }
 
   .app-navigator button {
-    padding-inline: 12px;
+    padding-inline: 10px;
+  }
+
+  .app-search-button {
+    width: 38px;
+    height: 38px;
   }
 
   .report-heading {
@@ -5747,10 +5760,12 @@ small {
 
 .topbar-inner {
   display: grid;
-  grid-template-columns: minmax(52px, 1fr) auto minmax(52px, 1fr);
+  /* Tablet/desktop: brand anchored far-left, then the nav cluster, then the avatar pinned far-right
+     with the single flexible gap between them — a classic app-bar anchor, no leftover mid-bar space
+     (#10). Phones restack this into two rows below. */
+  grid-template-columns: auto auto 1fr;
   align-items: center;
-  column-gap: 12px; /* when the brand wraps to its own row the center column is empty — keep the
-                       action cluster (ending in the attention bell + its badge) off the avatar. */
+  column-gap: 12px;
   width: 100%;
   min-height: 76px;
   margin: 0 auto;
@@ -5764,7 +5779,8 @@ small {
 }
 
 .topbar-left {
-  grid-column: 1;
+  grid-column: 2;
+  justify-self: start;
 }
 
 /* Pin the avatar menu to the far right so it never crowds the bell/badge to its left. */
@@ -5774,7 +5790,8 @@ small {
 }
 
 .topbar-brand {
-  grid-column: 2;
+  grid-column: 1;
+  justify-self: start;
   color: #090d2e;
   font-size: 1.06rem;
   opacity: 1;
@@ -9200,7 +9217,10 @@ ul.treatment-review-notes {
 .app-search-button.active {
   background: var(--color-primary-soft);
   color: var(--color-primary);
-  box-shadow: inset 0 0 0 1px #91bfff;
+  /* Decisively stronger selected state (#9): a full-primary 1.5px ring + heavier weight, so the
+     active pill is unmistakable even where the two glyphs render icon-only at the narrowest widths. */
+  box-shadow: inset 0 0 0 1.5px var(--color-primary);
+  font-weight: 900;
 }
 
 .app-navigator button > span:first-child {
@@ -10193,16 +10213,31 @@ ul.treatment-review-notes {
   .user-menu {
     grid-column: 2;
     grid-row: 2;
+    justify-self: end;
+  }
+
+  /* Narrowest phones (390): keep the Visit/Memory labels but squeeze the cluster hardest —
+     content-width pills, small round buttons + gap — so the full Pro row (nav + search + Q&A +
+     bell + avatar) still fits one line without the bell badge colliding with the avatar (#9). */
+  .topbar-left {
+    gap: 6px;
   }
 
   .app-navigator {
-    grid-template-columns: repeat(2, minmax(78px, 1fr));
+    grid-template-columns: repeat(2, auto);
+    padding: 3px;
   }
 
   .app-navigator button {
-    height: 38px;
-    padding: 0 9px;
+    height: 36px;
+    padding: 0 8px;
+    gap: 5px;
     font-size: 0.76rem;
+  }
+
+  .app-search-button {
+    width: 34px;
+    height: 34px;
   }
 
   .capture-generated-heading {

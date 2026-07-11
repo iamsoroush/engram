@@ -62,6 +62,7 @@ import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { CaptureDestinationPanel, PatientsHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { attentionBadgeCount } from "../features/memory/components/attentionModel";
 import { useMemoryApi } from "../features/memory/useMemoryApi";
 import { FinderOverlay } from "../features/finder";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
@@ -947,6 +948,9 @@ function AppInner() {
         onStartVisit={startVisitForPatient}
         onViewingPatientChange={setViewedPatient}
         onOpenQaInbox={canUseQa ? () => navigateScreen("qa-inbox") : undefined}
+        // The unified attention count (same source as the top-bar bell) feeds the Today chip, so the
+        // two "needs me" numbers can never disagree; surface-by-exception when zero (#1, AES-1007).
+        attentionCount={attention ? attentionBadgeCount(attention.counts) : 0}
       />
     );
   };

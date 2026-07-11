@@ -20,8 +20,11 @@ It must not show every session nested under every patient. Sessions belong in pa
 ## Structure
 
 - Top app bar.
-- Page title: `Clinical Memory`.
-- Assistant-style subtitle, for example `Your captures are saved. I will organize them into patient memory as details become clear.`
+- Page title: `Clinical Memory` (no marketing subtitle — the heading + chip + search already orient).
+- A `needs your input` **chip** beside the heading: it shows the **unified attention count** — the same
+  `confirm + messages` number the top-bar [Attention indicator](../navigation.md) shows — and opens the
+  [Attention sweep](#attention-tab). Surface-by-exception: it is **hidden when the count is zero** (there
+  is no "All caught up" pill), so it can never contradict the sections below it.
 - Search.
 - Tabs: `Today`, `Patients`, `Lists` (Pro only), `Needs input`. Basic shows three tabs — the Lists
   tab is simply absent (a legible upgrade, no teaser).
@@ -37,7 +40,10 @@ It shows:
 - session/visit cards for active or recent work
 - a compact `Needs your input` preview — **up to three** cards (preferring visits other than the
   current one); when more need input, a `See N more in Attention` overflow pill opens the
-  [Attention tab](#attention-tab)
+  [Attention tab](#attention-tab). When today has nothing to preview **but** the sweep still holds open
+  items (earlier days / messages), this section shows a `See all N in Attention` pointer instead of an
+  "all caught up" empty state — so it never contradicts the heading chip / top-bar count. It only reads
+  `All caught up` when the unified attention count is genuinely zero.
 - calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
 
 ### Today / up next (worklist)
@@ -70,8 +76,8 @@ Example active session card:
 
 - Title: `Follow-up visit`
 - Patient: `Soroush`
-- Visit: `Today · 4:23 PM`
-- Updated: `4:31 PM`
+- Visit: `Today · 16:23`
+- Updated: `16:31`
 - Summary: `4 captures saved: 3 photos and 1 audio note. I'm preparing the visit summary.`
 - Capture chips: `3 photos`, `1 audio`, `1 note`
 - Badge: `In progress`
@@ -80,8 +86,8 @@ Example active session card:
 Example needs-input preview card:
 
 - Title: `Unassigned visit`
-- Visit: `Today · 2:15 PM`
-- Needs input since: `2:20 PM`
+- Visit: `Today · 14:15`
+- Needs input since: `14:20`
 - Summary: `3 captures saved. I could not confidently attach this visit to a patient.`
 - Primary action: `Assign patient`
 - Card selection: opens the visit in Active Session
@@ -90,7 +96,7 @@ Example updated-today card:
 
 - Title: `Initial consultation`
 - Patient: `Sara`
-- Visit: `Apr 18 · 11:30 AM`
+- Visit: `Apr 18 · 11:30`
 - Status: `Updated today · Patient assigned`
 - Summary: `2 photos and 1 note were attached to this visit today.`
 - Card selection: opens the visit in Active Session
@@ -145,7 +151,7 @@ Example patient memory card:
 
 - Patient: `Sara M.`
 - Memory: `Last visit focused on cheek volume and follow-up photos are saved.`
-- Latest visit: `Visit: Apr 18 · 11:30 AM`
+- Latest visit: `Visit: Apr 18 · 11:30`
 - Attention: `Needs input: verify patient`
 - Row action: select row to view patient history
 - Focused task action: `Verify patient`, when relevant
@@ -226,8 +232,16 @@ non-empty ones in this order:
 Low-confidence / missing-lot **notes (S4) never roll up** here — they stay as calm fix-at-source
 footnotes on the visit.
 
+**Per-visit grouping.** When one visit has **two or more** open confirmations, its `Confirm`-tier
+siblings collapse into a **single grouped row** — `{patient} — N to confirm` (or `This visit — N to
+confirm` when unassigned) — instead of N cards that would flood the sweep and bury other items. A lone
+confirmation and every non-confirm item stay as their normal detailed rows. The grouped row's one
+action **opens the visit**, where the same per-source resolvers walk its confirmations in place — a
+list-shape change, not a new flow. Section counts and `N of M cleared` still count individual items.
+
 **Carry-over.** The day lens is the user's calendar day, but nothing decays at midnight: items left
-undecided from prior days appear in a flat **`Earlier, still open`** group below today's sections.
+undecided from prior days appear in a flat **`Earlier, still open`** group below today's sections
+(grouped the same way).
 
 **Progress, scope, empty.** A `N of M cleared` line reassures (never completion pressure — leaving
 with items open is fine); a `Mine`/`Clinic` [scope toggle](../foundation.md) defaults by role
@@ -250,28 +264,28 @@ action.
 Example copy:
 
 - Decision: `Unassigned visit`
-  Visit: `Visit: Today · 4:23 PM`
+  Visit: `Visit: Today · 16:23`
   Patient: `Unknown`
   Why: `This visit is saved, but I do not know which patient it belongs to.`
   Primary action: `Assign patient`
   Card selection: opens the visit in Active Session
 - Decision: `Patient match uncertain`
-  Visit: `Visit: Apr 18 · 11:30 AM`
+  Visit: `Visit: Apr 18 · 11:30`
   Patient: `Possible matches: Sara M., Sarah Mahmoud`
   Why: `I found two possible matches before updating memory.`
   Primary action: `Choose patient`
 - Decision: `Patient match found`
-  Visit: `Visit: Today · 4:23 PM`
+  Visit: `Visit: Today · 16:23`
   Patient: `Likely match: Sara Nazari`
   Why: `The visit mentions identity details that match an existing patient. Confirm before I update memory.`
   Primary action: `Choose patient`
 - Decision: `Verify AI-created patient`
-  Visit: `Visit: Today · 4:23 PM`
+  Visit: `Visit: Today · 16:23`
   Patient: `Soroush`
   Why: `I created this patient from the visit. Confirm the details before it enters memory.`
   Primary action: `Verify patient` (opens the visit in Active Session, where the verify panel lives)
 - Decision: `Storage warning`
-  Since: `Needs input since: 2:20 PM`
+  Since: `Needs input since: 14:20`
   Why: `Device storage is almost full and new captures need room to stay safe.`
   Primary action: `Review storage`
 
@@ -330,7 +344,7 @@ It includes:
 - one primary action per session, such as `Open visit`
 - persistent capture context, such as `Capturing for: Soroush · Today's visit`, so the user understands where new captures will go
 
-Timeline cards label times explicitly. The session time is primary, for example `Visit: Today · 4:23 PM`. Updated time appears only when it adds useful context, for example `Updated: 4:31 PM` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
+Timeline cards label times explicitly. The session time is primary, for example `Visit: Today · 16:23`. Updated time appears only when it adds useful context, for example `Updated: 16:31` or `Updated today · Patient assigned`. Needs-input cards name the exact decision, such as `Needs input: review summary`, `Needs input: choose patient`, or `Needs input: assign patient`.
 
 ## Patient Memory: Summary and History
 
