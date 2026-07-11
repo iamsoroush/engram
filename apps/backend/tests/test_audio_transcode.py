@@ -105,8 +105,9 @@ class TranscodeToolingGuardTest(unittest.TestCase):
         self.assertIn("ffprobe", message)
         self.assertIn("rebuild", message)
 
+    @unittest.skipUnless(FFMPEG, "ffmpeg/ffprobe not installed")
     def test_startup_assert_passes_when_tooling_present(self):
-        audio.assert_audio_tooling()  # the test image installs ffmpeg; must not raise
+        audio.assert_audio_tooling()  # must not raise where the image installs ffmpeg
 
     def test_upload_maps_transcode_error_to_503(self):
         # A server-side transcode fault is an honest 503 (outbox keeps retrying; operator sees why),
