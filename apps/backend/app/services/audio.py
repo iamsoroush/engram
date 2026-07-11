@@ -19,6 +19,24 @@ import shutil
 import subprocess
 import tempfile
 
+
+def assert_audio_tooling() -> None:
+    """Fail FAST when ffmpeg/ffprobe are missing — called at app startup.
+
+    The binaries live in the backend IMAGE, but dev stacks bind-mount code over an existing
+    container: after a dependency-adding change, the code updates while the image does not, and the
+    first audio upload dies with an opaque 500 the outbox retries forever ("Waiting to upload").
+    Crashing at boot with the fix in the message turns that silent drift into a loud, diagnosable
+    startup error.
+    """
+    missing = [tool for tool in ("ffmpeg", "ffprobe") if shutil.which(tool) is None]
+    if missing:
+        raise RuntimeError(
+            f"Audio tooling missing from this container: {', '.join(missing)}. The backend image is "
+            "stale — rebuild it (scripts/dev-stack.sh up, or: docker compose build backend)."
+        )
+
+
 # --- canonical format: the single source of truth ---------------------------------------------
 CANONICAL_AUDIO_MIME = "audio/mpeg"
 CANONICAL_AUDIO_EXTENSION = "mp3"

@@ -6578,28 +6578,41 @@ small {
   transition: background 0.12s ease;
 }
 .sources-drawer-summary:hover { background: #eef4fc; }
-/* One-tap "Undo last capture" — sits in the always-visible drawer header area (no need to expand). */
-.sources-drawer-undo-row {
+/* Drawer header row: the expand/collapse summary (flex:1) + the quiet inline Undo ghost action. */
+.sources-drawer-header {
   display: flex;
-  justify-content: flex-end;
-  padding: 0 16px 10px;
+  align-items: center;
+  gap: 4px;
+  padding-inline-end: 10px;
 }
+.sources-drawer-header .sources-drawer-summary { flex: 1; min-width: 0; }
+/* One-tap "Undo last capture" — a ghost action inside the header row, visually quiet until hover. */
 .sources-drawer-undo {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border: 1px solid #d8e2f0;
-  border-radius: 999px;
-  background: #fff;
-  color: #44557a;
-  font-size: 0.78rem;
+  gap: 5px;
+  flex: none;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #5d6f93;
+  font-size: 0.76rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
-.sources-drawer-undo::before { content: "↩"; font-size: 0.9rem; }
-.sources-drawer-undo:hover { background: #fdeaea; color: #c0392b; border-color: #f1b7ad; }
+.sources-drawer-undo::before { content: "↩"; font-size: 0.85rem; opacity: 0.75; }
+.sources-drawer-undo:hover { background: #fff; color: #c0392b; border-color: #f1b7ad; }
+.sources-drawer-undo:focus-visible { outline: 2px solid #2f6fed; outline-offset: 1px; }
+/* Phones: the header row is dense (title + count + organizing + type chips) — undo goes icon-only
+   (the aria-label + title keep it accessible); the summary may shrink, the undo never wraps off-screen. */
+@media (max-width: 560px) {
+  .sources-drawer-undo-label { display: none; }
+  .sources-drawer-undo { padding: 6px 8px; }
+  .sources-drawer-undo::before { font-size: 1rem; opacity: 0.9; }
+}
 .sources-drawer-lead {
   display: inline-flex;
   align-items: center;
