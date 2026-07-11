@@ -15,9 +15,9 @@ WAV = b"RIFF----WAVEfmt " + bytes(range(64))  # stand-in source bytes
 
 
 class CaptureFileContentRangeTest(unittest.TestCase):
-    def _call(self, range_header=None):
-        content = {"content": WAV, "media_type": "audio/wav", "filename": "note.wav"}
-        with patch.object(captures_api, "source_file_content", return_value=content):
+    def _call(self, range_header=None, *, content=WAV, media_type="audio/wav", filename="note.wav"):
+        served = {"content": content, "media_type": media_type, "filename": filename}
+        with patch.object(captures_api, "source_file_content", return_value=served):
             return captures_api.get_capture_file_content(
                 capture_id="cap-1",
                 range_header=range_header,
@@ -39,6 +39,18 @@ class CaptureFileContentRangeTest(unittest.TestCase):
         self.assertEqual(resp.headers["Accept-Ranges"], "bytes")
         self.assertEqual(resp.body, WAV[:16])
         self.assertEqual(resp.headers["Content-Range"], f"bytes 0-15/{len(WAV)}")
+
+    def test_canonical_mp3_served_with_stored_mime_and_range(self):
+        # Post-migration, new captures are canonical MP3; the serve path is format-agnostic — it keys
+        # off the artifact's stored mime, so a mixed store (old WAV + new MP3) both serve correctly.
+        mp3 = b"ID3" + bytes(range(64))
+        full = self._call(content=mp3, media_type="audio/mpeg", filename="audio-1.mp3")
+        self.assertEqual(full.status_code, 200)
+        self.assertEqual(full.media_type, "audio/mpeg")
+        self.assertEqual(full.headers["Accept-Ranges"], "bytes")
+        part = self._call(range_header="bytes=0-9", content=mp3, media_type="audio/mpeg", filename="audio-1.mp3")
+        self.assertEqual(part.status_code, 206)
+        self.assertEqual(part.body, mp3[:10])
 
 
 if __name__ == "__main__":

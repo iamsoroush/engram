@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # JSON-emitting task and do one validation-failure retry. On by default; a kill-switch for a gateway
     # or model family that doesn't conform (the conformance test in tests/ is the pre-rollout check).
     structured_outputs_enabled: bool = True
+    # Transcription payload: send the STORED canonical audio bytes (MP3) straight to the gateway with
+    # the correct mime, skipping the per-call FLAC re-encode — smaller worker→gateway payload, no CPU
+    # spent re-encoding. Decision gate G2 proved this accuracy-equal to the FLAC path for the canonical
+    # MP3. On by default; a kill-switch that reverts to the format-agnostic FLAC re-encode (which also
+    # still handles legacy WAV / unknown-format stored artifacts even while this is on).
+    transcription_direct_send: bool = True
 
     model_config = SettingsConfigDict(env_prefix="AI_ENGINE_")
 

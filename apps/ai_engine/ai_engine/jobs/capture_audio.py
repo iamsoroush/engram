@@ -5,6 +5,7 @@ Transcribes through the configured OpenAI-compatible gateway into strict structu
 comparable across captures. Fixture audio maps to deterministic text; a gateway-less non-fixture
 capture raises so the backend can retry. Vertical-agnostic via the domain descriptor.
 """
+import base64
 from typing import Any
 
 from ai_engine.core.errors import GatewayUnavailable, InvalidOutput, SourceMissing
@@ -13,6 +14,7 @@ from ai_engine.core.gateway import (
     gateway_client,
     resolve_model,
     set_pending_audio_seconds,
+    transcription_direct_send_enabled,
     transcription_is_configured,
 )
 from ai_engine.core.media import audio_duration_seconds, audio_to_flac_mono_16khz_base64
@@ -66,6 +68,30 @@ def _parse_transcription(raw_text: str) -> dict[str, Any]:
     return parse_structured_transcription_output(raw_text)
 
 
+# Stored content-types the gateway accepts DIRECTLY (mapped to its `input_audio.format`), skipping the
+# FLAC re-encode. Only the canonical MP3 qualifies — it is the sole compressed format we store, and
+# gate G2 proved direct-send accuracy-equal to the FLAC path for it. Everything else (legacy WAV,
+# unknown/absent content-type) falls back to the format-agnostic FLAC re-encode.
+_DIRECT_SEND_GATEWAY_FORMAT: dict[str, str] = {
+    "audio/mpeg": "audio/mp3",
+    "audio/mp3": "audio/mp3",
+}
+
+
+def _transcription_audio_payload(content: bytes, source_content_type: str | None) -> tuple[str, str]:
+    """Return the ``(base64_data, gateway_format)`` for the transcription ``input_audio`` part.
+
+    Direct-send (default) forwards the stored canonical bytes as-is; the kill-switch or any
+    non-canonical/unknown stored format falls back to a FLAC re-encode (which the gateway has always
+    accepted and which normalizes legacy formats).
+    """
+    if transcription_direct_send_enabled() and source_content_type:
+        gateway_format = _DIRECT_SEND_GATEWAY_FORMAT.get(source_content_type.split(";")[0].strip().lower())
+        if gateway_format is not None:
+            return base64.b64encode(content).decode("ascii"), gateway_format
+    return audio_to_flac_mono_16khz_base64(content), "audio/flac"
+
+
 def transcribe_audio_content(
     content: bytes,
     transcription_context: dict[str, Any] | None = None,
@@ -73,11 +99,13 @@ def transcribe_audio_content(
     model: str | None = None,
     ai_models: dict[str, Any] | None = None,
     escalate: bool = False,
+    source_content_type: str | None = None,
 ) -> dict[str, Any]:
     """Transcribe audio through the configured OpenAI-compatible gateway (§3.2 structured output)."""
-    base64_flac = audio_to_flac_mono_16khz_base64(content)
+    audio_data, audio_format = _transcription_audio_payload(content, source_content_type)
     # Duration drives per-minute transcription cost in the backend meter (set before the call so the
-    # metered client attaches it to this transcription's usage record).
+    # metered client attaches it to this transcription's usage record). Measured from the stored bytes,
+    # so metering is unchanged whether we send them directly or re-encode to FLAC.
     set_pending_audio_seconds(audio_duration_seconds(content))
     resolved_model = resolve_model("transcription", ai_models, override=model)
     client = gateway_client("transcription")
@@ -88,7 +116,7 @@ def transcribe_audio_content(
                 "role": "user",
                 "content": [
                     {"type": "text", "text": transcription_prompt(transcription_context)},
-                    {"type": "input_audio", "input_audio": {"data": base64_flac, "format": "audio/flac"}},
+                    {"type": "input_audio", "input_audio": {"data": audio_data, "format": audio_format}},
                 ],
             }
         ]
@@ -124,7 +152,10 @@ def completed_audio_metadata(
     elif transcription_is_configured():
         if content is None:
             raise SourceMissing("Audio capture source file is missing")
-        structured = transcribe_audio_content(content, transcription_context, model=model, ai_models=ai_models, escalate=escalate)
+        structured = transcribe_audio_content(
+            content, transcription_context, model=model, ai_models=ai_models, escalate=escalate,
+            source_content_type=metadata.get("content_type"),
+        )
     else:
         raise GatewayUnavailable("Audio transcription gateway is not configured")
     text = structured["transcript"]

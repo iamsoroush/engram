@@ -24,6 +24,7 @@ from app.models import (
     SessionStatus,
 )
 from app.observability.metrics import record_capture_upload_failed
+from app.services.audio import CANONICAL_AUDIO_MIME, AudioValidationError, normalize_audio_upload
 from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
 from app.services.patient_memory_intelligence import mark_patient_memory_updating
 from app.services.session_contracts import build_session_contracts, evolve_session_after_capture, session_is_complete
@@ -51,38 +52,6 @@ def note_detail_with_file_fallback(detail: str, content: bytes) -> str:
         return content.decode("utf-8").strip()
     except UnicodeDecodeError:
         return detail
-
-
-def validate_wav_pcm_16k_mono(content: bytes) -> None:
-    if len(content) < 44 or content[0:4] != b"RIFF" or content[8:12] != b"WAVE":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio must be WAV PCM 16-bit mono 16kHz")
-
-    offset = 12
-    fmt_seen = False
-    data_seen = False
-    while offset + 8 <= len(content):
-        chunk_id = content[offset : offset + 4]
-        chunk_size = int.from_bytes(content[offset + 4 : offset + 8], "little")
-        chunk_start = offset + 8
-        chunk_end = chunk_start + chunk_size
-        if chunk_end > len(content):
-            break
-        if chunk_id == b"fmt ":
-            if chunk_size < 16:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid WAV fmt chunk")
-            audio_format = int.from_bytes(content[chunk_start : chunk_start + 2], "little")
-            channels = int.from_bytes(content[chunk_start + 2 : chunk_start + 4], "little")
-            sample_rate = int.from_bytes(content[chunk_start + 4 : chunk_start + 8], "little")
-            bits_per_sample = int.from_bytes(content[chunk_start + 14 : chunk_start + 16], "little")
-            if audio_format != 1 or channels != 1 or sample_rate != 16000 or bits_per_sample != 16:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio must be WAV PCM 16-bit mono 16kHz")
-            fmt_seen = True
-        if chunk_id == b"data" and chunk_size > 0:
-            data_seen = True
-        offset = chunk_end + (chunk_size % 2)
-
-    if not fmt_seen or not data_seen:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Audio must include WAV fmt and data chunks")
 
 
 def get_session_for_tenant(
@@ -328,13 +297,21 @@ async def upload_source_capture(
 
     if not content:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Capture file is empty")
+    canonical_duration_seconds: float | None = None
     if capture_type == CaptureType.audio:
-        validate_wav_pcm_16k_mono(content)
+        # Transcode-on-ingest: accept the browser's native recorder blob (webm/opus, mp4/AAC) or WAV
+        # (older clients / e2e fixtures), normalize ONCE to the canonical compressed format, and store
+        # ONLY that. Non-audio is rejected here (replaces the old strict WAV-PCM header check). Server
+        # measures duration from the canonical bytes, replacing the client-side duration dance.
+        try:
+            content, canonical_duration_seconds = normalize_audio_upload(content)
+        except AudioValidationError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     if capture_type == CaptureType.note:
         detail = note_detail_with_file_fallback(detail, content)
     byte_size = len(content)
     checksum = hashlib.sha256(content).hexdigest()
-    content_type = "audio/wav" if capture_type == CaptureType.audio else file.content_type or "application/octet-stream"
+    content_type = CANONICAL_AUDIO_MIME if capture_type == CaptureType.audio else file.content_type or "application/octet-stream"
     captured_at = utc_now()
     object_key: str | None = None
 
@@ -366,9 +343,13 @@ async def upload_source_capture(
             client_capture_id=client_capture_id,
             capture_metadata={
                 "detail": detail,
+                **(metadata or {}),
+                # Server-derived fields win over any client-supplied metadata: the stored content-type
+                # is the canonical one (not the client's stale "audio/wav"), and the audio duration is
+                # measured server-side from the canonical bytes (the client-side duration dance is gone).
                 "original_filename": file.filename,
                 "content_type": content_type,
-                **(metadata or {}),
+                **({"duration": round(canonical_duration_seconds, 2)} if canonical_duration_seconds is not None else {}),
             },
             captured_at=captured_at,
             created_by_user_id=principal.user_id,
