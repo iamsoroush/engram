@@ -862,8 +862,8 @@ the common case stays instant while the timeline is its richer, multi-step face.
   same `DELETE /captures/{id}` de-effect path).
 
 - **Deferred (⊕, fast-follows):**
-  AES-1405 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
-  AES-1406 **time-travel-in-place** preview; AES-1407 **field-level version diffs**; AES-1408 **D5
+  AES-1705 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
+  AES-1706 **time-travel-in-place** preview; AES-1707 **field-level version diffs**; AES-1708 **D5
   GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
   fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
 
