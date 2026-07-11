@@ -20,18 +20,33 @@ untouched.
 
 ## Surface by tier
 
-- **Basic** — the Clinical report card has a `Captures` / `Live report` tab switch. `Captures` is
-  the chronological capture feed; `Live report` is a deterministic chronological document (clinic
-  header + patient block from template/DB, transcripts and photos with honest timestamps) rebuilt
-  in place as captures land. No AI synthesis, no verify bar, no safety panel; the header is
-  lightweight (no `Complete` badge).
-- **Pro** — a unified, report-first surface with no tabs: the synthesized report is the primary
-  surface and the raw captures are demoted to a collapsible **Sources** drawer beneath it. The chrome
-  above the report is deliberately thin (the **layout diet**), top-to-bottom: a thin AI-usage bar
-  (only near/at budget) → the one-line **patient strip** (identity + context + verify chip + safety
-  chip — see "Patient strip") → a thin conflict band only while a patient conflict is active → report
-  card (with aftercare, feedback bar, and the Sources drawer inside it). Everything the strip absorbs
-  is one tap away in its expansion.
+Both tiers render a session with **one tabless skeleton** — patient strip → a **primary working
+surface** → a **secondary collapsible view** → the capture bar — but *what sits in "primary" differs by
+tier*, because the valuable artifact differs (AES-1401). There is **no Captures/Live-report tab switch**
+on either tier; the secondary is always a drawer/panel, never a co-equal tab.
+
+- **Basic** — the **captures feed is the primary surface** (AES-1402): capture cards (audio player,
+  photo, note) with their edit / rename / delete / source-preview affordances directly reachable, no
+  drawer to open for daily work; during capture you always see what you just added. The tidy
+  chronological **document** (clinic header + patient block from template/DB, transcripts and photos with
+  honest timestamps — AES-302) is the **secondary `View as document`** panel: opened opt-in from a
+  lightweight header affordance (never auto-collapse-to-document — the feed always leads), it hosts the
+  curated **Share** (AES-303/401) and is the document's real home in Basic — a review / print / outbound
+  artifact, not the daily surface (AES-1403). The header is lightweight (no `Complete` badge). Absent,
+  legibly (AES-1404 — omitted, not disabled): AI synthesis / `Organizing` states, verify bar, safety
+  panel, AI spark, freshness line, treatment table, aftercare auto-include, report-feedback bar. The
+  single consolidated **Do more with Pro** teaser (E8) stays at the foot of the feed.
+- **Pro** — a report-first surface: the synthesized report is the **primary** and the raw captures are
+  demoted to a collapsible **Sources** drawer beneath it. The chrome above the report is deliberately
+  thin (the **layout diet**), top-to-bottom: a thin AI-usage bar (only near/at budget) → the one-line
+  **patient strip** (identity + context + verify chip + safety chip — see "Patient strip") → a thin
+  conflict band only while a patient conflict is active → report card (with aftercare, feedback bar, and
+  the Sources drawer inside it). Everything the strip absorbs is one tap away in its expansion.
+
+**Upgrade continuity (AES-1405).** Basic → Pro changes only what the AI adds: the skeleton is invariant
+(same patient strip, same secondary-drawer pattern, same capture bar, same nav). The primary flips from
+the feed to the synthesized report, the raw feed slides into the Sources drawer, and the AI zones light
+up — an honest upsell signal, not a relearned interaction model.
 
 ## Capture actions
 
@@ -51,6 +66,9 @@ untouched.
 - Visit header: a meaningful title (the patient's Nth visit, or date/time), status chip,
   capture count, and `+ New visit` (shown once the active visit has captures). A visit
   started by another staff member opens **read-only** with a banner naming who started it.
+  An **empty** visit collapses its meta line to a single `Created just now` — the
+  capture-count and `Updated` fragments appear only once they carry diverging information
+  (so a fresh visit never reads `Created now · 0 captures · Updated recently`).
 - A calm, non-blocking **AI usage notice** (`AiUsageNotice`) renders above the workspace when the
   clinic is approaching or at its monthly AI budget — captures are always still saved. See
   [states](../states.md) and `docs/business/ai-usage-limits.md`.
@@ -295,7 +313,8 @@ Shared rules: [states](../states.md).
 - `PatientStrip` (absorbs identity + context + verify chip + safety chip; the auto-collapse machine)
 - `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (in the strip)
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
-- `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar`
+- `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar` (Pro primary)
+- `LiveDraftReport` (the captures feed — Basic primary / Pro `sources-drawer` body), `BasicLiveReport` (the Basic `View as document` panel)
 - `AiUsageNotice`
 - `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
   `PatientAssignmentSheet`

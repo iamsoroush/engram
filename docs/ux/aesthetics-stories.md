@@ -622,6 +622,68 @@ absent in Basic, not teased.
 
 ---
 
+## E14 — Tier convergence (converge the shell, keep the primary surface tier-appropriate)
+*Both tiers render a session with ONE tabless skeleton — patient strip → primary working surface →
+secondary collapsible view → capture bar — but **what sits in "primary" differs by tier** because the
+valuable artifact differs. Pro's primary is the synthesized **report** (raw captures demoted to the
+**Sources** drawer); Basic's primary is the captures **feed** itself (the tidy chronological document
+is the secondary **View as document** panel that flows into Share). The legacy Captures/Live-report
+**tab switch is deleted in both tiers**; AI zones stay capability-gated (omitted, not disabled, in
+Basic). Shares the layout-diet strip (E13) + the E8 consolidated teaser. As-built:
+[screens/capture.md](screens/capture.md) "Surface by tier".*
+
+### AES-1401 — Kill the tab switch; one shared skeleton 〔Basic+Pro · Dr · built〕
+As **any clinician**, I want a session to render with the same interaction model on both tiers, so that
+upgrading from Basic to Pro is a continuity, not a relearn.
+- **Acceptance:** the Captures/Live-report tab switch is removed; both tiers render `patient strip →
+  primary working surface → secondary collapsible view → capture bar`. The secondary is always a
+  drawer/panel, never a co-equal tab (no "which tab am I on"). Layout unification is tier-independent;
+  the AI features stay capability-gated on resolved capabilities.
+
+### AES-1402 — Basic feed-first primary surface 〔Basic · Dr/As · new〕
+As a **Basic doctor**, I want the captures feed to be the persistent primary surface, so that during
+capture I always see what I just added and touch my own content directly — no drawer to open for daily
+work.
+- **Acceptance:** the captures feed (audio player / photo / note, with edit / rename / delete /
+  source-preview) is the primary body; no auto-collapse-to-document (the feed always leads). *Why:*
+  Basic's "report" is the same captures reformatted — zero new information — so burying them behind a
+  drawer optimizes the rare upgrade over the daily Basic experience (owner round-2 correction).
+
+### AES-1403 — Basic "View as document" / Share 〔Basic · Dr/As · new〕
+As a **Basic doctor / assistant**, I want a tidy chronological notebook (AES-302) to review / print and
+a curated Share (AES-303), so that the patient still leaves with a professional artifact — but it lives
+where sharing lives, not as the star of the capture screen.
+- **Acceptance:** a lightweight **`View as document`** header affordance on the capture screen opens the
+  secondary document panel (the chronological notebook); the curated **Share** lives inside it (the two
+  entry points are the capture-screen header affordance **and** the Share flow — owner decision 1).
+  **"Live report" wording is retired in Basic** — the document is `View as document` / `Visit record`
+  (owner decision 2).
+
+### AES-1404 — Capability-gated AI-zone omission 〔Basic+Pro · Dr · built〕
+As a **Basic doctor**, I want the shared shell to omit the Pro-only AI zones cleanly, so that Basic has
+no empty bands and stays legibly zero-AI.
+- **Acceptance:** the AI spark, synthesis/`Organizing` states, verify bar (`⚠ N to confirm`), safety
+  panel, treatment table, freshness line, aftercare auto-include and report-feedback bar are **omitted
+  (not disabled)** in Basic — every one gated on resolved capabilities (`isPro`). The single
+  consolidated foot teaser (E8) stays.
+
+### AES-1405 — Upgrade-continuity verification 〔Basic→Pro · Dr · built〕
+As an **upgrading clinic**, I want Basic → Pro to change only what the AI adds, so that there is no
+relearned interaction model.
+- **Acceptance:** a QA scenario proves the skeleton is invariant across the upgrade — same patient
+  strip, same secondary-drawer pattern, same capture bar, same nav; only the primary flips (feed →
+  report), the raw feed slides into the Sources drawer, and the AI zones light up. Covered by the
+  real-stack tier-surface spec (`p0-14-tier-convergence-shell.spec.ts`).
+
+### AES-1406 — Align with the layout-diet strip + E8 teaser 〔Basic+Pro · built〕
+As a **Basic doctor**, I want the shared strip (Basic variant) and one consolidated teaser, so that the
+convergence reuses E13/E8 rather than duplicating them.
+- **Acceptance:** both tiers share the [E13 patient strip](#e13--session-screen-layout-diet-the-patient-strip)
+  (Basic lights up fewer chips — no verify/safety); the document's own Try-Pro is suppressed so the
+  screen keeps exactly one **Do more with Pro** (E8), at the foot of the primary feed.
+
+---
+
 ## E12 — Unified finder (app-wide retrieval)
 *One patients-first finder overlay that replaces the old top-nav `/#search` local-substring screen
 with the real Persian-aware patient search + Pro lot recall. Built + folded to the system-state doc:

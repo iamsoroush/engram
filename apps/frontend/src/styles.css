@@ -6675,6 +6675,79 @@ small {
   background: #fff;
 }
 
+/* Tier-convergence (AES-1403): Basic's lightweight "View as document" header affordance + the secondary
+   document panel — the tidy chronological notebook (AES-302), opened opt-in from the header (the Basic
+   feed always leads). The panel mirrors the Sources-drawer surface treatment, and Share lives in it. */
+.report-doc-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill, 999px);
+  background: #fff;
+  color: #44557a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.report-doc-button svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  stroke-width: 1.9;
+}
+.report-doc-button-label { line-height: 1; }
+.report-doc-button[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, #fff);
+}
+.report-doc-button:hover { background: #f1f5fb; }
+
+.document-panel {
+  border-top: 1px solid #e6edf7;
+  background: #f7faff;
+  scroll-margin-top: 56px;
+}
+.document-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.document-panel-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #1d2b46;
+}
+.document-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.document-panel-close {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.document-panel-close:hover { background: #eef2f8; color: #1d2b46; }
+.document-panel-body {
+  padding: 4px 16px 16px;
+  border-top: 1px solid #e6edf7;
+  background: #fff;
+}
+
 /* Auto-included content-driven aftercare inside the report card (opt-out): the clinic's matching
    protocol is shown by default; the doctor only acts to Remove it. */
 .report-aftercare-included {
