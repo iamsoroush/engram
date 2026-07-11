@@ -564,6 +564,24 @@
         "tags": []
       }
     },
+    "/api/v1/sessions/{session_id}/report-versions": {
+      "get": {
+        "operationId": "list_session_report_versions_route_api_v1_sessions__session_id__report_versions_get",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/report-versions/{version_id}": {
+      "get": {
+        "operationId": "get_session_report_version_route_api_v1_sessions__session_id__report_versions__version_id__get",
+        "tags": []
+      }
+    },
+    "/api/v1/sessions/{session_id}/report-versions/{version_id}/restore": {
+      "post": {
+        "operationId": "restore_session_report_version_route_api_v1_sessions__session_id__report_versions__version_id__restore_post",
+        "tags": []
+      }
+    },
     "/api/v1/sessions/{session_id}/retry-processing": {
       "post": {
         "operationId": "retry_session_processing_route_api_v1_sessions__session_id__retry_processing_post",
@@ -1698,6 +1716,39 @@
         "POST"
       ],
       "path": "/api/v1/sessions/{session_id}/confirm-carried-forward"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/report-versions"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/sessions/{session_id}/report-versions/{version_id}"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "POST"
+      ],
+      "path": "/api/v1/sessions/{session_id}/report-versions/{version_id}/restore"
     },
     {
       "dependencies": [

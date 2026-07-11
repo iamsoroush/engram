@@ -146,7 +146,8 @@ export async function listTherapySessionCaptures(apiFetch: ApiFetch, sessionId: 
 
 // Upload any capture (note / audio / photo) into a therapy session — the shared aesthetics capture
 // dialogs hand back a CaptureDraft; we add patient_id on first capture so the new session is owned
-// by the selected client. Audio is normalized to WAV by the caller (audio.ts standardizeCaptureDraft).
+// by the selected client. Audio is uploaded as recorded; the backend transcodes it to the canonical
+// stored format on ingest (audio.ts standardizeCaptureDraft no longer re-encodes).
 export async function uploadTherapyCapture(
   apiFetch: ApiFetch,
   { draft, sessionId, patientId }: { draft: CaptureDraft; sessionId?: string; patientId?: string },

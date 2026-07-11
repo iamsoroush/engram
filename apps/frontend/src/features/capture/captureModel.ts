@@ -1,7 +1,7 @@
 import type { CaptureDraft, PatientSummary, PendingCapture, SafetyFlag, SafetyFlagKind } from "../../domain/appTypes";
 import type { CaptureItem, CaptureSession, SessionProcessingStatus, SessionTreatment, SessionTreatmentReview, StructuredPatientInformation, TreatmentOverlayEntry } from "../../domain/types";
 import type { AftercareTemplate } from "../../domain/appTypes";
-import { appDateTimeFormat } from "../../shared/lib/datetime";
+import { appDateTimeFormat, formatTime } from "../../shared/lib/datetime";
 import { metadataDisplay, metadataRecord, metadataText } from "./metadata";
 import { sessionUxState } from "../../domain/status";
 import type { Translator } from "../../shared/i18n";
@@ -38,8 +38,9 @@ export const detailByType: Record<CaptureDraft["kind"], string> = {
   note: "Typed note saved on this device. I'll organize it when connection returns.",
 };
 
-export const nowLabel = () =>
-  appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+// Clock times route through the one shared formatter (datetime.formatTime — 24h, Persian digits
+// under fa) so every "HH:MM" in the app uses a single definition and can't drift per call site.
+export const nowLabel = () => formatTime(new Date());
 
 export function createClientId() {
   const browserCrypto = globalThis.crypto;
@@ -690,7 +691,7 @@ export function workspaceReportUpdatedLabel(value: string | null | undefined, t:
   if (!value) return t("model.report.liveDraftUpdates");
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return t("model.report.recentlyUpdated");
-  return t("model.report.updatedAt", { time: appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(date) });
+  return t("model.report.updatedAt", { time: formatTime(date) });
 }
 
 export function sessionSummaryStatusChip(session: CaptureSession | null, t: Translator) {
@@ -841,7 +842,7 @@ export function sessionDateTimeLabel(source?: string | null, fallbackTime?: stri
   const date = source ? new Date(source) : null;
   if (date && !Number.isNaN(date.getTime())) {
     const dateLabel = appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
-    const timeLabel = appDateTimeFormat({ hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+    const timeLabel = formatTime(date);
     return `${dateLabel} · ${timeLabel}`;
   }
   const datePart = source && !source.match(/\b\d{1,2}:\d{2}\b/) ? source : "";

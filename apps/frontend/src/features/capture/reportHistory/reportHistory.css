@@ -1,0 +1,206 @@
+/* Report version-history (E14 / AES-14xx). Logical properties throughout, so RTL mirrors for free. */
+
+/* Quiet header affordance — deliberately calmer than the primary Share button (muted, not brand-blue). */
+.report-history-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill, 999px);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.report-history-button svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  stroke-width: 1.9;
+}
+.report-history-button-label {
+  line-height: 1;
+}
+.report-history-button:hover {
+  color: var(--color-text-soft);
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-soft);
+}
+
+/* Sheet body */
+.report-history {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 12px;
+  padding: 4px 2px 8px;
+}
+.report-history-subtitle {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.84rem;
+}
+
+/* Timeline */
+.report-history-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.report-history-row {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface);
+  text-align: start;
+  cursor: pointer;
+}
+.report-history-row:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-soft);
+}
+.report-history-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.report-history-row-trigger {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+.report-history-row-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+}
+.report-history-row-ai {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
+  font-size: 0.68rem;
+}
+
+/* Preview */
+.report-history-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 10px;
+}
+.report-history-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface-soft);
+}
+.report-history-banner-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-soft);
+}
+.report-history-preview-body {
+  max-height: 58vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 10px;
+}
+.report-history-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.report-history-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+/* Restore confirmation (in-sheet, styled — no native dialog for a destructive multi-capture action) */
+.report-history-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-danger-soft);
+}
+.report-history-confirm-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-danger);
+}
+.report-history-confirm-body,
+.report-history-confirm-removal {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--color-text-soft);
+}
+.report-history-confirm-removal {
+  font-weight: 600;
+}
+.report-history-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Shared states */
+.report-history-empty,
+.report-history-error {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.86rem;
+}
+.report-history-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.report-history-loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+.report-history-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  animation: report-history-spin 0.8s linear infinite;
+}
+@keyframes report-history-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

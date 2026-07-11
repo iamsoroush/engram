@@ -44,7 +44,7 @@
 - Clinical Memory Patients tab to patient detail/timeline: select a patient row.
 - Clinical Memory session cards to Active Session: select a Today, Attention, or patient timeline session card. Active Session shows a `Back` action that returns to the originating Clinical Memory tab or patient timeline.
 - Clinical Memory Attention tab (the Close-the-day sweep) to focused decision surface: each item opens the same resolver it uses at its source — assign / choose / verify patient, the dose/safety in Active Session, or the [Q&A inbox](screens/qa-inbox.md) thread. They do not primarily redirect to the active session page.
-- Top-bar **Attention indicator** (a severity-coloured bell beside Search, merging the former needs-input + Q&A badges): shown only when something is open; tapping it opens the Attention sweep. Q&A stays reachable as a plain inbox icon.
+- Top-bar **Attention indicator** (a severity-coloured bell beside Search, merging the former needs-input + Q&A badges): shown only when something is open; tapping it opens the Attention sweep. Q&A stays reachable as a plain inbox icon. The Clinical-Memory hero **chip** shows the **same** count and opens the same sweep, so the two never disagree.
 - Finder to a patient timeline / session review / lot-recall cohort: select a finder result; a patient row opens the patient's Clinical-Memory file, a visit opens inline session review, and a Pro lot query opens the exact-match recall cohort. Selecting any result closes the overlay.- Any screen to account pages: the **account menu** (top-right avatar) opens with an identity header, then the personal actions **Profile** and **Settings**, then a labelled **Clinic** section grouping the owner/admin clinic-management pages **Insights** + **Team** + **Plan** (the section and its items are hidden for other roles), then **Switch clinic** (multi-clinic users only), **Replay guide** (re-opens the first-run tour), and **Logout**. Each page has a **Back** action returning to the previous staff screen. Account/utility pages (Settings, Profile, Insights, Team, Plan, Switch clinic) **hide the capture bar** — there's no capture context there.
 
 ### Back navigation (in-screen levels)
@@ -61,6 +61,13 @@ same render nets to no history churn.
 ## Protected Behavior
 
 - Staff-facing screens require an authenticated session.
+- **Owner/admin route guard (AES-1501).** The clinic-management screens `#insights`, `#team`, and
+  `#plan` are gated on the `canManageTeam` (owner/admin) capability at the **route** level, not just by
+  hiding the account-menu entries: a non-owner reaching one by a direct hash (deep link, bookmark, a
+  restored last-screen) is redirected to `#patients`. The redirect fires on both cold load and in-session
+  hash change, and the screen render falls through in the same frame, so no owner-only content flashes
+  and no owner-only API call fires. Any owner/admin API `403` maps to the shared permission state
+  ([states.md](states.md#permission--retryable-states)) — never a "try again" that can't help.
 - Staff API actions require backend roles `doctor` or `assistant`.
 - Admin can access read-oriented staff/admin APIs but the current frontend still shows the staff shell; write operations may fail if attempted.
 - Patient preview is blocked from staff screens by `PatientPreviewGate`.

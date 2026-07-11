@@ -63,7 +63,9 @@ function TrustIcon({ n }: { n: "1" | "2" | "3" }) {
 // maintenance-free. Shows the capture-first surface AND the report it produces (treatments + a
 // safety chip), framed as a tablet.
 function AppPreview({ t }: { t: Translator }) {
-  const modalities: Modality[] = ["note", "photo", "audio"];
+  // Mirror the real first-run capture bar (Pro CaptureActions): Record is primary, then Photo, Note —
+  // so the promise on the landing page matches what a new clinic actually sees.
+  const modalities: Modality[] = ["audio", "photo", "note"];
   return (
     <figure className="landing-preview">
       <div className="landing-preview-frame">

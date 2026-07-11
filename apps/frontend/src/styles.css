@@ -1432,19 +1432,38 @@ small {
 .ai-usage-notice {
   margin-block: 8px;
 }
+/* Dev-only usage-state jumper. A clearly badged, dashed inset box so it reads as tooling, never as a
+   broken part of the otherwise-coherent Settings screen (#12). */
 .ai-usage-dev {
   margin-block-start: 14px;
-  padding-block-start: 12px;
-  border-top: 1px dashed var(--color-border);
+  padding: 10px 12px 12px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+.ai-usage-dev-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-usage-dev-badge {
+  flex: none;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-surface);
+  background: var(--color-muted);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
 }
 .ai-usage-dev-label {
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-weight: 650;
   color: var(--color-muted);
 }
 .ai-usage-dev-buttons {
@@ -1478,6 +1497,33 @@ small {
   animation: shimmer 1.3s ease infinite;
 }
 
+/* Shared state views (StateViews.tsx): a calm, centered block for permission-denied (403) and
+   retryable-error states. One visual language wherever a surface can't load. */
+.state-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 32px 24px;
+  color: var(--color-muted);
+}
+.state-view-icon {
+  color: var(--color-muted-2);
+}
+.state-view-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: var(--color-text);
+}
+.state-view-body {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
 .h-16 {
   min-height: 64px;
 }
@@ -1502,23 +1548,29 @@ small {
   max-width: 100%;
   overflow-x: auto;
   gap: 4px;
-  margin-top: 12px;
+  /* No layout margin on the primitive itself — it aligns cleanly inside flex header rows (QA);
+     surfaces that need standalone spacing add it on their wrapper (see .ins-tabs). */
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   padding: 3px;
+  vertical-align: middle;
 }
 
 .tab {
-  min-height: 34px;
+  /* 38px + the .tabs 3px padding = a 44px control, matching .select-menu-trigger so a segmented
+     control and a select trigger read as the same family when they sit side by side (#4). */
+  min-height: 38px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-muted);
   text-align: start;
   padding: 0 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .tab:focus-visible {
@@ -5657,13 +5709,16 @@ small {
 }
 
 @media (max-width: 620px) {
-  .topbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  /* Phones restack into two rows: brand on top, the action cluster + avatar below. Target the actual
+     grid (.topbar-inner) — the old rule set columns on .topbar, which is display:block (a no-op). */
+  .topbar-inner {
+    grid-template-columns: 1fr auto;
   }
 
   .topbar-brand {
     grid-column: 1 / -1;
     grid-row: 1;
+    justify-self: start;
   }
 
   .topbar-left {
@@ -5674,20 +5729,30 @@ small {
   .user-menu {
     grid-column: 2;
     grid-row: 2;
+    justify-self: end;
   }
 
   .user-menu summary {
     max-width: 190px;
   }
 
-  /* Icon-only primary nav on phones so the navigator + Search + Q&A + user menu fit one row with
-     clear spacing (with labels the row overflowed and the user menu was clipped). */
-  .nav-label {
-    display: none;
+  /* Keep the Visit/Memory labels on phones too (#9), so compact the rest of the action cluster to
+     make room: content-width nav pills, slightly smaller round buttons, and a tighter row gap. */
+  .topbar-left {
+    gap: 8px;
+  }
+
+  .app-navigator {
+    grid-template-columns: repeat(2, auto);
   }
 
   .app-navigator button {
-    padding-inline: 12px;
+    padding-inline: 10px;
+  }
+
+  .app-search-button {
+    width: 38px;
+    height: 38px;
   }
 
   .report-heading {
@@ -5747,10 +5812,12 @@ small {
 
 .topbar-inner {
   display: grid;
-  grid-template-columns: minmax(52px, 1fr) auto minmax(52px, 1fr);
+  /* Tablet/desktop: brand anchored far-left, then the nav cluster, then the avatar pinned far-right
+     with the single flexible gap between them — a classic app-bar anchor, no leftover mid-bar space
+     (#10). Phones restack this into two rows below. */
+  grid-template-columns: auto auto 1fr;
   align-items: center;
-  column-gap: 12px; /* when the brand wraps to its own row the center column is empty — keep the
-                       action cluster (ending in the attention bell + its badge) off the avatar. */
+  column-gap: 12px;
   width: 100%;
   min-height: 76px;
   margin: 0 auto;
@@ -5764,7 +5831,8 @@ small {
 }
 
 .topbar-left {
-  grid-column: 1;
+  grid-column: 2;
+  justify-self: start;
 }
 
 /* Pin the avatar menu to the far right so it never crowds the bell/badge to its left. */
@@ -5774,7 +5842,8 @@ small {
 }
 
 .topbar-brand {
-  grid-column: 2;
+  grid-column: 1;
+  justify-self: start;
   color: #090d2e;
   font-size: 1.06rem;
   opacity: 1;
@@ -6602,6 +6671,79 @@ small {
 .sources-type-chip svg { width: var(--icon-xs); height: var(--icon-xs); }
 .sources-drawer-body {
   padding: 4px 16px 14px;
+  border-top: 1px solid #e6edf7;
+  background: #fff;
+}
+
+/* Tier-convergence (AES-1403): Basic's lightweight "View as document" header affordance + the secondary
+   document panel — the tidy chronological notebook (AES-302), opened opt-in from the header (the Basic
+   feed always leads). The panel mirrors the Sources-drawer surface treatment, and Share lives in it. */
+.report-doc-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px 5px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill, 999px);
+  background: #fff;
+  color: #44557a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.report-doc-button svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  stroke-width: 1.9;
+}
+.report-doc-button-label { line-height: 1; }
+.report-doc-button[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, #fff);
+}
+.report-doc-button:hover { background: #f1f5fb; }
+
+.document-panel {
+  border-top: 1px solid #e6edf7;
+  background: #f7faff;
+  scroll-margin-top: 56px;
+}
+.document-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+}
+.document-panel-title {
+  font-size: 0.86rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #1d2b46;
+}
+.document-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.document-panel-close {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.document-panel-close:hover { background: #eef2f8; color: #1d2b46; }
+.document-panel-body {
+  padding: 4px 16px 16px;
   border-top: 1px solid #e6edf7;
   background: #fff;
 }
@@ -9200,7 +9342,10 @@ ul.treatment-review-notes {
 .app-search-button.active {
   background: var(--color-primary-soft);
   color: var(--color-primary);
-  box-shadow: inset 0 0 0 1px #91bfff;
+  /* Decisively stronger selected state (#9): a full-primary 1.5px ring + heavier weight, so the
+     active pill is unmistakable even where the two glyphs render icon-only at the narrowest widths. */
+  box-shadow: inset 0 0 0 1.5px var(--color-primary);
+  font-weight: 900;
 }
 
 .app-navigator button > span:first-child {
@@ -10193,16 +10338,31 @@ ul.treatment-review-notes {
   .user-menu {
     grid-column: 2;
     grid-row: 2;
+    justify-self: end;
+  }
+
+  /* Narrowest phones (390): keep the Visit/Memory labels but squeeze the cluster hardest —
+     content-width pills, small round buttons + gap — so the full Pro row (nav + search + Q&A +
+     bell + avatar) still fits one line without the bell badge colliding with the avatar (#9). */
+  .topbar-left {
+    gap: 6px;
   }
 
   .app-navigator {
-    grid-template-columns: repeat(2, minmax(78px, 1fr));
+    grid-template-columns: repeat(2, auto);
+    padding: 3px;
   }
 
   .app-navigator button {
-    height: 38px;
-    padding: 0 9px;
+    height: 36px;
+    padding: 0 8px;
+    gap: 5px;
     font-size: 0.76rem;
+  }
+
+  .app-search-button {
+    width: 34px;
+    height: 34px;
   }
 
   .capture-generated-heading {

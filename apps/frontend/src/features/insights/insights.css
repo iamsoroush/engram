@@ -7,14 +7,28 @@
   margin-block-end: var(--space-3);
   flex-wrap: wrap;
 }
+/* Same height/radius/border as the range select (.select-menu-trigger) so the two controls read as
+   one family; the pressed state (soft primary) is what marks it as a toggle (#4). */
 .ins-compare {
-  border: 1px solid var(--color-border-strong);
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid var(--color-border);
   background: var(--color-surface);
-  color: var(--color-muted);
-  border-radius: var(--radius-pill);
-  padding: 6px 12px;
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 0 14px;
   font-size: var(--text-sm);
+  font-weight: 650;
   cursor: pointer;
+}
+.ins-compare:hover {
+  border-color: var(--color-border-strong);
+}
+.ins-compare:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 .ins-compare.on {
   background: var(--color-primary-soft);
@@ -22,6 +36,7 @@
   color: var(--color-primary);
 }
 .ins-tabs {
+  margin-block-start: var(--space-3);
   margin-block-end: var(--space-4);
   overflow-x: auto;
 }
@@ -51,6 +66,13 @@
   font-size: var(--text-sm);
   text-align: center;
   padding-block: var(--space-5);
+}
+/* Frame for a section-level permission / retryable-error state (shared StateViews). */
+.ins-state {
+  margin-block: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
 }
 
 /* KPI cards */

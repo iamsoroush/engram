@@ -22,6 +22,9 @@ export type Capabilities = {
   showGhostPhoto: boolean;
   isStaffWriter: boolean;
   isAdmin: boolean;
+  /** Owner or admin: may reach the clinic-management pages (Insights / Team / Plan). Mirrors the
+   *  account-menu gate in Shell and the route guard in App. */
+  canManageTeam: boolean;
   roles: string[];
 };
 
@@ -33,6 +36,7 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
     const tier = auth?.tenant.tier;
     const isPro = Boolean(auth) && tier !== "basic";
     const isBasic = tier === "basic";
+    const roles = currentUserRoles(auth);
     return {
       tier,
       isPro,
@@ -43,7 +47,8 @@ export function CapabilitiesProvider({ children }: { children: React.ReactNode }
       showGhostPhoto: isBasic,
       isStaffWriter: isStaffWriter(auth),
       isAdmin: isAdmin(auth),
-      roles: currentUserRoles(auth),
+      canManageTeam: roles.includes("owner") || roles.includes("admin"),
+      roles,
     };
   }, [auth]);
   return <CapabilitiesContext.Provider value={value}>{children}</CapabilitiesContext.Provider>;

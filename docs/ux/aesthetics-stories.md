@@ -515,6 +515,28 @@ clear them — **without being blocked**.
   open; per-day dismiss; never a gate or wall (never-block holds). *A persistent tenant/user opt-out
   setting is the clean follow-up.*
 
+### AES-1007 — One attention count across the bell + Today chip 〔Both · Dr/As/Rc · modify〕
+As **any clinician**, I want the top-bar bell and the Clinical-Memory "needs your input" chip to show
+the **same** number, so that "how much needs me?" never disagrees with itself. *(Refines AES-1003.)*
+- **Acceptance:** the hero chip is fed the same `attentionBadgeCount` (confirm + messages) the bell
+  shows (App threads it down); **surface-by-exception** — the chip is hidden when the count is 0 (no
+  "All caught up" pill). When the Today "Needs your input" preview is empty **but** the sweep still has
+  open items (earlier days / messages), that section points to the sweep («See all N in Attention»)
+  instead of claiming "all caught up", so the chip, the bell, and the section can never contradict.
+  As-built: [screens/patients.md](screens/patients.md).
+
+### AES-1008 — Per-visit grouping in the Close-the-day sweep 〔Both · Dr/As · modify〕
+As a **doctor**, I want a visit with several open confirmations to appear as **one** grouped row
+(«{patient} — N to confirm») rather than N sibling cards, so that a heavily-uncertain visit doesn't
+flood the sweep and bury the other items. *(Refines AES-1004.)*
+- **Acceptance:** within each sweep section (and the `Earlier, still open` group), confirm-tier (S2)
+  items sharing a `sessionId` collapse into one grouped row leading with the patient name (or
+  «This visit» when unassigned) + «N to confirm»; a lone confirmation and every non-confirm item stay
+  as their normal detailed rows, in order; the group's single action opens the visit — the same
+  per-source resolvers walk its confirmations in place (a **list-shape** change, not a new flow).
+  Section counts and the `N of M cleared` progress still count individual items. As-built:
+  [screens/patients.md](screens/patients.md).
+
 ---
 
 ## E11 — User-authored treatment overlay (Pro)
@@ -600,6 +622,68 @@ absent in Basic, not teased.
 
 ---
 
+## E14 — Tier convergence (converge the shell, keep the primary surface tier-appropriate)
+*Both tiers render a session with ONE tabless skeleton — patient strip → primary working surface →
+secondary collapsible view → capture bar — but **what sits in "primary" differs by tier** because the
+valuable artifact differs. Pro's primary is the synthesized **report** (raw captures demoted to the
+**Sources** drawer); Basic's primary is the captures **feed** itself (the tidy chronological document
+is the secondary **View as document** panel that flows into Share). The legacy Captures/Live-report
+**tab switch is deleted in both tiers**; AI zones stay capability-gated (omitted, not disabled, in
+Basic). Shares the layout-diet strip (E13) + the E8 consolidated teaser. As-built:
+[screens/capture.md](screens/capture.md) "Surface by tier".*
+
+### AES-1401 — Kill the tab switch; one shared skeleton 〔Basic+Pro · Dr · built〕
+As **any clinician**, I want a session to render with the same interaction model on both tiers, so that
+upgrading from Basic to Pro is a continuity, not a relearn.
+- **Acceptance:** the Captures/Live-report tab switch is removed; both tiers render `patient strip →
+  primary working surface → secondary collapsible view → capture bar`. The secondary is always a
+  drawer/panel, never a co-equal tab (no "which tab am I on"). Layout unification is tier-independent;
+  the AI features stay capability-gated on resolved capabilities.
+
+### AES-1402 — Basic feed-first primary surface 〔Basic · Dr/As · new〕
+As a **Basic doctor**, I want the captures feed to be the persistent primary surface, so that during
+capture I always see what I just added and touch my own content directly — no drawer to open for daily
+work.
+- **Acceptance:** the captures feed (audio player / photo / note, with edit / rename / delete /
+  source-preview) is the primary body; no auto-collapse-to-document (the feed always leads). *Why:*
+  Basic's "report" is the same captures reformatted — zero new information — so burying them behind a
+  drawer optimizes the rare upgrade over the daily Basic experience (owner round-2 correction).
+
+### AES-1403 — Basic "View as document" / Share 〔Basic · Dr/As · new〕
+As a **Basic doctor / assistant**, I want a tidy chronological notebook (AES-302) to review / print and
+a curated Share (AES-303), so that the patient still leaves with a professional artifact — but it lives
+where sharing lives, not as the star of the capture screen.
+- **Acceptance:** a lightweight **`View as document`** header affordance on the capture screen opens the
+  secondary document panel (the chronological notebook); the curated **Share** lives inside it (the two
+  entry points are the capture-screen header affordance **and** the Share flow — owner decision 1).
+  **"Live report" wording is retired in Basic** — the document is `View as document` / `Visit record`
+  (owner decision 2).
+
+### AES-1404 — Capability-gated AI-zone omission 〔Basic+Pro · Dr · built〕
+As a **Basic doctor**, I want the shared shell to omit the Pro-only AI zones cleanly, so that Basic has
+no empty bands and stays legibly zero-AI.
+- **Acceptance:** the AI spark, synthesis/`Organizing` states, verify bar (`⚠ N to confirm`), safety
+  panel, treatment table, freshness line, aftercare auto-include and report-feedback bar are **omitted
+  (not disabled)** in Basic — every one gated on resolved capabilities (`isPro`). The single
+  consolidated foot teaser (E8) stays.
+
+### AES-1405 — Upgrade-continuity verification 〔Basic→Pro · Dr · built〕
+As an **upgrading clinic**, I want Basic → Pro to change only what the AI adds, so that there is no
+relearned interaction model.
+- **Acceptance:** a QA scenario proves the skeleton is invariant across the upgrade — same patient
+  strip, same secondary-drawer pattern, same capture bar, same nav; only the primary flips (feed →
+  report), the raw feed slides into the Sources drawer, and the AI zones light up. Covered by the
+  real-stack tier-surface spec (`p0-14-tier-convergence-shell.spec.ts`).
+
+### AES-1406 — Align with the layout-diet strip + E8 teaser 〔Basic+Pro · built〕
+As a **Basic doctor**, I want the shared strip (Basic variant) and one consolidated teaser, so that the
+convergence reuses E13/E8 rather than duplicating them.
+- **Acceptance:** both tiers share the [E13 patient strip](#e13--session-screen-layout-diet-the-patient-strip)
+  (Basic lights up fewer chips — no verify/safety); the document's own Try-Pro is suppressed so the
+  screen keeps exactly one **Do more with Pro** (E8), at the foot of the primary feed.
+
+---
+
 ## E12 — Unified finder (app-wide retrieval)
 *One patients-first finder overlay that replaces the old top-nav `/#search` local-substring screen
 with the real Persian-aware patient search + Pro lot recall. Built + folded to the system-state doc:
@@ -652,6 +736,136 @@ by what was said, not just by patient/lot. **Deferred candidate** — backend gl
 captures / extracted findings / report prose is a larger later migration; find-only in v1.
 
 ---
+
+## E15 — UI expert-review refinements: screens, router & controls (2026-07)
+
+*The accepted items from the 2026-07 UI expert review (trust/coherence/polish pass). This slice —
+screens, router, and the public landing — covers the **screen/state** items; the capture/attention/shell
+items land alongside it. Surfaces: [screens/insights.md](screens/insights.md),
+[screens/qa-inbox.md](screens/qa-inbox.md), [states.md](states.md), [navigation.md](navigation.md).*
+
+### AES-1501 — Role-guarded owner/admin routes + shared permission state 〔Both · Dr/As/Admin · new〕
+As a **doctor**, when I reach an owner/admin page by a direct hash (deep link, bookmark, restored
+screen), I want to land on my own workspace instead of a broken page, so that the boundary is honest and
+calm.
+- **Acceptance:** the clinic-management screens (`#insights` / `#team` / `#plan`) are route-guarded on
+  the `canManageTeam` (owner/admin) capability — a non-owner hash-navigating to any of them redirects to
+  `#patients` (the render also falls through, so no owner-only content flashes and no API call fires);
+  an owner is never redirected. Any owner/admin API **403** maps to the shared **permission-denied**
+  state (no retry — retrying can't grant access), reserving `try again` + a Retry button for genuinely
+  retryable failures ([states.md](states.md) "Permission & retryable states"). Hermetic e2e pins the
+  redirect for all three hashes + the owner non-redirect.
+
+### AES-1502 — One control language (segmented control + select trigger) 〔Both · All · new〕
+As a **clinic user**, I want the app's toggles and dropdowns to look like one system, so that the UI
+reads as coherent rather than assembled from mismatched parts.
+- **Acceptance:** a single segmented-control primitive (`Tabs`, `role="tab"` + `aria-selected`) and a
+  single select-trigger (`SelectMenu`), matched in height/radius. Applied first on the **Q&A inbox**
+  (Inbox|Library, Mine|Clinic → the segmented control; Routing → the select trigger) and **Insights**
+  (sub-tabs + Activity series → the segmented control; range → the select trigger; the `Compare to
+  previous` toggle aligned to the select height/radius). RTL-mirrored; bilingual chrome.
+
+### AES-1503 — Q&A inbox teaching empty state 〔Pro · Dr/As · new〕
+As a **doctor** with an empty Q&A inbox, I want to learn how a thread arrives and get a shortcut to
+start one, so that a paid Pro feature isn't a dead end.
+- **Acceptance:** the empty inbox shows the scope headline **plus** one teaching sentence (a thread
+  starts when a patient asks from their Q&A link) **and** a **Share Q&A link** shortcut that opens the
+  app-wide finder to pick a patient and open their Q&A channel. As-built:
+  [screens/qa-inbox.md](screens/qa-inbox.md). *Extends AES-402.*
+
+### AES-1504 — Landing hero mirrors the live capture bar 〔Basic · Pt · new〕
+As a **prospect**, I want the landing mockup's capture bar to match the real first-run app, so that the
+promise matches what I get.
+- **Acceptance:** the landing in-product preview leads with **Record** (primary) then **Photo**, **Note**
+  — the Pro capture-bar order (`CaptureActions`) — instead of the old Note-primary Note/Photo/Audio.
+
+### AES-1505 — Dev usage-jump control reads as tooling 〔Pro · Dr · modify〕
+As a **developer/tester**, I want the Settings AI-usage jump control to look like a clearly-badged dev
+box, so that it never leaks a "broken" look into an otherwise coherent screen.
+- **Acceptance:** the dev-only usage-state jumper (ships in dev builds only, `IS_DEV`) renders in a
+  dashed, `Dev`-badged inset box with the percentages as small buttons — not four bare percentage links.
+
+## E16 — Clinical Memory & top-bar UI-review refinements (2026-07)
+*Accepted items from the 2026-07-10 UI expert review — trust/coherence + polish on the Clinical Memory
+screen and the app top bar. The unified-count and sweep-grouping items from the same review live in
+[E10](#e10--close-the-day--unified-attention-both) (AES-1007 / AES-1008).*
+
+### AES-1601 — One shared timestamp formatter 〔Both · All · modify〕
+As **any clinician**, I want every clock time in a card to use one convention, so that a visit card
+never shows `Visit: … 17:43` directly above `Updated: 5:43 PM`.
+- **Acceptance:** a single clock formatter (`shared/lib/datetime.formatTime`) drives the visit card's
+  `Visit:` / `Updated:` lines, the patient-card "Latest visit", and the capture "updated" labels —
+  **24-hour everywhere** (Persian digits under fa via the `fa-IR` locale, 24h under en). The `Visit:`
+  line derives from the visit timestamp so its date localizes (`Today` → «امروز»). Decision: en clock =
+  24h ([technical-decisions](../technical-decisions.md)).
+
+### AES-1602 — Drop the marketing subtitle on Clinical Memory 〔Both · All · modify〕
+As **any clinician**, I want the Clinical Memory heading to orient without a marketing sentence, so that
+every phone visit isn't taxed a self-praising text row (it violated the calm-professional principle it
+cited).
+- **Acceptance:** the "Your calm, intelligent assistant…" subtitle is removed; the heading + attention
+  chip + search already orient. If it must live somewhere, it belongs in onboarding.
+
+### AES-1603 — Legible primary nav at every width 〔Both · All · modify〕
+As a **new user**, I want the Visit/Memory nav pills identifiable at phone widths, so that two
+near-abstract glyphs aren't the only cue.
+- **Acceptance:** the `Visit` / `Memory` labels are kept at **all** widths (the action cluster is
+  compacted on phones so the full Pro row — nav + search + Q&A + bell + avatar — still fits one line at
+  390px), plus a **decisively stronger selected state** (full-primary ring + heavier weight) so the
+  active pill reads even where a glyph would otherwise be icon-only.
+
+### AES-1604 — Balanced top bar on tablet 〔Both · All · modify〕
+As a **tablet user**, I want the top bar to read as intentional, so that the brand doesn't float
+mid-bar with leftover space.
+- **Acceptance:** the `Engram` wordmark is anchored to the inline-start (far-left; far-right under RTL)
+  **before** the nav cluster, with the avatar pinned to the inline-end and the single flexible gap
+  between them — no mid-bar float. Phones keep the two-row restack (brand on top).
+
+---
+
+## E17 — Report version history (Pro)
+*Exposes the content-addressed `session_report_versions` store (pipeline-versioning) as a navigable
+history UI, replacing the bare "Undo last capture" button with navigate → preview → restore. Built
+(v1). Mechanics: [pipeline-versioning](../architecture/pipeline-versioning.md); surface:
+[screens/capture.md](screens/capture.md) "Report history".*
+
+### AES-1701 — Report version timeline 〔Pro · Dr/As · built〕
+As a **doctor**, I want a quiet **History** affordance on the report card that opens a timeline of every
+stored version — time, a trigger label (photo added / transcript edited / …), capture count, demoted
+provenance — so that I can see how the report evolved instead of a one-way Undo.
+- **Acceptance:** newest-first list from `GET /sessions/{id}/report-versions`; the current version tagged
+  `Current`; Pro only (Basic has no synthesis chain). Trigger labels are **chrome** — the backend sends a
+  structured `{kind, count?}`, the client localizes it (fa/en). Empty/1-version → calm empty state.
+
+### AES-1702 — Read-only version preview (overlay-on-top) 〔Pro · Dr/As · built〕
+As a **doctor**, I want to tap a version and see that report **read-only**, with a
+`Viewing the version from HH:MM · Back to current` banner, so that I can inspect a past state without
+changing anything.
+- **Acceptance:** renders the version's artifacts through the same report presentation (`canEditTreatments`
+  off); the **live user-state overlay** (rejected flags / dismissed aftercare / confirmed doses /
+  treatment edits) is applied on top so a decision is never time-traveled away (pipeline-versioning D2).
+  In-sheet preview (not time-travel-in-place) keeps the CaptureScreen mount to a single header affordance.
+
+### AES-1703 — Revert-restore (owner-only) 〔Pro · Dr · built〕
+As a **visit owner**, I want to **restore** the report to an earlier version, so that a later capture that
+made the report worse can be rolled back — the richer face of undo.
+- **Acceptance:** `POST /sessions/{id}/report-versions/{vid}/restore` returns the session to that version's
+  capture set by de-effecting the captures added after it, reusing the **exact undo machinery** (P0-8
+  semantics shared); **owner-only** (`can_remove_capture`), gated behind a confirmation naming how many
+  captures are removed. Offered **only for versions reachable by removal** (subset of the current set); a
+  non-linear version is **preview-only** with a calm note. `409` when unreachable. **No pipeline change.**
+
+### AES-1704 — Quick undo stays 〔Pro · Dr · built〕
+As a **doctor**, I want "Undo last capture" to remain the one-tap shortcut in the Sources drawer, so that
+the common case stays instant while the timeline is its richer, multi-step face.
+- **Acceptance:** the Sources-drawer Undo is unchanged (it is "restore the previous version", N=1, on the
+  same `DELETE /captures/{id}` de-effect path).
+
+- **Deferred (⊕, fast-follows):**
+  AES-1705 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
+  AES-1706 **time-travel-in-place** preview; AES-1707 **field-level version diffs**; AES-1708 **D5
+  GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
+  fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
 
 ## Coverage check — every agreed feature is detailed
 

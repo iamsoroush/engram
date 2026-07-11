@@ -26,6 +26,15 @@ def transcription_is_configured() -> bool:
     return bool(settings.transcription_base_url.strip())
 
 
+def transcription_direct_send_enabled() -> bool:
+    """Whether transcription sends the stored canonical audio bytes to the gateway as-is.
+
+    On (default): the stored MP3 goes to the gateway with its own mime, skipping the per-call FLAC
+    re-encode (decision gate G2). Off (kill-switch): revert to the format-agnostic FLAC re-encode.
+    """
+    return settings.transcription_direct_send
+
+
 def gateway_settings_for(task: str) -> tuple[str, str, str]:
     """Resolve (base_url, api_key, model) for an AI task, falling back to the transcription gateway.
 

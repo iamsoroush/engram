@@ -226,6 +226,42 @@ export type SessionProcessingStatus = {
   updatedAt?: string | null;
 };
 
+/** E14 report version-history: how a stored version differs from the prior one (localized client-side —
+ * chrome is bilingual, so the server sends the kind, never the label). */
+export type ReportVersionTrigger = {
+  kind: string;
+  count?: number;
+};
+
+/** One row in the report-version timeline (provenance demoted; artifacts load lazily on preview). */
+export type ReportVersionSummary = {
+  id: string;
+  captureSetHash: string;
+  captureCount: number;
+  /** Capture ids this version knew — diffed against the live session to count what a restore removes. */
+  captureIds: string[];
+  generatedAt: string | null;
+  createdAt: string | null;
+  generatedBy: string | null;
+  isCurrent: boolean;
+  /** Reachable by pure removal (a proper past set); the owner-only gate is applied client + server side. */
+  restorable: boolean;
+  trigger: ReportVersionTrigger;
+};
+
+/** A version's report artifacts, session-shaped for a read-only preview (overlay applied client-side). */
+export type ReportVersionDetail = {
+  version: Omit<ReportVersionSummary, "trigger">;
+  report: {
+    summary: string | null;
+    generatedSummary: string | null;
+    generatedReport: string | null;
+    reportModel: StructuredReportModel | null;
+    reportTemplateKey: string | null;
+    extractedMetadata: Record<string, unknown>;
+  };
+};
+
 export type CaptureSession = {
   id: string;
   label: string;

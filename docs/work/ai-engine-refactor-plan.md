@@ -376,7 +376,7 @@ existing signals** (uncertainties, per-item confidence, safety flags, Q&A); no n
 required. Optional, deferred: machine-readable uncertainty reason codes (today free strings) would
 make the S2/S4 mapping less heuristic — a synthesis schema change, so if wanted it batches into the
 same v2 bump as the treatment keys, eval-gated. Its "synthesis still in flight shows nothing" rule is
-already served by `processing_status`. [tier-convergence](ux-epic-tier-convergence.md) — explicitly
+already served by `processing_status`. tier-convergence (shipped — E14 in the story registry) — explicitly
 adds **no** synthesis or structure to Basic; no gating change; it *depends on* the skip-sentinel +
 deterministic-baseline seams this plan preserves. [unified-finder](../ux/screens/finder.md) (built) /
 session-layout-diet (built — [capture.md](../ux/screens/capture.md) "Patient strip") — deterministic backend/frontend work, no
@@ -436,7 +436,7 @@ pipeline requirements.
   library (template entry product feature) + retrieval-grounded drafting (RAG over approved past
   replies and templates). The `qa_draft`/`qa_revise` golden-set proposals moved there; this plan's
   Axis-1 move of the two jobs proceeds on unit tests, with evals riding the epic (decision 3 below).
-- [ux-epic-report-history.md](ux-epic-report-history.md) — replace the bare "Undo last capture"
+- report-history (shipped — E17 in the story registry) — replace the bare "Undo last capture"
   button with a version-history surface over the existing `session_report_versions` store (navigate
   + preview + restore/pin). Pipeline-side it needs nothing new from this plan; it consumes the
   store + overlay fold as-is.

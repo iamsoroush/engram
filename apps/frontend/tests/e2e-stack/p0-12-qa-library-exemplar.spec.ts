@@ -70,7 +70,7 @@ test.describe("P0-12 Q&A library + retrieval-grounded draft", () => {
     // correctly empty (the API poll above used scope=all for the same reason).
     await staff.locator('[data-testid="qa-tab-inbox"]').click();
     const inbox = staff.locator('[data-testid="qa-inbox"]');
-    await inbox.getByRole("button", { name: "Clinic" }).click();
+    await inbox.getByRole("tab", { name: "Clinic" }).click();
     await expect(inbox.getByText("Exemplar Patient").first()).toBeVisible({ timeout: 15_000 });
     await expect(inbox.locator('[data-testid="qa-draft-provenance"]').first()).toBeVisible();
 

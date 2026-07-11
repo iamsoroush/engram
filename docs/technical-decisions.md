@@ -1,5 +1,23 @@
 # Technical Decisions
 
+## UI-review refinements: one 24h clock + one attention count (2026-07-11)
+
+From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), shipped as AES-1007/1008
++ AES-1601–1604 (and AES-1501–1505 for the screens/router slice). Two decisions worth recording:
+
+- **En clock convention = 24-hour.** Clock times across the memory surfaces were split — the visit
+  card rendered `Visit: … 17:43` (24h, from the precomputed `session.time`) directly above
+  `Updated: 5:43 PM` (12h). Rather than pick 12h, we standardised on **24h everywhere** so fa and en
+  share one `Intl` format (only the locale differs — `fa-IR` adds Persian digits + Jalali): one shared
+  `shared/lib/datetime.formatTime` now drives every clock label (visit card, timeline, patient-card
+  "Latest visit", capture labels). The `Visit:` line derives from the visit timestamp, which also
+  localizes its date (`Today` → «امروز», previously an un-localized English literal under fa).
+- **One attention count feeds the bell + the Today chip.** The top-bar bell, the Clinical-Memory hero
+  chip, and the Today "Needs your input" section were three counters computed from different sources
+  (the chip counted a backend needs-input fetch; the bell counted the `/attention` roll-up). They now
+  all read the **single** `attentionBadgeCount` (confirm + messages) from `GET /attention`; the chip is
+  surface-by-exception (hidden at 0), and the redundant needs-input fetch in `PatientsHome` was removed.
+
 ## Model comparison verdict: keep the incumbent split; mid bracket rejected (2026-07-10)
 
 A 74-case owner-designed comparison (all text AI jobs + transcription + audio formats; readout in
@@ -19,6 +37,33 @@ The audio-format add-on's verdict: canonical stored format should move WAV PCM �
 rejected — it drops colloquial doses), implemented server-side as transcode-on-ingest; the gateway
 path is unaffected because the worker already re-encodes to FLAC per call. Implementation is a
 pending epic — not yet built.
+**Superseded 2026-07-10 (built): canonical = MP3 32 kbps (not Opus), and the worker sends it
+directly (drops the FLAC re-encode). See "Compressed canonical audio" below.**
+
+## Compressed canonical audio: MP3 canonical + direct-to-gateway (2026-07-10)
+
+The compressed-canonical-audio epic shipped the ~8× storage/upload win. Two empirical gates set the
+shape:
+
+- **G1 (playback) → canonical is MP3 32 kbps 16 kHz mono, not OGG/Opus.** On real Chrome and macOS
+  Safari 26.3, MP3 plays natively in `<audio>` with exact duration + working seek through our
+  byte-range path; Ogg/Opus overshot duration by ~1 s even where it played on macOS Safari, and its
+  iOS `<audio>` support is historically unreliable (not verifiable here). MP3 is universally
+  decodable and the size penalty vs Opus 32 kbps is ~4% (7.9× vs 8.1×) — negligible. The stored
+  format is a single constant in `app/services/audio.py`; flipping to Opus later is a one-line change
+  gated on an iOS-Safari playback re-test.
+- **G2 (direct-to-gateway) → PASS.** The gateway (`gemini-3.1-flash-lite`) accepts the canonical MP3
+  bytes directly (`audio/mp3`); over the T01–T12 owner clips (3 samples) direct-send matched the
+  FLAC-path baseline on CER (0.075) and clinical-token accuracy with zero errors, and a
+  stored-MP3→direct vs stored-MP3→FLAC control was identical (re-encoding lossy MP3 to FLAC recovers
+  nothing). So the worker sends stored bytes directly; the FLAC re-encode is retained behind
+  `AI_ENGINE_TRANSCRIPTION_DIRECT_SEND` for legacy WAV / unknown formats and as a kill-switch.
+
+Built: backend transcode-on-ingest with server-side ffprobe duration (`app/services/audio.py`,
+ffmpeg added to the backend image); frontend drops the OfflineAudioContext WAV re-encode and uploads
+the native recorder blob; worker direct-send. No bulk migration — the store is mixed (old WAV + new
+MP3), readers key off `artifact.mime_type`. Metering stays duration-priced: the worker's duration
+probe was made robust (temp-file ffprobe) so per-minute billing works for MP3, not just WAV.
 
 ## Eval gates vote majority-of-N on failure (2026-07-10)
 

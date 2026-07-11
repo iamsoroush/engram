@@ -10,11 +10,12 @@ import { SessionContextCard } from "../../aesthetics/SessionContextCard";
 import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
 import { LiveDraftReport } from "./LiveDraftReport";
-import { LiveReportView } from "./LiveReport";
+import { LiveReportView, BasicLiveReport } from "./LiveReport";
 import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion, AiCreatedPatientPanel, PatientConflictResolver } from "./CaptureBadges";
 import { NextLinedUpBar, SessionSafetyPanel } from "./CaptureRegions";
 import { PatientStrip } from "./PatientStrip";
+import { ReportHistoryButton } from "../reportHistory";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture, ordinalWord } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
@@ -159,7 +160,6 @@ export function CaptureScreen({
         .filter((conflict): conflict is { template: AftercareTemplate; note: string | null; status: AftercareSelection["status"] } => Boolean(conflict.template))
     : [];
   const [selectedCapture, setSelectedCapture] = React.useState<CaptureItem | null>(null);
-  const [reportView, setReportView] = React.useState<"draft" | "structured">("draft");
   const previousCaptureCountRef = React.useRef(activeSession?.items.length || 0);
   const isHistorical = mode === "historical";
   // Basic active visits get a lightweight header — no "Complete" badge, no raw "Session <time>"
@@ -193,7 +193,6 @@ export function CaptureScreen({
   // pulse on the Sources header only while captures are still being processed into the report.
   const sourcesProcessing = isUpdatingReport || (activeSession?.items || []).some((item) => item.status === "processing");
   const reportState = workspaceReportState(activeSession, t);
-  const selectedReportView = reportView;
   const sessionTitle = sessionSummaryTitle(activeSession, isHistorical, t);
   // Pro keeps its status chip + meta, but the title gets the same meaningful naming as Basic — a
   // real AI report title when there is one, otherwise "{patient}'s Nth session" / the date+time
@@ -223,10 +222,13 @@ export function CaptureScreen({
   const sessionCreatedLabel = sessionSummaryCreatedLabel(activeSession, t);
   const sessionUpdatedLabel = sessionSummaryUpdatedLabel(activeSession, t);
 
-  // FB8 unified Pro layout: the synthesized report is the primary surface, the raw captures become a
-  // collapsible "Sources" drawer, and a sticky bar drives verification. Basic keeps its Captures /
-  // Live-report tabs (it has no synthesized report to make primary).
-  const useUnifiedLayout = isPro;
+  // Tier-convergence (AES-1401): both tiers now share ONE tabless skeleton —
+  // patient strip → primary working surface → secondary collapsible view → capture bar. What sits in
+  // "primary" differs by tier because the valuable artifact differs: Pro's primary is the synthesized
+  // REPORT (raw captures demoted to the collapsible "Sources" drawer); Basic's primary is the captures
+  // FEED itself (the tidy chronological document is the secondary "View as document" panel below). The
+  // legacy Captures/Live-report tab switch is deleted in both tiers; the AI zones stay capability-gated
+  // on `isPro`, so Basic omits them cleanly (no empty bands) rather than disabling them.
   // Sticky verify driver counts ONLY blockers — unconfirmed carried-forward doses + an AI-created
   // patient awaiting identity verification. Soft warnings (missing lot, low confidence) stay inline
   // in the report and never feed this count, keeping the bar calm ("warnings over blocking").
@@ -321,6 +323,21 @@ export function CaptureScreen({
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const sourcesShown = sourcesOpen || !reportHasContent;
   const sourcesDrawerRef = React.useRef<HTMLElement>(null);
+  // Basic secondary "View as document" panel (AES-1403): the tidy chronological notebook (AES-302) for
+  // review / print / share. Unlike Pro's Sources drawer it NEVER auto-expands — in Basic the feed always
+  // leads and the document is opt-in (§3.2). Opened by the lightweight header affordance (decision 1);
+  // the curated Share lives inside the expanded document (it flows into AES-303).
+  const [documentOpen, setDocumentOpen] = React.useState(false);
+  const documentPanelRef = React.useRef<HTMLElement>(null);
+  // The Basic "View as document" affordance shows once there is something to render as a document.
+  const documentAvailable = !isPro && captureCount > 0;
+  const toggleDocument = () => {
+    setDocumentOpen((open) => {
+      const next = !open;
+      if (next) window.requestAnimationFrame(() => documentPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      return next;
+    });
+  };
   // "Fix at source" on a flagged treatment row: open the Sources drawer and scroll to it, so the
   // doctor corrects the originating capture (transcript/caption) and the AI re-extracts.
   const onFixAtSource = () => {
@@ -347,11 +364,6 @@ export function CaptureScreen({
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
-
-  // The report is always live; default to the Captures feed and let the user toggle tabs.
-  React.useEffect(() => {
-    setReportView("draft");
-  }, [activeSession?.id]);
 
   React.useEffect(() => {
     if (!activeSession) previousCaptureCountRef.current = 0;
@@ -407,7 +419,9 @@ export function CaptureScreen({
                 <h1 dir={textDirection(lightTitle)}>{lightTitle}</h1>
               </div>
               <p>
-                {captureCountLabel}
+                {/* Empty visit: collapse the meta to one honest fragment (UI-review #6) — a fresh visit
+                    reads "Created just now", not "0 captures". The count returns once captures land. */}
+                {captureCount === 0 ? t("model.session.createdJustNow") : captureCountLabel}
                 {offline && sessionPending ? (
                   <span className="session-sync-pending"><SyncIcon /> {t("capture.tryingToSyncSession")}</span>
                 ) : null}
@@ -422,7 +436,14 @@ export function CaptureScreen({
                   {sessionStatusChip.label}
                 </span>
               </div>
-              <p data-testid="session-meta">{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+              {/* Empty active visit: collapse "Created now · 0 captures · Updated recently" (three
+                  fragments, two redundant + self-contradictory) to one honest line (UI-review #6). The
+                  count + updated fragments return once they carry real, diverging information. */}
+              {!isHistorical && captureCount === 0 ? (
+                <p data-testid="session-meta">{t("model.session.createdJustNow")}</p>
+              ) : (
+                <p data-testid="session-meta">{sessionCreatedLabel} <span aria-hidden="true">&bull;</span> {captureCountLabel} <span aria-hidden="true">&bull;</span> {sessionUpdatedLabel}</p>
+              )}
             </>
           )}
         </div>
@@ -578,15 +599,22 @@ export function CaptureScreen({
           </div>
         </Card>
       ) : null}
-      <Card className={`workspace-report-card ${isUpdatingReport ? "processing" : ""}`}>
+      <Card className={`workspace-report-card ${isPro ? "" : "basic-feed-primary"} ${isUpdatingReport ? "processing" : ""}`}>
         <div className="report-heading">
           <div className="report-title-lockup">
-            <span className="report-title-icon" aria-hidden="true">
-              <ClipboardIcon />
-            </span>
-            <h2>{t("capture.clinicalReport")}</h2>
+            {/* The clipboard/document icon reads as "the report"; it anchors Pro's report title. Basic's
+                primary is the raw captures FEED (no report artifact), so it drops the icon — the document
+                the clipboard stands for lives behind the "View as document" affordance instead. */}
+            {isPro ? (
+              <span className="report-title-icon" aria-hidden="true">
+                <ClipboardIcon />
+              </span>
+            ) : null}
+            {/* Pro primary = the synthesized report; Basic primary = the captures feed itself (AES-1402). */}
+            <h2>{isPro ? t("capture.clinicalReport") : t("capture.capturesHeading")}</h2>
             {/* AI-provenance mark: the Pro report is AI-synthesized; the spark twinkles while the
-                synthesis is organizing (the "editing" phase), so the icon itself signals AI is at work. */}
+                synthesis is organizing (the "editing" phase), so the icon itself signals AI is at work.
+                Absent in zero-AI Basic (AES-1404 — omitted, not disabled). */}
             {isPro ? (
               <span className="report-ai-mark" role="img" aria-label={t("capture.aiSynthesizedReport")} title={t("capture.aiSynthesizedReport")}>
                 <AiSpark working={isUpdatingReport} />
@@ -608,27 +636,28 @@ export function CaptureScreen({
                 <span className="report-share-button-label">{t("capture.share")}</span>
               </button>
             ) : null}
+            {/* Basic's lightweight "View as document" header affordance (AES-1403, decision 1): opens the
+                secondary document panel — the tidy chronological notebook that flows into the curated
+                Share. This is where the "report" concept lives in Basic: a review/outbound artifact, not
+                the daily surface. */}
+            {documentAvailable ? (
+              <button
+                className="report-doc-button"
+                type="button"
+                onClick={toggleDocument}
+                aria-expanded={documentOpen}
+                title={t("capture.viewAsDocumentHint")}
+              >
+                <ClipboardIcon />
+                <span className="report-doc-button-label">{t("capture.viewAsDocument")}</span>
+              </button>
+            ) : null}
+            {/* E17 report version-history (AES-17xx) — the sole mount surface; all history UI is self-contained. */}
+            {isPro && activeSession && activeSession.items.length ? (
+              <ReportHistoryButton session={activeSession} canRestore={!isHistorical && !readOnly} />
+            ) : null}
           </div>
         </div>
-        {/* Basic keeps the Captures / Live-report tab switch; Pro's unified layout has no toolbar row. */}
-        {!useUnifiedLayout ? (
-          <div className="report-toolbar">
-            <div className="report-toolbar-actions">
-              <div className="report-view-switch" aria-label={t("capture.reportView")}>
-                <button className={selectedReportView === "draft" ? "active" : ""} onClick={() => setReportView("draft")} type="button">
-                  {t("capture.capturesTab")}
-                </button>
-                <button
-                  className={selectedReportView === "structured" ? "active" : ""}
-                  onClick={() => setReportView("structured")}
-                  type="button"
-                >
-                  {t("capture.liveReportTab")}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
         {assignmentOpen && activeSession && onAssignPatient ? (
           <PatientAssignmentSheet
             session={activeSession}
@@ -639,15 +668,17 @@ export function CaptureScreen({
           />
         ) : null}
         <div className={`workspace-report-body ${reportState.kind}`}>
-          {/* Unified Pro layout: the synthesized report IS the surface (no Captures/Live-report tabs).
-              Basic keeps the tabs — its "Live report" is a chronological doc, not a synthesis. */}
-          {useUnifiedLayout || selectedReportView === "structured" ? (
+          {/* Tier-appropriate primary working surface (AES-1401/1402): Pro = the synthesized report;
+              Basic = the captures FEED itself (edit / play / delete directly reachable, no drawer to open
+              for daily work). Basic's tidy chronological document is the secondary "View as document"
+              panel below — not the daily surface. */}
+          {isPro ? (
             <LiveReportView
               isPro={isPro}
               session={activeSession}
               onResolveFile={onResolveFile}
               onConfirmCarriedForward={onConfirmCarriedForward}
-              onFixAtSource={useUnifiedLayout ? onFixAtSource : undefined}
+              onFixAtSource={onFixAtSource}
               onOpenSource={openSourceCapture}
               onEditTreatmentField={activeSession ? (treatmentKey, field, value) => onEditTreatmentField(activeSession.id, treatmentKey, field, value) : undefined}
               onRevertTreatmentField={activeSession ? (treatmentKey, field) => onRevertTreatmentField(activeSession.id, treatmentKey, field) : undefined}
@@ -665,7 +696,7 @@ export function CaptureScreen({
             acts to remove it. Persisted dismissals survive re-synthesis; it flows into the patient share.
             When the doctor DICTATED aftercare that differs from a protocol, the dictation wins and a
             conflict note is shown instead of silently including the contradicting protocol. */}
-        {useUnifiedLayout && !isHistorical && !readOnly && (includedAftercare.length || aftercareConflicts.length) ? (
+        {isPro && !isHistorical && !readOnly && (includedAftercare.length || aftercareConflicts.length) ? (
           <section className="report-aftercare-included" aria-label={t("capture.aftercareForThisVisit")}>
             <span className="report-aftercare-included-label">{t("capture.aftercareForThisVisitFromProtocol")}</span>
             {includedAftercare.map((template) => (
@@ -719,12 +750,12 @@ export function CaptureScreen({
         {/* Report thumbs rating (eval golden-set harvester; eval-epic §1b) — a quiet end-cap AFTER the
             aftercare section so it reads "rate-after-reading" and never splits the clinical content;
             on mobile it's the last thing before the collapsible raw Sources. Pro report only. */}
-        {useUnifiedLayout && activeSession && reportHasContent ? (
+        {isPro && activeSession && reportHasContent ? (
           // The rating prompt is app chrome, so it follows the APP UI language (isPersianLocale),
           // not the report's CONTENT language — a Persian report under an English app shows English.
           <ReportFeedbackBar isPersian={isPersianLocale()} onRate={(rating) => onRateReport(activeSession.id, rating)} />
         ) : null}
-        {useUnifiedLayout && captureCount > 0 ? (
+        {isPro && captureCount > 0 ? (
           // The raw captures, demoted to a collapsible "Sources" drawer beneath the report. Editing,
           // deleting, re-assigning and tapping into a capture all still live here (and via the report's
           // own source links). Auto-expanded while the report has no content yet.
@@ -772,6 +803,35 @@ export function CaptureScreen({
               </div>
             ) : null}
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
+          </section>
+        ) : null}
+        {/* Basic's secondary collapsible view (AES-1403): the tidy chronological notebook (AES-302),
+            opened opt-in from the "View as document" header affordance above (the feed always leads). It
+            is the document's real home in Basic — a review / print / outbound artifact — and it flows
+            into the curated clinic→patient Share (AES-303). The consolidated "Do more with Pro" teaser
+            stays at the foot of the feed, so the screen keeps exactly one Try-Pro (E8). */}
+        {documentAvailable && documentOpen ? (
+          <section className="document-panel" ref={documentPanelRef} aria-label={t("capture.visitRecord")}>
+            <div className="document-panel-header">
+              <span className="document-panel-title">{t("capture.visitRecord")}</span>
+              <div className="document-panel-actions">
+                {/* Share the curated document with the patient (AES-303/401) — assigned visit only. */}
+                {!isHistorical && !readOnly && activeSession?.patientId && activeSession.items.length && onShareVisit ? (
+                  <button className="report-share-button" type="button" onClick={onShareVisit} aria-label={t("capture.shareWithPatient")} title={t("capture.shareWithPatient")}>
+                    <ShareIcon />
+                    <span className="report-share-button-label">{t("capture.share")}</span>
+                  </button>
+                ) : null}
+                <button className="document-panel-close" type="button" onClick={() => setDocumentOpen(false)} aria-label={t("capture.closeDocument")} title={t("capture.closeDocument")}>
+                  <span aria-hidden="true">✕</span>
+                </button>
+              </div>
+            </div>
+            <div className="document-panel-body">
+              {/* The chronological notebook. Its own Try-Pro is suppressed — the single consolidated
+                  teaser already sits at the foot of the primary feed (one Try-Pro per screen, E8). */}
+              <BasicLiveReport session={activeSession} onResolveFile={onResolveFile} suppressTeaser />
+            </div>
           </section>
         ) : null}
       </Card>

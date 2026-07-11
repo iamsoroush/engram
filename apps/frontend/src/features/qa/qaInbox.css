@@ -33,57 +33,13 @@
   font-size: var(--text-xl);
 }
 
-/* Top-level Inbox | Library switch (same pill affordance as the scope toggle). */
-.qa-tabs {
-  display: inline-flex;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.qa-tabs button {
-  border: none;
-  background: transparent;
-  padding: 6px 16px;
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-muted);
-  cursor: pointer;
-}
-
-.qa-tabs button.active {
-  background: var(--color-primary);
-  color: var(--color-surface);
-}
-
+/* Inbox | Library and Mine | Clinic both use the shared segmented control (.tabs) — one control
+   language (#4). The routing dropdown uses the shared SelectMenu (.select-menu-trigger). */
 .qa-inbox-controls {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-
-.qa-scope {
-  display: inline-flex;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.qa-scope button {
-  border: none;
-  background: transparent;
-  padding: 6px 14px;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-muted);
-  cursor: pointer;
-}
-
-.qa-scope button.active {
-  background: var(--color-primary);
-  color: var(--color-surface);
 }
 
 .qa-routing {
@@ -93,8 +49,9 @@
   align-items: center;
   gap: 6px;
 }
-
-/* Routing dropdown uses the shared .select primitive; the label wrapper stays inline layout only. */
+.qa-routing-label {
+  white-space: nowrap;
+}
 
 .qa-card {
   display: flex;
@@ -487,10 +444,27 @@
   padding: 6px 10px;
 }
 
-.qa-empty {
+/* Teaching empty state (#8): headline + one sentence on how a thread arrives + a Share-link shortcut. */
+.qa-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  color: var(--color-muted-2);
-  padding: 40px 0;
+  gap: 12px;
+  padding: 32px 24px;
+}
+.qa-empty-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: var(--color-text);
+}
+.qa-empty-teach {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-muted);
 }
 
 /* Conversation history (the thread persists after answering) */

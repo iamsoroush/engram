@@ -20,18 +20,33 @@ untouched.
 
 ## Surface by tier
 
-- **Basic** — the Clinical report card has a `Captures` / `Live report` tab switch. `Captures` is
-  the chronological capture feed; `Live report` is a deterministic chronological document (clinic
-  header + patient block from template/DB, transcripts and photos with honest timestamps) rebuilt
-  in place as captures land. No AI synthesis, no verify bar, no safety panel; the header is
-  lightweight (no `Complete` badge).
-- **Pro** — a unified, report-first surface with no tabs: the synthesized report is the primary
-  surface and the raw captures are demoted to a collapsible **Sources** drawer beneath it. The chrome
-  above the report is deliberately thin (the **layout diet**), top-to-bottom: a thin AI-usage bar
-  (only near/at budget) → the one-line **patient strip** (identity + context + verify chip + safety
-  chip — see "Patient strip") → a thin conflict band only while a patient conflict is active → report
-  card (with aftercare, feedback bar, and the Sources drawer inside it). Everything the strip absorbs
-  is one tap away in its expansion.
+Both tiers render a session with **one tabless skeleton** — patient strip → a **primary working
+surface** → a **secondary collapsible view** → the capture bar — but *what sits in "primary" differs by
+tier*, because the valuable artifact differs (AES-1401). There is **no Captures/Live-report tab switch**
+on either tier; the secondary is always a drawer/panel, never a co-equal tab.
+
+- **Basic** — the **captures feed is the primary surface** (AES-1402): capture cards (audio player,
+  photo, note) with their edit / rename / delete / source-preview affordances directly reachable, no
+  drawer to open for daily work; during capture you always see what you just added. The tidy
+  chronological **document** (clinic header + patient block from template/DB, transcripts and photos with
+  honest timestamps — AES-302) is the **secondary `View as document`** panel: opened opt-in from a
+  lightweight header affordance (never auto-collapse-to-document — the feed always leads), it hosts the
+  curated **Share** (AES-303/401) and is the document's real home in Basic — a review / print / outbound
+  artifact, not the daily surface (AES-1403). The header is lightweight (no `Complete` badge). Absent,
+  legibly (AES-1404 — omitted, not disabled): AI synthesis / `Organizing` states, verify bar, safety
+  panel, AI spark, freshness line, treatment table, aftercare auto-include, report-feedback bar. The
+  single consolidated **Do more with Pro** teaser (E8) stays at the foot of the feed.
+- **Pro** — a report-first surface: the synthesized report is the **primary** and the raw captures are
+  demoted to a collapsible **Sources** drawer beneath it. The chrome above the report is deliberately
+  thin (the **layout diet**), top-to-bottom: a thin AI-usage bar (only near/at budget) → the one-line
+  **patient strip** (identity + context + verify chip + safety chip — see "Patient strip") → a thin
+  conflict band only while a patient conflict is active → report card (with aftercare, feedback bar, and
+  the Sources drawer inside it). Everything the strip absorbs is one tap away in its expansion.
+
+**Upgrade continuity (AES-1405).** Basic → Pro changes only what the AI adds: the skeleton is invariant
+(same patient strip, same secondary-drawer pattern, same capture bar, same nav). The primary flips from
+the feed to the synthesized report, the raw feed slides into the Sources drawer, and the AI zones light
+up — an honest upsell signal, not a relearned interaction model.
 
 ## Capture actions
 
@@ -51,6 +66,9 @@ untouched.
 - Visit header: a meaningful title (the patient's Nth visit, or date/time), status chip,
   capture count, and `+ New visit` (shown once the active visit has captures). A visit
   started by another staff member opens **read-only** with a banner naming who started it.
+  An **empty** visit collapses its meta line to a single `Created just now` — the
+  capture-count and `Updated` fragments appear only once they carry diverging information
+  (so a fresh visit never reads `Created now · 0 captures · Updated recently`).
 - A calm, non-blocking **AI usage notice** (`AiUsageNotice`) renders above the workspace when the
   clinic is approaching or at its monthly AI budget — captures are always still saved. See
   [states](../states.md) and `docs/business/ai-usage-limits.md`.
@@ -205,9 +223,10 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
 ### Report card
 
 - Header: `Clinical report` with an **AI spark** provenance mark (it twinkles while a synthesis is
-  in flight), a quiet updating spinner, and a compact **Share** affordance (Pro, assigned visit
+  in flight), a quiet updating spinner, a compact **Share** affordance (Pro, assigned visit
   with captures) that opens the curate + preview clinic→patient share sheet — see
-  [session review](session-review.md).
+  [session review](session-review.md) — and a quiet **History** affordance (Pro, any visit with
+  captures) that opens the **report version timeline** (see *Report history* below).
 - The report is synthesized by a background AI job over a deterministic baseline; it is **never
   blank while updating**. Adding a capture keeps the prior report visible with an explicit
   freshness line — `✓ Reflects all N captures` when current, `Updating · N of M captures not yet
@@ -259,8 +278,33 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   unassigned), its treatments, its safety flags, and its report contribution. Removing the latest
   capture **restores** the exact prior report version deterministically (no LLM, no new wrong
   entries); removing a middle capture triggers a recompute shown as a calm re-organizing state.
-  Removal is **owner-only** (the staff member who started the session). Architecture:
-  [pipeline-versioning](../../architecture/pipeline-versioning.md).
+  Removal is **owner-only** (the staff member who started the session). **Undo last capture** is also
+  the one-tap shortcut for *restore the previous version* (N=1) surfaced richer in *Report history*
+  below. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
+
+### Report history (E14 · Pro)
+
+The report-card header's quiet **History** affordance opens the **version timeline** — one entry per
+stored synthesis (`session_report_versions`), newest-first: a **trigger label** derived from the
+capture-set delta (photo added / transcript edited / capture removed / first report / …), capture count,
+and demoted provenance (`AI-generated`). The current version is tagged `Current`. It is the navigable
+face of the version store capture-undo already uses; Pro only (Basic has no synthesis chain). Trigger
+labels are **chrome** (localized fa/en from a structured `{kind, count?}` the backend sends — never a
+server-authored string).
+
+- **Preview (read-only).** Tapping a version renders that report **read-only inside the sheet** — the
+  same report presentation — with a `Viewing the version from HH:MM · Back to current` banner. The live
+  **user-state overlay** (rejected safety flags, dismissed aftercare, confirmed doses, treatment edits)
+  applies on top of whichever version renders, so a user decision is **never time-traveled away**.
+- **Restore (owner-only).** A past version reachable by removal offers **Restore this version**, which
+  returns the visit to that version's capture set by de-effecting the captures added after it — the
+  **same de-effecting removal** as undo (shared machinery). Owner-only, gated behind a confirmation that
+  names how many captures are removed. A **non-linear** version (one that included a now-deleted capture,
+  or needs an out-of-context toggle) is **preview-only** with a calm note; `409` on the API.
+- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut. Pin (the unused `pinned`
+  column), in-place time-travel, and field-level diffs are documented fast-follows.
+
+Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 
 ## Capture cards (feed / Sources drawer)
 
@@ -295,7 +339,9 @@ Shared rules: [states](../states.md).
 - `PatientStrip` (absorbs identity + context + verify chip + safety chip; the auto-collapse machine)
 - `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (in the strip)
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
-- `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar`
+- `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar` (Pro primary)
+- `LiveDraftReport` (the captures feed — Basic primary / Pro `sources-drawer` body), `BasicLiveReport` (the Basic `View as document` panel)
+- `ReportHistoryButton` (E17 report-card header affordance) + `ReportHistorySheet` (timeline · read-only preview · owner restore) — `features/capture/reportHistory/`
 - `AiUsageNotice`
 - `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
   `PatientAssignmentSheet`
@@ -320,6 +366,8 @@ Shared rules: [states](../states.md).
   `POST /api/v1/sessions/{id}/confirm-carried-forward` ·
   `POST /api/v1/sessions/{id}/aftercare-dismissal`
 - `POST` / `DELETE /api/v1/sessions/{id}/treatment-overlay` (AES-1102 field edit / Revert-to-AI)
+- `GET /api/v1/sessions/{id}/report-versions` · `GET /api/v1/sessions/{id}/report-versions/{versionId}` ·
+  `POST /api/v1/sessions/{id}/report-versions/{versionId}/restore` (E14 report version history)
 - `PATCH /api/v1/tenant/settings` (incl. `highRiskClinic` — pin the safety panel)
 - `GET /api/v1/patients/{id}/session-context` · `GET /api/v1/patients/search` ·
   `POST /api/v1/patients`

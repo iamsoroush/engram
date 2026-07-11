@@ -54,10 +54,14 @@ Manual re-enqueue: `POST /api/v1/captures/{capture_id}/retry-processing`.
 
 ### Audio — transcription + patient information + intents
 
-- Downloads the source through the internal API, converts to mono 16 kHz FLAC (`ffmpeg`), and sends
-  it as `input_audio` to the configured gateway. No gateway → the job stays on the **retryable**
-  path (`gateway_unavailable`); it never writes placeholder transcript text. The raw capture is
-  durable regardless.
+- Downloads the source through the internal API and sends it as `input_audio` to the configured
+  gateway. By default it sends the **stored canonical MP3 bytes directly** (correct mime, no per-call
+  re-encode — verified accuracy-equal to FLAC); a legacy WAV / unknown stored format, or the
+  `AI_ENGINE_TRANSCRIPTION_DIRECT_SEND=false` kill-switch, falls back to the format-agnostic mono
+  16 kHz FLAC re-encode (`ffmpeg`). No gateway → the job stays on the **retryable** path
+  (`gateway_unavailable`); it never writes placeholder transcript text. The raw capture is durable
+  regardless. Per-minute billing duration is measured (ffprobe) from the stored bytes, unchanged by
+  the format.
 - Asks for strict structured JSON per the `2026-06-03.capture-intelligence.v1` schema
   ([intelligence-layer.md §4](../intelligence-layer.md)): `transcript` (required), `language`
   (`fa|en|mixed|unknown`), `clinical_summary`, `uncertainties`, `patient_information`, and

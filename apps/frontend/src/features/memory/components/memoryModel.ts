@@ -2,7 +2,7 @@
 // Extracted verbatim from MemoryScreens.tsx (no behavior change).
 import type { CaptureDraft, PatientMemoryDetailResponse, PatientMemoryTimelineSession, PatientMemoryRow as ApiPatientMemoryRow, PatientSummary, SmartPatientMatch, SyncHealth } from "../../../domain/appTypes";
 import type { CaptureSession } from "../../../domain/types";
-import { appDateTimeFormat } from "../../../shared/lib/datetime";
+import { appDateTimeFormat, formatTime } from "../../../shared/lib/datetime";
 import type { Translator } from "../../../shared/i18n";
 
 /** Stable, language-independent tone for a patient-card badge (drives its CSS class, not its text). */
@@ -1093,7 +1093,7 @@ export function apiNeedsInputSessionLabel(row: ApiPatientMemoryRow, t: Translato
   if (!timestamp) return t("memmodel.date.recentVisit");
   const date = new Date(timestamp);
   const dateLabel = isToday(date.toISOString()) ? t("memmodel.date.today") : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
-  const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
+  const timeLabel = formatTime(date);
   return `${dateLabel} · ${timeLabel}`;
 }
 
@@ -1114,7 +1114,7 @@ export function latestVisitLabelFromTimestamp(timestamp: number, t: Translator) 
   if (!timestamp) return null;
   const date = new Date(timestamp);
   const dateLabel = isToday(date.toISOString()) ? t("memmodel.date.today") : appDateTimeFormat({ month: "short", day: "numeric" }).format(date);
-  const timeLabel = appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(date);
+  const timeLabel = formatTime(date);
   return t("memmodel.label.latestVisit", { when: `${dateLabel} · ${timeLabel}` });
 }
 
@@ -1155,7 +1155,9 @@ export function sessionTimeLabel(session: CaptureSession, t: Translator) {
 
 export function formatSessionTime(timestamp: number, t: Translator) {
   if (!timestamp) return t("memmodel.date.recently");
-  return appDateTimeFormat({ hour: "numeric", minute: "2-digit" }).format(new Date(timestamp));
+  // One shared clock formatter (datetime.formatTime): 24h everywhere — Persian digits under fa,
+  // 24h under en — so a card's "Visit:" and "Updated:" times never disagree in convention.
+  return formatTime(new Date(timestamp));
 }
 
 export function explicitDateTimeLabel(timestamp: number, t: Translator) {

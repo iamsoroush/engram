@@ -3,6 +3,7 @@ import type { ApiFetch } from "../../domain/appTypes";
 import { useAppLang, useT, type Translator } from "../../shared/i18n";
 import { Badge, Card, Skeleton } from "../../shared/ui/primitives";
 import { Tabs } from "../../shared/ui/primitives";
+import { PermissionDeniedState, RetryableErrorState } from "../../shared/ui/StateViews";
 import {
   fetchOverview,
   fetchPatientInsights,
@@ -17,10 +18,17 @@ import {
 import { BarList, ChartPlaceholder, ColumnChart, Donut, Heatmap, SERIES_COLORS, StatCard, useNum } from "./charts";
 
 // --- Shared async loader ----------------------------------------------------------------------------
-type AsyncState<T> = { data: T | null; loading: boolean; error: number | null };
+// `error` carries the HTTP status (or -1 for a non-HTTP failure) so callers can split 403 (permission,
+// not retryable) from transient failures. `retry` re-runs the fetch for the retryable case.
+type AsyncState<T> = { data: T | null; loading: boolean; error: number | null; retry: () => void };
 
 function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList): AsyncState<T> {
-  const [state, setState] = React.useState<AsyncState<T>>({ data: null, loading: true, error: null });
+  const [state, setState] = React.useState<{ data: T | null; loading: boolean; error: number | null }>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+  const [nonce, setNonce] = React.useState(0);
   React.useEffect(() => {
     let active = true;
     setState((s) => ({ ...s, loading: true, error: null }));
@@ -31,8 +39,9 @@ function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList): AsyncSta
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  return state;
+  }, [...deps, nonce]);
+  const retry = React.useCallback(() => setNonce((n) => n + 1), []);
+  return { ...state, retry };
 }
 
 function SectionSkeleton() {
@@ -44,8 +53,12 @@ function SectionSkeleton() {
   );
 }
 
-function LoadError({ t }: { t: Translator }) {
-  return <div className="alert alert-red">{t("insights.loadError")}</div>;
+/** A 403 here is a role mismatch (the route guard normally prevents reaching Insights at all, but a
+ *  race or a server-side role change can still 403): show the shared permission state, no retry. Every
+ *  other failure is retryable, so it gets the calm error + a Retry button (docs/ux/states.md). */
+function LoadError({ status, onRetry }: { status: number | null; onRetry: () => void }) {
+  if (status === 403) return <PermissionDeniedState className="ins-state" />;
+  return <RetryableErrorState className="ins-state" onRetry={onRetry} />;
 }
 
 /** Localized weekday short labels, Monday-first (matches the backend's Python weekday()). */
@@ -78,14 +91,14 @@ function useColumnLabeler(count: number): (dateISO: string, index: number) => st
 // ====================================================================================================
 export function OverviewTab({ apiFetch, params, compare }: { apiFetch: ApiFetch; params: RangeParams; compare: boolean }) {
   const t = useT();
-  const { data, loading, error } = useAsync<OverviewResponse>(() => fetchOverview(apiFetch, params), [apiFetch, params]);
+  const { data, loading, error, retry } = useAsync<OverviewResponse>(() => fetchOverview(apiFetch, params), [apiFetch, params]);
   const [series, setSeries] = React.useState<"visits" | "captures" | "newPatients">("visits");
   const label = useColumnLabeler(data?.activitySeries.length ?? 0);
   const weekdays = useWeekdayLabels();
   const num = useNum();
 
   if (loading) return <SectionSkeleton />;
-  if (error || !data) return <LoadError t={t} />;
+  if (error || !data) return <LoadError status={error} onRetry={retry} />;
 
   const s = data.activitySeries;
   const kpiSpark = (key: "visits" | "captures" | "newPatients") => s.map((row) => row[key]);
@@ -186,9 +199,9 @@ export function TeamTab({ apiFetch, params }: { apiFetch: ApiFetch; params: Rang
   const t = useT();
   const { lang } = useAppLang();
   const num = useNum();
-  const { data, loading, error } = useAsync<TeamResponse>(() => fetchTeamInsights(apiFetch, params), [apiFetch, params]);
+  const { data, loading, error, retry } = useAsync<TeamResponse>(() => fetchTeamInsights(apiFetch, params), [apiFetch, params]);
   if (loading) return <SectionSkeleton />;
-  if (error || !data) return <LoadError t={t} />;
+  if (error || !data) return <LoadError status={error} onRetry={retry} />;
 
   const active = data.members.filter((m) => m.visits + m.captures > 0);
   const relFmt = new Intl.DateTimeFormat(lang === "fa" ? "fa-IR-u-ca-persian" : "en-US", { month: "short", day: "numeric" });
@@ -245,10 +258,10 @@ export function TeamTab({ apiFetch, params }: { apiFetch: ApiFetch; params: Rang
 export function PatientsTab({ apiFetch, params }: { apiFetch: ApiFetch; params: RangeParams }) {
   const t = useT();
   const num = useNum();
-  const { data, loading, error } = useAsync<PatientsResponse>(() => fetchPatientInsights(apiFetch, params), [apiFetch, params]);
+  const { data, loading, error, retry } = useAsync<PatientsResponse>(() => fetchPatientInsights(apiFetch, params), [apiFetch, params]);
   const label = useColumnLabeler(data?.growth.buckets.length ?? 0);
   if (loading) return <SectionSkeleton />;
-  if (error || !data) return <LoadError t={t} />;
+  if (error || !data) return <LoadError status={error} onRetry={retry} />;
 
   const ages = data.ageHistogram.filter((a) => a.band !== "unknown" || a.count > 0);
   const sexSegments = [
@@ -318,7 +331,7 @@ export function TreatmentsTab({ apiFetch, params, isPro }: { apiFetch: ApiFetch;
   const t = useT();
   const num = useNum();
   const label = useColumnLabeler(0);
-  const { data, loading, error } = useAsync<TreatmentsResponse | null>(
+  const { data, loading, error, retry } = useAsync<TreatmentsResponse | null>(
     async () => (isPro ? await fetchTreatmentInsights(apiFetch, params) : null),
     [apiFetch, params, isPro],
   );
@@ -326,7 +339,7 @@ export function TreatmentsTab({ apiFetch, params, isPro }: { apiFetch: ApiFetch;
 
   if (!isPro || error === 403) return <ProUpsell t={t} />;
   if (loading) return <SectionSkeleton />;
-  if (error || !data) return <LoadError t={t} />;
+  if (error || !data) return <LoadError status={error} onRetry={retry} />;
   void label;
 
   const unitLabel = (unit: string) => {

@@ -6,7 +6,10 @@
 shown only to **owner/admin** (same `canManageTeam` gate as [Team](team.md)/Plan). Placed directly
 above **Team** in the menu. Has a **Back** action returning to the previous screen. Like all
 account/utility pages, it hides the capture bar (there is no capture context here — see
-[navigation.md](../navigation.md)).
+[navigation.md](../navigation.md)). The owner/admin gate is a **route guard**, not just a hidden menu
+entry: a non-owner hash-navigating here is redirected to `#patients`
+([navigation.md](../navigation.md) "Protected Behavior"), and any API `403` maps to the shared
+permission state ([states.md](../states.md#permission--retryable-states)).
 
 ## Purpose
 
@@ -35,14 +38,19 @@ fact, not just packaging.
 
 ## Global controls (sticky header)
 
-- **Time range**: `This week` · `This month` (default) · `Last 3 months` · `This year` · `Custom`.
-  Choice is persisted (client preference).
+The header controls follow the app's **one control language**: the range uses the shared select
+trigger (`SelectMenu`), the sub-tabs / series use the shared segmented control (`Tabs`), and the
+`Compare` toggle is aligned to the select's height/radius so the row reads as one family
+([qa-inbox.md](qa-inbox.md) uses the same two primitives).
+
+- **Time range**: `This week` · `This month` (default) · `Last 3 months` · `This year` · `Custom` —
+  the shared **select trigger**. Choice is persisted (client preference).
 - **Compare to previous period** toggle → each KPI shows a **delta chip** (Δ% vs the equivalent prior
   window). Deltas are **neutral/informational** styling — never red-alarm (fewer filler visits is not
-  inherently "bad").
-- **Sub-tabs**: `Overview · Team · Patients · Treatments` — a **horizontal segmented control**
-  (the shared `Tabs` primitive; scrolls horizontally below 640px, never stacks). The Activity
-  chart's series toggle is the same segmented control, sitting at the inline-end of the card head.
+  inherently "bad"). Styled to match the range select (same height/radius); its pressed state marks it.
+- **Sub-tabs**: `Overview · Team · Patients · Treatments` — the shared **segmented control**
+  (`Tabs`; scrolls horizontally below 640px, never stacks). The Activity chart's series toggle is the
+  same segmented control, sitting at the inline-end of the card head.
 
 ## Layout
 
@@ -143,8 +151,12 @@ slow.
   label and a **"Try a longer date range" hint**. This keeps each card's visual weight so an
   all-empty panel reads as intentional rather than collapsed/broken — important since clinics are
   early/alpha. A brand-new clinic sees uniform placeholders, not zeros dressed as charts.
-- **Error** — calm inline retry per section, no modal.
-- **Basic on Treatments tab** — blurred preview + Pro upsell panel.
+- **Error** — a **retryable** failure shows a calm inline error + a **Retry** button per section (no
+  modal); a **403** (role mismatch — normally prevented by the route guard, but possible on a race)
+  shows the shared **permission state** with **no** retry
+  ([states.md](../states.md#permission--retryable-states)).
+- **Basic on Treatments tab** — blurred preview + Pro upsell panel (its own 403 is the Pro upsell, not
+  the permission state).
 
 ## Known gaps / non-goals
 

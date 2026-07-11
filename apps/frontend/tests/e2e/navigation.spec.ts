@@ -63,3 +63,42 @@ test("with no explicit hash, restore-last-screen still applies", async ({ page }
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
 });
+
+// Route guard (AES-1501): the owner/admin clinic-management pages (Insights / Team / Plan) redirect a
+// non-owner who reaches them by direct hash (deep link, bookmark, restored screen) to #patients — the
+// account menu already hides the entries, so this closes the typed/bookmarked-hash gap. An owner is
+// never redirected.
+function seedAuth(page: import("@playwright/test").Page, role: string) {
+  const p = authPayload({ role });
+  const profile = { refreshToken: p.refreshToken, user: p.user, tenant: p.tenant, memberships: p.memberships };
+  return page.addInitScript((auth) => {
+    window.localStorage.setItem("engram-ui-lang", "en");
+    window.localStorage.setItem("engram-dev-auth", JSON.stringify(auth));
+  }, profile);
+}
+
+for (const hash of ["insights", "team", "plan"] as const) {
+  test(`route guard: a doctor deep-linking to #${hash} lands on #patients`, async ({ page }) => {
+    await seedAuth(page, "doctor");
+    await installAppMocks(page, authPayload({ role: "doctor" }));
+
+    await page.goto(`/#${hash}`);
+
+    await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
+    await expect(page).toHaveURL(/#patients$/);
+    // Settle past the async auth hydrate — a late guard/restore flip would fail here.
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(/#patients$/);
+  });
+}
+
+test("route guard: an owner deep-linking to #team is not redirected", async ({ page }) => {
+  await seedAuth(page, "owner");
+  await installAppMocks(page, authPayload({ role: "owner" }));
+
+  await page.goto("/#team");
+
+  await expect(page).toHaveURL(/#team$/);
+  await page.waitForTimeout(500);
+  await expect(page).toHaveURL(/#team$/);
+});
