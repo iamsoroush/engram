@@ -49,7 +49,7 @@ test.describe("P0-9 Q&A ask → inbox → send", () => {
     await staff.goto("/#qa-inbox");
     const inbox = staff.locator('[data-testid="qa-inbox"]');
     await expect(inbox).toBeVisible({ timeout: 30_000 });
-    await inbox.getByRole("button", { name: "Clinic" }).click();
+    await inbox.getByRole("tab", { name: "Clinic" }).click();
     await expect(inbox.getByText(question)).toBeVisible();
     // Failure-state honesty (Q-10): the gateway-less draft is a deterministic STARTER, marked for
     // review — never surfaced as a real generated AI reply.
