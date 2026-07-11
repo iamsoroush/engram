@@ -5,7 +5,9 @@
 > bucket `engram-eval-fixtures`, prefix `model-compare/transcription/` — with reference texts in
 > `docs/work/model-compare/transcription-scripts.md`. Items below marked **✔ covered by Txx** need
 > **no new recording**: an agent copies the WAV from that bucket into the fixture dir and authors
-> the `.json`. Only the unmarked items still need your phone.
+> the `.json`. The same bucket's **`m-pool/`** prefix holds six owner clips salvaged from the
+> July-05/08 identity-bug dev sessions (name-lead + the سارا/ثریا near-miss pair). Only the
+> unmarked items still need your phone.
 
 Record each item on your phone in **natural clinical Farsi**, then drop the file at the path shown.
 Sibling `.json` (expected facts) gets authored by the agent once the media is in. Tick as you go.
@@ -64,8 +66,8 @@ confusable dose minimal pair, length, code-switch, or a second voice — these d
 
 ## 🎙️ Patient name (audio → match)  →  `matching/`
 
-- [ ] **m01** `m01-exact-name.m4a` — *"بیمار نگار محمدی."*  (expect: matches the existing نگار محمدی)
-- [ ] **m02** `m02-near-miss.m4a` — say a name **slightly wrong** vs an existing patient  (expect: NOT silently auto-assigned — surfaces a candidate)
+- [x] **m01** `m01-exact-name.m4a` — **✔ covered by the owner pool**: `engram-eval-fixtures/m-pool/name-lead-sorena-moazed-a.wav` («بیمار سورنا معاضد برای فیلر و بوتاکس اومده») — the fixture `.json` sets the roster to «سورنا معاضد», so no re-recording.
+- [x] **m02** `m02-near-miss.m4a` — **✔ covered by the owner pool**: pair `m-pool/near-miss-sara-ghasemi.wav` («سارا قاسمی») against a roster containing only «ثریا قاسمی» (both clips from the real ghost-patient repro sessions live in the pool) — a genuine production near-miss, better than a staged one.
 
 **Batch 2 — extraction faithfulness (Part-2 #9).**
 
