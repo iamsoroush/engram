@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException, status as http_status
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -235,3 +237,128 @@ def restore_report_version(session: Session, version: SessionReportVersion) -> N
     for transient in ("progressive_report", "summaries", "stale_reason", "stale_at"):
         metadata.pop(transient, None)
     session.extracted_metadata = metadata  # overlay keys untouched (never in _ARTIFACT_METADATA_KEYS)
+
+
+# --- Report-version history (E14 / AES-14xx) ---------------------------------------------------------
+# The read + revert-restore surface over this store. Trigger derivation and reachability are pure
+# functions of the stored capture-set snapshots; the HTTP-facing reads live in services/report_history.py
+# and the destructive revert-restore lives with the capture de-effect family in services/captures.py.
+
+_ADDED_TRIGGER_BY_TYPE = {"photo": "photo_added", "audio": "audio_added", "note": "note_added"}
+_EDITED_TRIGGER_BY_TYPE = {"photo": "caption_edited", "audio": "transcript_edited", "note": "note_edited"}
+
+
+def _items_by_id(items: Any) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for item in items if isinstance(items, list) else []:
+        if isinstance(item, dict) and item.get("captureId"):
+            result[str(item["captureId"])] = item
+    return result
+
+
+def in_context_capture_count(version: SessionReportVersion) -> int:
+    """How many in-context captures the version was synthesized over (out-of-context excluded)."""
+    return sum(
+        1
+        for item in (version.captured_capture_version_ids or [])
+        if isinstance(item, dict) and not item.get("outOfContext")
+    )
+
+
+def derive_version_trigger(
+    prev_items: list[dict[str, Any]] | None,
+    curr_items: list[dict[str, Any]] | None,
+    capture_type_by_id: dict[str, str],
+) -> dict[str, Any]:
+    """Structured descriptor for how a version differs from the chronologically prior one.
+
+    Keys-only (``kind`` + optional ``count``); the frontend localizes the label (chrome is bilingual, so
+    the server must never author the display string). Derived deterministically from the capture-set delta.
+    """
+    if prev_items is None:
+        return {"kind": "first_report"}
+    prev = _items_by_id(prev_items)
+    curr = _items_by_id(curr_items)
+    added = [cid for cid in curr if cid not in prev]
+    removed = [cid for cid in prev if cid not in curr]
+    if added and not removed:
+        if len(added) == 1:
+            return {"kind": _ADDED_TRIGGER_BY_TYPE.get(capture_type_by_id.get(added[0], ""), "capture_added")}
+        return {"kind": "captures_added", "count": len(added)}
+    if removed and not added:
+        return {"kind": "capture_removed"} if len(removed) == 1 else {"kind": "captures_removed", "count": len(removed)}
+    if added and removed:
+        return {"kind": "report_updated"}
+    # Same id set → an edit and/or an out-of-context toggle on existing captures.
+    edited = [cid for cid in curr if prev[cid].get("contentHash") != curr[cid].get("contentHash")]
+    toggled = [cid for cid in curr if bool(prev[cid].get("outOfContext")) != bool(curr[cid].get("outOfContext"))]
+    if toggled and not edited:
+        became_out = bool(curr[toggled[0]].get("outOfContext"))
+        return {"kind": "marked_out_of_context" if became_out else "marked_relevant"}
+    if edited:
+        if len(edited) == 1:
+            return {"kind": _EDITED_TRIGGER_BY_TYPE.get(capture_type_by_id.get(edited[0], ""), "capture_edited")}
+        return {"kind": "captures_edited", "count": len(edited)}
+    return {"kind": "report_updated"}
+
+
+def current_capture_index(db: DbSession, session: Session) -> tuple[dict[str, Capture], dict[str, bool]]:
+    """(id → Capture, id → out-of-context) over the session's CURRENT non-deleted captures."""
+    captures = list(
+        db.execute(
+            select(Capture).where(
+                Capture.tenant_id == session.tenant_id,
+                Capture.session_id == session.id,
+                Capture.status != CaptureStatus.deleted,
+            )
+        ).scalars()
+    )
+    by_id = {str(c.id): c for c in captures}
+    ooc = {cid: capture_is_out_of_context(capture) for cid, capture in by_id.items()}
+    return by_id, ooc
+
+
+def removal_target_for_version(
+    current_by_id: dict[str, Capture],
+    current_ooc: dict[str, bool],
+    version: SessionReportVersion,
+) -> list[Capture] | None:
+    """Current captures to soft-delete to return the session to ``version``'s capture set — or ``None`` if
+    the version is NOT reachable by removal alone (→ preview-only). An **empty** list means the version
+    already equals the current set.
+
+    Reachable ⟺ every capture the version knew still exists AND its out-of-context membership is unchanged:
+    a pure removal can neither un-delete a capture nor toggle context back, so anything else can't be
+    reproduced by removal (those non-linear cases are honestly preview-only in v1).
+    """
+    v_by_id = _items_by_id(version.captured_capture_version_ids)
+    if not set(v_by_id).issubset(current_by_id):
+        return None
+    for cid, item in v_by_id.items():
+        if current_ooc.get(cid) != bool(item.get("outOfContext")):
+            return None
+    return [capture for cid, capture in current_by_id.items() if cid not in v_by_id]
+
+
+def version_removal_target(db: DbSession, session: Session, version: SessionReportVersion) -> list[Capture] | None:
+    """DB-backed :func:`removal_target_for_version` for the single-target restore action."""
+    by_id, ooc = current_capture_index(db, session)
+    return removal_target_for_version(by_id, ooc, version)
+
+
+def get_session_report_version(db: DbSession, session: Session, version_id: str) -> SessionReportVersion:
+    """Fetch one stored version scoped to the session/tenant (400 on a bad id, 404 when absent)."""
+    try:
+        vid = uuid.UUID(str(version_id))
+    except (ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=http_status.HTTP_400_BAD_REQUEST, detail="Invalid version id") from exc
+    version = db.execute(
+        select(SessionReportVersion).where(
+            SessionReportVersion.id == vid,
+            SessionReportVersion.tenant_id == session.tenant_id,
+            SessionReportVersion.session_id == session.id,
+        )
+    ).scalar_one_or_none()
+    if version is None:
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Report version not found")
+    return version

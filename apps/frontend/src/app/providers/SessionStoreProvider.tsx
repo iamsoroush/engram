@@ -18,6 +18,7 @@ import {
   confirmCarriedForward,
   createPatient,
   deleteCapture,
+  restoreReportVersion as restoreReportVersionRequest,
   dismissAiPatientAction,
   editTreatmentOverlay,
   fetchCapture,
@@ -120,6 +121,8 @@ export type SessionActions = {
   ) => Promise<CaptureItem | null>;
   editCaptureNote: (sessionId: string, captureId: string, text: string) => Promise<void>;
   removeCaptureFromSession: (sessionId: string, captureId: string) => Promise<void>;
+  /** E14: restore the report to a stored version (revert semantics; owner-only, shares the undo path). */
+  restoreReportVersion: (sessionId: string, versionId: string) => Promise<void>;
   markCaptureRelevantInSession: (sessionId: string, captureId: string) => Promise<void>;
   confirmCarriedForwardDose: (sessionId: string, key: string) => Promise<void>;
   rateReport: (sessionId: string, rating: number) => void;
@@ -565,6 +568,21 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       setToast(appT("capture.toastCaptureDeletedUpdating"));
     },
     [apiFetch, appT, scheduleCaptureProcessingRefresh, setToast],
+  );
+
+  const restoreReportVersion = React.useCallback(
+    async (sessionId: string, versionId: string) => {
+      // Reverting to an older version soft-deletes the captures added after it (server-side de-effect,
+      // shared with undo). Apply the returned report fields optimistically, then reconcile the authoritative
+      // capture list + report via refreshVisibleSession (session_payload omits the items array).
+      const updated = await restoreReportVersionRequest(apiFetch, sessionId, versionId);
+      setSessions((current) => current.map((session) => (session.id === sessionId ? mergeSessionUpdate(session, updated) : session)));
+      setActiveSession((current) => (current?.id === sessionId ? mergeSessionUpdate(current, updated) : current));
+      await refreshVisibleSession(sessionId).catch(() => undefined);
+      scheduleCaptureProcessingRefresh(sessionId);
+      setToast(appT("capture.history.toastRestored"));
+    },
+    [apiFetch, appT, refreshVisibleSession, scheduleCaptureProcessingRefresh, setToast],
   );
 
   const markCaptureRelevantInSession = React.useCallback(
@@ -1054,6 +1072,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       editCaptureSourceText,
       editCaptureNote,
       removeCaptureFromSession,
+      restoreReportVersion,
       markCaptureRelevantInSession,
       confirmCarriedForwardDose,
       rateReport,
@@ -1087,6 +1106,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       editCaptureSourceText,
       editCaptureNote,
       removeCaptureFromSession,
+      restoreReportVersion,
       markCaptureRelevantInSession,
       confirmCarriedForwardDose,
       rateReport,

@@ -24,6 +24,11 @@ from app.schemas.sessions import (
 )
 from app.services.ai_jobs import get_ai_job, recover_ai_jobs
 from app.services.assignment_suggestions import suggest_session_assignment
+from app.services.captures import restore_session_report_version
+from app.services.report_history import (
+    get_session_report_version_detail,
+    list_session_report_versions,
+)
 from app.services.sessions import (
     apply_patient_name_correction,
     assign_session_patient,
@@ -298,6 +303,40 @@ def list_session_artifacts_route(
 ) -> list[dict[str, Any]]:
     """List stored source and generated artifacts attached to a session."""
     return list_session_artifacts(db, principal, session_id)
+
+
+@sessions_api.get("/sessions/{session_id}/report-versions")
+def list_session_report_versions_route(
+    session_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """E14: the session's report-version timeline (newest-first) — navigate/preview the report history."""
+    return list_session_report_versions(db, principal, session_id)
+
+
+@sessions_api.get("/sessions/{session_id}/report-versions/{version_id}")
+def get_session_report_version_route(
+    session_id: str,
+    version_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """E14: one stored version's artifacts, session-shaped for a read-only preview."""
+    return get_session_report_version_detail(db, principal, session_id, version_id)
+
+
+@sessions_api.post("/sessions/{session_id}/report-versions/{version_id}/restore")
+def restore_session_report_version_route(
+    session_id: str,
+    version_id: str,
+    principal: CurrentPrincipal = Depends(staff_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """E14: restore the report to a stored version (revert semantics; owner-only, shares the undo path).
+
+    409 when the version isn't reachable by capture removal alone (preview-only in v1)."""
+    return restore_session_report_version(db, principal, session_id, version_id)
 
 
 @sessions_api.get("/sessions/{session_id}/ai-jobs")

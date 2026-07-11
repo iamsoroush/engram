@@ -41,7 +41,7 @@ import type {
   WorklistEntry,
   WorklistResponse,
 } from "../../domain/appTypes";
-import type { Attribution, CaptureItem, CaptureSession, StructuredPatientInformation } from "../../domain/types";
+import type { Attribution, CaptureItem, CaptureSession, ReportVersionDetail, ReportVersionSummary, StructuredPatientInformation } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
@@ -1354,6 +1354,36 @@ export async function markCaptureRelevant(apiFetch: ApiFetch, captureId: string)
 export async function deleteCapture(apiFetch: ApiFetch, captureId: string) {
   const response = await apiFetch(`${API_BASE}/captures/${captureId}`, { method: "DELETE" });
   if (!response.ok) throw new Error("Could not delete capture");
+  const payload = (await response.json()) as { session?: Record<string, unknown> };
+  return normalizeApiSession(payload.session || {});
+}
+
+// --- Report version history (E14 / AES-14xx) ---------------------------------------------------------
+
+/** The session's report-version timeline (newest-first). */
+export async function fetchReportVersions(apiFetch: ApiFetch, sessionId: string): Promise<ReportVersionSummary[]> {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/report-versions`);
+  if (!response.ok) throw new Error("Could not load report history");
+  const payload = (await response.json()) as { versions?: ReportVersionSummary[] };
+  return Array.isArray(payload.versions) ? payload.versions : [];
+}
+
+/** One stored version's artifacts, session-shaped for a read-only preview. */
+export async function fetchReportVersion(apiFetch: ApiFetch, sessionId: string, versionId: string): Promise<ReportVersionDetail> {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/report-versions/${versionId}`);
+  if (!response.ok) throw new Error("Could not load this report version");
+  return (await response.json()) as ReportVersionDetail;
+}
+
+/** Restore the report to a stored version (revert semantics; owner-only). Returns the updated session.
+ * A 409 means the version is no longer reachable by removal (a capture it needed was deleted). */
+export async function restoreReportVersion(apiFetch: ApiFetch, sessionId: string, versionId: string) {
+  const response = await apiFetch(`${API_BASE}/sessions/${sessionId}/report-versions/${versionId}/restore`, { method: "POST" });
+  if (!response.ok) {
+    const err = new Error("Could not restore this report version") as Error & { status?: number };
+    err.status = response.status;
+    throw err;
+  }
   const payload = (await response.json()) as { session?: Record<string, unknown> };
   return normalizeApiSession(payload.session || {});
 }

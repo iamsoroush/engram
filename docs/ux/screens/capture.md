@@ -223,9 +223,10 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
 ### Report card
 
 - Header: `Clinical report` with an **AI spark** provenance mark (it twinkles while a synthesis is
-  in flight), a quiet updating spinner, and a compact **Share** affordance (Pro, assigned visit
+  in flight), a quiet updating spinner, a compact **Share** affordance (Pro, assigned visit
   with captures) that opens the curate + preview clinic→patient share sheet — see
-  [session review](session-review.md).
+  [session review](session-review.md) — and a quiet **History** affordance (Pro, any visit with
+  captures) that opens the **report version timeline** (see *Report history* below).
 - The report is synthesized by a background AI job over a deterministic baseline; it is **never
   blank while updating**. Adding a capture keeps the prior report visible with an explicit
   freshness line — `✓ Reflects all N captures` when current, `Updating · N of M captures not yet
@@ -277,8 +278,33 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   unassigned), its treatments, its safety flags, and its report contribution. Removing the latest
   capture **restores** the exact prior report version deterministically (no LLM, no new wrong
   entries); removing a middle capture triggers a recompute shown as a calm re-organizing state.
-  Removal is **owner-only** (the staff member who started the session). Architecture:
-  [pipeline-versioning](../../architecture/pipeline-versioning.md).
+  Removal is **owner-only** (the staff member who started the session). **Undo last capture** is also
+  the one-tap shortcut for *restore the previous version* (N=1) surfaced richer in *Report history*
+  below. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
+
+### Report history (E14 · Pro)
+
+The report-card header's quiet **History** affordance opens the **version timeline** — one entry per
+stored synthesis (`session_report_versions`), newest-first: a **trigger label** derived from the
+capture-set delta (photo added / transcript edited / capture removed / first report / …), capture count,
+and demoted provenance (`AI-generated`). The current version is tagged `Current`. It is the navigable
+face of the version store capture-undo already uses; Pro only (Basic has no synthesis chain). Trigger
+labels are **chrome** (localized fa/en from a structured `{kind, count?}` the backend sends — never a
+server-authored string).
+
+- **Preview (read-only).** Tapping a version renders that report **read-only inside the sheet** — the
+  same report presentation — with a `Viewing the version from HH:MM · Back to current` banner. The live
+  **user-state overlay** (rejected safety flags, dismissed aftercare, confirmed doses, treatment edits)
+  applies on top of whichever version renders, so a user decision is **never time-traveled away**.
+- **Restore (owner-only).** A past version reachable by removal offers **Restore this version**, which
+  returns the visit to that version's capture set by de-effecting the captures added after it — the
+  **same de-effecting removal** as undo (shared machinery). Owner-only, gated behind a confirmation that
+  names how many captures are removed. A **non-linear** version (one that included a now-deleted capture,
+  or needs an out-of-context toggle) is **preview-only** with a calm note; `409` on the API.
+- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut. Pin (the unused `pinned`
+  column), in-place time-travel, and field-level diffs are documented fast-follows.
+
+Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 
 ## Capture cards (feed / Sources drawer)
 
@@ -315,6 +341,7 @@ Shared rules: [states](../states.md).
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
 - `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar` (Pro primary)
 - `LiveDraftReport` (the captures feed — Basic primary / Pro `sources-drawer` body), `BasicLiveReport` (the Basic `View as document` panel)
+- `ReportHistoryButton` (E17 report-card header affordance) + `ReportHistorySheet` (timeline · read-only preview · owner restore) — `features/capture/reportHistory/`
 - `AiUsageNotice`
 - `AudioDialog`, `AddPhotoSheet`, `TextCaptureSheet` (CaptureDialogs), `SourcePreviewDialog`,
   `PatientAssignmentSheet`
@@ -339,6 +366,8 @@ Shared rules: [states](../states.md).
   `POST /api/v1/sessions/{id}/confirm-carried-forward` ·
   `POST /api/v1/sessions/{id}/aftercare-dismissal`
 - `POST` / `DELETE /api/v1/sessions/{id}/treatment-overlay` (AES-1102 field edit / Revert-to-AI)
+- `GET /api/v1/sessions/{id}/report-versions` · `GET /api/v1/sessions/{id}/report-versions/{versionId}` ·
+  `POST /api/v1/sessions/{id}/report-versions/{versionId}/restore` (E14 report version history)
 - `PATCH /api/v1/tenant/settings` (incl. `highRiskClinic` — pin the safety panel)
 - `GET /api/v1/patients/{id}/session-context` · `GET /api/v1/patients/search` ·
   `POST /api/v1/patients`
