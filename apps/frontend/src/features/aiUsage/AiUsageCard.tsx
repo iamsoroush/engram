@@ -45,11 +45,16 @@ function DevUsageControl({ apiFetch, onChanged }: { apiFetch: ApiFetch; onChange
       });
   };
   return (
+    // A clearly dev-badged box so this testing-only control never reads as broken production UI (it
+    // ships only in dev builds — see IS_DEV gate below).
     <div className="ai-usage-dev">
-      <span className="ai-usage-dev-label">{t("aiUsage.devTitle")}</span>
+      <div className="ai-usage-dev-head">
+        <span className="ai-usage-dev-badge">{t("aiUsage.devBadge")}</span>
+        <span className="ai-usage-dev-label">{t("aiUsage.devTitle")}</span>
+      </div>
       <div className="ai-usage-dev-buttons">
         {[0, 50, 85, 110].map((percent) => (
-          <Button key={percent} disabled={busy} onClick={() => jump(percent)} size="sm" type="button" variant="ghost">
+          <Button key={percent} disabled={busy} onClick={() => jump(percent)} size="sm" type="button" variant="secondary">
             {t("aiUsage.devJump", { percent })}
           </Button>
         ))}

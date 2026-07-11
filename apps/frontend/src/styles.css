@@ -1432,19 +1432,38 @@ small {
 .ai-usage-notice {
   margin-block: 8px;
 }
+/* Dev-only usage-state jumper. A clearly badged, dashed inset box so it reads as tooling, never as a
+   broken part of the otherwise-coherent Settings screen (#12). */
 .ai-usage-dev {
   margin-block-start: 14px;
-  padding-block-start: 12px;
-  border-top: 1px dashed var(--color-border);
+  padding: 10px 12px 12px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+}
+.ai-usage-dev-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-usage-dev-badge {
+  flex: none;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-surface);
+  background: var(--color-muted);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
 }
 .ai-usage-dev-label {
   font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-weight: 650;
   color: var(--color-muted);
 }
 .ai-usage-dev-buttons {
@@ -1478,6 +1497,33 @@ small {
   animation: shimmer 1.3s ease infinite;
 }
 
+/* Shared state views (StateViews.tsx): a calm, centered block for permission-denied (403) and
+   retryable-error states. One visual language wherever a surface can't load. */
+.state-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 32px 24px;
+  color: var(--color-muted);
+}
+.state-view-icon {
+  color: var(--color-muted-2);
+}
+.state-view-title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 650;
+  color: var(--color-text);
+}
+.state-view-body {
+  margin: 0;
+  max-width: 44ch;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
 .h-16 {
   min-height: 64px;
 }
@@ -1502,23 +1548,29 @@ small {
   max-width: 100%;
   overflow-x: auto;
   gap: 4px;
-  margin-top: 12px;
+  /* No layout margin on the primitive itself — it aligns cleanly inside flex header rows (QA);
+     surfaces that need standalone spacing add it on their wrapper (see .ins-tabs). */
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   padding: 3px;
+  vertical-align: middle;
 }
 
 .tab {
-  min-height: 34px;
+  /* 38px + the .tabs 3px padding = a 44px control, matching .select-menu-trigger so a segmented
+     control and a select trigger read as the same family when they sit side by side (#4). */
+  min-height: 38px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-muted);
   text-align: start;
   padding: 0 12px;
+  font-size: var(--text-sm);
   font-weight: 700;
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .tab:focus-visible {

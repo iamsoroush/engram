@@ -61,6 +61,13 @@ same render nets to no history churn.
 ## Protected Behavior
 
 - Staff-facing screens require an authenticated session.
+- **Owner/admin route guard (AES-1401).** The clinic-management screens `#insights`, `#team`, and
+  `#plan` are gated on the `canManageTeam` (owner/admin) capability at the **route** level, not just by
+  hiding the account-menu entries: a non-owner reaching one by a direct hash (deep link, bookmark, a
+  restored last-screen) is redirected to `#patients`. The redirect fires on both cold load and in-session
+  hash change, and the screen render falls through in the same frame, so no owner-only content flashes
+  and no owner-only API call fires. Any owner/admin API `403` maps to the shared permission state
+  ([states.md](states.md#permission--retryable-states)) — never a "try again" that can't help.
 - Staff API actions require backend roles `doctor` or `assistant`.
 - Admin can access read-oriented staff/admin APIs but the current frontend still shows the staff shell; write operations may fail if attempted.
 - Patient preview is blocked from staff screens by `PatientPreviewGate`.

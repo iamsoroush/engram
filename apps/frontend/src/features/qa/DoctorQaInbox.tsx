@@ -1,7 +1,8 @@
 import React from "react";
 import "./qaInbox.css";
 import type { ApiFetch } from "../../domain/appTypes";
-import { Alert, Badge, Button, Card, DisclosureRow, Skeleton, Textarea } from "../../shared/ui/primitives";
+import { Alert, Badge, Button, Card, DisclosureRow, Skeleton, Tabs, Textarea } from "../../shared/ui/primitives";
+import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { formatDate } from "../../shared/lib/datetime";
 import { useT } from "../../shared/i18n";
 import {
@@ -35,10 +36,14 @@ export function DoctorQaInbox({
   apiFetch,
   onToast,
   onChanged,
+  onShareQaLink,
 }: {
   apiFetch: ApiFetch;
   onToast?: (message: string) => void;
   onChanged?: () => void;
+  /** Opens the patient finder so the doctor can share a patient's Q&A link — the shortcut the
+   *  teaching empty state offers when no thread has arrived yet. */
+  onShareQaLink?: () => void;
 }) {
   const t = useT();
   const [tab, setTab] = React.useState<"inbox" | "library">("inbox");
@@ -149,51 +154,42 @@ export function DoctorQaInbox({
       <div className="qa-inbox-head">
         <div className="qa-inbox-head-top">
           <h1>{t("qa.inboxTitle")}</h1>
-          <div className="qa-tabs" role="tablist" aria-label={t("qa.tabsAria")}>
-            <button
-              className={tab === "inbox" ? "active" : ""}
-              data-testid="qa-tab-inbox"
-              onClick={() => setTab("inbox")}
-              type="button"
-              role="tab"
-              aria-selected={tab === "inbox"}
-            >
-              {t("qa.tabInbox")}
-            </button>
-            <button
-              className={tab === "library" ? "active" : ""}
-              data-testid="qa-tab-library"
-              onClick={() => setTab("library")}
-              type="button"
-              role="tab"
-              aria-selected={tab === "library"}
-            >
-              {t("qa.tabLibrary")}
-            </button>
-          </div>
+          {/* One control language (#4): the shared segmented control for Inbox | Library. */}
+          <Tabs
+            ariaLabel={t("qa.tabsAria")}
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "inbox", label: t("qa.tabInbox"), testId: "qa-tab-inbox" },
+              { value: "library", label: t("qa.tabLibrary"), testId: "qa-tab-library" },
+            ]}
+          />
         </div>
         {tab === "inbox" ? (
           <div className="qa-inbox-controls">
-            <div className="qa-scope" role="tablist" aria-label={t("qa.scopeAria")}>
-              <button className={scope === "mine" ? "active" : ""} onClick={() => setScope("mine")} type="button">
-                {t("qa.scopeMine")}
-              </button>
-              <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-                {t("qa.scopeClinic")}
-              </button>
-            </div>
+            <Tabs
+              ariaLabel={t("qa.scopeAria")}
+              value={scope}
+              onChange={setScope}
+              options={[
+                { value: "mine", label: t("qa.scopeMine") },
+                { value: "all", label: t("qa.scopeClinic") },
+              ]}
+            />
             {settings ? (
-              <label className="qa-routing">
-                {t("qa.routingLabel")}
-                <select
-                  className="select"
+              // Shared select-trigger style (SelectMenu), same family as the Insights range control.
+              <div className="qa-routing">
+                <span className="qa-routing-label">{t("qa.routingLabel")}</span>
+                <SelectMenu
+                  ariaLabel={t("qa.routingLabel")}
                   value={settings.routingMode === "manual" ? "manual" : "ai_default"}
-                  onChange={(event) => void handleRoutingMode(event.target.value as "ai_default" | "manual")}
-                >
-                  <option value="ai_default">{t("qa.routingAuto")}</option>
-                  <option value="manual">{t("qa.routingManual")}</option>
-                </select>
-              </label>
+                  onChange={(value) => void handleRoutingMode(value as "ai_default" | "manual")}
+                  options={[
+                    { value: "ai_default", label: t("qa.routingAuto") },
+                    { value: "manual", label: t("qa.routingManual") },
+                  ]}
+                />
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -211,7 +207,16 @@ export function DoctorQaInbox({
               <Skeleton className="h-12" />
             </Card>
           ) : items.length === 0 ? (
-            <p className="qa-empty">{scope === "mine" ? t("qa.emptyMine") : t("qa.emptyClinic")}</p>
+            // Teach rather than dead-end (#8): how a thread arrives + a shortcut to share a Q&A link.
+            <Card className="qa-empty-card">
+              <p className="qa-empty-title">{scope === "mine" ? t("qa.emptyMine") : t("qa.emptyClinic")}</p>
+              <p className="qa-empty-teach">{t("qa.emptyTeach")}</p>
+              {onShareQaLink ? (
+                <Button variant="secondary" onClick={onShareQaLink} type="button">
+                  {t("qa.emptyShareCta")}
+                </Button>
+              ) : null}
+            </Card>
           ) : (
             items.map((item) => (
               <QaThreadCard

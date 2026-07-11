@@ -22,6 +22,9 @@ only drafts.
 - Scope toggle: `Mine` (default — threads routed to me **plus** unrouted) / `Clinic`.
 - Routing control: tenant-level `qa_routing_mode` — `ai_default` (auto-routes a new thread to the
   patient's treating doctor) or `manual` (starts unrouted; staff route it).
+- **One control language**: `Inbox|Library` and `Mine|Clinic` are the shared **segmented control**
+  (`Tabs`); the Routing control is the shared **select trigger** (`SelectMenu`) — the same two
+  primitives, matched in height, that [Insights](insights.md) uses.
 - Each card: patient name; a routing badge (`Treating` / `Rerouted` / `Unrouted` + doctor name);
   the pending question (or a one-line preview when resolved); and an expandable full conversation
   with **visit markers interleaved** chronologically (chat-style bubbles).
@@ -59,7 +62,11 @@ The clinic's Q&A knowledge base — the retrieval corpus behind grounded draftin
 
 ## States
 
-- Loading skeleton; calm inline error with the list intact; per-scope empty copy.
+- Loading skeleton; calm inline error with the list intact.
+- **Empty state teaches (AES-1403).** Instead of a dead-end line, the empty inbox shows the per-scope
+  headline **plus** one teaching sentence (a thread starts when a patient asks from their Q&A link)
+  **and** a **Share Q&A link** shortcut that opens the app-wide [finder](finder.md) to pick a patient
+  and open their Q&A channel (`QaChannelButton`).
 - Draft `pending`/`failed` shows a quiet hint (`Drafting…` / write your own) — never a blocker.
 - Library empty states invite the first template / explain that approved replies index automatically.
 

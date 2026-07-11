@@ -89,6 +89,9 @@ function defaultScreenForAuth(auth: AuthSession): Screen {
   return "active-session";
 }
 
+/** Clinic-management pages reachable only by owner/admin (route-guarded; see the redirect effect). */
+const OWNER_ADMIN_SCREENS: Screen[] = ["insights", "team", "plan"];
+
 
 function AppInner() {
   const apiFetch = useApi();
@@ -115,7 +118,7 @@ function AppInner() {
   } = useAuth();
   // Capability seam (A3): tier/role affordances have one home. Replaces the scattered
   // `auth.tenant.tier !== "basic"` checks + `onFetchX = isPro ? cb : undefined` prop-gating below.
-  const { isBasic, canUseQa, canUseSmartLists } = useCapabilities();
+  const { isBasic, canUseQa, canUseSmartLists, canManageTeam } = useCapabilities();
   // The Clinical-Memory API surface, bound once (patient search, recent memory, Pro lot ledger/recall,
   // Q&A) — consumed by the unified finder overlay below.
   const memoryApi = useMemoryApi();
@@ -685,6 +688,17 @@ function AppInner() {
     }
   }, [screen, navigateScreen]);
 
+  // Route guard (AES-1401): the clinic-management pages (Insights / Team / Plan) are owner/admin only.
+  // The account menu already hides them, but a direct `#insights`/`#team`/`#plan` hash (deep link,
+  // bookmark, restored screen) by a plain doctor would otherwise render the page and 403 the API.
+  // Redirect to `#patients`; the render below also falls through for these screens so no owner-only
+  // content flashes and no API call fires before the hash normalizes.
+  React.useEffect(() => {
+    if (auth && OWNER_ADMIN_SCREENS.includes(screen) && !canManageTeam) {
+      navigateScreen("patients");
+    }
+  }, [auth, screen, canManageTeam, navigateScreen]);
+
   // Register the outbox engine's session bridge (seam B). Session state + the SessionSink now live in
   // SessionStore (seam C, increment 5); App wires the store's sink into the bridge and keeps ownership
   // of navigation (the router seam, increment 7). Placed before any early return so hook order is stable.
@@ -848,13 +862,13 @@ function AppInner() {
         />
       );
     }
-    if (screen === "team" && auth) {
+    if (screen === "team" && auth && canManageTeam) {
       return <TeamScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
     }
-    if (screen === "insights" && auth) {
+    if (screen === "insights" && auth && canManageTeam) {
       return <InsightsScreen auth={auth} apiFetch={apiFetch} onBack={() => navigateScreen(accountReturnRef.current)} />;
     }
-    if (screen === "plan" && auth) {
+    if (screen === "plan" && auth && canManageTeam) {
       return (
         <PlanScreen
           auth={auth}
@@ -930,7 +944,14 @@ function AppInner() {
     }
     if (screen === "qa-inbox" && canUseQa) {
       // Pro-only post-session patient Q&A inbox (AES-402); the nav entry is hidden for Basic.
-      return <DoctorQaInbox apiFetch={apiFetch} onToast={setToast} onChanged={refreshAttention} />;
+      return (
+        <DoctorQaInbox
+          apiFetch={apiFetch}
+          onToast={setToast}
+          onChanged={refreshAttention}
+          onShareQaLink={() => setFinderOpen(true)}
+        />
+      );
     }
     return (
       <PatientsHome

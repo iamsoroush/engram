@@ -653,6 +653,56 @@ captures / extracted findings / report prose is a larger later migration; find-o
 
 ---
 
+## E14 — UI expert-review refinements (2026-07)
+
+*The accepted items from the 2026-07 UI expert review (trust/coherence/polish pass). This slice —
+screens, router, and the public landing — covers the **screen/state** items; the capture/attention/shell
+items land alongside it. Surfaces: [screens/insights.md](screens/insights.md),
+[screens/qa-inbox.md](screens/qa-inbox.md), [states.md](states.md), [navigation.md](navigation.md).*
+
+### AES-1401 — Role-guarded owner/admin routes + shared permission state 〔Both · Dr/As/Admin · new〕
+As a **doctor**, when I reach an owner/admin page by a direct hash (deep link, bookmark, restored
+screen), I want to land on my own workspace instead of a broken page, so that the boundary is honest and
+calm.
+- **Acceptance:** the clinic-management screens (`#insights` / `#team` / `#plan`) are route-guarded on
+  the `canManageTeam` (owner/admin) capability — a non-owner hash-navigating to any of them redirects to
+  `#patients` (the render also falls through, so no owner-only content flashes and no API call fires);
+  an owner is never redirected. Any owner/admin API **403** maps to the shared **permission-denied**
+  state (no retry — retrying can't grant access), reserving `try again` + a Retry button for genuinely
+  retryable failures ([states.md](states.md) "Permission & retryable states"). Hermetic e2e pins the
+  redirect for all three hashes + the owner non-redirect.
+
+### AES-1402 — One control language (segmented control + select trigger) 〔Both · All · new〕
+As a **clinic user**, I want the app's toggles and dropdowns to look like one system, so that the UI
+reads as coherent rather than assembled from mismatched parts.
+- **Acceptance:** a single segmented-control primitive (`Tabs`, `role="tab"` + `aria-selected`) and a
+  single select-trigger (`SelectMenu`), matched in height/radius. Applied first on the **Q&A inbox**
+  (Inbox|Library, Mine|Clinic → the segmented control; Routing → the select trigger) and **Insights**
+  (sub-tabs + Activity series → the segmented control; range → the select trigger; the `Compare to
+  previous` toggle aligned to the select height/radius). RTL-mirrored; bilingual chrome.
+
+### AES-1403 — Q&A inbox teaching empty state 〔Pro · Dr/As · new〕
+As a **doctor** with an empty Q&A inbox, I want to learn how a thread arrives and get a shortcut to
+start one, so that a paid Pro feature isn't a dead end.
+- **Acceptance:** the empty inbox shows the scope headline **plus** one teaching sentence (a thread
+  starts when a patient asks from their Q&A link) **and** a **Share Q&A link** shortcut that opens the
+  app-wide finder to pick a patient and open their Q&A channel. As-built:
+  [screens/qa-inbox.md](screens/qa-inbox.md). *Extends AES-402.*
+
+### AES-1404 — Landing hero mirrors the live capture bar 〔Basic · Pt · new〕
+As a **prospect**, I want the landing mockup's capture bar to match the real first-run app, so that the
+promise matches what I get.
+- **Acceptance:** the landing in-product preview leads with **Record** (primary) then **Photo**, **Note**
+  — the Pro capture-bar order (`CaptureActions`) — instead of the old Note-primary Note/Photo/Audio.
+
+### AES-1405 — Dev usage-jump control reads as tooling 〔Pro · Dr · modify〕
+As a **developer/tester**, I want the Settings AI-usage jump control to look like a clearly-badged dev
+box, so that it never leaks a "broken" look into an otherwise coherent screen.
+- **Acceptance:** the dev-only usage-state jumper (ships in dev builds only, `IS_DEV`) renders in a
+  dashed, `Dev`-badged inset box with the percentages as small buttons — not four bare percentage links.
+
+---
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

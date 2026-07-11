@@ -19,6 +19,13 @@ const en: Dict = {
 
   "common.back": "Back",
 
+  // Shared state views (docs/ux/states.md): a 403 permission boundary (no retry — it can't help) vs a
+  // genuinely retryable failure (the only place "try again" + Retry belongs).
+  "state.permissionDenied.title": "You don't have access to this page",
+  "state.permissionDenied.body": "This area is limited to clinic owners and admins. Ask a clinic owner if you need access.",
+  "state.loadError": "Something went wrong loading this. Please try again.",
+  "state.retry": "Try again",
+
   // Glossary — canonical clinical/UI terms. The single source of truth for terminology: reuse these
   // exact words when composing chrome strings so the app reads consistently (and the fa column reads
   // like a Persian clinician wrote it). Extend this list as new core nouns appear; don't coin synonyms.
@@ -72,7 +79,6 @@ const en: Dict = {
   "insights.range.this-month": "This month",
   "insights.range.last-3-months": "Last 3 months",
   "insights.range.this-year": "This year",
-  "insights.loadError": "Could not load insights. Please try again.",
   "insights.empty": "Not enough data yet.",
   "insights.emptyHint": "Try a longer date range.",
   "insights.unknown": "Unknown",
@@ -1214,7 +1220,8 @@ const en: Dict = {
   "aiUsage.statusApproaching": "AI processing is running low this month.",
   "aiUsage.statusOver": "This month's AI processing is used up — it resumes next cycle.",
   "aiUsage.pausedNote": "Monthly AI limit reached — captures are still saved; AI enrichment resumes next cycle.",
-  "aiUsage.devTitle": "Developer / testing control — jump usage state",
+  "aiUsage.devBadge": "Dev",
+  "aiUsage.devTitle": "Jump usage state (testing only)",
   "aiUsage.devJump": "{percent}%",
   "aiUsage.noticeApproaching": "AI processing is running low this month.",
   "aiUsage.noticeReached": "Monthly AI limit reached — captures are still saved; AI enrichment resumes next cycle.",
@@ -1316,6 +1323,8 @@ const en: Dict = {
   "qa.routingManual": "Manual",
   "qa.emptyMine": "No conversations yet routed to you.",
   "qa.emptyClinic": "No conversations yet.",
+  "qa.emptyTeach": "A thread starts here when a patient asks a question from their Q&A link. Share a patient's link to open the channel.",
+  "qa.emptyShareCta": "Share Q&A link",
   "qa.badgeNeedsReply": "needs reply",
   "qa.badgeRerouted": "re-routed",
   "qa.badgeTreating": "treating",
@@ -1465,7 +1474,7 @@ const en: Dict = {
   "landing.preview.unassigned": "Unassigned · assign later",
   "landing.preview.note": "Note",
   "landing.preview.photo": "Photo",
-  "landing.preview.audio": "Audio",
+  "landing.preview.audio": "Record", // the primary action, matching the Pro capture bar (capturebar.record)
   "landing.preview.caption": "Capture now — pick the patient later.",
   // How it works
   "landing.how.title": "How it works",
@@ -1585,6 +1594,12 @@ const fa: Dict = {
 
   "common.back": "بازگشت",
 
+  // Shared state views (docs/ux/states.md): 403 permission boundary (no retry) vs retryable failure.
+  "state.permissionDenied.title": "به این صفحه دسترسی ندارید",
+  "state.permissionDenied.body": "این بخش فقط برای مالک و مدیر کلینیک است. اگر به دسترسی نیاز دارید، از مالک کلینیک بخواهید.",
+  "state.loadError": "بارگذاری با مشکل مواجه شد. دوباره تلاش کنید.",
+  "state.retry": "تلاش دوباره",
+
   // Glossary — canonical clinical/UI terms (Persian). Keep terminology consistent across every chrome
   // string; reuse these exact words rather than coining synonyms per screen.
   "glossary.visit": "ویزیت",
@@ -1635,7 +1650,6 @@ const fa: Dict = {
   "insights.range.this-month": "این ماه",
   "insights.range.last-3-months": "۳ ماه اخیر",
   "insights.range.this-year": "امسال",
-  "insights.loadError": "بارگذاری بینش‌ها ممکن نشد. دوباره تلاش کنید.",
   "insights.empty": "هنوز داده کافی نیست.",
   "insights.emptyHint": "بازهٔ زمانی بلندتری را امتحان کنید.",
   "insights.unknown": "نامشخص",
@@ -2774,7 +2788,8 @@ const fa: Dict = {
   "aiUsage.statusApproaching": "پردازش هوش مصنوعی این ماه رو به اتمام است.",
   "aiUsage.statusOver": "پردازش هوش مصنوعی این ماه تمام شده است — دورهٔ بعد از سر گرفته می‌شود.",
   "aiUsage.pausedNote": "به سقف ماهانهٔ هوش مصنوعی رسیدید — ثبت‌ها همچنان ذخیره می‌شوند؛ پردازش هوش مصنوعی دورهٔ بعد از سر گرفته می‌شود.",
-  "aiUsage.devTitle": "کنترل توسعه/آزمایش — تغییر وضعیت مصرف",
+  "aiUsage.devBadge": "توسعه",
+  "aiUsage.devTitle": "تغییر وضعیت مصرف (فقط آزمایش)",
   "aiUsage.devJump": "٪{percent}",
   "aiUsage.noticeApproaching": "پردازش هوش مصنوعی این ماه رو به اتمام است.",
   "aiUsage.noticeReached": "به سقف ماهانهٔ هوش مصنوعی رسیدید — ثبت‌ها همچنان ذخیره می‌شوند؛ پردازش هوش مصنوعی دورهٔ بعد از سر گرفته می‌شود.",
@@ -2876,6 +2891,8 @@ const fa: Dict = {
   "qa.routingManual": "دستی",
   "qa.emptyMine": "هنوز گفت‌وگویی به شما ارجاع نشده است.",
   "qa.emptyClinic": "هنوز گفت‌وگویی نیست.",
+  "qa.emptyTeach": "وقتی بیمار از طریق پیوند پرسش‌وپاسخ خود سؤالی بپرسد، گفت‌وگو اینجا آغاز می‌شود. برای باز کردن کانال، پیوند یک بیمار را هم‌رسانی کنید.",
+  "qa.emptyShareCta": "هم‌رسانی پیوند پرسش‌وپاسخ",
   "qa.badgeNeedsReply": "نیازمند پاسخ",
   "qa.badgeRerouted": "مسیردهی‌مجدد",
   "qa.badgeTreating": "معالج",
@@ -3025,7 +3042,7 @@ const fa: Dict = {
   "landing.preview.unassigned": "بدون بیمار · بعداً تخصیص دهید",
   "landing.preview.note": "یادداشت",
   "landing.preview.photo": "عکس",
-  "landing.preview.audio": "صدا",
+  "landing.preview.audio": "ضبط", // the primary action, matching the Pro capture bar (capturebar.record)
   "landing.preview.caption": "همین حالا ثبت کنید — بیمار را بعداً انتخاب کنید.",
   // How it works
   "landing.how.title": "چطور کار می‌کند",
