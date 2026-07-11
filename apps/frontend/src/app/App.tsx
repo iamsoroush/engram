@@ -62,6 +62,7 @@ import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
 import { StorageGuardDialog } from "../features/capture/components/StorageGuardDialog";
 import { CaptureDestinationPanel, PatientsHome, type ClinicalMemoryReturnContext } from "../features/memory/components/MemoryScreens";
+import { attentionBadgeCount } from "../features/memory/components/attentionModel";
 import { useMemoryApi } from "../features/memory/useMemoryApi";
 import { FinderOverlay } from "../features/finder";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
@@ -688,7 +689,7 @@ function AppInner() {
     }
   }, [screen, navigateScreen]);
 
-  // Route guard (AES-1401): the clinic-management pages (Insights / Team / Plan) are owner/admin only.
+  // Route guard (AES-1501): the clinic-management pages (Insights / Team / Plan) are owner/admin only.
   // The account menu already hides them, but a direct `#insights`/`#team`/`#plan` hash (deep link,
   // bookmark, restored screen) by a plain doctor would otherwise render the page and 403 the API.
   // Redirect to `#patients`; the render below also falls through for these screens so no owner-only
@@ -968,6 +969,9 @@ function AppInner() {
         onStartVisit={startVisitForPatient}
         onViewingPatientChange={setViewedPatient}
         onOpenQaInbox={canUseQa ? () => navigateScreen("qa-inbox") : undefined}
+        // The unified attention count (same source as the top-bar bell) feeds the Today chip, so the
+        // two "needs me" numbers can never disagree; surface-by-exception when zero (#1, AES-1007).
+        attentionCount={attention ? attentionBadgeCount(attention.counts) : 0}
       />
     );
   };

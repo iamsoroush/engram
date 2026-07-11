@@ -13,7 +13,7 @@ import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import type { QaThreadSummary } from "../../qa/qaClient";
-import { ClinicalMemoryTab, PatientFilter, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, NeedsInputCardItem, StorageWarningDecision, buildNeedsInputItems, needsInputCardFromApi, buildTodayModel, buildPatientRows, patientRowFromApi, patientRowStub, patientRowFromSmartMatch, smartMatchBadges, todayNeedsInputActionLabel, activeSectionBadge, patientNeedsInputItemsFromApi, decisionActionForSession, decisionIdForSession, formatPatientLastVisit, visitCountLabel } from "./memoryModel";
+import { ClinicalMemoryTab, PatientFilter, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, buildTodayModel, buildPatientRows, patientRowFromApi, patientRowStub, patientRowFromSmartMatch, smartMatchBadges, todayNeedsInputActionLabel, activeSectionBadge, decisionActionForSession, decisionIdForSession, formatPatientLastVisit, visitCountLabel } from "./memoryModel";
 import { SearchIcon, FilterIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, SparkleIcon, ChevronIcon, OfflineIcon, InfoIcon } from "./MemoryIcons";
 import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading } from "./MemoryCards";
 import { AttentionSweep } from "./AttentionSweep";
@@ -40,6 +40,7 @@ export function PatientsHome({
   onViewingPatientChange,
   onStartVisit,
   onOpenQaInbox,
+  attentionCount = 0,
 }: {
   initialPatientId?: string;
   initialTab?: ClinicalMemoryTab;
@@ -54,6 +55,10 @@ export function PatientsHome({
   onStartVisit?: (patientId: string, worklistEntryId?: string) => Promise<void>;
   /** Deep-link a sweep "Messages" item to the Q&A inbox thread (the sweep never reimplements reply). */
   onOpenQaInbox?: () => void;
+  /** The unified attention roll-up count (confirm + messages) — the SAME number the top-bar bell
+   *  shows. Feeds the Today chip so the two "needs me" signals never disagree; the chip is hidden
+   *  entirely when this is 0 (surface-by-exception). #1 / AES-1007. */
+  attentionCount?: number;
 }) {
   const t = useT();
   // Seam consumption (frontend-refactor plan §3, increment 6): the ~38 apiFetch-bound / session /
@@ -147,10 +152,6 @@ export function PatientsHome({
   const [storageReviewOpen, setStorageReviewOpen] = React.useState(false);
   const [storageWarning, setStorageWarning] = React.useState<StorageWarningDecision | null>(null);
   const [resolvedDecisionIds, setResolvedDecisionIds] = React.useState<Set<string>>(() => new Set());
-  // Backend-computed needs-input rows (the single source of truth shared with the patient-card
-  // badge). Fetched for the Needs input tab; the local derivation below is the offline fallback.
-  const [needsInputRows, setNeedsInputRows] = React.useState<ApiPatientMemoryRow[]>([]);
-  const [needsInputRowsLoaded, setNeedsInputRowsLoaded] = React.useState(false);
   // Pro tenants get AI-maintained memory artifacts (the ✨ surfaces); Basic gets deterministic text.
   const isPro = tier !== "basic";
   // The Lists tab is Pro-only; the count drives the tab-bar grid (3 → 1 row, 4 → a tidy 2×2).
@@ -163,23 +164,6 @@ export function PatientsHome({
     () => buildPatientRows({ activeSession, sessions, resolvedDecisionIds, t }),
     [activeSession, resolvedDecisionIds, sessions, t],
   );
-  const localNeedsInputItems = React.useMemo(
-    () => buildNeedsInputItems({ activeSession, sessions, storageWarning, resolvedDecisionIds, t }),
-    [activeSession, resolvedDecisionIds, sessions, storageWarning, t],
-  );
-  // Prefer the backend-computed decisions (so the tab matches the patient-card badges exactly);
-  // keep the client-only storage warning plus any local-only sessions the backend has not seen.
-  const needsInputItems = React.useMemo(() => {
-    if (!needsInputRowsLoaded) return localNeedsInputItems;
-    const backendCards = needsInputRows.flatMap((row) =>
-      patientNeedsInputItemsFromApi(row, t).map((item) => needsInputCardFromApi(row, item, t)),
-    );
-    const backendSessionIds = new Set(backendCards.map((card) => card.sessionId).filter(Boolean));
-    const localExtras = localNeedsInputItems.filter(
-      (card) => card.kind === "review-storage" || (card.sessionId && !backendSessionIds.has(card.sessionId)),
-    );
-    return [...localExtras, ...backendCards].sort((a, b) => b.sortTime - a.sortTime);
-  }, [needsInputRowsLoaded, needsInputRows, localNeedsInputItems, t]);
   // The device storage warning is a client-only data-safety signal the backend roll-up can't see, so
   // it's injected into the sweep as an S2 item (keeping the epic's "storage in the Basic ladder"),
   // routed to the same StorageReviewSheet at its source.
@@ -229,27 +213,6 @@ export function PatientsHome({
       cancelled = true;
     };
   }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
-
-  // Backend needs-input rows (the single source of truth shared with the patient-card badge + the
-  // Today preview + the hero count). A high limit — this decision set is small and not paginated. On
-  // failure we keep `needsInputRowsLoaded` false so the surfaces fall back to the local (offline)
-  // derivation. Not tab-gated: the Today preview and hero read it too.
-  React.useEffect(() => {
-    if (!onListPatientMemory) return;
-    let cancelled = false;
-    void onListPatientMemory({ filter: "needs-input", limit: 100, offset: 0 })
-      .then((result) => {
-        if (cancelled) return;
-        setNeedsInputRows(result.items);
-        setNeedsInputRowsLoaded(true);
-      })
-      .catch(() => {
-        if (!cancelled) setNeedsInputRowsLoaded(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [onListPatientMemory, patientListVersion, memoryRefreshSignal]);
 
   // AES-204 — run the deterministic smart search whenever the Patients tab has a query.
   React.useEffect(() => {
@@ -324,7 +287,6 @@ export function PatientsHome({
     [backendPatientRows, localPatientRows, patientFilter, patientRowsError, t],
   );
   const needsInputSessions = today.needsInputSessions;
-  const needsInputCount = needsInputItems.length;
   // How many needs-input visits are beyond the (max 3) previewed on Today — surfaced as the overflow pill.
   const needsInputOverflowCount = needsInputSessions.length - today.needsInputPreviews.length;
   const normalizedQuery = query.trim().toLowerCase();
@@ -640,13 +602,17 @@ export function PatientsHome({
       <div className="clinical-memory-hero">
         <div>
           <h1>{t("patients.clinicalMemory")}</h1>
-          <p>{t("patients.heroSubtitle")}</p>
         </div>
-        <button className="needs-input-pill" onClick={() => setActiveTab("attention")} type="button">
-          <SparkleIcon />
-          {needsInputCount ? t("patients.needYourInputCount", { n: needsInputCount }) : t("patients.allCaughtUp")}
-          <ChevronIcon />
-        </button>
+        {/* One "needs me" number, shared with the top-bar bell (attentionCount = confirm + messages).
+            Surface-by-exception: the chip renders only when something is open — when it's zero there is
+            no "All caught up" pill, so the chip can never contradict the sections below it (#1). */}
+        {attentionCount > 0 ? (
+          <button className="needs-input-pill" onClick={() => setActiveTab("attention")} type="button">
+            <SparkleIcon />
+            {t("patients.needYourInputCount", { n: attentionCount })}
+            <ChevronIcon />
+          </button>
+        ) : null}
       </div>
 
       {today.isOffline ? (
@@ -764,6 +730,11 @@ export function PatientsHome({
                     </button>
                   ) : null}
                 </div>
+              ) : attentionCount > 0 ? (
+                <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("attention")}>
+                  {t("patients.needsInputSweepAll", { n: attentionCount })}
+                  <ChevronIcon />
+                </button>
               ) : (
                 <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copyToday")} />
               )}

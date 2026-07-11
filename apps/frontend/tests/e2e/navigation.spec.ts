@@ -64,7 +64,7 @@ test("with no explicit hash, restore-last-screen still applies", async ({ page }
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
 });
 
-// Route guard (AES-1401): the owner/admin clinic-management pages (Insights / Team / Plan) redirect a
+// Route guard (AES-1501): the owner/admin clinic-management pages (Insights / Team / Plan) redirect a
 // non-owner who reaches them by direct hash (deep link, bookmark, restored screen) to #patients — the
 // account menu already hides the entries, so this closes the typed/bookmarked-hash gap. An owner is
 // never redirected.

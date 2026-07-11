@@ -70,6 +70,45 @@ export function groupAttentionItems(items: AttentionItem[]): AttentionGrouping {
   return { todaySections, earlierItems };
 }
 
+// A rendered sweep row: either a single item, or — when one visit has ≥2 open confirmations — a
+// grouped bundle that collapses the siblings into one row (AES-1008). The per-source resolvers are
+// unchanged; this is a list-shape change so a heavily-uncertain visit doesn't flood the sweep.
+export type AttentionRowUnit =
+  | { type: "single"; item: AttentionItem }
+  | { type: "group"; key: string; sessionId: string; patientName: string | null; items: AttentionItem[] };
+
+/**
+ * Collapse a section's items so that a single visit with **multiple open confirmations** renders as
+ * one grouped row («<patient> — N to confirm») instead of N sibling cards. Only `confirm`-tier (S2)
+ * items sharing a `sessionId` group (safety is never counted, suggested/messages stay per-item);
+ * everything else — and a lone confirmation — stays a normal single row, in its original order. The
+ * group's resolver just opens the visit, where the same per-source confirmations are walked in place.
+ */
+export function groupConfirmVisits(items: AttentionItem[]): AttentionRowUnit[] {
+  const confirmCountBySession = new Map<string, number>();
+  for (const item of items) {
+    if (TIER_SECTION[item.tier] === "confirm" && item.sessionId) {
+      confirmCountBySession.set(item.sessionId, (confirmCountBySession.get(item.sessionId) || 0) + 1);
+    }
+  }
+  const emitted = new Set<string>();
+  const units: AttentionRowUnit[] = [];
+  for (const item of items) {
+    const sessionId = item.sessionId || "";
+    const groupable = TIER_SECTION[item.tier] === "confirm" && sessionId && (confirmCountBySession.get(sessionId) || 0) >= 2;
+    if (!groupable) {
+      units.push({ type: "single", item });
+      continue;
+    }
+    if (emitted.has(sessionId)) continue; // folded into the group at its first occurrence
+    emitted.add(sessionId);
+    const groupItems = items.filter((candidate) => TIER_SECTION[candidate.tier] === "confirm" && candidate.sessionId === sessionId);
+    const named = groupItems.find((candidate) => candidate.patientName);
+    units.push({ type: "group", key: `group:${sessionId}`, sessionId, patientName: named?.patientName ?? null, items: groupItems });
+  }
+  return units;
+}
+
 /** The primary "needs you" number for the indicator: confirm + messages (safety is opt-out, never a
  * to-do; suggested is a quiet optional count shown separately). */
 export function attentionBadgeCount(counts: AttentionCounts): number {

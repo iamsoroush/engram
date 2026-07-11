@@ -515,6 +515,28 @@ clear them — **without being blocked**.
   open; per-day dismiss; never a gate or wall (never-block holds). *A persistent tenant/user opt-out
   setting is the clean follow-up.*
 
+### AES-1007 — One attention count across the bell + Today chip 〔Both · Dr/As/Rc · modify〕
+As **any clinician**, I want the top-bar bell and the Clinical-Memory "needs your input" chip to show
+the **same** number, so that "how much needs me?" never disagrees with itself. *(Refines AES-1003.)*
+- **Acceptance:** the hero chip is fed the same `attentionBadgeCount` (confirm + messages) the bell
+  shows (App threads it down); **surface-by-exception** — the chip is hidden when the count is 0 (no
+  "All caught up" pill). When the Today "Needs your input" preview is empty **but** the sweep still has
+  open items (earlier days / messages), that section points to the sweep («See all N in Attention»)
+  instead of claiming "all caught up", so the chip, the bell, and the section can never contradict.
+  As-built: [screens/patients.md](screens/patients.md).
+
+### AES-1008 — Per-visit grouping in the Close-the-day sweep 〔Both · Dr/As · modify〕
+As a **doctor**, I want a visit with several open confirmations to appear as **one** grouped row
+(«{patient} — N to confirm») rather than N sibling cards, so that a heavily-uncertain visit doesn't
+flood the sweep and bury the other items. *(Refines AES-1004.)*
+- **Acceptance:** within each sweep section (and the `Earlier, still open` group), confirm-tier (S2)
+  items sharing a `sessionId` collapse into one grouped row leading with the patient name (or
+  «This visit» when unassigned) + «N to confirm»; a lone confirmation and every non-confirm item stay
+  as their normal detailed rows, in order; the group's single action opens the visit — the same
+  per-source resolvers walk its confirmations in place (a **list-shape** change, not a new flow).
+  Section counts and the `N of M cleared` progress still count individual items. As-built:
+  [screens/patients.md](screens/patients.md).
+
 ---
 
 ## E11 — User-authored treatment overlay (Pro)
@@ -653,14 +675,14 @@ captures / extracted findings / report prose is a larger later migration; find-o
 
 ---
 
-## E14 — UI expert-review refinements (2026-07)
+## E15 — UI expert-review refinements: screens, router & controls (2026-07)
 
 *The accepted items from the 2026-07 UI expert review (trust/coherence/polish pass). This slice —
 screens, router, and the public landing — covers the **screen/state** items; the capture/attention/shell
 items land alongside it. Surfaces: [screens/insights.md](screens/insights.md),
 [screens/qa-inbox.md](screens/qa-inbox.md), [states.md](states.md), [navigation.md](navigation.md).*
 
-### AES-1401 — Role-guarded owner/admin routes + shared permission state 〔Both · Dr/As/Admin · new〕
+### AES-1501 — Role-guarded owner/admin routes + shared permission state 〔Both · Dr/As/Admin · new〕
 As a **doctor**, when I reach an owner/admin page by a direct hash (deep link, bookmark, restored
 screen), I want to land on my own workspace instead of a broken page, so that the boundary is honest and
 calm.
@@ -672,7 +694,7 @@ calm.
   retryable failures ([states.md](states.md) "Permission & retryable states"). Hermetic e2e pins the
   redirect for all three hashes + the owner non-redirect.
 
-### AES-1402 — One control language (segmented control + select trigger) 〔Both · All · new〕
+### AES-1502 — One control language (segmented control + select trigger) 〔Both · All · new〕
 As a **clinic user**, I want the app's toggles and dropdowns to look like one system, so that the UI
 reads as coherent rather than assembled from mismatched parts.
 - **Acceptance:** a single segmented-control primitive (`Tabs`, `role="tab"` + `aria-selected`) and a
@@ -681,7 +703,7 @@ reads as coherent rather than assembled from mismatched parts.
   (sub-tabs + Activity series → the segmented control; range → the select trigger; the `Compare to
   previous` toggle aligned to the select height/radius). RTL-mirrored; bilingual chrome.
 
-### AES-1403 — Q&A inbox teaching empty state 〔Pro · Dr/As · new〕
+### AES-1503 — Q&A inbox teaching empty state 〔Pro · Dr/As · new〕
 As a **doctor** with an empty Q&A inbox, I want to learn how a thread arrives and get a shortcut to
 start one, so that a paid Pro feature isn't a dead end.
 - **Acceptance:** the empty inbox shows the scope headline **plus** one teaching sentence (a thread
@@ -689,17 +711,53 @@ start one, so that a paid Pro feature isn't a dead end.
   app-wide finder to pick a patient and open their Q&A channel. As-built:
   [screens/qa-inbox.md](screens/qa-inbox.md). *Extends AES-402.*
 
-### AES-1404 — Landing hero mirrors the live capture bar 〔Basic · Pt · new〕
+### AES-1504 — Landing hero mirrors the live capture bar 〔Basic · Pt · new〕
 As a **prospect**, I want the landing mockup's capture bar to match the real first-run app, so that the
 promise matches what I get.
 - **Acceptance:** the landing in-product preview leads with **Record** (primary) then **Photo**, **Note**
   — the Pro capture-bar order (`CaptureActions`) — instead of the old Note-primary Note/Photo/Audio.
 
-### AES-1405 — Dev usage-jump control reads as tooling 〔Pro · Dr · modify〕
+### AES-1505 — Dev usage-jump control reads as tooling 〔Pro · Dr · modify〕
 As a **developer/tester**, I want the Settings AI-usage jump control to look like a clearly-badged dev
 box, so that it never leaks a "broken" look into an otherwise coherent screen.
 - **Acceptance:** the dev-only usage-state jumper (ships in dev builds only, `IS_DEV`) renders in a
   dashed, `Dev`-badged inset box with the percentages as small buttons — not four bare percentage links.
+
+## E16 — Clinical Memory & top-bar UI-review refinements (2026-07)
+*Accepted items from the 2026-07-10 UI expert review — trust/coherence + polish on the Clinical Memory
+screen and the app top bar. The unified-count and sweep-grouping items from the same review live in
+[E10](#e10--close-the-day--unified-attention-both) (AES-1007 / AES-1008).*
+
+### AES-1601 — One shared timestamp formatter 〔Both · All · modify〕
+As **any clinician**, I want every clock time in a card to use one convention, so that a visit card
+never shows `Visit: … 17:43` directly above `Updated: 5:43 PM`.
+- **Acceptance:** a single clock formatter (`shared/lib/datetime.formatTime`) drives the visit card's
+  `Visit:` / `Updated:` lines, the patient-card "Latest visit", and the capture "updated" labels —
+  **24-hour everywhere** (Persian digits under fa via the `fa-IR` locale, 24h under en). The `Visit:`
+  line derives from the visit timestamp so its date localizes (`Today` → «امروز»). Decision: en clock =
+  24h ([technical-decisions](../technical-decisions.md)).
+
+### AES-1602 — Drop the marketing subtitle on Clinical Memory 〔Both · All · modify〕
+As **any clinician**, I want the Clinical Memory heading to orient without a marketing sentence, so that
+every phone visit isn't taxed a self-praising text row (it violated the calm-professional principle it
+cited).
+- **Acceptance:** the "Your calm, intelligent assistant…" subtitle is removed; the heading + attention
+  chip + search already orient. If it must live somewhere, it belongs in onboarding.
+
+### AES-1603 — Legible primary nav at every width 〔Both · All · modify〕
+As a **new user**, I want the Visit/Memory nav pills identifiable at phone widths, so that two
+near-abstract glyphs aren't the only cue.
+- **Acceptance:** the `Visit` / `Memory` labels are kept at **all** widths (the action cluster is
+  compacted on phones so the full Pro row — nav + search + Q&A + bell + avatar — still fits one line at
+  390px), plus a **decisively stronger selected state** (full-primary ring + heavier weight) so the
+  active pill reads even where a glyph would otherwise be icon-only.
+
+### AES-1604 — Balanced top bar on tablet 〔Both · All · modify〕
+As a **tablet user**, I want the top bar to read as intentional, so that the brand doesn't float
+mid-bar with leftover space.
+- **Acceptance:** the `Engram` wordmark is anchored to the inline-start (far-left; far-right under RTL)
+  **before** the nav cluster, with the avatar pinned to the inline-end and the single flexible gap
+  between them — no mid-bar float. Phones keep the two-row restack (brand on top).
 
 ---
 

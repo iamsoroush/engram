@@ -63,7 +63,7 @@ The clinic's Q&A knowledge base — the retrieval corpus behind grounded draftin
 ## States
 
 - Loading skeleton; calm inline error with the list intact.
-- **Empty state teaches (AES-1403).** Instead of a dead-end line, the empty inbox shows the per-scope
+- **Empty state teaches (AES-1503).** Instead of a dead-end line, the empty inbox shows the per-scope
   headline **plus** one teaching sentence (a thread starts when a patient asks from their Q&A link)
   **and** a **Share Q&A link** shortcut that opens the app-wide [finder](finder.md) to pick a patient
   and open their Q&A channel (`QaChannelButton`).

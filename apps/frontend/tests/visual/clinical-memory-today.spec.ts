@@ -2,8 +2,10 @@ import { expect, test } from "@playwright/test";
 
 const now = new Date();
 const todayDateLabel = "Today";
-const todaySessionTime = "4:23 PM";
-const needsInputTime = "2:15 PM";
+// Clock labels are 24h everywhere now (one shared formatter, #5) — these match their capturedAt
+// timestamps (16:23, 14:15), which is how real session times render.
+const todaySessionTime = "16:23";
+const needsInputTime = "14:15";
 const previousVisitDate = new Date(now);
 previousVisitDate.setDate(now.getDate() - 42);
 const previousVisitDateLabel = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(previousVisitDate);
@@ -416,7 +418,7 @@ function technicalFailureVisit() {
   return {
     id: "session-technical-failure",
     label: "AI failed",
-    time: "12:45 PM",
+    time: "12:45",
     dateLabel: todayDateLabel,
     createdAt: withTodayTime(12, 45),
     capturedAt: withTodayTime(12, 45),
@@ -455,7 +457,7 @@ function updatedInitialConsultation() {
   return {
     id: "session-initial-consultation",
     label: "Initial consultation",
-    time: "11:30 AM",
+    time: "11:30",
     dateLabel: "Apr 18",
     createdAt: previousVisitDate.toISOString(),
     capturedAt: previousVisitDate.toISOString(),

@@ -4,6 +4,7 @@ import {
   attentionBadgeCount,
   attentionItemRoute,
   groupAttentionItems,
+  groupConfirmVisits,
   hasAttention,
 } from "./attentionModel";
 
@@ -55,6 +56,58 @@ describe("groupAttentionItems", () => {
     expect(todaySections.map((s) => s.key)).toEqual(["confirm"]);
     // Confirm (S2) before suggested (S3); within S2, newest first.
     expect(earlierItems.map((i) => i.id)).toEqual(["e-confirm-new", "e-confirm-old", "e-suggest"]);
+  });
+});
+
+describe("groupConfirmVisits", () => {
+  it("collapses a visit's ≥2 confirmations into one group, keeping the patient name", () => {
+    const items: AttentionItem[] = [
+      item({ id: "d1", kind: "review-treatment", tier: "S2", sessionId: "v1", patientName: "سورنا معاضد" }),
+      item({ id: "d2", kind: "review-treatment", tier: "S2", sessionId: "v1", patientName: "سورنا معاضد" }),
+      item({ id: "d3", kind: "verify", tier: "S2", sessionId: "v1", patientName: "سورنا معاضد" }),
+    ];
+    const units = groupConfirmVisits(items);
+    expect(units).toHaveLength(1);
+    expect(units[0]).toMatchObject({ type: "group", sessionId: "v1", patientName: "سورنا معاضد" });
+    if (units[0].type === "group") expect(units[0].items).toHaveLength(3);
+  });
+
+  it("keeps a lone confirmation and non-confirm items as single rows, in order", () => {
+    const items: AttentionItem[] = [
+      item({ id: "solo", kind: "dose", tier: "S2", sessionId: "v1" }),
+      item({ id: "sug", kind: "suggested-unassign", tier: "S3", sessionId: "v2" }),
+      item({ id: "qa", kind: "qa-pending", tier: "qa", sessionId: "v3", threadId: "t1" }),
+    ];
+    const units = groupConfirmVisits(items);
+    expect(units.map((u) => u.type)).toEqual(["single", "single", "single"]);
+  });
+
+  it("groups per visit (session), not per patient — same name, two visits → two groups", () => {
+    const items: AttentionItem[] = [
+      item({ id: "a1", kind: "review-treatment", tier: "S2", sessionId: "v1", patientName: "Sorna" }),
+      item({ id: "a2", kind: "review-treatment", tier: "S2", sessionId: "v1", patientName: "Sorna" }),
+      item({ id: "b1", kind: "review-treatment", tier: "S2", sessionId: "v2", patientName: "Sorna" }),
+      item({ id: "b2", kind: "review-treatment", tier: "S2", sessionId: "v2", patientName: "Sorna" }),
+    ];
+    const groups = groupConfirmVisits(items).filter((u) => u.type === "group");
+    expect(groups.map((g) => (g.type === "group" ? g.sessionId : null))).toEqual(["v1", "v2"]);
+  });
+
+  it("falls back to a null name for an unnamed (unassigned) visit's confirmations", () => {
+    const items: AttentionItem[] = [
+      item({ id: "u1", kind: "review-treatment", tier: "S2", sessionId: "v9" }),
+      item({ id: "u2", kind: "review-treatment", tier: "S2", sessionId: "v9" }),
+    ];
+    const [unit] = groupConfirmVisits(items);
+    expect(unit).toMatchObject({ type: "group", patientName: null });
+  });
+
+  it("does not group confirmations that lack a sessionId", () => {
+    const items: AttentionItem[] = [
+      item({ id: "n1", kind: "dose", tier: "S2" }),
+      item({ id: "n2", kind: "dose", tier: "S2" }),
+    ];
+    expect(groupConfirmVisits(items).map((u) => u.type)).toEqual(["single", "single"]);
   });
 });
 

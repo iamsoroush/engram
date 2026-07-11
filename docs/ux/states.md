@@ -194,9 +194,11 @@ Fair-use AI metering (semantics: `docs/business/ai-usage-limits.md`; UI: `featur
 
 Every "needs you" signal maps to exactly one **severity tier** — one shared language rendered in
 place (at each item's source) and aggregated into the cross-session **Close-the-day sweep** (the
-[Attention tab](screens/patients.md#attention-tab)) and the top-bar
-[Attention indicator](navigation.md). The backend `GET /api/v1/attention` roll-up computes it over the
-signals that already exist; it invents no new clinical logic.
+[Attention tab](screens/patients.md#attention-tab)), the top-bar
+[Attention indicator](navigation.md), and the Clinical-Memory hero **chip**. The backend
+`GET /api/v1/attention` roll-up computes it over the signals that already exist; it invents no new
+clinical logic. The indicator, the chip, and the "N to confirm" the sweep sums are the **same**
+`confirm + messages` number — they can never disagree.
 
 | Tier | Name | Colour | Requires | Counts toward the aggregate? |
 | --- | --- | --- | --- | --- |
@@ -268,15 +270,20 @@ Resolver routing:
 
 Timestamp labels must make the timestamp type explicit whenever visit time, update time, and needs-input time can coexist. The aesthetics chrome noun for the clinical encounter is **visit** everywhere (see the vocabulary note in `screens/capture.md`), so the visit-time label reads `Visit:`.
 
+**One clock convention.** Every clock time routes through the single shared formatter
+(`shared/lib/datetime.formatTime`) and is **24-hour** — Persian digits under fa (via the `fa-IR`
+locale), 24h under en — so a card's `Visit:` and `Updated:` lines never disagree in convention. The
+`Visit:` line derives from the visit timestamp, so its date localizes (`Today` → «امروز»).
+
 Use:
 
-- `Visit: Today · 4:23 PM`
-- `Updated: 4:31 PM`
-- `Visit: Apr 18 · 11:30 AM`
+- `Visit: Today · 16:23`
+- `Updated: 16:31`
+- `Visit: Apr 18 · 11:30`
 - `Updated today · Patient assigned`
-- `Needs input since: 2:20 PM`
+- `Needs input since: 14:20`
 
-Avoid ambiguous labels such as `Today · 4:23 PM` or `Updated today` when the UI does not clarify whether it is visit time, update time, or needs-input time.
+Avoid ambiguous labels such as `Today · 16:23` or `Updated today` when the UI does not clarify whether it is visit time, update time, or needs-input time.
 
 ## Unsaved Data
 

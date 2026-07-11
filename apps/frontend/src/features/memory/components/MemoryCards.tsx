@@ -6,7 +6,7 @@ import type { CaptureSession } from "../../../domain/types";
 import { Badge, Button, Card } from "../../../shared/ui/primitives";
 import { useT } from "../../../shared/i18n";
 import { LastVisitStrip } from "../../aesthetics/LastVisitStrip";
-import { ClinicalTone, NeedsInputCardItem, PatientBadge, TimelineSessionModel, memoryTextDirection, latestSessionTime, captureCounts, sessionTimeLabel, formatSessionTime, avatarInitials } from "./memoryModel";
+import { ClinicalTone, NeedsInputCardItem, PatientBadge, TimelineSessionModel, memoryTextDirection, latestSessionTime, captureCounts, explicitDateTimeLabel, sessionVisitTimestamp, formatSessionTime, avatarInitials } from "./memoryModel";
 import { NeedsInputDecisionIcon, SparkleIcon, ChevronIcon, captureTypeIcon } from "./MemoryIcons";
 
 export function AssistantStatusPill({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) {
@@ -278,7 +278,9 @@ export function VisitMetadata({ session, tone }: { session: CaptureSession; tone
       ) : null}
       <div>
         <span>{t("memcard.sessionLabel")}</span>
-        <strong data-content>{sessionTimeLabel(session, t)}</strong>
+        {/* Visit time via the same live localized formatter as "Updated:" below — so the date
+            localizes ("Today"→«امروز») and both lines share one 24h clock convention (#5). */}
+        <strong data-content>{explicitDateTimeLabel(sessionVisitTimestamp(session), t)}</strong>
       </div>
       {showNeedsInputSince ? (
         <div className="visit-metadata-attention">

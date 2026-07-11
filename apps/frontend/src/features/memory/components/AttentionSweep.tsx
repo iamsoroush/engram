@@ -13,6 +13,8 @@ import {
   attentionItemRoute,
   attentionTitleKey,
   groupAttentionItems,
+  groupConfirmVisits,
+  type AttentionRowUnit,
   type AttentionSectionKey,
   type FetchAttention,
 } from "./attentionModel";
@@ -97,8 +99,15 @@ export function AttentionSweep({
   const total = items.length;
   const cleared = items.filter((item) => actedIds.has(item.id)).length;
 
+  const markActed = (ids: string[]) =>
+    setActedIds((current) => {
+      const next = new Set(current);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+
   const handlePrimary = (item: AttentionItem) => {
-    setActedIds((current) => new Set(current).add(item.id));
+    markActed([item.id]);
     onItemPrimary(item);
   };
 
@@ -111,6 +120,25 @@ export function AttentionSweep({
       onSelect={attentionItemRoute(item) ? () => onItemSelect(item) : undefined}
     />
   );
+
+  // A visit with ≥2 open confirmations collapses to one grouped row; its single action opens the
+  // visit (onItemSelect) so the same per-source confirmations are walked in place (AES-1008).
+  const renderUnit = (unit: AttentionRowUnit) => {
+    if (unit.type === "single") return renderRow(unit.item);
+    const openVisit = () => {
+      markActed(unit.items.map((item) => item.id));
+      onItemSelect(unit.items[0]);
+    };
+    return (
+      <AttentionGroupRow
+        key={unit.key}
+        patientName={unit.patientName}
+        count={unit.items.length}
+        acted={unit.items.every((item) => actedIds.has(item.id))}
+        onOpen={openVisit}
+      />
+    );
+  };
 
   if (error && !loaded) {
     return (
@@ -175,12 +203,12 @@ export function AttentionSweep({
               count={section.items.length}
               tone={TIER_TONE[section.tier]}
             >
-              {section.items.map(renderRow)}
+              {groupConfirmVisits(section.items).map(renderUnit)}
             </AttentionSection>
           ))}
           {earlierItems.length ? (
             <AttentionSection sectionKey="earlier" count={earlierItems.length} tone="muted">
-              {earlierItems.map(renderRow)}
+              {groupConfirmVisits(earlierItems).map(renderUnit)}
             </AttentionSection>
           ) : null}
         </>
@@ -251,6 +279,37 @@ function AttentionRow({
       </button>
       <button type="button" className="attention-card-action" onClick={onPrimary}>
         {acted ? t("attention.action.done") : actionLabel}
+      </button>
+    </div>
+  );
+}
+
+// One row for a visit with several open confirmations: «<patient> — N to confirm». Both the body and
+// the action open the visit, where the per-source confirmations are resolved in place (AES-1008).
+function AttentionGroupRow({
+  patientName,
+  count,
+  acted,
+  onOpen,
+}: {
+  patientName: string | null;
+  count: number;
+  acted: boolean;
+  onOpen: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className={`attention-card attention-tone-amber attention-card-group${acted ? " attention-card-acted" : ""}`}>
+      <button type="button" className="attention-card-body" onClick={onOpen}>
+        <span className="attention-card-title">
+          {/* Patient name is clinical CONTENT — bidi-isolate so a Persian name renders cleanly. */}
+          {patientName ? <bdi>{patientName}</bdi> : <span>{t("attention.group.fallbackVisit")}</span>}
+          {" — "}
+          {t("attention.group.confirmCount", { n: count })}
+        </span>
+      </button>
+      <button type="button" className="attention-card-action" onClick={onOpen}>
+        {acted ? t("attention.action.done") : t("attention.group.action")}
       </button>
     </div>
   );
