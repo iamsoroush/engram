@@ -2,7 +2,7 @@
 
 ## UI-review refinements: one 24h clock + one attention count (2026-07-11)
 
-From the 2026-07-10 UI expert review (`docs/work/ui-review-refinements.md`), shipped as AES-1007/1008
+From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), shipped as AES-1007/1008
 + AES-1601–1604 (and AES-1501–1505 for the screens/router slice). Two decisions worth recording:
 
 - **En clock convention = 24-hour.** Clock times across the memory surfaces were split — the visit
