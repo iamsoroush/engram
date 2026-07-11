@@ -1,5 +1,12 @@
 # Recording checklist — AI eval fixtures
 
+> **Before recording anything, check the already-recorded pool:** the model-comparison scripts
+> **T01–T12** (owner's voice, 2026-07-10) are stored durably in the shared infra MinIO —
+> bucket `engram-eval-fixtures`, prefix `model-compare/transcription/` — with reference texts in
+> `docs/work/model-compare/transcription-scripts.md`. Items below marked **✔ covered by Txx** need
+> **no new recording**: an agent copies the WAV from that bucket into the fixture dir and authors
+> the `.json`. Only the unmarked items still need your phone.
+
 Record each item on your phone in **natural clinical Farsi**, then drop the file at the path shown.
 Sibling `.json` (expected facts) gets authored by the agent once the media is in. Tick as you go.
 
@@ -7,24 +14,25 @@ Sibling `.json` (expected facts) gets authored by the agent once the media is in
 
 ## 🎙️ Transcription (audio → text)  →  `transcription/`
 
-- [ ] **t01** `t01-botox-forehead.m4a` — say: *"بیست واحد بوتاکس روی پیشانی زدم."*  (expect: بوتاکس · ۲۰ · واحد; no Latin letters)
-- [ ] **t02** `t02-filler-brand.m4a` — *"یک سی‌سی ژل ژوویدرم توی گونه چپ."*  (expect: «ژوویدرم» verbatim · سی‌سی)
-- [ ] **t03** `t03-spoken-lot.m4a` — *"شماره لات ا ب ث، یک دو سه."* (or read a real box's lot aloud)  (expect: the lot string verbatim)
-- [ ] **t04** `t04-correction.m4a` — *"دو سی‌سی... نه اشتباه گفتم، سه سی‌سی."*  (expect: both «۲» and «۳» appear verbatim)
-- [ ] **t05** `t05-noisy.m4a` — repeat **t01** fast, with clinic background noise  (expect: still accurate)
+- [x] **t01** `t01-botox-forehead.m4a` — say: *"بیست واحد بوتاکس روی پیشانی زدم."*  (expect: بوتاکس · ۲۰ · واحد; no Latin letters) **✔ covered by T01** (same dictation + a filler clause).
+- [x] **t02** `t02-filler-brand.m4a` — *"یک سی‌سی ژل ژوویدرم توی گونه چپ."*  (expect: «ژوویدرم» verbatim · سی‌سی) **✔ covered by T02 + T03** (سی‌سی doses; brand «جوویدرم ولوما» verbatim).
+- [x] **t03** `t03-spoken-lot.m4a` — *"شماره لات ا ب ث، یک دو سه."* (or read a real box's lot aloud)  (expect: the lot string verbatim) **✔ covered by T03** (lot «وی ال ام دو دو نه یک» spoken digit-by-digit).
+- [x] **t04** `t04-correction.m4a` — *"دو سی‌سی... نه اشتباه گفتم، سه سی‌سی."*  (expect: both «۲» and «۳» appear verbatim) **✔ covered by T06** (same inline-correction pattern, یک → یک‌ونیم سی‌سی).
+- [ ] **t05** `t05-noisy.m4a` — repeat **t01** with clinic background **noise**  (expect: still accurate).
+      *Partial:* the fast/colloquial half is **✔ covered by T05**; only the NOISY variant still needs recording.
 
 **Batch 2 — high-value edge conditions (Part-2 #1a).** The one-speaker core set never reaches a
 confusable dose minimal pair, length, code-switch, or a second voice — these do.
 
-- [ ] **t10** `t10-confusable-24-20.m4a` — say clearly: *"بیست و چهار واحد بوتاکس روی پیشانی زدم."*
+- [x] **t10** `t10-confusable-24-20.m4a` — say clearly: *"بیست و چهار واحد بوتاکس روی پیشانی زدم."* **✔ covered by T05** (بیست و چهار واحد in fast colloquial register — a stricter test than the clear read).
       (the confusable minimal pair — must hear **۲۴**, never «۲۰»; expect: `numbers:[24]` **and**
       `numbersForbidden:[20]` — the gate fails in **both** directions)
-- [ ] **t11** `t11-long-monologue.m4a` — a ~**60s** natural multi-treatment monologue in one take
+- [x] **t11** `t11-long-monologue.m4a` — a ~**60s** natural multi-treatment monologue in one take **✔ covered by T10** (~45s multi-treatment + aftercare + next-visit monologue).
       (forehead botox, both cheeks filler with a brand + spoken lot, and an aftercare instruction)
       (expect: every dose/brand/area present — completeness under length)
 - [ ] **t12** `t12-english.m4a` — a short **English** clinical sentence (e.g. *"Twenty units of botox on
       the forehead, one cc of filler in the left cheek."*)  (expect: `language:"en"`, dose/brand kept)
-- [ ] **t13** `t13-latin-brand-lot.m4a` — Farsi with a **Latin brand + spoken lot**: *"یک سی‌سی ژوویدرم،
+- [x] **t13** `t13-latin-brand-lot.m4a` — Farsi with a **Latin brand + spoken lot**: *"یک سی‌سی ژوویدرم، **✔ covered by T03**.
       شماره لات ... را زدم."* read a real box's Latin lot aloud  (expect: brand + lot verbatim, Farsi native script)
 - [ ] **t14** `t14-second-speaker.m4a` — **t01** recorded by a **different speaker**  (expect: same accuracy — not overfit to one voice)
 

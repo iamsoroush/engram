@@ -45,6 +45,15 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+def _assert_audio_tooling() -> None:
+    # Fail fast on a stale container image (ffmpeg/ffprobe live in the IMAGE while code bind-mounts):
+    # a loud boot error beats audio uploads dying with retried 500s. See services/audio.py.
+    from app.services.audio import assert_audio_tooling
+
+    assert_audio_tooling()
+
+
 app.include_router(api_v1)
 
 # Per-domain routers extracted from this file. Each is a thin, self-contained APIRouter mounted at

@@ -24,7 +24,7 @@ from app.models import (
     SessionStatus,
 )
 from app.observability.metrics import record_capture_upload_failed
-from app.services.audio import CANONICAL_AUDIO_MIME, AudioValidationError, normalize_audio_upload
+from app.services.audio import CANONICAL_AUDIO_MIME, AudioTranscodeError, AudioValidationError, normalize_audio_upload
 from app.services.reporting import patient_information_from_assignment, render_report_body_markdown, report_template_context
 from app.services.patient_memory_intelligence import mark_patient_memory_updating
 from app.services.session_contracts import build_session_contracts, evolve_session_after_capture, session_is_complete
@@ -307,6 +307,13 @@ async def upload_source_capture(
             content, canonical_duration_seconds = normalize_audio_upload(content)
         except AudioValidationError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        except AudioTranscodeError as exc:
+            # Server-side (ffmpeg missing / transcode crash), NOT the client's audio: an honest 503
+            # keeps the outbox retrying and tells the operator what broke — never a bare 500.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Audio processing unavailable on the server: {exc}",
+            ) from exc
     if capture_type == CaptureType.note:
         detail = note_detail_with_file_fallback(detail, content)
     byte_size = len(content)

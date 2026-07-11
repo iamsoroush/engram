@@ -94,6 +94,50 @@ class TranscodeToolingGuardTest(unittest.TestCase):
             with self.assertRaises(audio.AudioTranscodeError):
                 audio.transcode_to_canonical(b"\x00\x01")
 
+    def test_startup_assert_names_missing_tools_and_the_fix(self):
+        # The boot-time guard (app startup calls this) must crash LOUDLY with the rebuild hint —
+        # this is what turns "stuck Waiting to upload after a dev cycle" into a diagnosable boot error.
+        with patch("app.services.audio.shutil.which", return_value=None):
+            with self.assertRaises(RuntimeError) as ctx:
+                audio.assert_audio_tooling()
+        message = str(ctx.exception)
+        self.assertIn("ffmpeg", message)
+        self.assertIn("ffprobe", message)
+        self.assertIn("rebuild", message)
+
+    def test_startup_assert_passes_when_tooling_present(self):
+        audio.assert_audio_tooling()  # the test image installs ffmpeg; must not raise
+
+    def test_upload_maps_transcode_error_to_503(self):
+        # A server-side transcode fault is an honest 503 (outbox keeps retrying; operator sees why),
+        # never a bare 500 and never a 400 blaming the client's audio.
+        import asyncio
+        from unittest.mock import MagicMock
+        from fastapi import HTTPException
+        from app.services import capture_storage
+
+        upload = MagicMock()
+        upload.read = unittest.mock.AsyncMock(return_value=b"RIFF-fake-audio")
+        db = MagicMock()
+        db.execute.return_value.scalar_one_or_none.return_value = None  # no client_capture_id dedup hit
+        with patch.object(capture_storage, "normalize_audio_upload", side_effect=audio.AudioTranscodeError("ffprobe is not installed")):
+            with self.assertRaises(HTTPException) as ctx:
+                asyncio.run(
+                    capture_storage.upload_source_capture(
+                        db,
+                        object_store=MagicMock(),
+                        principal=MagicMock(tenant_id=None, user_id=None),
+                        capture_type_text="audio",
+                        session_id=None,
+                        patient_id=None,
+                        client_capture_id="t-503",
+                        detail="",
+                        file=upload,
+                    )
+                )
+        self.assertEqual(ctx.exception.status_code, 503)
+        self.assertIn("ffprobe", ctx.exception.detail)
+
 
 if __name__ == "__main__":
     unittest.main()

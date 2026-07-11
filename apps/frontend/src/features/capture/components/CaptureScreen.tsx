@@ -760,6 +760,7 @@ export function CaptureScreen({
           // deleting, re-assigning and tapping into a capture all still live here (and via the report's
           // own source links). Auto-expanded while the report has no content yet.
           <section className="sources-drawer" ref={sourcesDrawerRef}>
+            <div className="sources-drawer-header">
             <button
               className="sources-drawer-summary"
               type="button"
@@ -789,19 +790,21 @@ export function CaptureScreen({
               </span>
             </button>
             {/* One-tap undo: remove the most-recent capture (the de-effecting removal) without having
-                to expand Sources and find it. Owner-only; same operation as the per-capture Delete. */}
+                to expand Sources and find it. Owner-only; same operation as the per-capture Delete.
+                Lives INSIDE the header row (sibling of the summary — a button can't nest a button)
+                as a quiet ghost action, not a floating pill on its own row. */}
             {!isHistorical && !readOnly && activeSession && lastCapture ? (
-              <div className="sources-drawer-undo-row">
-                <button
-                  className="sources-drawer-undo"
-                  type="button"
-                  onClick={() => onDeleteCapture(activeSession.id, lastCapture.id)}
-                  title={t("capture.undoLastHint")}
-                >
-                  {t("capture.undoLast")}
-                </button>
-              </div>
+              <button
+                className="sources-drawer-undo"
+                type="button"
+                onClick={() => onDeleteCapture(activeSession.id, lastCapture.id)}
+                title={t("capture.undoLastHint")}
+                aria-label={t("capture.undoLast")}
+              >
+                <span className="sources-drawer-undo-label">{t("capture.undoLast")}</span>
+              </button>
             ) : null}
+            </div>
             {sourcesShown ? <div className="sources-drawer-body">{captureFeed}</div> : null}
           </section>
         ) : null}
