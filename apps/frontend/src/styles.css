@@ -6494,6 +6494,8 @@ small {
   font-size: 0.9rem;
   font-weight: 700;
   line-height: 1.45;
+  /* label + evidence are arbitrary clinician dictation — a long unbroken token must wrap, never widen the row. */
+  overflow-wrap: anywhere;
 }
 .session-safety-evidence-toggle {
   align-self: flex-start;
@@ -6513,6 +6515,7 @@ small {
   font-weight: 500;
   font-style: italic;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .session-safety-body .source-citation { margin-inline-start: 0; }
 .session-safety-remove {
