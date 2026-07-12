@@ -674,8 +674,8 @@ const en: Dict = {
   "patients.tab.patients": "Patients",
   "patients.tab.lists": "Lists",
   "patients.tab.attention": "Attention",
-  "patients.patientsFilterAria": "Filter this clinic's patients",
-  "patients.patientsFilterPlaceholder": "Filter patients by name…",
+  "patients.patientsFilterAria": "Filter this clinic's patients by name, phone, or national ID",
+  "patients.patientsFilterPlaceholder": "Filter by name, phone, or ID…",
 
   // Smart lists + lot/product recall (Pro; AES-501 / AES-502)
   "smartlists.heading": "Smart lists",
@@ -2304,8 +2304,8 @@ const fa: Dict = {
   "patients.tab.patients": "بیماران",
   "patients.tab.lists": "فهرست‌ها",
   "patients.tab.attention": "توجه لازم",
-  "patients.patientsFilterAria": "صافی بیماران این کلینیک",
-  "patients.patientsFilterPlaceholder": "صافی بیماران بر اساس نام…",
+  "patients.patientsFilterAria": "صافی بیماران این کلینیک بر اساس نام، تلفن یا کد ملی",
+  "patients.patientsFilterPlaceholder": "صافی بر اساس نام، تلفن یا کد ملی…",
 
   // Smart lists + lot/product recall (Pro; AES-501 / AES-502)
   "smartlists.heading": "فهرست‌های هوشمند",
