@@ -224,15 +224,18 @@ export type AttentionCounts = {
   suggested: number;
   messages: number;
   safety: number;
+  // Urgent red-flagged patient questions (AES-1801) — a subset of `messages`, surfaced separately so
+  // the indicator can escalate above the normal messages tone.
+  urgent: number;
   total: number;
 };
 
 export type AttentionResponse = {
   scope: AttentionScope;
   counts: AttentionCounts;
-  // Highest open tier, for the indicator colour: safety > confirm > messages > suggested (null when
-  // everything is clear — an empty feed means the checks ran and passed).
-  highestTier: "safety" | "confirm" | "messages" | "suggested" | null;
+  // Highest open tier, for the indicator colour: urgent > safety > confirm > messages > suggested
+  // (null when everything is clear — an empty feed means the checks ran and passed).
+  highestTier: "urgent" | "safety" | "confirm" | "messages" | "suggested" | null;
   items: AttentionItem[];
 };
 
@@ -517,6 +520,12 @@ export type SafetyFlag = {
   /** Stable key (`<kind>|<normalized text>`); matches backend patient_safety.safety_flag_key. */
   key: string;
   kind: SafetyFlagKind;
+  /**
+   * Normalized short clinical label (kind + substance), report language + native script — the legible
+   * PRIMARY the UI shows. `text` is the verbatim evidence beneath it. Null on a pre-label flag; the UI
+   * then falls back to `text` as the primary (AES-1801).
+   */
+  label?: string | null;
   text: string;
   /** Captures that stated it (session-level detection); omitted on the cross-visit patient view. */
   sourceCaptureIds?: string[];

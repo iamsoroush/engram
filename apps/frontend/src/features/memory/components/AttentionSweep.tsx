@@ -6,6 +6,7 @@ import React from "react";
 import type { AttentionItem, AttentionResponse, AttentionScope } from "../../../domain/appTypes";
 import "../attention.css";
 import { useT } from "../../../shared/i18n";
+import { formatTime } from "../../../shared/lib/datetime";
 import { EmptyClinicalState } from "./MemoryCards";
 import {
   TIER_TONE,
@@ -54,6 +55,7 @@ export function AttentionSweep({
   nudgeEnabled = false,
   onItemPrimary,
   onItemSelect,
+  onGroupReview,
 }: {
   fetchAttention: FetchAttention;
   defaultScope: AttentionScope;
@@ -65,6 +67,9 @@ export function AttentionSweep({
   nudgeEnabled?: boolean;
   onItemPrimary: (item: AttentionItem) => void;
   onItemSelect: (item: AttentionItem) => void;
+  /** Open a grouped visit (≥2 confirmations) in the guided attention-review state; falls back to
+   *  onItemSelect when not provided. */
+  onGroupReview?: (item: AttentionItem) => void;
 }) {
   const t = useT();
   const [scope, setScope] = React.useState<AttentionScope>(defaultScope);
@@ -122,17 +127,19 @@ export function AttentionSweep({
   );
 
   // A visit with ≥2 open confirmations collapses to one grouped row; its single action opens the
-  // visit (onItemSelect) so the same per-source confirmations are walked in place (AES-1008).
+  // visit in the guided attention-review state (onGroupReview) so the same per-source confirmations
+  // are walked in place with orientation — banner + next/prev (AES-1008 / AES-1610).
   const renderUnit = (unit: AttentionRowUnit) => {
     if (unit.type === "single") return renderRow(unit.item);
     const openVisit = () => {
       markActed(unit.items.map((item) => item.id));
-      onItemSelect(unit.items[0]);
+      (onGroupReview ?? onItemSelect)(unit.items[0]);
     };
     return (
       <AttentionGroupRow
         key={unit.key}
         patientName={unit.patientName}
+        sortTime={unit.sortTime}
         count={unit.items.length}
         acted={unit.items.every((item) => actedIds.has(item.id))}
         onOpen={openVisit}
@@ -284,29 +291,42 @@ function AttentionRow({
   );
 }
 
-// One row for a visit with several open confirmations: «<patient> — N to confirm». Both the body and
-// the action open the visit, where the per-source confirmations are resolved in place (AES-1008).
+// One row for a visit with several open confirmations. It NAMES its target — «Visit {name} · 14:30»
+// (or «Unassigned visit · 14:30» when unassigned) — never a bare "This visit", so the sweep is
+// orienting before you open it; the «N to confirm» count is the subtitle. Both the body and the
+// action open the visit in the guided review state, where the per-source confirmations are walked in
+// place (AES-1008 / AES-1609 naming / AES-1610 review).
 function AttentionGroupRow({
   patientName,
+  sortTime,
   count,
   acted,
   onOpen,
 }: {
   patientName: string | null;
+  sortTime: string | null;
   count: number;
   acted: boolean;
   onOpen: () => void;
 }) {
   const t = useT();
+  const time = sortTime ? formatTime(new Date(sortTime)) : "";
   return (
     <div className={`attention-card attention-tone-amber attention-card-group${acted ? " attention-card-acted" : ""}`}>
       <button type="button" className="attention-card-body" onClick={onOpen}>
-        <span className="attention-card-title">
-          {/* Patient name is clinical CONTENT — bidi-isolate so a Persian name renders cleanly. */}
-          {patientName ? <bdi>{patientName}</bdi> : <span>{t("attention.group.fallbackVisit")}</span>}
-          {" — "}
-          {t("attention.group.confirmCount", { n: count })}
+        <span className="attention-card-title" dir="auto">
+          {patientName ? (
+            <>
+              {t("attention.group.visitWord")}{" "}
+              {/* Patient name is clinical CONTENT — bidi-isolate so a Persian name renders cleanly. */}
+              <bdi data-content>{patientName}</bdi>
+            </>
+          ) : (
+            <span>{t("attention.group.unnamedVisit")}</span>
+          )}
+          {time ? <span className="attention-card-time" data-content> · {time}</span> : null}
         </span>
+        <span className="attention-card-reason">{t("attention.group.confirmCount", { n: count })}</span>
       </button>
       <button type="button" className="attention-card-action" onClick={onOpen}>
         {acted ? t("attention.action.done") : t("attention.group.action")}

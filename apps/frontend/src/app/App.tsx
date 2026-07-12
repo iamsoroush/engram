@@ -56,7 +56,7 @@ import { UnauthShell } from "../features/auth/UnauthShell";
 import { OnboardingOverlay } from "../features/onboarding/OnboardingOverlay";
 import { clearOnboardingPending, isOnboardingPending, markOnboardingPending } from "../features/onboarding/onboardingState";
 import { TherapyApp } from "../features/therapy/TherapyApp";
-import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
+import { AddPhotoSheet, AudioDialog, ForwardBranchPruneDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
@@ -66,7 +66,7 @@ import { attentionBadgeCount } from "../features/memory/components/attentionMode
 import { useMemoryApi } from "../features/memory/useMemoryApi";
 import { FinderOverlay } from "../features/finder";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
-import { openQaChannel } from "../features/qa/qaClient";
+import { openQaChannel, fetchQaInboxSummary, type QaInboxSummary } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import { clearLocalCaptureData } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
@@ -160,8 +160,16 @@ function AppInner() {
   // Unified attention roll-up for the top-bar indicator (AES-1003): one count that merges the S2
   // "to confirm" items with pending Q&A messages (safety keeps top salience but is never a to-do).
   const [attention, setAttention] = React.useState<{ counts: AttentionCounts; highestTier: AttentionResponse["highestTier"] } | null>(null);
+  // Pending Q&A count for the glanceable top-bar badge (AES-1901) — messages earn their own badge again
+  // (a deliberate partial-revert of the E16 merge; the bell keeps its merged count). Polled with the
+  // attention roll-up; a newly-arrived URGENT thread also fires a toast (see below).
+  const [qaSummary, setQaSummary] = React.useState<QaInboxSummary | null>(null);
+  const seenUrgentThreadsRef = React.useRef<Set<string> | null>(null);
   // The unified finder overlay (AES-1201..1205): app-wide, floats over the current screen.
   const [finderOpen, setFinderOpen] = React.useState(false);
+  // AES-1610 — the session whose capture screen should arm the guided attention-review state (opened
+  // from a grouped Close-the-day card). Cleared once the active session moves off it (effect below).
+  const [reviewSessionId, setReviewSessionId] = React.useState<string | null>(null);
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -176,6 +184,9 @@ function AppInner() {
   const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[]; preferredAftercareId?: string } | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  // E17 redo: capturing into a session that sits behind head (forward/redo versions on record) branches
+  // away and abandons them — hold the kind here to confirm before opening the composer.
+  const [pruneConfirmKind, setPruneConfirmKind] = React.useState<CaptureDraft["kind"] | null>(null);
   // E9 — the patient whose file is open in Clinical Memory. While set (and on the patients screen),
   // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
   // screen changes, so the target naturally reverts to the active session.
@@ -214,12 +225,63 @@ function AppInner() {
       .catch(() => undefined);
   }, [apiFetch, auth, attentionScope]);
 
-  React.useEffect(() => {
+  // The Q&A badge follows the same scope the bell uses (a doctor sees their routed threads; reception
+  // the clinic) — "scoped like the inbox's Mine/Clinic". A newly-arrived urgent thread fires an in-app
+  // toast «سؤال فوری بیمار — تاری دید»; the first fetch seeds the seen-set so we alert on ARRIVAL, not
+  // on every pre-existing urgent thread each time the app opens.
+  const inboxScope = attentionScope === "clinic" ? "all" : "mine";
+  const refreshQaSummary = React.useCallback(() => {
+    if (!auth || auth.user.persona === "patient-preview" || !canUseQa) {
+      setQaSummary(null);
+      return;
+    }
+    fetchQaInboxSummary(apiFetch, inboxScope)
+      .then((summary) => {
+        setQaSummary(summary);
+        const nowUrgent = new Set(summary.urgentThreads.map((thread) => thread.threadId));
+        const seen = seenUrgentThreadsRef.current;
+        if (seen === null) {
+          seenUrgentThreadsRef.current = nowUrgent; // first load — seed without alerting.
+          return;
+        }
+        for (const thread of summary.urgentThreads) {
+          if (!seen.has(thread.threadId)) {
+            const flag = thread.flags[0];
+            const label = flag ? appT(`qa.redflag.${flag}`) : appT("qa.redflag.generic");
+            // Loud + held longer than a routine toast — an urgent patient question must not slip by.
+            setToast(appT("qa.urgentToast", { flag: label }), { tone: "danger", durationMs: 7000 });
+          }
+        }
+        seenUrgentThreadsRef.current = nowUrgent;
+      })
+      .catch(() => undefined);
+  }, [apiFetch, auth, canUseQa, inboxScope, appT, setToast]);
+
+  // Freshness (AES-1901): both counts poll while the app is VISIBLE (~60s) and refetch on window focus
+  // / on becoming visible; the interval pauses when hidden (a backgrounded tab shouldn't poll). A new
+  // patient question arrives out-of-band, so the badge/bell can't wait for a screen open.
+  const refreshFreshness = React.useCallback(() => {
     refreshAttention();
+    refreshQaSummary();
+  }, [refreshAttention, refreshQaSummary]);
+
+  React.useEffect(() => {
+    refreshFreshness();
     if (!auth || auth.user.persona === "patient-preview") return;
-    const handle = window.setInterval(refreshAttention, 60_000);
-    return () => window.clearInterval(handle);
-  }, [refreshAttention, memoryRefreshSignal, auth]);
+    const handle = window.setInterval(() => {
+      if (!document.hidden) refreshFreshness();
+    }, 60_000);
+    const onVisible = () => {
+      if (!document.hidden) refreshFreshness();
+    };
+    window.addEventListener("focus", refreshFreshness);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(handle);
+      window.removeEventListener("focus", refreshFreshness);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshFreshness, memoryRefreshSignal, auth]);
 
   React.useEffect(() => {
     if (!auth || auth.user.persona === "patient-preview") return;
@@ -377,6 +439,11 @@ function AppInner() {
     }
     if (screen !== "active-session") {
       setPendingCaptureKind(kind);
+      return;
+    }
+    // E17: adding a capture while behind head abandons the forward (redo) branch — confirm first.
+    if ((activeSession?.forwardVersionCount ?? 0) > 0) {
+      setPruneConfirmKind(kind);
       return;
     }
     openCaptureDialog(kind);
@@ -659,6 +726,12 @@ function AppInner() {
   const { syncHealth, offline } = sync;
   const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
+  // Disarm the guided review once the active session moves off the one it was armed for (navigating
+  // away, starting a new visit, or opening another session) — so it never re-arms on a later plain open.
+  React.useEffect(() => {
+    if (reviewSessionId && activeSession?.id !== reviewSessionId) setReviewSessionId(null);
+  }, [activeSession?.id, reviewSessionId]);
+
   // A historical visit review (opened over Clinical Memory) gets its own history entry so Back
   // returns to the memory list instead of exiting the area (item: in-screen history levels).
   useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
@@ -711,8 +784,10 @@ function AppInner() {
   // sees the latest navigation callback (a fresh object here is correct — freshness is the point).
   useRegisterSyncBridge(syncBridge);
 
-  const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
+  const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext, opts?: { review?: boolean }) => {
     setClinicalMemoryReturnContext(returnContext || null);
+    // Arm (or clear) the guided attention-review state for this open (a grouped sweep card sets it).
+    setReviewSessionId(opts?.review ? sessionId : null);
     const session = sessions.find((candidate) => candidate.id === sessionId);
     navigateScreen("active-session");
     if (session) {
@@ -787,14 +862,14 @@ function AppInner() {
   };
 
   const clinicalMemoryBackLabel = clinicalMemoryReturnContext?.patientId
-    ? "Patient history"
-    : clinicalMemoryReturnContext?.tab === "today"
-      ? "Today"
+    ? appT("capture.backToPatientHistory")
+    : clinicalMemoryReturnContext?.tab === "recent"
+      ? appT("patients.tab.recent")
       : clinicalMemoryReturnContext?.tab === "attention"
-        ? "Attention"
+        ? appT("patients.tab.attention")
         : clinicalMemoryReturnContext?.tab === "patients"
-          ? "Patients"
-          : "Clinical Memory";
+          ? appT("patients.tab.patients")
+          : appT("capture.backToMemory");
 
   // The top-bar Attention indicator opens the Close-the-day sweep — the Attention tab of Clinical
   // Memory. Setting the return context to that tab makes PatientsHome land on (and switch to) it.
@@ -940,6 +1015,7 @@ function AppInner() {
           onAssignActiveToNext={assignActiveVisitToNext}
           onStartNextVisit={startNextLinedUpVisit}
           usageNotice={<AiUsageNotice state={aiUsage} />}
+          reviewMode={Boolean(activeSession && reviewSessionId === activeSession.id)}
         />
       );
     }
@@ -949,7 +1025,7 @@ function AppInner() {
         <DoctorQaInbox
           apiFetch={apiFetch}
           onToast={setToast}
-          onChanged={refreshAttention}
+          onChanged={refreshFreshness}
           onShareQaLink={() => setFinderOpen(true)}
         />
       );
@@ -1058,6 +1134,8 @@ function AppInner() {
         attentionCounts={attention?.counts ?? null}
         attentionHighestTier={attention?.highestTier ?? null}
         onOpenAttention={openAttention}
+        qaPendingCount={qaSummary?.pending ?? 0}
+        qaUrgent={(qaSummary?.urgent ?? 0) > 0}
         onOpenFinder={() => setFinderOpen(true)}
       >
         {pendingCaptureKind ? (
@@ -1071,6 +1149,16 @@ function AppInner() {
             onUseSession={(sessionId) => chooseCaptureDestination(pendingCaptureKind, sessionId)}
           />
         ) : null}
+        <ForwardBranchPruneDialog
+          open={pruneConfirmKind !== null}
+          count={activeSession?.forwardVersionCount ?? 0}
+          onCancel={() => setPruneConfirmKind(null)}
+          onConfirm={() => {
+            const kind = pruneConfirmKind;
+            setPruneConfirmKind(null);
+            if (kind) openCaptureDialog(kind);
+          }}
+        />
         {renderCurrentScreen()}
       </Shell>
       {finderOpen ? (

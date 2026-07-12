@@ -115,6 +115,10 @@ class SafetyFlag(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     kind: str
+    # A NORMALIZED short clinical label (kind + substance/condition/consent), report language, native
+    # script — the legible primary the UI shows; `text` is the verbatim evidence beneath it. Additive
+    # (AES-2001): optional so a pre-label output still parses (the client falls back to `text` when null).
+    label: str | None = None
     text: str
     sourceCaptureIds: list[str]
     # BCP-47 stamp of the language the clinical `text` was generated in (report language, never translated).
@@ -290,10 +294,12 @@ def _clean_aftercare_selections(raw: Any) -> list[dict[str, Any]]:
 
 
 def _clean_safety_flags(raw: Any, *, lang: str | None = None) -> list[dict[str, Any]]:
-    """Coerce the model's safety flags into validated {kind, text, sourceCaptureIds, lang} items.
+    """Coerce the model's safety flags into validated {kind, label, text, sourceCaptureIds, lang} items.
 
     Safety errs toward inclusion (opt-out): a flag the model surfaced is kept — the clinician removes a
     wrong one downstream. We only drop items that are structurally unusable (unknown kind, empty text).
+    ``label`` is the normalized short clinical label (kind + substance) the UI shows as primary; it is
+    optional (None when the model omits it) so the client falls back to the verbatim ``text``.
     """
     flags: list[dict[str, Any]] = []
     if not isinstance(raw, list):
@@ -307,10 +313,12 @@ def _clean_safety_flags(raw: Any, *, lang: str | None = None) -> list[dict[str, 
             continue
         if not isinstance(text, str) or not text.strip():
             continue
+        label = item.get("label")
         source_ids = item.get("sourceCaptureIds")
         flags.append(
             SafetyFlag(
                 kind=kind,
+                label=label.strip() if isinstance(label, str) and label.strip() else None,
                 text=text.strip(),
                 sourceCaptureIds=[str(value) for value in source_ids if isinstance(value, str)]
                 if isinstance(source_ids, list)

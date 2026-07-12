@@ -15,6 +15,7 @@ import { useSessionActions } from "../../../app/providers/SessionStoreProvider";
 import { fetchReportVersion, fetchReportVersions } from "../../../services/api/client";
 import { formatTime } from "../../../shared/lib/datetime";
 import { buildReportVersionPreviewSession, reportVersionRemovedCaptures, reportVersionTriggerLabel } from "./reportHistoryModel";
+import { SafetyLossList } from "./SafetyLossList";
 
 export function ReportHistorySheet({
   session,
@@ -160,7 +161,12 @@ export function ReportHistorySheet({
   const renderPreviewFooter = () => {
     if (!selected || selected.isCurrent) return null;
     if (confirming) {
-      const removedCount = reportVersionRemovedCaptures(session, selected).length;
+      // The backend restore-impact is authoritative for what moves + what safety content disappears
+      // (E17); fall back to the client-diffed removed count only if the detail lacks it.
+      const impact = detail?.restoreImpact;
+      const removedCount = impact?.removedCaptureCount ?? reportVersionRemovedCaptures(session, selected).length;
+      const restoredCount = impact?.restoredCaptureCount ?? 0;
+      const safetyLoss = impact?.safetyLoss ?? [];
       return (
         <div className="report-history-confirm">
           <p className="report-history-confirm-title">{t("capture.history.restoreConfirmTitle")}</p>
@@ -172,6 +178,13 @@ export function ReportHistorySheet({
               {t(removedCount === 1 ? "capture.history.restoreRemovalOne" : "capture.history.restoreRemovalOther", { count: removedCount })}
             </p>
           ) : null}
+          {restoredCount > 0 ? (
+            <p className="report-history-confirm-restored">
+              {t(restoredCount === 1 ? "capture.history.restoreRestoredOne" : "capture.history.restoreRestoredOther", { count: restoredCount })}
+            </p>
+          ) : null}
+          {/* E17 finding 1: never silently drop safety content — name the flags that will disappear. */}
+          <SafetyLossList flags={safetyLoss} />
           <div className="report-history-confirm-actions">
             <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={restoring}>
               {t("capture.history.cancel")}

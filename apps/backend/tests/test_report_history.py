@@ -1,11 +1,13 @@
 import unittest
 import uuid
 
-from app.models import SessionReportVersion
+from app.models import Session, SessionReportVersion
 from app.services.report_versions import (
     derive_version_trigger,
+    forward_version_count,
     in_context_capture_count,
-    removal_target_for_version,
+    prune_forward_versions_on_branch,
+    version_transition,
 )
 
 
@@ -85,38 +87,119 @@ class InContextCountTests(unittest.TestCase):
         self.assertEqual(in_context_capture_count(v), 2)
 
 
-class ReachabilityTests(unittest.TestCase):
-    """removal_target_for_version — the safety-critical guard that decides restorability."""
+class _Scalars:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _Result:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return _Scalars(self._rows)
+
+
+class _QueuedDb:
+    """Scripted DB: each execute() returns the next queued _Result (deleted-ids query, then versions)."""
+
+    def __init__(self, results):
+        self._results = list(results)
+        self._i = 0
+
+    def execute(self, *_a, **_k):
+        result = self._results[self._i]
+        self._i += 1
+        return result
+
+
+class ForwardBranchTests(unittest.TestCase):
+    """E17 finding 2 — the forward (redo) branch is counted, and pruned when a new capture branches off."""
+
+    def setUp(self):
+        self.session = Session()
+        self.session.id = uuid.uuid4()
+        self.session.tenant_id = uuid.uuid4()
+        self.deleted = str(uuid.uuid4())  # a currently soft-deleted capture
+        self.live = str(uuid.uuid4())
+
+    def _forward(self):
+        return _version([_item(self.live), _item(self.deleted)])  # references a soft-deleted capture
+
+    def _ancestor(self):
+        return _version([_item(self.live)])  # references only live captures → NOT forward
+
+    def test_forward_count_zero_without_soft_deleted_captures(self):
+        # No soft-deleted captures → not behind head → 0, and the version query is never issued.
+        db = _QueuedDb([_Result([])])
+        self.assertEqual(forward_version_count(db, self.session), 0)
+
+    def test_forward_count_counts_versions_referencing_a_deleted_capture(self):
+        db = _QueuedDb([_Result([uuid.UUID(self.deleted)]), _Result([self._ancestor(), self._forward()])])
+        self.assertEqual(forward_version_count(db, self.session), 1)  # only the forward version counts
+
+    def test_prune_marks_only_the_forward_versions(self):
+        ancestor, forward = self._ancestor(), self._forward()
+        db = _QueuedDb([_Result([uuid.UUID(self.deleted)]), _Result([ancestor, forward])])
+        pruned = prune_forward_versions_on_branch(db, self.session)
+        self.assertEqual(pruned, 1)
+        self.assertIsNone(ancestor.pruned_at)      # the current/ancestor line stays visible
+        self.assertIsNotNone(forward.pruned_at)     # the abandoned forward line leaves the UI (row kept)
+
+    def test_prune_is_a_noop_without_soft_deleted_captures(self):
+        db = _QueuedDb([_Result([])])
+        self.assertEqual(prune_forward_versions_on_branch(db, self.session), 0)
+
+
+class TransitionTests(unittest.TestCase):
+    """version_transition — the guard that decides restorability AND how to get there (undo + redo)."""
 
     def setUp(self):
         self.a, self.b, self.c = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-        # Current session has all three captures, all in-context.
-        self.current_by_id = {self.a: _Cap(self.a), self.b: _Cap(self.b), self.c: _Cap(self.c)}
-        self.current_ooc = {self.a: False, self.b: False, self.c: False}
+        # All three captures exist as rows; a,b,c are live (none soft-deleted yet).
+        self.all_by_id = {self.a: _Cap(self.a), self.b: _Cap(self.b), self.c: _Cap(self.c)}
+        self.all_ooc = {self.a: False, self.b: False, self.c: False}
+        self.live_ids = {self.a, self.b, self.c}
 
-    def test_subset_version_is_reachable_and_returns_the_extra_captures(self):
-        # A version over {a, b}: restoring removes exactly {c}.
+    def test_subset_version_soft_deletes_the_extra_captures(self):
+        # A version over {a, b}: restoring (undo) soft-deletes exactly {c}, re-effects nothing.
         version = _version([_item(self.a), _item(self.b)])
-        removal = removal_target_for_version(self.current_by_id, self.current_ooc, version)
-        self.assertIsNotNone(removal)
-        self.assertEqual({c.id for c in removal}, {self.c})
+        transition = version_transition(self.all_by_id, self.all_ooc, self.live_ids, version)
+        self.assertIsNotNone(transition)
+        self.assertEqual({c.id for c in transition.to_delete}, {self.c})
+        self.assertEqual(transition.to_restore, ())
+        self.assertFalse(transition.is_noop)
 
-    def test_version_equal_to_current_yields_empty_removal(self):
+    def test_version_equal_to_current_is_a_noop(self):
         version = _version([_item(self.a), _item(self.b), _item(self.c)])
-        removal = removal_target_for_version(self.current_by_id, self.current_ooc, version)
-        self.assertEqual(removal, [])  # reachable, nothing to remove → "already current"
+        transition = version_transition(self.all_by_id, self.all_ooc, self.live_ids, version)
+        self.assertTrue(transition.is_noop)  # reachable, nothing to move → "already current"
 
-    def test_version_with_a_now_deleted_capture_is_unreachable(self):
-        # A version knew a capture id that no longer exists in the current set → cannot un-delete → None.
+    def test_forward_version_re_effects_a_soft_deleted_capture(self):
+        # After a restore to {a,b}, c is soft-deleted (a row, not live). The FORWARD version {a,b,c} is
+        # reachable by RE-EFFECTING c (redo) — never stranded (E17 finding 2).
+        live_ids = {self.a, self.b}  # c currently soft-deleted
+        version = _version([_item(self.a), _item(self.b), _item(self.c)])
+        transition = version_transition(self.all_by_id, self.all_ooc, live_ids, version)
+        self.assertIsNotNone(transition)
+        self.assertEqual(transition.to_delete, ())
+        self.assertEqual({c.id for c in transition.to_restore}, {self.c})
+        self.assertFalse(transition.is_noop)
+
+    def test_version_with_a_truly_gone_capture_is_unreachable(self):
+        # A version knew a capture id that no longer exists as a row at all → cannot reproduce → None.
         gone = str(uuid.uuid4())
         version = _version([_item(self.a), _item(gone)])
-        self.assertIsNone(removal_target_for_version(self.current_by_id, self.current_ooc, version))
+        self.assertIsNone(version_transition(self.all_by_id, self.all_ooc, self.live_ids, version))
 
     def test_out_of_context_membership_mismatch_is_unreachable(self):
-        # The version had `a` out-of-context, but `a` is currently in-context: a pure removal can't toggle
+        # The version had `a` out-of-context, but `a` is currently in-context: a transition can't toggle
         # context back → not restorable (preview-only), never mis-restored.
         version = _version([_item(self.a, out=True), _item(self.b)])
-        self.assertIsNone(removal_target_for_version(self.current_by_id, self.current_ooc, version))
+        self.assertIsNone(version_transition(self.all_by_id, self.all_ooc, self.live_ids, version))
 
 
 if __name__ == "__main__":

@@ -75,7 +75,7 @@ export function groupAttentionItems(items: AttentionItem[]): AttentionGrouping {
 // unchanged; this is a list-shape change so a heavily-uncertain visit doesn't flood the sweep.
 export type AttentionRowUnit =
   | { type: "single"; item: AttentionItem }
-  | { type: "group"; key: string; sessionId: string; patientName: string | null; items: AttentionItem[] };
+  | { type: "group"; key: string; sessionId: string; patientName: string | null; sortTime: string | null; items: AttentionItem[] };
 
 /**
  * Collapse a section's items so that a single visit with **multiple open confirmations** renders as
@@ -104,7 +104,9 @@ export function groupConfirmVisits(items: AttentionItem[]): AttentionRowUnit[] {
     emitted.add(sessionId);
     const groupItems = items.filter((candidate) => TIER_SECTION[candidate.tier] === "confirm" && candidate.sessionId === sessionId);
     const named = groupItems.find((candidate) => candidate.patientName);
-    units.push({ type: "group", key: `group:${sessionId}`, sessionId, patientName: named?.patientName ?? null, items: groupItems });
+    // All confirm items in a session share the visit's sortTime — take the first for the card's time.
+    const timed = groupItems.find((candidate) => candidate.sortTime);
+    units.push({ type: "group", key: `group:${sessionId}`, sessionId, patientName: named?.patientName ?? null, sortTime: timed?.sortTime ?? null, items: groupItems });
   }
   return units;
 }
@@ -121,14 +123,16 @@ export function hasAttention(counts: AttentionCounts): boolean {
   return counts.total > 0 || counts.safety > 0;
 }
 
-// Indicator colour from the backend's highest-open-tier (safety keeps top salience).
+// Indicator colour from the backend's highest-open-tier. An urgent patient red flag (AES-1901) tops
+// even safety — both render red, so the bell reads as "act now" the moment one lands.
 export const HIGHEST_TIER_TONE: Record<NonNullable<AttentionResponseHighest>, AttentionTone> = {
+  urgent: "red",
   safety: "red",
   confirm: "amber",
   messages: "violet",
   suggested: "blue",
 };
-type AttentionResponseHighest = "safety" | "confirm" | "messages" | "suggested" | null;
+type AttentionResponseHighest = "urgent" | "safety" | "confirm" | "messages" | "suggested" | null;
 
 // i18n key for an item's chrome title (the localized noun; the reason body stays report-language).
 export function attentionTitleKey(kind: string): string {

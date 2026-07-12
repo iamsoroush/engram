@@ -32,7 +32,7 @@ test.describe("P0-11 non-owner edit block", () => {
     await applyAuth(context, docAuth, { lang: "en" });
     const page = await context.newPage();
     await page.goto("/#patients");
-    await page.getByRole("tab", { name: "Today" }).click();
+    await page.getByRole("tab", { name: "Recent" }).click();
     await page.locator(".clinical-memory .visit-card, .clinical-memory .clinical-row-selectable").first().click();
     await expect(page.locator(".session-readonly-banner")).toBeVisible({ timeout: 30_000 });
 

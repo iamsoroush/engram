@@ -3,9 +3,9 @@
 import React from "react";
 import "../sessionSurface.css";
 import type { AftercareTemplate, LineupCard, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
-import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
+import type { CaptureItem, CaptureSession, SafetyLossFlag, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
-import { Button, Card } from "../../../shared/ui/primitives";
+import { Button, Card, Dialog } from "../../../shared/ui/primitives";
 import { SessionContextCard } from "../../aesthetics/SessionContextCard";
 import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
@@ -15,7 +15,7 @@ import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion, AiCreatedPatientPanel, PatientConflictResolver } from "./CaptureBadges";
 import { NextLinedUpBar, SessionSafetyPanel } from "./CaptureRegions";
 import { PatientStrip } from "./PatientStrip";
-import { ReportHistoryButton } from "../reportHistory";
+import { ReportHistoryButton, SafetyLossList } from "../reportHistory";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture, ordinalWord } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
@@ -51,6 +51,7 @@ export function CaptureScreen({
   onAssignActiveToNext,
   onStartNextVisit,
   usageNotice = null,
+  reviewMode = false,
 }: {
   activeSession: CaptureSession | null;
   mode?: "active" | "historical";
@@ -87,6 +88,10 @@ export function CaptureScreen({
   onStartNextVisit?: () => void;
   /** Calm, non-blocking fair-use AI notice (approaching / limit reached). Informational only. */
   usageNotice?: React.ReactNode;
+  /** AES-1610 — arm the guided attention-review state (opened from a grouped Close-the-day card):
+   *  a compact progress banner walks the visit's pending confirmations in place (next/prev), using the
+   *  same per-source resolvers; it dismisses when all are resolved. */
+  reviewMode?: boolean;
 }) {
   const t = useT();
   // Seam consumption (frontend-refactor plan §3, increment 6): the session-mutation callbacks +
@@ -111,6 +116,7 @@ export function CaptureScreen({
     renameCapture: onRenameCapture,
     editCaptureNote: onUpdateNote,
     removeCaptureFromSession: onDeleteCapture,
+    checkCaptureRemovalImpact,
     assignPatientToSession: onAssignPatient,
     searchPatientsForAssignment: onSearchPatients,
     completeAiCreatedPatient: onCompleteAiCreatedPatient,
@@ -131,6 +137,30 @@ export function CaptureScreen({
     editCaptureSourceText(sessionId, captureId, caption, "caption");
   const onUpdateCaptureTranscript = (sessionId: string, captureId: string, transcript: string) =>
     editCaptureSourceText(sessionId, captureId, transcript, "transcript");
+  // E17 finding 1: before a de-effecting removal (Undo last / per-capture Delete) drops a safety flag,
+  // name what disappears and confirm. A removal with no safety loss stays one-tap (undo stays instant).
+  const [removalGuard, setRemovalGuard] = React.useState<{ sessionId: string; captureId: string; flags: SafetyLossFlag[] } | null>(null);
+  const guardedDeleteCapture = React.useCallback(
+    async (sessionId: string, captureId: string) => {
+      try {
+        const impact = await checkCaptureRemovalImpact(captureId);
+        if (impact.safetyLoss.length > 0) {
+          setRemovalGuard({ sessionId, captureId, flags: impact.safetyLoss });
+          return;
+        }
+      } catch {
+        // Never block a removal on the pre-flight check — fall through to the normal delete.
+      }
+      void onDeleteCapture(sessionId, captureId);
+    },
+    [checkCaptureRemovalImpact, onDeleteCapture],
+  );
+  const confirmGuardedRemoval = React.useCallback(() => {
+    if (!removalGuard) return;
+    const { sessionId, captureId } = removalGuard;
+    setRemovalGuard(null);
+    void onDeleteCapture(sessionId, captureId);
+  }, [removalGuard, onDeleteCapture]);
   const isPro = tier !== "basic";
   // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
   // visit (deterministic match against the extracted treatments). Basic shows the flat list.
@@ -296,6 +326,57 @@ export function CaptureScreen({
       document.querySelector(".treatment-item.needs-confirm");
     target?.scrollIntoView({ behavior: "smooth", block: target?.classList?.contains("treatment-item") ? "center" : "start" });
   };
+
+  // --- Guided attention review (AES-1610) ---------------------------------------------------------
+  // Opened from a grouped Close-the-day card: a compact banner walks THIS visit's pending confirmations
+  // in the same DOM order the verify chip / scrollToVerify use — the conflict band, then the strip's
+  // AI-created-patient verify panel, then each inline carried-forward dose row. It adds orientation
+  // (scroll-to + highlight + next/prev + progress), never a new resolver; it dismisses once all resolve.
+  const reviewTargets = [
+    ...patientConflicts.map((conflict) => `conflict:${conflict.captureId}`),
+    ...(patientVerifyNeeded ? ["verify-patient"] : []),
+    ...openDoseConfirmations.map((item) => `dose:${item.key}`),
+  ];
+  const reviewCount = reviewTargets.length;
+  const reviewTargetKey = reviewTargets.join("|");
+  const [reviewIndex, setReviewIndex] = React.useState(0);
+  const [reviewDismissed, setReviewDismissed] = React.useState(false);
+  const [stripExpandSignal, setStripExpandSignal] = React.useState(0);
+  const reviewActive = reviewMode && !isHistorical && !reviewDismissed && reviewCount > 0;
+  const reviewSafeIndex = reviewCount ? Math.min(reviewIndex, reviewCount - 1) : 0;
+  const stepReview = (delta: number) => setReviewIndex((current) => (reviewCount ? (Math.min(current, reviewCount - 1) + delta + reviewCount) % reviewCount : 0));
+  // A fresh open (new session, or re-armed review) restarts at the first item, undismissed.
+  React.useEffect(() => {
+    setReviewDismissed(false);
+    setReviewIndex(0);
+  }, [activeSession?.id, reviewMode]);
+  // Scroll to + highlight the current confirmation. Re-runs when the item set shrinks (a resolve),
+  // so it auto-advances to what's still pending. verify-patient needs the strip open first — bump the
+  // strip's expand signal and let the re-run (stripExpandSignal dep) find the now-mounted panel.
+  React.useEffect(() => {
+    const clearFocus = () => document.querySelectorAll("[data-review-focus]").forEach((node) => node.removeAttribute("data-review-focus"));
+    if (!reviewActive) {
+      clearFocus();
+      return;
+    }
+    const targetId = reviewTargets[Math.min(reviewIndex, reviewCount - 1)];
+    if (!targetId) return;
+    const raf = window.requestAnimationFrame(() => {
+      const element =
+        targetId === "verify-patient"
+          ? document.querySelector(".patient-strip-verify")
+          : Array.from(document.querySelectorAll("[data-confirm-id]")).find((node) => node.getAttribute("data-confirm-id") === targetId) || null;
+      if (!element) {
+        if (targetId === "verify-patient") setStripExpandSignal((signal) => signal + 1);
+        return;
+      }
+      clearFocus();
+      element.setAttribute("data-review-focus", "true");
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewActive, reviewIndex, reviewTargetKey, stripExpandSignal]);
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
   const reportHasContent = Boolean(
@@ -320,6 +401,10 @@ export function CaptureScreen({
   const assignmentSignal = `${activeSession?.patientId ?? ""}:${activeSession?.assignmentSource ?? ""}`;
   // High-risk clinics keep the full safety panel pinned above the report (never a collapsed chip).
   const safetyPinned = highRiskClinic && keptSafetyFlags.length > 0;
+  // Stable signature of the current kept-flag set — the strip auto-expands whenever this changes to a
+  // new, unacknowledged non-empty value (a flag landing from synthesis/reconcile, a restore/undo), and
+  // stays put once the clinician has acknowledged this exact set (AES-1802 event-driven expansion).
+  const safetySignature = keptSafetyFlags.map((flag) => flag.key).sort().join("|");
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const sourcesShown = sourcesOpen || !reportHasContent;
   const sourcesDrawerRef = React.useRef<HTMLElement>(null);
@@ -391,7 +476,7 @@ export function CaptureScreen({
       currentUserId={currentUserId}
       onApplyRelevant={onMarkRelevant}
       onAssignPatient={onAssignPatient}
-      onDeleteCapture={onDeleteCapture}
+      onDeleteCapture={guardedDeleteCapture}
       onOpenCapture={setSelectedCapture}
       onOpenResolver={onOpenResolver}
       onRenameCapture={onRenameCapture}
@@ -505,6 +590,7 @@ export function CaptureScreen({
                 />
               ) : null
             }
+            safetySignature={safetySignature}
             safetyPanel={
               !safetyPinned ? (
                 <SessionSafetyPanel
@@ -512,6 +598,7 @@ export function CaptureScreen({
                   sessionId={activeSession.id}
                   canEdit={!readOnly}
                   onReject={onRejectSafetyFlag}
+                  onOpenSource={openSourceCapture}
                 />
               ) : null
             }
@@ -521,10 +608,11 @@ export function CaptureScreen({
               ) : null
             }
             verifyRef={verifyRegionRef}
+            expandSignal={stripExpandSignal}
           />
           {/* High-risk clinic: the full safety panel stays pinned above the report (never a chip). */}
           {safetyPinned ? (
-            <SessionSafetyPanel flags={keptSafetyFlags} sessionId={activeSession.id} canEdit={!readOnly} onReject={onRejectSafetyFlag} />
+            <SessionSafetyPanel flags={keptSafetyFlags} sessionId={activeSession.id} canEdit={!readOnly} onReject={onRejectSafetyFlag} onOpenSource={openSourceCapture} />
           ) : null}
           {nextLinedUpPatient && !activeSession.patientId && !activeSession.patientName ? (
             <NextLinedUpBar
@@ -539,6 +627,7 @@ export function CaptureScreen({
           {patientConflicts.length ? (
             <section className="session-conflict-band" aria-label={t("capture.patientNeedsConfirmation")}>
               {patientConflicts.map((conflict) => (
+                <div key={conflict.captureId} data-confirm-id={`conflict:${conflict.captureId}`}>
                 <PatientConflictResolver
                   key={conflict.captureId}
                   suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
@@ -549,10 +638,34 @@ export function CaptureScreen({
                   onChooseAnother={onOpenResolver}
                   onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
                 />
+                </div>
               ))}
             </section>
           ) : null}
         </>
+      ) : null}
+      {/* Fresh visit (no local session yet, zero captures): the same patient strip so identity + Assign
+          are reachable from visit creation (AES-1801) — assignment stays optional and capture-first is untouched.
+          Tapping Assign lazily creates the local session and opens the assignment sheet; once the session
+          exists the full strip above takes over. All AI/context/safety panels are absent (nothing to show). */}
+      {!isHistorical && !activeSession ? (
+        <PatientStrip
+          patientName={patientName}
+          assigned={false}
+          assignmentStateLabel={assignmentStateLabel}
+          visitOrdinalLabel={null}
+          safetySignature=""
+
+          onAssignOrChange={onCloseAssignment}
+          verifyCount={0}
+          onReview={scrollToVerify}
+          safetyChipCount={0}
+          hasCaptures={false}
+          reportHasContent={false}
+          hasHistory={false}
+          assignmentSignal={assignmentSignal}
+          isHistorical={false}
+        />
       ) : null}
       {/* Historical review keeps the flat patient card (no strip diet — it's read-only visit review). */}
       {isHistorical ? (
@@ -797,7 +910,7 @@ export function CaptureScreen({
               <button
                 className="sources-drawer-undo"
                 type="button"
-                onClick={() => onDeleteCapture(activeSession.id, lastCapture.id)}
+                onClick={() => void guardedDeleteCapture(activeSession.id, lastCapture.id)}
                 title={t("capture.undoLastHint")}
                 aria-label={t("capture.undoLast")}
               >
@@ -862,6 +975,54 @@ export function CaptureScreen({
             : undefined
         }
       />
+      {/* Guided attention-review banner — a compact, non-blocking progress dock above the capture bar.
+          It orients ("N to confirm", position, next/prev) while the same per-source resolvers do the
+          resolving; it dismisses on demand and disappears the moment every item is confirmed. */}
+      {reviewActive ? (
+        <div className="attention-review-banner" role="status" aria-live="polite">
+          <div className="attention-review-banner-copy">
+            <strong>{t("capture.review.count", { count: reviewCount })}</strong>
+            {reviewCount > 1 ? (
+              <span className="attention-review-banner-position">{t("capture.review.position", { current: reviewSafeIndex + 1, total: reviewCount })}</span>
+            ) : null}
+          </div>
+          <div className="attention-review-banner-nav">
+            {reviewCount > 1 ? (
+              <>
+                <button type="button" className="attention-review-banner-step" onClick={() => stepReview(-1)} aria-label={t("capture.review.prevAria")}>
+                  {t("capture.review.prev")}
+                </button>
+                <button type="button" className="attention-review-banner-step" onClick={() => stepReview(1)} aria-label={t("capture.review.nextAria")}>
+                  {t("capture.review.next")}
+                </button>
+              </>
+            ) : null}
+            <button type="button" className="attention-review-banner-close" onClick={() => setReviewDismissed(true)} aria-label={t("capture.review.dismissAria")}>
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {/* E17 finding 1: a de-effecting removal that would drop safety content confirms first, naming
+          exactly which flags disappear (from the visit, and whether from the patient file too). */}
+      <Dialog
+        open={Boolean(removalGuard)}
+        title={t("capture.removalGuard.title")}
+        onClose={() => setRemovalGuard(null)}
+        footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setRemovalGuard(null)}>
+              {t("capture.history.cancel")}
+            </Button>
+            <Button size="sm" variant="danger" onClick={confirmGuardedRemoval}>
+              {t("capture.removalGuard.confirm")}
+            </Button>
+          </>
+        }
+      >
+        <p className="report-history-confirm-body">{t("capture.removalGuard.body")}</p>
+        <SafetyLossList flags={removalGuard?.flags ?? []} />
+      </Dialog>
     </section>
   );
 }

@@ -1689,6 +1689,31 @@ small {
   font-weight: 700;
 }
 
+/* Urgent patient question (AES-1901): a loud red toast, wider and centered at the top so it can't be
+   missed, with a ⚠ marker. Held longer than the neutral toast (duration set by the caller). */
+.toast-danger {
+  right: 50%;
+  transform: translateX(50%);
+  top: 16px;
+  bottom: auto;
+  max-width: min(92vw, 440px);
+  border-color: var(--color-danger, #d33);
+  background: var(--color-danger, #d33);
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 14px 18px 14px 16px;
+  box-shadow: 0 18px 44px rgb(211 51 51 / 38%);
+  animation: toast-danger-pulse 1.1s ease-in-out 2;
+}
+.toast-danger::before {
+  content: "⚠";
+  margin-inline-end: 8px;
+}
+@keyframes toast-danger-pulse {
+  0%, 100% { box-shadow: 0 18px 44px rgb(211 51 51 / 38%); }
+  50% { box-shadow: 0 0 0 4px rgb(211 51 51 / 30%), 0 18px 44px rgb(211 51 51 / 45%); }
+}
+
 /* Offline return receipt — a calm, transient "your queued captures landed" confirmation, centered
    at the top so it reads as an arrival (distinct from the bottom-corner action toast). Auto-dismisses. */
 .offline-return-receipt {
@@ -1903,9 +1928,16 @@ small {
 }
 
 .user-menu summary::after {
-  content: "v";
-  color: #475467;
-  font-size: 0.68rem;
+  /* A crisp drawn down-caret (was a literal letter "v"). */
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: 1px;
+  border-right: 1.6px solid #667085;
+  border-bottom: 1.6px solid #667085;
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .user-menu-avatar {
@@ -5732,27 +5764,43 @@ small {
     justify-self: end;
   }
 
+  /* Phones: the account control collapses to an avatar-only button (identity lives in the opened
+     panel) — this frees the display-name width so the full Pro action row (Visit/Memory + search +
+     Q&A + bell + avatar) fits one line at 390px instead of overflowing into a horizontal scroll. */
   .user-menu summary {
-    max-width: 190px;
+    max-width: none;
+    padding-inline: 4px;
+  }
+  .user-menu-label,
+  .user-menu summary::after {
+    display: none;
   }
 
   /* Keep the Visit/Memory labels on phones too (#9), so compact the rest of the action cluster to
      make room: content-width nav pills, slightly smaller round buttons, and a tighter row gap. */
   .topbar-left {
-    gap: 8px;
+    gap: 7px;
   }
 
   .app-navigator {
     grid-template-columns: repeat(2, auto);
+    gap: 4px;
   }
 
   .app-navigator button {
-    padding-inline: 10px;
+    padding-inline: 9px;
   }
 
   .app-search-button {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Belt-and-suspenders: the top bar never widens the page (no horizontal scroll on any phone). */
+  .topbar,
+  .topbar-inner {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .report-heading {
@@ -6478,15 +6526,46 @@ small {
   letter-spacing: 0.01em;
   text-transform: uppercase;
 }
-.session-safety-text {
+/* Flag body column (AES-1801): the normalized label leads (primary), with the verbatim clinician
+   sentence as expandable evidence beneath it and a source citation that jumps to the capture. */
+.session-safety-body {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.session-safety-primary {
   margin: 0;
   color: #2a1d1a;
-  font-size: 0.84rem;
-  font-weight: 600;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+  /* label + evidence are arbitrary clinician dictation — a long unbroken token must wrap, never widen the row. */
+  overflow-wrap: anywhere;
 }
+.session-safety-evidence-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9a5a4c;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.session-safety-evidence {
+  margin: 0;
+  color: #6b4a44;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-style: italic;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.session-safety-body .source-citation { margin-inline-start: 0; }
 .session-safety-remove {
   flex: 0 0 auto;
   display: grid;
@@ -7405,6 +7484,61 @@ ul.treatment-review-notes {
   display: grid;
   place-items: center;
 }
+
+/* The Patients-tab local roster filter — deliberately lighter than the retired header search / the
+   global finder: it filters the loaded roster live, it does not search content. */
+.patients-filter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f7f9fc;
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+.patients-filter svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: #8593ad;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+.patients-filter .input {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  color: var(--color-text);
+  font-size: 0.86rem;
+}
+.patients-filter .input::placeholder { color: #8593ad; opacity: 0.9; }
+
+/* The quiet "older than a week? find it in Patients" link under the Recent buckets — a calm neutral
+   pointer, never an amber attention affordance. */
+.recent-older-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: #667399;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.recent-older-link:hover { color: #16265d; text-decoration: underline; }
+.recent-older-link svg { width: var(--icon-xs); height: var(--icon-xs); flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+[dir="rtl"] .recent-older-link svg:last-child { transform: scaleX(-1); }
 
 .clinical-tabs {
   display: grid;
@@ -9607,17 +9741,36 @@ ul.treatment-review-notes {
   color: var(--color-primary);
 }
 
-.ai-patient-review-card {
-  display: grid;
+/* The AI-created-patient verification is a compact trigger in the strip's verify region + a proper
+   bottom-sheet modal. It used to render the full form inline inside the sticky patient strip, where on
+   a phone it overflowed the viewport and trapped scroll. */
+.ai-patient-review-trigger {
+  display: flex;
+  align-items: center;
   gap: var(--space-3);
-  border-color: #b9d2ff;
+  width: 100%;
+  text-align: start;
+  border: 1px solid #b9d2ff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--color-primary-soft) 42%, white) 0%, var(--color-surface) 100%);
+}
+.ai-patient-review-trigger:hover {
+  border-color: var(--color-primary);
+}
+.ai-patient-review-trigger:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 
 .ai-patient-review-copy {
   display: grid;
   gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .ai-patient-review-copy strong {
@@ -9626,11 +9779,89 @@ ul.treatment-review-notes {
   font-weight: 850;
 }
 
-.ai-patient-review-copy p {
+.ai-patient-review-copy span {
   color: var(--color-muted);
   font-size: var(--text-sm);
   line-height: 1.45;
+}
+
+.ai-patient-review-cta {
+  flex: 0 0 auto;
+  align-self: center;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
+/* Verification bottom sheet — mirrors the assignment sheet: bottom-anchored, capped at ~85vh with
+   internal scroll, a drag handle, dismiss (scrim tap / × / Esc), and the page scroll locked underneath. */
+.ai-patient-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  background: rgb(8 13 45 / 48%);
+}
+
+.ai-patient-sheet {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 640px);
+  max-height: 85dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #dde6f4;
+  border-radius: 18px 18px 0 0;
+  background: var(--color-surface);
+  padding: 12px 18px max(20px, calc(18px + env(safe-area-inset-bottom)));
+  box-shadow: 0 -20px 60px rgb(8 13 45 / 22%);
+}
+
+.ai-patient-sheet-handle {
+  justify-self: center;
+  width: 58px;
+  height: 7px;
+  border-radius: 999px;
+  background: #d9deec;
+}
+
+.ai-patient-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ai-patient-sheet-header h2 {
   margin: 0;
+  color: var(--color-text);
+  font-size: 1.2rem;
+  font-weight: 850;
+}
+
+.ai-patient-sheet-close {
+  width: 40px;
+  min-height: 40px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-text);
+  font-size: 1.3rem;
+  cursor: pointer;
+}
+
+.ai-patient-sheet-body {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  line-height: 1.45;
 }
 
 .ai-patient-review-grid {

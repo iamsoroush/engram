@@ -1,0 +1,218 @@
+{
+  "coalesced": {
+    "baseline (incumbent)": {
+      "name": "baseline (incumbent)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.006375,
+          "seat_mo": 1.5398,
+          "per_visit_incl_qa": 0.006416,
+          "eff_visits": 1559,
+          "headroom_x": 6.5
+        },
+        "typical": {
+          "visit_cost": 0.012113,
+          "seat_mo": 2.9167,
+          "per_visit_incl_qa": 0.012153,
+          "eff_visits": 823,
+          "headroom_x": 3.4
+        },
+        "heavy": {
+          "visit_cost": 0.02049,
+          "seat_mo": 4.9273,
+          "per_visit_incl_qa": 0.02053,
+          "eff_visits": 487,
+          "headroom_x": 2.0
+        }
+      },
+      "req_budget": 10.0
+    },
+    "all-low (nano)": {
+      "name": "all-low (nano)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.006349,
+          "seat_mo": 1.5326,
+          "per_visit_incl_qa": 0.006386,
+          "eff_visits": 1566,
+          "headroom_x": 6.5
+        },
+        "typical": {
+          "visit_cost": 0.012087,
+          "seat_mo": 2.9095,
+          "per_visit_incl_qa": 0.012123,
+          "eff_visits": 825,
+          "headroom_x": 3.4
+        },
+        "heavy": {
+          "visit_cost": 0.020464,
+          "seat_mo": 4.9201,
+          "per_visit_incl_qa": 0.0205,
+          "eff_visits": 488,
+          "headroom_x": 2.0
+        }
+      },
+      "req_budget": 9.98
+    },
+    "all-mid = gpt-5.6-luna": {
+      "name": "all-mid = gpt-5.6-luna",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.0147,
+          "seat_mo": 3.5722,
+          "per_visit_incl_qa": 0.014884,
+          "eff_visits": 672,
+          "headroom_x": 2.8
+        },
+        "typical": {
+          "visit_cost": 0.025885,
+          "seat_mo": 6.2566,
+          "per_visit_incl_qa": 0.026069,
+          "eff_visits": 384,
+          "headroom_x": 1.6
+        },
+        "heavy": {
+          "visit_cost": 0.03971,
+          "seat_mo": 9.5746,
+          "per_visit_incl_qa": 0.039894,
+          "eff_visits": 251,
+          "headroom_x": 1.0
+        }
+      },
+      "req_budget": 21.45
+    },
+    "all-mid (gpt-5.4-mini, ref)": {
+      "name": "all-mid (gpt-5.4-mini, ref)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.011837,
+          "seat_mo": 2.8681,
+          "per_visit_incl_qa": 0.01195,
+          "eff_visits": 837,
+          "headroom_x": 3.5
+        },
+        "typical": {
+          "visit_cost": 0.021689,
+          "seat_mo": 5.2327,
+          "per_visit_incl_qa": 0.021803,
+          "eff_visits": 459,
+          "headroom_x": 1.9
+        },
+        "heavy": {
+          "visit_cost": 0.034182,
+          "seat_mo": 8.2308,
+          "per_visit_incl_qa": 0.034295,
+          "eff_visits": 292,
+          "headroom_x": 1.2
+        }
+      },
+      "req_budget": 17.94
+    }
+  },
+  "per_capture": {
+    "baseline (incumbent)": {
+      "name": "baseline (incumbent)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.017561,
+          "seat_mo": 4.2242,
+          "per_visit_incl_qa": 0.017601,
+          "eff_visits": 568,
+          "headroom_x": 2.4
+        },
+        "typical": {
+          "visit_cost": 0.034483,
+          "seat_mo": 8.2856,
+          "per_visit_incl_qa": 0.034524,
+          "eff_visits": 290,
+          "headroom_x": 1.2
+        },
+        "heavy": {
+          "visit_cost": 0.054046,
+          "seat_mo": 12.9807,
+          "per_visit_incl_qa": 0.054086,
+          "eff_visits": 185,
+          "headroom_x": 0.8
+        }
+      }
+    },
+    "all-low (nano)": {
+      "name": "all-low (nano)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.017535,
+          "seat_mo": 4.217,
+          "per_visit_incl_qa": 0.017571,
+          "eff_visits": 569,
+          "headroom_x": 2.4
+        },
+        "typical": {
+          "visit_cost": 0.034457,
+          "seat_mo": 8.2785,
+          "per_visit_incl_qa": 0.034494,
+          "eff_visits": 290,
+          "headroom_x": 1.2
+        },
+        "heavy": {
+          "visit_cost": 0.05402,
+          "seat_mo": 12.9735,
+          "per_visit_incl_qa": 0.054056,
+          "eff_visits": 185,
+          "headroom_x": 0.8
+        }
+      }
+    },
+    "all-mid = gpt-5.6-luna": {
+      "name": "all-mid = gpt-5.6-luna",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.068262,
+          "seat_mo": 16.4271,
+          "per_visit_incl_qa": 0.068446,
+          "eff_visits": 146,
+          "headroom_x": 0.6
+        },
+        "typical": {
+          "visit_cost": 0.133009,
+          "seat_mo": 31.9664,
+          "per_visit_incl_qa": 0.133193,
+          "eff_visits": 75,
+          "headroom_x": 0.3
+        },
+        "heavy": {
+          "visit_cost": 0.200396,
+          "seat_mo": 48.1393,
+          "per_visit_incl_qa": 0.20058,
+          "eff_visits": 50,
+          "headroom_x": 0.2
+        }
+      }
+    },
+    "all-mid (gpt-5.4-mini, ref)": {
+      "name": "all-mid (gpt-5.4-mini, ref)",
+      "intensity": {
+        "light": {
+          "visit_cost": 0.052648,
+          "seat_mo": 12.6627,
+          "per_visit_incl_qa": 0.052761,
+          "eff_visits": 190,
+          "headroom_x": 0.8
+        },
+        "typical": {
+          "visit_cost": 0.103311,
+          "seat_mo": 24.8219,
+          "per_visit_incl_qa": 0.103425,
+          "eff_visits": 97,
+          "headroom_x": 0.4
+        },
+        "heavy": {
+          "visit_cost": 0.156614,
+          "seat_mo": 37.6147,
+          "per_visit_incl_qa": 0.156728,
+          "eff_visits": 64,
+          "headroom_x": 0.3
+        }
+      }
+    }
+  }
+}

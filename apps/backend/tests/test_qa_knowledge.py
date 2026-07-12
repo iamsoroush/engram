@@ -210,5 +210,122 @@ class GroundedFallbackTests(unittest.TestCase):
         self.assertIn("call the clinic", draft.lower())
 
 
+class OwnerReproGroundingTests(unittest.TestCase):
+    """AES-1802 acceptance: a topic-label title must ground a paraphrased question (the owner's repro).
+
+    A template saved with title «ورزش بعد از بوتاکس» + answer «تا ۲۴ ساعت» and an EMPTY question must
+    ground «کی میتونم ورزش کنم؟» — the draft contains «۲۴» with a template provenance. Pre-AES-1802 the
+    title was dropped from ``search_text`` so «ورزش» never matched and the draft was ungrounded.
+    """
+
+    def _exemplar(self):
+        # As the row is stored: search_text now folds the title, so the topic word «ورزش» is indexed.
+        search_text = normalize.build_search_text(title="ورزش بعد از بوتاکس", question=None, answer="تا ۲۴ ساعت")
+        return {
+            "id": "ex-1",
+            "kind": "template",
+            "title": "ورزش بعد از بوتاکس",
+            "question": None,
+            "answer": "تا ۲۴ ساعت",
+            "language": "fa",
+            "search_text": search_text,
+            "embedding": None,
+        }
+
+    def test_topic_title_grounds_paraphrased_question(self):
+        ranked = retrieval.rank_candidates(
+            [self._exemplar()],
+            query="کی میتونم ورزش کنم؟",
+            query_language="fa",
+            query_embedding=None,
+            top_k=3,
+        )
+        self.assertEqual(len(ranked), 1)
+        self.assertEqual(ranked[0]["kind"], "template")
+
+    def test_grounded_draft_contains_the_answer_and_a_template_provenance(self):
+        ranked = retrieval.rank_candidates(
+            [self._exemplar()], query="کی میتونم ورزش کنم؟", query_language="fa", query_embedding=None, top_k=3
+        )
+        draft = _qa_draft_fallback(
+            question="کی میتونم ورزش کنم؟",
+            doctor_name="دکتر دمو",
+            prior_answers=[],
+            patient_context={"displayName": "سارا"},
+            top_exemplar=ranked[0],
+        )
+        self.assertIn("۲۴", draft)  # grounded in the clinic's own answer «تا ۲۴ ساعت»
+        prov = library.build_draft_provenance(exemplars=ranked, patient_context={}, thread_history=[])
+        self.assertTrue(prov["grounded"])
+        self.assertEqual(prov["kind"], "template")
+        self.assertEqual(prov["sources"][0]["type"], "template")
+
+    def test_title_dropped_would_not_ground_regression_guard(self):
+        # Prove the fix is the title: with the OLD answer-only search_text, «ورزش» has no match.
+        old = {**self._exemplar(), "search_text": normalize.canonicalize("تا ۲۴ ساعت")}
+        ranked = retrieval.rank_candidates(
+            [old], query="کی میتونم ورزش کنم؟", query_language="fa", query_embedding=None, top_k=3
+        )
+        self.assertEqual(ranked, [])
+
+
+class BuildDraftProvenanceTests(unittest.TestCase):
+    """AES-1803: the structured «بر اساس» provenance object built from what the payload carried."""
+
+    def test_ungrounded_is_the_general_knowledge_state(self):
+        prov = library.build_draft_provenance(exemplars=[], patient_context={}, thread_history=[])
+        self.assertFalse(prov["grounded"])
+        self.assertEqual(prov["sources"], [])
+        self.assertNotIn("kind", prov)  # no strong "based on" attribution
+
+    def test_all_source_kinds_are_captured(self):
+        exemplars = [{"exemplarId": "ex-1", "kind": "template", "title": "Botox aftercare"}]
+        prov = library.build_draft_provenance(
+            exemplars=exemplars,
+            patient_context={"recentAftercare": "avoid heat 24h", "recentVisitSummaries": ["botox visit"]},
+            thread_history=[{"question": "q", "answer": "a"}],
+        )
+        types = [s["type"] for s in prov["sources"]]
+        self.assertEqual(types, ["template", "patient_aftercare", "patient_summary", "conversation"])
+        self.assertTrue(prov["grounded"])
+        self.assertEqual(prov["kind"], "template")
+        self.assertEqual(prov["exemplarId"], "ex-1")
+        self.assertEqual(prov["label"], "Botox aftercare")
+
+    def test_sent_reply_top_has_no_label_and_patient_only_still_grounds(self):
+        prov = library.build_draft_provenance(
+            exemplars=[{"exemplarId": "ex-2", "kind": "sent_reply", "title": None}],
+            patient_context={"recentAftercare": "  "},  # blank → not a source
+            thread_history=[],
+        )
+        self.assertEqual(prov["sources"], [{"type": "sent_reply", "exemplarId": "ex-2"}])
+        self.assertEqual(prov["kind"], "sent_reply")
+        self.assertIsNone(prov["label"])
+
+    def test_patient_context_alone_grounds_without_an_exemplar(self):
+        prov = library.build_draft_provenance(
+            exemplars=[], patient_context={"memorySummary": "long-term memory"}, thread_history=[]
+        )
+        self.assertTrue(prov["grounded"])
+        self.assertEqual([s["type"] for s in prov["sources"]], ["patient_summary"])
+        self.assertNotIn("kind", prov)
+
+
+class LooksLikeQuestionTests(unittest.TestCase):
+    """AES-1802: the migration/guard heuristic that repairs a question-shaped title with an empty question."""
+
+    def test_question_shaped_titles(self):
+        self.assertTrue(normalize.looks_like_question("کی میتونم ورزش کنم؟"))
+        self.assertTrue(normalize.looks_like_question("Is filler safe?"))
+        self.assertTrue(normalize.looks_like_question("چطور از محل تزریق مراقبت کنم"))
+
+    def test_topic_labels_are_not_questions(self):
+        # The owner's real title is a topic label, NOT a question — it must NOT be migrated into question.
+        self.assertFalse(normalize.looks_like_question("ورزش بعد از بوتاکس"))
+        self.assertFalse(normalize.looks_like_question("botox aftercare"))
+        self.assertFalse(normalize.looks_like_question(""))
+        self.assertFalse(normalize.looks_like_question(None))
+
+
 if __name__ == "__main__":
     unittest.main()

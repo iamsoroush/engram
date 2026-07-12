@@ -80,13 +80,18 @@ up — an honest upsell signal, not a relearned interaction model.
   attention state (never an error) that keeps `Assign` prominent even collapsed. Actions live in the
   strip's expansion: `Assign`/`Change` (opens the assignment bottom sheet with suggested matches,
   search, and inline patient creation) and `History` (patient timeline). (Historical review keeps a
-  flat patient card instead of the strip — no pending actions to diet away.)
+  flat patient card instead of the strip — no pending actions to diet away.) The strip renders **from
+  visit creation** — a brand-new visit with **zero captures** still shows it (expanded, `Unassigned ·
+  Assign`), so a walk-in can be filed up front; tapping Assign **lazily creates the local session** and
+  opens the sheet. Assignment stays optional — capture-first is untouched (AES-1801).
 - If audio transcription extracts a patient identity, a **deterministic** existing match assigns
   the visit with AI provenance; if nothing matches and the identity is usable, the backend creates
   and assigns an AI-origin patient. Assignment is stored as a timeline: the latest valid action
   wins, deleted-capture actions are skipped, and later manual assignment blocks older AI actions.
-- An **AI-created patient** shows an inline completion/verification panel (name, national ID,
-  phone, date of birth) in the verify region — staff never leave the session to verify it.
+- An **AI-created patient** surfaces a compact **Verify details** prompt in the verify region that opens
+  a **bottom-sheet** completion/verification form (name, national ID, phone, date of birth) — staff never
+  leave the session to verify it, and on a phone the form never overlays the workspace or traps scroll
+  (max-height ~85vh, internal scroll, dismissible, body scroll locked; AES-1802).
 - A "next lined-up patient" hint offers `Assign this visit` / `Start their visit` when the session
   is unassigned and a patient is waiting.
 
@@ -150,11 +155,11 @@ diet** (nine stacked zones → strip → report). Two states:
 
 - **Collapsed (one line):** avatar · patient name · visit ordinal · assignment state (`✓ assigned` /
   `Matched by AI` / soft-amber `Unassigned · Assign`) · an amber `⚠ N to confirm` chip (the blocker
-  count) · a red `🩹` safety chip when flags are on record · a chevron. Tapping a chip expands the
-  strip; the chevron toggles it. It stays **sticky** while scrolling a long report, so identity +
-  safety + count are always visible.
+  count) · a red `🩹 N` **flag-count** safety chip when flags are on record · a chevron. Tapping the
+  safety chip expands the strip to the panel; the chevron toggles it. It stays **sticky** while
+  scrolling a long report, so identity + safety + count are always visible.
 - **Expanded:** patient actions (`Assign`/`Change`, `History`) · the full safety panel · the session
-  context digest · the AI-created-patient verify panel.
+  context digest · the AI-created-patient **verify trigger** (opens the verification bottom sheet).
 
 **Auto-collapse state machine:** pre-capture the strip is **expanded** (a glance aid before you
 capture); once the **report has content** it **collapses** to one line; **undoing every capture**
@@ -163,9 +168,14 @@ re-expands it; historical review is collapsed. An **unassigned** visit stays col
 **History auto-surfaces:** when a patient **with history** is assigned or reassigned, the strip
 auto-expands to that history — collapse waits until the report has content **and** the history has
 been surfaced (a new assignment event re-surfaces it).
+**Safety auto-surfaces (AES-1802):** the strip auto-expands whenever the kept-flag set changes to a new,
+unacknowledged one — a patient with existing flags first assigned, a new flag landing from
+synthesis/reconcile, or a restore/undo that changes the set. The clinician can collapse it; the same
+set is not re-expanded (an **acknowledged-signature** in session UI state), and a collapsed strip still
+carries the red flag-count chip. This reuses the same pin-open machinery as high-risk clinics.
 
 - **Basic** gets a simpler strip (identity + context, no verify/safety chips — those are Pro).
-- **Never bury safety:** a red safety chip is always shown collapsed; the tenant **high-risk-clinic**
+- **Never bury safety:** a red flag-count chip is always shown collapsed; the tenant **high-risk-clinic**
   setting ([Settings](account.md)) pins the *full* safety panel open above the report — never a chip.
 - **Conflicts are never buried:** an active patient conflict keeps a **thin, always-visible band**
   above the report (resolvable in place); the strip expansion is a second entry point.
@@ -197,28 +207,58 @@ the patient is removed or reassigned.
   (that have a rendered row), AI-created-patient identity, and patient conflicts. Soft warnings never
   feed it ("warnings over blocking"); it hides once the report settles clean. **Every counted blocker
   has a reachable resolver** (a tested invariant): tapping the chip expands the strip and scrolls to
-  the topmost — the conflict band, the AI-created-patient panel in the strip, or the inline dose row.
+  the topmost — the conflict band, the AI-created-patient verify trigger in the strip, or the inline dose row.
 - **Patient conflicts** render in a **thin, always-visible band** above the report (the
   `PatientConflictResolver`), resolvable in place — a name-correction / unassign applies in one tap,
   or Keep-match / Create-new / Choose-another / Assign-manually. The **AI-created-patient** verify
-  panel lives in the strip expansion. Everything else confirms **inline where the data is**: a
+  trigger lives in the strip expansion and opens the verification **bottom sheet**. Everything else
+  confirms **inline where the data is**: a
   carried-forward dose shows `Confirm dose` on its treatment row and flips to `✓ Dose confirmed` in
   place (or is auto-satisfied by a dose edit — see the treatment overlay); coded uncertainties render
   as calm notes beneath the treatments list (actionable — fix-at-source / open-source — where coded).
+
+### Guided attention review
+
+Opening a visit from a **grouped** [Close-the-day sweep](patients.md#attention-tab) card (a visit with
+≥2 open confirmations) arms a **guided review state** on this workspace. It is **orientation, not a new
+flow** — it reuses the exact per-source resolvers above (conflict band → AI-created-patient panel → each
+inline carried-forward dose row, in that DOM order, the same order the `⚠ Review` chip walks):
+
+- A compact, non-blocking **progress banner** floats above the capture bar: an `N to confirm` count, an
+  `{i} of {N}` position, **Previous / Next**, and a dismiss (✕).
+- The **current** confirmation is scrolled to and **highlighted in place** (a calm amber ring). Next /
+  Previous move through the confirmations, expanding the patient strip when the target is the
+  AI-created-patient verify panel.
+- The banner **disappears the moment every item is resolved** (or on dismiss) — leaving with items open
+  is fine (`warnings over blocking`). Opening the same visit any other way does **not** arm review.
+
+It adds no new resolver and changes no confirm semantics; the counted-blocker/reachable-resolver
+invariant is unchanged.
 
 ### Safety panel
 
 The synthesis detects clinical **safety flags** from the captures — allergy / contraindication /
 consent statements the clinician actually made — and surfaces them in a calm red/amber panel. It
-lives in the **patient strip** — always represented by the strip's red safety chip when collapsed,
-the full flag list in the expansion — **unless** the tenant is a **high-risk clinic**
-([Settings](account.md)), where the full panel is **pinned open above the report** and never collapses
-to a chip. Flags are **opt-out**: every detected flag is shown and kept by default; the clinician acts
-only to reject (×) a wrong one. The panel is **not** a blocker and never gates the report. A rejection
-persists (survives re-synthesis) and is logged as an AI-feedback signal. Non-rejected flags project
-onto the patient and resurface cross-visit in the session context card and the patient timeline. The
-flag body is clinical content in the report language and is never translated — only the chrome is
-bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
+lives in the **patient strip** — always represented by the strip's red **flag-count** chip when
+collapsed (`🩹 N`), the full flag list in the expansion — **unless** the tenant is a **high-risk
+clinic** ([Settings](account.md)), where the full panel is **pinned open above the report** and never
+collapses to a chip.
+
+**Two-layer flag (AES-1801) — legible primary + evidence.** Each flag is shown as a normalized short
+clinical **label** (kind + substance, e.g. «حساسیت به لیدوکائین», «منع مصرف در بارداری») — the legible
+primary the clinician reads at a glance — with the clinician's **verbatim sentence** as expandable
+**evidence** beneath it (`Show evidence`; the unchanged "quote the clinician" text), and the flag's
+`sourceCaptureIds` as a tappable **source citation** (`↗`, the report's own citation affordance) that
+jumps to the capture. The label is emitted by synthesis alongside the verbatim text; a pre-label flag
+falls back to showing the verbatim text as primary. Both label and text are clinical content in the
+report language and are **never translated** — only the chrome is bilingual.
+
+Flags are **opt-out**: every detected flag is shown and kept by default; the clinician acts only to
+reject (×) a wrong one. The panel is **not** a blocker and never gates the report. A rejection persists
+(survives re-synthesis, keyed on the verbatim text — a reworded **label** never shifts it) and is logged
+as an AI-feedback signal. Non-rejected flags project onto the patient (carrying the label) and resurface
+cross-visit — as the glanceable label — in the session context card and the patient timeline. Endpoint:
+`POST /api/v1/sessions/{id}/safety-flag-rejection`.
 
 ### Report card
 
@@ -280,7 +320,14 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   entries); removing a middle capture triggers a recompute shown as a calm re-organizing state.
   Removal is **owner-only** (the staff member who started the session). **Undo last capture** is also
   the one-tap shortcut for *restore the previous version* (N=1) surfaced richer in *Report history*
-  below. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
+  below.
+- **Safety-loss guard (E17).** If a removal would drop a **safety flag** the current report carries,
+  a confirm dialog first names exactly which allergy / contraindication / consent flags disappear
+  (computed deterministically, no LLM) — and, per flag, whether it also leaves the **patient file**
+  («از پرونده بیمار نیز حذف می‌شود») or stays because another visit records it. Flag texts are clinical
+  content (verbatim); the chrome is bilingual. A removal with **no** safety loss is never interrupted
+  (undo stays one-tap). The de-effect is always a **soft** delete — media is never destroyed, so undo
+  is fully reversible. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 
 ### Report history (E14 · Pro)
 
@@ -296,13 +343,19 @@ server-authored string).
   same report presentation — with a `Viewing the version from HH:MM · Back to current` banner. The live
   **user-state overlay** (rejected safety flags, dismissed aftercare, confirmed doses, treatment edits)
   applies on top of whichever version renders, so a user decision is **never time-traveled away**.
-- **Restore (owner-only).** A past version reachable by removal offers **Restore this version**, which
-  returns the visit to that version's capture set by de-effecting the captures added after it — the
-  **same de-effecting removal** as undo (shared machinery). Owner-only, gated behind a confirmation that
-  names how many captures are removed. A **non-linear** version (one that included a now-deleted capture,
-  or needs an out-of-context toggle) is **preview-only** with a calm note; `409` on the API.
-- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut. Pin (the unused `pinned`
-  column), in-place time-travel, and field-level diffs are documented fast-follows.
+- **Restore (owner-only).** A **reachable** version offers **Restore this version**, which returns the
+  visit to that version's exact capture set — the **same de-effecting removal** as undo (shared machinery).
+  Owner-only, gated behind a confirmation that names how many captures are **removed** and/or **restored**,
+  and — when applicable — the **safety-loss guard** (above: the flags that would disappear). A version that
+  needs an out-of-context toggle is **preview-only** with a calm note; `409` on the API.
+- **Redo — history is forward-navigable (E17).** After a restore, the **later** versions stay in the
+  timeline and are navigable **forward**: restoring one **re-effects** (un-deletes) the captures it knew,
+  so a restore is not a one-way door. The forward branch is pruned from the timeline **only** when a new
+  capture is added while not at head — behind a small confirm («این کار N نسخهٔ جدیدتر را کنار می‌گذارد»);
+  pruned versions leave the UI but stay as DB rows.
+- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut (now with the safety-loss
+  guard). Pin (the unused `pinned` column), in-place time-travel, and field-level diffs are documented
+  fast-follows.
 
 Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 
@@ -317,8 +370,9 @@ Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 - The active assignment-source capture shows `Patient assigned` / `Patient created` badges; older
   AI source captures lose the badge when a later action supersedes them.
 - Per-capture overflow: rename, delete (the de-effecting removal above).
-- Tapping a capture opens a source preview sheet: media preview, metadata, editable
-  transcript/caption with edit attribution, and a copy control.
+- Tapping a capture opens a source preview sheet: media preview, metadata (type, captured time,
+  status, and audio duration — **no raw file name**, which is storage plumbing, not content; AES-1803),
+  editable transcript/caption with edit attribution, and a copy control.
 
 ## States
 
@@ -337,7 +391,7 @@ Shared rules: [states](../states.md).
 
 - `Shell`, `CaptureActions`, `CaptureScreen` (composes region components from `CaptureRegions`)
 - `PatientStrip` (absorbs identity + context + verify chip + safety chip; the auto-collapse machine)
-- `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (in the strip)
+- `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (compact verify trigger in the strip → verification bottom sheet)
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
 - `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar` (Pro primary)
 - `LiveDraftReport` (the captures feed — Basic primary / Pro `sources-drawer` body), `BasicLiveReport` (the Basic `View as document` panel)

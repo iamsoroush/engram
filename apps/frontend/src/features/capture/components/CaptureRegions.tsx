@@ -11,20 +11,90 @@ import { Button } from "../../../shared/ui/primitives";
 import { useT } from "../../../shared/i18n";
 import { textDirection } from "../captureModel";
 import { AiCreatedPatientPanel, PatientConflictResolver, type PatientConflictSuggestion } from "./CaptureBadges";
+import { SourceCitation } from "./LiveReport";
+
+/** One safety flag row (AES-1801): the normalized `label` is the legible PRIMARY; the verbatim clinician
+ *  sentence is expandable EVIDENCE beneath it; `sourceCaptureIds` renders as a tappable source citation
+ *  that jumps to the capture. Falls back to the verbatim `text` as primary when no label was produced
+ *  (a pre-label flag), in which case there is no separate evidence toggle. */
+function SafetyFlagRow({
+  flag,
+  sessionId,
+  canEdit,
+  onReject,
+  onOpenSource,
+}: {
+  flag: SafetyFlag;
+  sessionId: string;
+  canEdit: boolean;
+  onReject?: (sessionId: string, flagKey: string) => Promise<void> | void;
+  onOpenSource?: (captureId: string) => void;
+}) {
+  const t = useT();
+  const [evidenceOpen, setEvidenceOpen] = React.useState(false);
+  const label = flag.label?.trim();
+  // The evidence line is only worth a toggle when the label is distinct from the verbatim text; when
+  // there is no label the text IS the primary (no toggle, nothing hidden).
+  const primary = label || flag.text;
+  const hasEvidence = Boolean(label) && flag.text.trim() !== label;
+  return (
+    <div className={`session-safety-flag safety-${flag.kind}`}>
+      <span className="session-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
+      <div className="session-safety-body">
+        <p className="session-safety-primary" dir={textDirection(primary)}>
+          {primary}
+        </p>
+        {hasEvidence ? (
+          <button
+            type="button"
+            className="session-safety-evidence-toggle"
+            aria-expanded={evidenceOpen}
+            onClick={() => setEvidenceOpen((open) => !open)}
+          >
+            {evidenceOpen ? t("capture.safety.hideEvidence") : t("capture.safety.showEvidence")}
+          </button>
+        ) : null}
+        {hasEvidence && evidenceOpen ? (
+          <p className="session-safety-evidence" dir={textDirection(flag.text)}>
+            “{flag.text}”
+          </p>
+        ) : null}
+        {onOpenSource && flag.sourceCaptureIds?.length ? (
+          <SourceCitation captureIds={flag.sourceCaptureIds} onOpenSource={onOpenSource} />
+        ) : null}
+      </div>
+      {canEdit && onReject ? (
+        <button
+          className="session-safety-remove"
+          type="button"
+          aria-label={t("capture.safety.reject")}
+          title={t("capture.safety.reject")}
+          onClick={() => onReject(sessionId, flag.key)}
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 /** Session-level safety panel — auto-kept allergy/contraindication/consent flags, opt-out via ×. Sits
- *  above the context card + verify region. Flag body is report-language clinical content (dir auto);
- *  only the chrome routes through the app translator. */
+ *  above the context card + verify region. The normalized label leads; the verbatim clinician sentence
+ *  is expandable evidence; the source citation jumps to the capture. Flag body is report-language
+ *  clinical content (dir auto); only the chrome routes through the app translator. */
 export function SessionSafetyPanel({
   flags,
   sessionId,
   canEdit,
   onReject,
+  onOpenSource,
 }: {
   flags: SafetyFlag[];
   sessionId: string;
   canEdit: boolean;
   onReject?: (sessionId: string, flagKey: string) => Promise<void> | void;
+  /** Opens a cited capture (reuses the report's source-citation affordance). */
+  onOpenSource?: (captureId: string) => void;
 }) {
   const t = useT();
   if (!flags.length) return null;
@@ -35,23 +105,14 @@ export function SessionSafetyPanel({
         <span className="session-safety-hint">{t("capture.safety.hint")}</span>
       </div>
       {flags.map((flag) => (
-        <div className={`session-safety-flag safety-${flag.kind}`} key={flag.key}>
-          <span className="session-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
-          <p className="session-safety-text" dir={textDirection(flag.text)}>
-            {flag.text}
-          </p>
-          {canEdit && onReject ? (
-            <button
-              className="session-safety-remove"
-              type="button"
-              aria-label={t("capture.safety.reject")}
-              title={t("capture.safety.reject")}
-              onClick={() => onReject(sessionId, flag.key)}
-            >
-              ✕
-            </button>
-          ) : null}
-        </div>
+        <SafetyFlagRow
+          key={flag.key}
+          flag={flag}
+          sessionId={sessionId}
+          canEdit={canEdit}
+          onReject={onReject}
+          onOpenSource={onOpenSource}
+        />
       ))}
     </section>
   );

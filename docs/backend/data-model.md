@@ -154,11 +154,15 @@ user-state overlay is *not* stored here. Full design:
   [aes-basic-api.md](aes-basic-api.md)).
 - `qa_threads` / `qa_messages` — the Pro post-session patient↔clinic Q&A
   ([aes-pro-qa-api.md](aes-pro-qa-api.md)). A `qa_messages` patient question carries the AI draft +
-  its `draft_provenance` (the top retrieved exemplar the draft was grounded in — doctor-only).
+  its `draft_provenance` — the structured «بر اساس» object (AES-1803): every grounding source the
+  payload carried (top exemplar + patient-record/conversation blocks), or an empty `sources` for the
+  honest general-knowledge state (doctor-only). It also carries `urgent` (bool) + `urgent_flags` (the
+  red-flag category keys) stamped at ingest by the escalation lexicon (AES-1801).
 - `qa_knowledge_exemplars` — the Pro Q&A **knowledge library** (AES-410): curated `template`s +
   auto-indexed `sent_reply`s, the retrieval corpus behind grounded `qa_draft`. Per-tenant; a
-  normalized `search_text` (lexical match target) + an optional native pgvector `embedding` (NULL when
-  the embeddings gateway is unconfigured → lexical-only). `status` `active`/`excluded` is the
+  normalized `search_text` (lexical match target — **folds the title, question, and answer** so a
+  topic-label title still grounds a paraphrase, AES-1802) + an optional native pgvector `embedding`
+  (NULL when the embeddings gateway is unconfigured → lexical-only). `status` `active`/`excluded` is the
   manage/exclude list; `source_message_id` links an indexed reply back to its `qa_messages` row
   (idempotent auto-index). Requires the `vector` extension (see
   [technical-decisions.md](../technical-decisions.md) → *Q&A Knowledge Retrieval*).

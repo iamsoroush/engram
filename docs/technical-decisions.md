@@ -1,5 +1,113 @@
 # Technical Decisions
 
+## Q&A owner-testing gaps: arrival badge, deterministic escalation, retrieval grounding (2026-07-12)
+
+Three gaps from the owner's Q&A testing, shipped as AES-1901/1902/1903 (fast-follow AES-1904
+registered). Decisions worth recording:
+
+- **Q&A messages get their own glanceable badge again (partial-revert of E16/AES-1003).** The unified
+  bell keeps its merged Messages count, but the inbox icon regains a pending-thread badge (scoped like
+  the inbox's Mine/Clinic). Rationale: a merged count is right for *routine* triage, but a between-visit
+  patient question is time-sensitive enough to earn its own at-a-glance number. Both counts poll while
+  visible (~60s + refetch on focus, paused when hidden) — no websockets at this stage.
+- **Escalation is deterministic first, LLM second.** A patient can report an emergency (filler
+  vascular occlusion) that must not read as routine. We classify **at ingest** against a small,
+  sensitivity-biased fa+en red-flag lexicon (`services/qa_knowledge/escalation.py`) — it runs even
+  gateway-less and can never be "the thing that's down". An urgent hit escalates the row, the badge,
+  the attention bell (above safety), and fires a toast. A false-positive urgent costs one glance; a
+  miss costs tissue. An LLM `escalate` flag from `qa_draft` is a **registered, eval-gated fast-follow**
+  (AES-1904), layered *over* — never replacing — the deterministic floor.
+- **Retrieval grounds on the title too; question becomes the primary field.** Root cause of the owner's
+  "template didn't ground" repro: `search_text` folded only question+answer, so a topic-label title
+  («ورزش بعد از بوتاکس») with an empty question never matched «کی میتونم ورزش کنم؟». Fix at all three
+  layers: `search_text` now folds the **title**; the Library makes **question** the primary, required
+  field (title an optional label) and a migration **moves** a question-shaped title into an empty
+  question (a mis-entry repair — chosen over a literal "copy" so the redesigned label field isn't left
+  showing a full question); and the embeddings gateway is wired in the env defaults with a
+  startup/maintenance backfill, with a **visible Library notice** when semantic matching is off (silent
+  degradation is how this went unnoticed). `qa_draft` prompt/evals unchanged.
+- **Draft provenance is a structured object, not a single chip.** `qa_messages.draft_provenance`
+  extends from top-exemplar-only to `{ grounded, sources[], + legacy kind/exemplarId/label }` — the
+  «بر اساس» panel names every grounding source the payload carried, and an empty `sources` is the
+  honest "general knowledge — no clinical source" state (the draft that deserves the hardest review).
+  The legacy top-level keys stay for the strong chip + Q-5 exemplar invalidation. Built deterministically
+  by the backend from the payload contents — no prompt or eval change.
+
+## Memory-surface refinements from owner testing (2026-07-12)
+
+Three refinements to the Clinical-Memory surfaces (stories AES-1607–1610; as-built in
+`docs/ux/screens/patients.md` and `capture.md`):
+
+- **"Today" tab → "Recent", restructured into time buckets.** The day-scoped Today tab only ever showed
+  the current calendar day. It is now **Recent** (tab value `recent`): a recent-activity list bucketed by
+  recency into **Active visit / Today / Yesterday / This week**, newest first, empty buckets omitted;
+  older-than-a-week is a quiet link into Patients (the finder is the deep-search surface). The separate
+  "Needs your input" preview section is gone — a needs-input visit stays actionable **inline** (amber
+  card + focused action) in its time bucket, and the aggregate lives only in the hero chip + Attention
+  tab. **Refines AES-1007**: the Today preview's `See all N in Attention` pointer no longer exists.
+- **Search scoped to the Patients tab.** The always-visible Clinical-Memory header search bar is removed
+  (the top-bar [finder](ux/screens/finder.md) is the app-wide retrieval surface). The Patients tab gains
+  a **lighter local roster filter** that filters the loaded list live and does **not** search content;
+  the old in-tab deterministic/Persian-aware "smart match" block was dropped (that depth is the finder's
+  job now). Recent + Attention rely on the finder.
+- **Guided attention review.** A **grouped** Close-the-day card (≥2 confirmations) now **names its
+  target** — `Visit {patient} · {time}` / `Unassigned visit · {time}`, never a bare "This visit" — and
+  opening it arms a **guided review state** on the capture screen: a progress banner (`N to confirm`,
+  next/prev) that scrolls to and highlights each confirmation in place, dismissing when all resolve. It
+  reuses the existing per-source resolvers (conflict band → AI-created-patient panel → dose rows) — pure
+  orientation, no new resolver, no changed confirm semantics. **Refines AES-1008.**
+
+## Two-layer safety flag: normalized label + verbatim evidence (2026-07-12)
+
+Owner testing found the safety panel legible only after reading a full dictated sentence. Shipped as
+AES-2001/AES-2002 (stories in [aesthetics-stories.md](ux/aesthetics-stories.md); UX in
+[capture.md](ux/screens/capture.md)). Decisions worth recording:
+
+- **The flag carries two clinical layers, not one.** Synthesis now emits a per-flag **`label`** — a
+  normalized short clinical label (kind + substance, report language, native script) — *alongside* the
+  unchanged verbatim `text`. The UI shows the label as the legible primary and the verbatim sentence as
+  expandable evidence. The verbatim-quote rule is untouched (still "quote the clinician"); the label is
+  additive. This is an eval-gated synthesis change: PROMPT_VERSION bumped to `2026-07-12.synthesis.v18`
+  (pinned hash updated in the same commit) and `safety_flags_eval` gained label assertions (normalized,
+  no verbatim-sentence echo, native script), re-verified at `EVAL_VOTES=3`.
+- **`label` is additive — the output contract version was NOT bumped.** `SafetyFlag.label` is optional
+  (`None` when absent), so a pre-label stored/streamed output still parses and the client falls back to
+  the verbatim `text`. `SESSION_SYNTHESIS_OUTPUT_VERSION` stays `…v3` deliberately so the backend
+  `is_synthesis` gate keeps matching; only the shape widened. The contract-parity goldens were
+  regenerated (a deliberate act) to record the new field.
+- **Reconcile/rejection keys stay text-based.** The label is passthrough only. The stable
+  `safety_flag_key` (and the reconcile `newFlags` inputs) still key on `kind|normalized-text`, so a
+  reworded label never shifts a rejection or a cross-visit reconcile decision. Label rides onto the
+  patient store + cross-visit payload purely for display.
+- **Safety expansion is event-driven, reusing the pin-open machinery.** The patient strip auto-expands
+  when the kept-flag signature changes to a new, unacknowledged set (first assignment of a patient with
+  flags, a flag landing from synthesis/reconcile, a restore/undo), and records an **acknowledged
+  signature** in session UI state so a collapse is not undone for the same set. The collapsed strip
+  always shows a red `🩹 N` count chip.
+
+## Report-history hardening: redo, safety-loss guard, soft-delete-only (2026-07-12)
+
+Three owner-testing findings on the E17 report-history feature drove three decisions (stories
+AES-1709/1710/1711; mechanics in [architecture/pipeline-versioning.md](architecture/pipeline-versioning.md)):
+
+- **Restore is a full transition (redo), not one-way removal.** A version's reachability is now computed
+  over the session's captures *including soft-deleted rows*, so restoring **forward** **re-effects**
+  (un-deletes) the captures a target version knew — later versions stay navigable after a restore. The
+  earlier "removal-only, forward versions become preview-only" behaviour was the bug. The forward branch is
+  pruned from the timeline (`pruned_at` column — row kept, UI hidden) **only** when a new capture is added
+  while behind head, behind a client confirm gated on `session.forwardVersionCount`. Restoring to a
+  non-linear (out-of-context-toggle) version stays preview-only / `409`.
+- **A rollback must never *silently* drop safety content.** Restore and Sources-drawer undo/delete now
+  compute a **deterministic (no-LLM) safety-loss diff** from the two states' artifacts and confirm first,
+  naming the flags that disappear — including the patient-layer effect (invalidated vs. stays because
+  another visit sources it). We deliberately did **not** route this through an LLM: the diff is a pure
+  function of the versioned artifacts, so it is instant, free, and auditable. A no-safety-loss removal is
+  **not** interrupted (quick undo stays one-tap).
+- **De-effect is soft-delete-only; media is never destroyed.** Undo / restore only set
+  `CaptureStatus.deleted` (+ remember the pre-delete status for re-effect) — never touch the `Artifact`
+  row or its MinIO object. This is what makes redo possible and is asserted + regression-tested (a
+  de-effected audio capture's media stays fetchable internally).
+
 ## UI-review refinements: one 24h clock + one attention count (2026-07-11)
 
 From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), shipped as AES-1007/1008
@@ -17,6 +125,8 @@ From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), ship
   (the chip counted a backend needs-input fetch; the bell counted the `/attention` roll-up). They now
   all read the **single** `attentionBadgeCount` (confirm + messages) from `GET /attention`; the chip is
   surface-by-exception (hidden at 0), and the redundant needs-input fetch in `PatientsHome` was removed.
+  — **Partially superseded (2026-07-12, AES-1901):** the bell keeps its merged Messages count, but Q&A
+  regains its **own** glanceable pending-thread badge on the inbox icon (see the 2026-07-12 entry).
 
 ## Model comparison verdict: keep the incumbent split; mid bracket rejected (2026-07-10)
 

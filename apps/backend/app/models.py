@@ -687,6 +687,12 @@ class QaMessage(Base):
     # shaped {kind: template|sent_reply, exemplarId, label}. NULL when nothing was retrieved. Surfaced
     # as the doctor-only "based on: {template}" chip; never projected to the patient.
     draft_provenance: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Escalation (AES-1901): a patient question that trips the deterministic red-flag lexicon at ingest
+    # is marked urgent, so the inbox row / top-bar badge / attention bell escalate + a toast fires.
+    # ``urgent_flags`` holds the stable red-flag category keys (the frontend localizes them). Only
+    # meaningful on a ``role="patient"`` question.
+    urgent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    urgent_flags: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
     draft_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
@@ -845,4 +851,8 @@ class SessionReportVersion(Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Pinned versions (e.g. referenced by a verified report) are never GC'd.
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # A version pruned from the timeline UI when a new capture branched away from a restored-to state
+    # (E17 redo semantics): the row is KEPT (append-only store; debugging) but hidden from the history
+    # list + not restorable. Never GC-related. See docs/architecture/pipeline-versioning.md.
+    pruned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

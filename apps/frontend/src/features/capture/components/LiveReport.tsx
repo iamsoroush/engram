@@ -453,7 +453,7 @@ function TreatmentOverlayOrphans({
  * "assistive + cited" principle — every clinical claim is traceable to a capture). Renders nothing
  * when there's no citation or no handler, so it's safe to drop next to any treatment row or block.
  */
-function SourceCitation({
+export function SourceCitation({
   captureIds,
   onOpenSource,
 }: {
@@ -674,6 +674,9 @@ function TreatmentRow({
     <li
       className={`treatment-item${lowConfidence ? " low-confidence" : ""}${lotMissing ? " missing-lot" : ""}${needsConfirm ? " needs-confirm" : ""}${editedFields.length ? " edited" : ""}`}
       dir={textDirection(label)}
+      // Anchor for the guided attention review to scroll to / highlight this specific carried-forward
+      // dose confirmation (`dose:{area|product}` — the same key the sweep's confirm count uses).
+      data-confirm-id={needsConfirm ? `dose:${key}` : undefined}
     >
       <span className="treatment-item-line">
         {label}

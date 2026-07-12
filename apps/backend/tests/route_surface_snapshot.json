@@ -144,6 +144,12 @@
         "tags": []
       }
     },
+    "/api/v1/captures/{capture_id}/removal-impact": {
+      "get": {
+        "operationId": "capture_removal_impact_route_api_v1_captures__capture_id__removal_impact_get",
+        "tags": []
+      }
+    },
     "/api/v1/captures/{capture_id}/retry-processing": {
       "post": {
         "operationId": "retry_capture_processing_route_api_v1_captures__capture_id__retry_processing_post",
@@ -266,6 +272,14 @@
         ]
       }
     },
+    "/api/v1/patient-qa/inbox/summary": {
+      "get": {
+        "operationId": "qa_inbox_summary_api_v1_patient_qa_inbox_summary_get",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
     "/api/v1/patient-qa/library": {
       "get": {
         "operationId": "qa_library_list_api_v1_patient_qa_library_get",
@@ -291,6 +305,14 @@
       },
       "patch": {
         "operationId": "qa_library_update_template_api_v1_patient_qa_library_templates__exemplar_id__patch",
+        "tags": [
+          "patient-qa"
+        ]
+      }
+    },
+    "/api/v1/patient-qa/library/{exemplar_id}": {
+      "get": {
+        "operationId": "qa_library_item_api_v1_patient_qa_library__exemplar_id__get",
         "tags": [
           "patient-qa"
         ]
@@ -991,6 +1013,17 @@
     },
     {
       "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}/removal-impact"
+    },
+    {
+      "dependencies": [
         "dependency(allowed_roles=['assistant', 'doctor', 'owner'])",
         "get_db"
       ],
@@ -1211,6 +1244,17 @@
       "methods": [
         "GET"
       ],
+      "path": "/api/v1/patient-qa/inbox/summary"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
       "path": "/api/v1/patient-qa/library"
     },
     {
@@ -1245,6 +1289,17 @@
         "PATCH"
       ],
       "path": "/api/v1/patient-qa/library/templates/{exemplar_id}"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/patient-qa/library/{exemplar_id}"
     },
     {
       "dependencies": [

@@ -258,7 +258,6 @@ with a chip telling me what it's based on, so that drafts match our voice and I 
   **provenance chip** (`based on: {template}` / `a previous reply`) opens the source. Eval-gated
   (`qa_draft_eval` — exemplar-followed / exemplar-overridden). *Extends AES-402.*
 
----
 
 ## E5 — Smart lists, filters & lot recall (Pro)
 *Details [foundation §3 Pro 5, 6](foundation.md).*
@@ -520,22 +519,25 @@ As **any clinician**, I want the top-bar bell and the Clinical-Memory "needs you
 the **same** number, so that "how much needs me?" never disagrees with itself. *(Refines AES-1003.)*
 - **Acceptance:** the hero chip is fed the same `attentionBadgeCount` (confirm + messages) the bell
   shows (App threads it down); **surface-by-exception** — the chip is hidden when the count is 0 (no
-  "All caught up" pill). When the Today "Needs your input" preview is empty **but** the sweep still has
-  open items (earlier days / messages), that section points to the sweep («See all N in Attention»)
-  instead of claiming "all caught up", so the chip, the bell, and the section can never contradict.
-  As-built: [screens/patients.md](screens/patients.md).
+  "All caught up" pill). So the chip, the bell, and the Attention tab can never contradict.
+  **Superseded in part by [AES-1607](#aes-1607--today-tab--recent-time-bucketed-both--all--modify)**: the
+  Recent restructure removed the standalone "Needs your input" preview section (and its
+  «See all N in Attention» pointer) — needs-input now lives inline on the time-bucket cards, so only the
+  hero chip + Attention tab carry the aggregate. As-built: [screens/patients.md](screens/patients.md).
 
 ### AES-1008 — Per-visit grouping in the Close-the-day sweep 〔Both · Dr/As · modify〕
 As a **doctor**, I want a visit with several open confirmations to appear as **one** grouped row
 («{patient} — N to confirm») rather than N sibling cards, so that a heavily-uncertain visit doesn't
 flood the sweep and bury the other items. *(Refines AES-1004.)*
 - **Acceptance:** within each sweep section (and the `Earlier, still open` group), confirm-tier (S2)
-  items sharing a `sessionId` collapse into one grouped row leading with the patient name (or
-  «This visit» when unassigned) + «N to confirm»; a lone confirmation and every non-confirm item stay
-  as their normal detailed rows, in order; the group's single action opens the visit — the same
-  per-source resolvers walk its confirmations in place (a **list-shape** change, not a new flow).
-  Section counts and the `N of M cleared` progress still count individual items. As-built:
-  [screens/patients.md](screens/patients.md).
+  items sharing a `sessionId` collapse into one grouped row + «N to confirm»; a lone confirmation and
+  every non-confirm item stay as their normal detailed rows, in order; the group's single action opens
+  the visit — the same per-source resolvers walk its confirmations in place (a **list-shape** change, not
+  a new flow). Section counts and the `N of M cleared` progress still count individual items.
+  **Refined by [AES-1609](#aes-1609--grouped-attention-card-names-its-target-both--dras--modify)** (the
+  row now names its target — `Visit {patient} · {time}`, never "This visit") **and
+  [AES-1610](#aes-1610--guided-attention-review-on-the-capture-screen-both--dras--new)** (opening it arms
+  the guided review state). As-built: [screens/patients.md](screens/patients.md).
 
 ---
 
@@ -735,6 +737,13 @@ As a **doctor**, I want the finder to also search capture/report *content*, so t
 by what was said, not just by patient/lot. **Deferred candidate** — backend global content search across
 captures / extracted findings / report prose is a larger later migration; find-only in v1.
 
+### AES-1207 — Finder date-words + date chips 〔Both · All · new · ⊕〕
+As a **clinician**, I want to reach an older day quickly from the finder — a date-word («دیروز» /
+"yesterday") or a simple date chip — so that the Recent tab's older-than-a-week quiet link lands me on
+the right day without scrolling a timeline. **Deferred** (registered alongside the Recent restructure,
+AES-1607, which points here): the finder currently searches patients / today's visits / Pro lot recall;
+date-scoped visit retrieval is a fast-follow.
+
 ---
 
 ## E15 — UI expert-review refinements: screens, router & controls (2026-07)
@@ -821,6 +830,48 @@ mid-bar with leftover space.
   **before** the nav cluster, with the avatar pinned to the inline-end and the single flexible gap
   between them — no mid-bar float. Phones keep the two-row restack (brand on top).
 
+*Owner-testing refinements (2026-07-12): AES-1607–1610 — Recent tab, scoped search, guided attention
+review. Decision log: [technical-decisions](../technical-decisions.md).*
+
+### AES-1607 — "Today" tab → "Recent", time-bucketed 〔Both · All · modify〕
+As a **clinician**, I want the landing tab to show recent activity across the last few days rather than
+only today, so that a visit I touched yesterday isn't invisible until I go hunting.
+- **Acceptance:** the `today` tab becomes **`recent`** — a recent-activity list bucketed by recency into
+  **Active visit / Today / Yesterday / This week**, newest first, **empty buckets omitted**; older than a
+  week is a **quiet link into Patients** (not a bucket). A card earns its place by being meaningful
+  activity (in progress, assigned, or an unresolved needs-input decision). The separate "Needs your input"
+  preview section is removed — a needs-input visit stays actionable **inline** (amber card + focused
+  action) in its bucket; the aggregate stays on the hero chip + Attention tab. **Refines AES-1007.**
+  As-built: [screens/patients.md](screens/patients.md#recent-tab).
+
+### AES-1608 — Search scoped to the Patients tab 〔Both · All · modify〕
+As a **clinician**, I want the Clinical-Memory header to stay calm and search to live where it acts, so
+that a permanent search bar isn't taxing every visit to the screen.
+- **Acceptance:** the always-visible header search bar is **removed** (app-wide retrieval is the top-bar
+  [finder](screens/finder.md)); the **Patients** tab gains a **lighter local roster filter** that filters
+  the loaded list live and **does not search content**. Recent + Attention rely on the finder. The old
+  in-tab deterministic/Persian-aware "smart match" block is dropped (that depth is the finder's). As-built:
+  [screens/patients.md](screens/patients.md#patients-tab).
+
+### AES-1609 — Grouped attention card names its target 〔Both · Dr/As · modify〕
+As a **doctor**, I want a grouped Close-the-day card to say *which* visit it is, so that I can orient
+before opening it instead of reading a bare "This visit".
+- **Acceptance:** a grouped `Confirm`-tier row leads with `Visit {patient} · {time}` (or
+  `Unassigned visit · {time}` when there is no patient) over an `N to confirm` subtitle — **never**
+  "This visit". The name is bidi-isolated content; the time is the shared 24h clock (Persian digits under
+  fa). *(Refines AES-1008.)* As-built: [screens/patients.md](screens/patients.md#attention-tab).
+
+### AES-1610 — Guided attention review on the capture screen 〔Both · Dr/As · new〕
+As a **doctor**, I want opening a grouped card to walk me through that visit's confirmations, so that I
+resolve them without hunting the screen — while the resolving stays exactly where the data is.
+- **Acceptance:** opening a **grouped** sweep card arms a **guided review state** on the capture screen:
+  a compact non-blocking **progress banner** above the capture bar (`N to confirm`, `{i} of {N}`,
+  Previous/Next, dismiss) that **scrolls to + highlights** the current confirmation in place, walking the
+  same per-source resolvers in DOM order (conflict band → AI-created-patient panel → each dose row) and
+  expanding the strip for the verify panel. It **dismisses when all resolve** (or on ✕); opening the visit
+  any other way does not arm it. **No new resolver, no changed confirm semantics.** *(Refines AES-1008.)*
+  As-built: [screens/capture.md](screens/capture.md#guided-attention-review).
+
 ---
 
 ## E17 — Report version history (Pro)
@@ -859,13 +910,122 @@ made the report worse can be rolled back — the richer face of undo.
 As a **doctor**, I want "Undo last capture" to remain the one-tap shortcut in the Sources drawer, so that
 the common case stays instant while the timeline is its richer, multi-step face.
 - **Acceptance:** the Sources-drawer Undo is unchanged (it is "restore the previous version", N=1, on the
-  same `DELETE /captures/{id}` de-effect path).
+  same `DELETE /captures/{id}` de-effect path). Now guarded by AES-1709 when a safety flag would be lost —
+  the no-safety-loss case (the vast majority) stays one-tap.
+
+### AES-1709 — Safety-loss guard on restore / undo 〔Pro · Dr · built〕
+As a **doctor**, I want to be warned — before a restore or a Sources-drawer undo — when the target state
+lacks a **safety flag** the current report carries, so that a rollback never *silently* drops allergy /
+contraindication / consent content (owner-testing finding 1).
+- **Acceptance:** a confirm dialog lists **exactly** the flags that will disappear from the visit, computed
+  **deterministically from the two versions' artifacts — no LLM** (backend `restoreImpact.safetyLoss` on
+  the version detail; `GET /captures/{id}/removal-impact` for undo/delete). The **patient layer** is
+  coherent: a flag whose only source is a de-effected capture is invalidated with the same visibility
+  (listed under «از پرونده بیمار نیز حذف می‌شود»); one with other sources stays and the dialog says so.
+  Flag **texts are clinical content** (verbatim, bidi-isolated); the chrome is bilingual via `t()`. A
+  removal with no safety loss is **not** interrupted (AES-1704 stays one-tap). Surface:
+  [screens/capture.md](screens/capture.md) "Report history" / "Sources drawer and undo".
+
+### AES-1710 — Redo (forward-navigable history) + branch prune 〔Pro · Dr · built〕
+As a **doctor**, after restoring to an older version I want the **later** versions to remain navigable
+**forward** (a redo), so that a restore isn't a one-way door (owner-testing finding 2).
+- **Acceptance:** reachability is a full **transition** (soft-delete *and* re-effect): restoring **forward**
+  re-effects the soft-deleted captures the target version knew (deterministic, no LLM), reusing the P0-8
+  de-effect machinery; the confirm names captures **removed** and/or **restored**. The forward branch is
+  pruned from the timeline **only** when a new capture is added while not at head, behind a small confirm
+  («این کار N نسخهٔ جدیدتر را کنار می‌گذارد» — `session.forwardVersionCount` gates it). **Pruned versions
+  stay as DB rows** (`pruned_at`; append-only store — debugging) — they just leave the UI. `409` only for a
+  genuinely unreachable (non-linear / out-of-context-toggle) version.
+
+### AES-1711 — De-effect never destroys data 〔Pro · Dr · built〕
+As a **doctor**, I want undo / restore to be fully reversible, so that a rollback can never destroy clinical
+media (owner-testing finding 3).
+- **Acceptance:** a removal is asserted (and tested) to only set `CaptureStatus.deleted` (+ remember the
+  pre-delete status for re-effect) — it **never** deletes an `Artifact` row or its MinIO object; a
+  regression test proves a de-effected audio capture's media stays fetchable internally
+  ([pipeline-versioning](../architecture/pipeline-versioning.md)).
 
 - **Deferred (⊕, fast-follows):**
   AES-1705 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
   AES-1706 **time-travel-in-place** preview; AES-1707 **field-level version diffs**; AES-1708 **D5
   GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
-  fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
+  fast-follow); restore to a **non-linear** (out-of-context-toggle) version.
+
+---
+
+## E18 — Owner-testing capture & Q&A refinements (2026-07)
+*Four small fixes from owner device-testing on the capture screen and Q&A inbox — refinements to the
+built patient strip (E13), the one-control-language pass (AES-1502), and the source-preview sheet.
+Surfaces: [screens/capture.md](screens/capture.md), [screens/qa-inbox.md](screens/qa-inbox.md).*
+
+### AES-1801 — Assign a patient on a brand-new visit 〔Both · Dr/As · modify〕
+As a **doctor**, on a fresh visit with **no captures yet**, I want the patient strip's **Assign** available
+from the moment the visit is created, so that I can file a walk-in to a patient up front — without being
+forced to capture first.
+- **Acceptance:** the E13 patient strip now renders on a **zero-capture** active visit (previously it
+  appeared only once a local session existed, so a brand-new visit offered no manual Assign). Pre-capture
+  it is the expanded glance state showing `Unassigned` + a prominent **Assign**; tapping it **lazily
+  creates the local session** and opens the assignment sheet (the same assignment choke point). Assignment
+  stays **optional** — capture-first is untouched (the capture bar still starts the visit without a
+  patient). As-built: [screens/capture.md](screens/capture.md) "Patient assignment". *Refines AES-1301/AES-1302.*
+
+### AES-1802 — AI-created-patient verification is a bottom sheet 〔Pro · Dr · modify〕
+As a **doctor** on a phone, I want the **"AI created this patient from audio"** verify form to open as a
+**bottom sheet** instead of expanding inline inside the sticky strip, so that it doesn't overlay the whole
+viewport and trap scrolling.
+- **Acceptance:** the AI-created-patient verify panel is a **compact trigger** in the strip's verify region
+  (`AI created this patient from audio · Verify details`) that opens a proper **bottom sheet** — max-height
+  ~85vh, internal scroll, dismissible (scrim tap / × / Esc), page scroll locked underneath — **portaled to
+  `<body>`** so the fixed sheet escapes the sticky strip's stacking context (otherwise it renders below the
+  capture bar). The blocker is still counted by the `⚠ N to confirm` chip and reachable from it. As-built:
+  [screens/capture.md](screens/capture.md). *Refines AES-1303.*
+
+### AES-1803 — Source preview hides the raw file name 〔Pro · Dr/As · modify〕
+As a **doctor**, when I open a capture's source preview, I don't want to see the raw storage **file name**,
+so that the sheet shows only meaningful facts, not plumbing.
+- **Acceptance:** the source-preview detail sheet drops the **File name** metadata row (keeps type, the
+  `Captured` time, `Status`, and audio `Duration`); the note preview drops its `File: …` line (keeps the
+  time). File names are never surfaced as content. As-built: [screens/capture.md](screens/capture.md)
+  "Capture cards".
+
+### AES-1804 — Q&A inbox header grammar 〔Pro · Dr/As · superseded same-day by AES-1901's bottom-bar view switch〕
+As a **doctor**, I want the Q&A inbox header to read as one coherent arrangement, so that its controls
+don't sit on opposite edges or in inconsistent rows.
+- **Acceptance:** one grammar — a **title row** carrying the `Inbox | Library` view switch grouped at the
+  inline-start (no control pinned to the opposite edge), and a **single filter row** below grouping
+  `Mine | Clinic` + the Routing select, inline-start aligned with shared spacing (it wraps gracefully at
+  the narrowest phone width, mirroring the Insights control row). Bilingual (fa/en) + RTL verified.
+  As-built: [screens/qa-inbox.md](screens/qa-inbox.md). *Refines AES-1502.*
+
+---
+
+## E20 — Legible safety flags (owner testing, 2026-07)
+
+Extends [AES-701](#aes-701--safety-flags-surfaced-each-visit-pro). Owner testing found the safety
+panel legible only after reading a full dictated sentence; the flags must be glanceable and
+impossible to miss. Screen: [capture.md — Safety panel + Patient strip](screens/capture.md). Eval-gated
+(synthesis PROMPT_VERSION bump + `safety_flags_eval` label assertions).
+
+### AES-2001 — Two-layer safety flag: legible label + evidence 〔Pro · Dr/As · built〕
+As a **doctor**, I want each safety flag shown as a short normalized **label** (kind + substance) with the
+clinician's verbatim sentence as expandable **evidence** and a tap-through to its source capture, so that
+I read the fact at a glance yet can still verify the quote.
+- **Acceptance:** synthesis emits a per-flag `label` (report language, native script, not a verbatim
+  echo) alongside the unchanged verbatim `text`; the panel shows the label as primary, the verbatim
+  sentence under `Show evidence`, and `sourceCaptureIds` as the report's `↗ source` citation; a
+  pre-label flag falls back to the verbatim text as primary. The stable rejection/reconcile **key stays
+  text-based** (a reworded label never shifts it). The label rides onto the patient store and the
+  cross-visit surfaces (context card + timeline) as the glanceable primary.
+
+### AES-2002 — Event-driven strip expansion + flag-count chip 〔Pro · Dr/As · built〕
+As a **doctor**, I want the patient strip to open itself when a safety flag arrives or changes, and the
+collapsed strip to carry a red **count** chip, so that a new flag is never missed and I always see how
+many are on record.
+- **Acceptance:** the strip auto-expands when the kept-flag set changes to a new, unacknowledged set (a
+  patient with existing flags first assigned, a flag landing from synthesis/reconcile, a restore/undo);
+  the clinician can collapse it and the same set is not re-expanded (**acknowledged-signature** in
+  session UI state); the collapsed strip always shows a `🩹 N` chip when any flag exists. Reuses the
+  high-risk-clinic pin-open machinery.
 
 ## Coverage check — every agreed feature is detailed
 
@@ -903,3 +1063,50 @@ copy-link / native-share / QR first; automated SMS/WhatsApp deferred. **AES-110 
 visualization of dictated treatment only (never tap-to-enter), later spike. **AES-503 lot scan** — out
 of MVP. **AES-704 pre-visit link** — agreed, deferred. **AES-105 ghost-overlay** — adopt v1 Basic,
 reframed as an optional "align to a previous photo" aid.
+
+## E19 — Q&A arrival, grounding & provenance (2026-07)
+
+### AES-1901 — Q&A arrival visibility + urgent escalation 〔Pro · Dr · new〕
+As a **doctor**, I want patient questions to be **glanceable and to shout when they're urgent**, so
+that an emergency (a filler occlusion) can't sit in the inbox looking routine.
+- **Acceptance:** the top-bar Q&A icon regains a **pending-thread badge** (scoped like the inbox's
+  Mine/Clinic — a deliberate **partial-revert of the E16 merge**; the unified bell keeps its merged
+  count). Attention + Q&A counts **poll while the app is visible** (~60s + refetch on focus, paused
+  when hidden). A deterministic **red-flag lexicon** (fa+en: vision/necrosis/breathing/severe-pain/
+  fever) classifies each question **at ingest**; a hit marks the thread **urgent** → the row + badge
+  render in the warning style, the attention **bell escalates** to the urgent tier, and an **in-app
+  toast** fires («سؤال فوری بیمار — تاری دید»). Sensitivity-biased. As-built:
+  [screens/qa-inbox.md](screens/qa-inbox.md), [../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md).
+  *Extends AES-402.*
+
+### AES-1902 — Retrieval grounding fix (title + question-primary + embeddings) 〔Pro · Dr/As · new〕
+As a **clinic**, I want a template I save to **actually ground** a paraphrased patient question, so
+that the Library pays off instead of silently missing.
+- **Acceptance:** the exemplar `search_text` folds the **title** (a topic-label title like «ورزش بعد
+  از بوتاکس» now matches «کی میتونم ورزش کنم؟»); the Library makes **question** the primary, required
+  field and **title** an optional label (migrating a question-shaped title into the empty question);
+  the **embeddings gateway** is wired in the env defaults with a startup/maintenance backfill, and the
+  Library shows **one quiet notice** when semantic matching is off (no more silent degradation).
+  Backend-tested against the owner's repro; `qa_draft` evals untouched (no prompt change). As-built:
+  [../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md),
+  [../ai_engine/processing.md](../ai_engine/processing.md). *Extends AES-410/411.*
+
+### AES-1903 — «بر اساس» draft provenance panel 〔Pro · Dr · new〕
+As a **doctor**, I want to see **exactly what each draft was grounded on**, so that I review the
+weakly-grounded ones hardest.
+- **Acceptance:** a compact **source row** beneath a ready draft, built deterministically by the
+  backend from what the payload contained: a **template** chip (opens the Library entry), a **previous
+  clinic reply** chip (opens only that exemplar's Q/A — never the other patient's thread), one chip per
+  non-empty **patient-record** block («مراقبت پس از درمان بیمار», «خلاصه ویزیت اخیر»), a **conversation**
+  chip, and — when none grounded it — the honest caution chip «**دانش عمومی — بدون منبع کلینیکی**». No
+  prompt/eval change. As-built: [screens/qa-inbox.md](screens/qa-inbox.md). *Extends AES-411.*
+
+### AES-1904 — LLM escalation flag from `qa_draft` 〔Pro · Dr · registered — not built〕
+As a **doctor**, I want the model to also flag an urgent question the deterministic lexicon might miss,
+so that escalation catches novel phrasings.
+- **Scope (fast-follow of AES-1901):** surface an `escalate` flag from the `qa_draft` worker output as
+  a second, softer escalation signal layered over the deterministic lexicon (which stays the always-on
+  floor). **Eval-gated** (a new escalation expectation over the QD red-flag fixtures) — consult the
+  owner on the golden set before building. **Registered, not built.**
+
+---

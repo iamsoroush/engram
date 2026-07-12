@@ -44,7 +44,7 @@ enrichment at the budget — never capture ([business/ai-usage-limits.md](busine
 **Surfaces:**
 
 - **Staff app** — mobile-first, bilingual (fa/en) + RTL. Three primary screens: Active Session
-  (capture + live report workspace), Clinical Memory (Today / Patients / Needs input — plus Lists
+  (capture + live report workspace), Clinical Memory (Recent / Patients / Attention — plus Lists
   with smart lists and lot recall on Pro), and Search. Pro adds a Q&A inbox. Account pages: Settings,
   Profile, Team, Plan, Insights (owner/admin).
 - **Public patient surfaces** — separate token-link pages outside the staff shell, no login: the

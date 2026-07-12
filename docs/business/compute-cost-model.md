@@ -371,7 +371,7 @@ natural **tier** axis (e.g. "premium transcription") that also recovers its extr
   deterministic ($0).
 - **No double-counting.** Transcription rate **includes prompt overhead** and emits identity+intents in one
   call → matching/out-of-context are **$0 incremental**.
-- **AI gateway** (P3) is a thin OpenAI-compatible redirector (a sample runs at `194.5.193.5:8081/docs`);
+- **AI gateway** (P3) is a thin OpenAI-compatible redirector (a sample runs at `130.185.122.56:8080/docs`);
   it adds **no per-token cost**, only the fixed $25 server, and its provider-bound bandwidth is within the
   server's included allowance.
 - **Tokens ≈ chars ÷ 4**, sized from real prompts (`ai_engine/jobs/`) and input builders

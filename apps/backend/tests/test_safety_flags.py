@@ -5,12 +5,15 @@ from app.models import Patient, Session
 from app.services.patient_safety import (
     apply_safety_reconciliation,
     drop_session_safety_flags,
+    patient_flag_sourced_only_by_session,
     patient_safety_flags,
     patient_safety_flags_payload,
     safety_flag_key,
+    safety_loss_diff,
     session_detected_safety_flags,
     session_kept_safety_flags,
     sync_patient_safety_flags,
+    validate_safety_flags,
 )
 
 
@@ -153,6 +156,37 @@ class PatientSyncTests(unittest.TestCase):
         self.assertEqual([f["kind"] for f in scoped], ["allergy"])  # only the PRIOR visit's flag
 
 
+class SafetyFlagLabelTests(unittest.TestCase):
+    """AES-1801: the normalized short `label` rides through every serializer as passthrough; the stable
+    text-based `key` (which reconcile + rejection use) never depends on it."""
+
+    def test_detected_carries_label_and_defaults_none(self):
+        session = _session(
+            {
+                "safety_flags": [
+                    {"kind": "allergy", "label": " حساسیت به لیدوکائین ", "text": "بیمار به لیدوکائین حساسیت داره", "sourceCaptureIds": ["c1"]},
+                    _flag("consent", "رضایت‌نامه گرفته شد"),  # no label → None
+                ]
+            }
+        )
+        detected = session_detected_safety_flags(session)
+        self.assertEqual(detected[0]["label"], "حساسیت به لیدوکائین")  # trimmed passthrough
+        self.assertIsNone(detected[1]["label"])
+
+    def test_label_does_not_shift_the_stable_key(self):
+        # Reconcile/rejection key stability: two visits reword the label but state the same allergy.
+        a = _session({"safety_flags": [{"kind": "allergy", "label": "حساسیت به لیدوکائین", "text": "به لیدوکائین حساسیت داره"}]})
+        b = _session({"safety_flags": [{"kind": "allergy", "label": "آلرژی لیدوکائینی", "text": "به لیدوکائین حساسیت داره"}]})
+        self.assertEqual(session_detected_safety_flags(a)[0]["key"], session_detected_safety_flags(b)[0]["key"])
+
+    def test_label_persists_to_patient_and_payload(self):
+        patient = _patient(None)
+        session = _session({"safety_flags": [{"kind": "allergy", "label": "حساسیت به لیدوکائین", "text": "بیمار به لیدوکائین حساسیت داره"}]})
+        sync_patient_safety_flags(patient, session)
+        self.assertEqual(patient_safety_flags(patient)[0]["label"], "حساسیت به لیدوکائین")
+        self.assertEqual(patient_safety_flags_payload(patient)[0]["label"], "حساسیت به لیدوکائین")
+
+
 class ReconcileApplyTests(unittest.TestCase):
     def _patient_with(self, flags):
         p = _patient(flags)
@@ -179,6 +213,52 @@ class ReconcileApplyTests(unittest.TestCase):
         patient = self._patient_with([b])
         apply_safety_reconciliation(patient, {})  # no decisions → annotation cleared, flag re-surfaces
         self.assertEqual([f["text"] for f in patient_safety_flags_payload(patient)], ["y"])
+
+
+class SafetyLossDiffTests(unittest.TestCase):
+    """E17 finding 1 — the deterministic guard that names what a restore/undo would silently drop."""
+
+    def test_validate_arbitrary_flag_list(self):
+        # Works on a stored VERSION's artifacts, not just a session (bad kind / empty text dropped).
+        flags = validate_safety_flags([
+            _flag("allergy", "لیدوکائین", ["c1"]),
+            _flag("nope", "x"),
+            {"kind": "consent", "text": "  "},
+        ])
+        self.assertEqual([f["kind"] for f in flags], ["allergy"])
+        self.assertEqual(flags[0]["sourceCaptureIds"], ["c1"])
+
+    def test_diff_lists_flags_absent_from_the_surviving_set(self):
+        current = validate_safety_flags([_flag("allergy", "لیدوکائین"), _flag("consent", "رضایت")])
+        surviving = {safety_flag_key("consent", "رضایت")}  # target has consent only → allergy disappears
+        loss = safety_loss_diff(None, uuid.uuid4(), current, surviving)
+        self.assertEqual([f["kind"] for f in loss], ["allergy"])
+        self.assertEqual(loss[0]["text"], "لیدوکائین")  # clinical text verbatim
+        self.assertFalse(loss[0]["alsoRemovedFromPatient"])  # no patient supplied
+
+    def test_diff_empty_when_target_keeps_everything(self):
+        current = validate_safety_flags([_flag("allergy", "لیدوکائین")])
+        surviving = {safety_flag_key("allergy", "لیدوکائین")}
+        self.assertEqual(safety_loss_diff(None, uuid.uuid4(), current, surviving), [])
+
+    def test_patient_layer_only_source_is_removed_but_shared_source_stays(self):
+        # A flag whose ONLY patient source is THIS visit leaves the patient file; one another visit also
+        # records stays. Mirrors the design's «از پرونده بیمار نیز حذف می‌شود» vs "stays" split.
+        patient = _patient(None)
+        this_session = _session({"safety_flags": [_flag("allergy", "لیدوکائین"), _flag("consent", "رضایت")]})
+        other_session = _session({"safety_flags": [_flag("consent", "رضایت")]})  # also records consent
+        sync_patient_safety_flags(patient, this_session)
+        sync_patient_safety_flags(patient, other_session)
+        allergy_key = safety_flag_key("allergy", "لیدوکائین")
+        consent_key = safety_flag_key("consent", "رضایت")
+        # This visit's only source → removed from patient; the shared one → stays.
+        self.assertTrue(patient_flag_sourced_only_by_session(patient, this_session.id, allergy_key))
+        self.assertFalse(patient_flag_sourced_only_by_session(patient, this_session.id, consent_key))
+        # A restore dropping BOTH visit flags annotates each correctly.
+        current = session_kept_safety_flags(this_session)
+        loss = {f["key"]: f for f in safety_loss_diff(patient, this_session.id, current, set())}
+        self.assertTrue(loss[allergy_key]["alsoRemovedFromPatient"])
+        self.assertFalse(loss[consent_key]["alsoRemovedFromPatient"])
 
 
 if __name__ == "__main__":
