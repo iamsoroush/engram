@@ -295,4 +295,9 @@
 /* A red-flagged (urgent) question turns the badge to the danger tone — the glance says "not routine". */
 .app-qa-badge.tone-urgent {
   background: var(--color-danger, #d33);
+
+/* Grouped visit card: the visit time trailing the named target («Visit {name} · 14:30»). */
+.attention-card-time {
+  color: var(--color-text-soft, #667);
+  font-weight: 500;
 }

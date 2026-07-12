@@ -53,6 +53,7 @@ export function PatientStrip({
   safetyPanel,
   aiCreatedPanel,
   verifyRef,
+  expandSignal,
 }: {
   patientName: string;
   /** Whether a patient is assigned (vs. the soft-amber unassigned state). */
@@ -82,6 +83,9 @@ export function PatientStrip({
   aiCreatedPanel?: React.ReactNode;
   /** Ref on the verify surface inside the expansion (the "Review" scroll target). */
   verifyRef?: React.RefObject<HTMLDivElement | null>;
+  /** Bumped by the guided attention review to force the strip open (so the AI-created-patient verify
+   *  panel is in the DOM to scroll to / highlight). A changing value expands; 0/undefined does nothing. */
+  expandSignal?: number;
 }) {
   const t = useT();
   // Whether the current patient's history has been surfaced (shown expanded while the report has
@@ -97,6 +101,11 @@ export function PatientStrip({
     setSurfaced(false);
     setOverride(null);
   }, [assignmentSignal]);
+
+  // Guided attention review asks the strip to open (the verify panel must exist to scroll to).
+  React.useEffect(() => {
+    if (expandSignal) setOverride(true);
+  }, [expandSignal]);
 
   // Undoing back to the pre-capture glance clears the manual choice (returns to the default).
   const prevInProgress = React.useRef(inProgress);

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authPayload, installAppMocks, useEnglish } from "./_setup";
 
-// AES-1803 — the «بر اساس» draft provenance panel: a grounded draft names its sources (the strong
+// AES-1903 — the «بر اساس» draft provenance panel: a grounded draft names its sources (the strong
 // template chip + patient-record/conversation chips); an ungrounded draft shows the honest
 // general-knowledge caution chip, which is the state that deserves the hardest review.
 
@@ -72,7 +72,7 @@ test("a grounded draft names its sources: template + patient-record + conversati
   // Not the general-knowledge state.
   await expect(page.getByTestId("qa-provenance-general")).toHaveCount(0);
 
-  // The conversation chip carries its snippet — tapping it reveals the actual grounding text (AES-1803).
+  // The conversation chip carries its snippet — tapping it reveals the actual grounding text (AES-1903).
   await page.getByTestId("qa-provenance-conversation").click();
   await expect(panel).toContainText("پاسخ قبلی دکتر");
 });

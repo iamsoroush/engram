@@ -11,7 +11,7 @@ export interface QaAssignedDoctor {
   name: string;
 }
 
-/** One grounding source in the «بر اساس» provenance panel (AES-1803). */
+/** One grounding source in the «بر اساس» provenance panel (AES-1903). */
 export interface QaProvenanceSource {
   type: "template" | "sent_reply" | "patient_aftercare" | "patient_summary" | "conversation";
   exemplarId?: string;
@@ -24,7 +24,7 @@ export interface QaProvenanceSource {
 /**
  * Retrieval provenance for a suggested reply. The top exemplar keeps the strong "based on" attribution
  * (AES-410: `kind`/`exemplarId`/`label`); `sources` + `grounded` add the structured «بر اساس» panel
- * (AES-1803). `grounded: false` (empty `sources`) is the honest general-knowledge state.
+ * (AES-1903). `grounded: false` (empty `sources`) is the honest general-knowledge state.
  */
 export interface QaDraftProvenance {
   kind?: "template" | "sent_reply";
@@ -42,9 +42,9 @@ export interface QaPendingQuestion {
   draftStatus: "none" | "pending" | "ready" | "failed" | "failed_revise" | string;
   /** Draft origin: `ai:<model>` | `ai-voice:<mode>` | `mock-deterministic` (the starter fallback). */
   draftSource?: string | null;
-  /** The structured «بر اساس» provenance the draft was grounded on (AES-1803 extends AES-410). */
+  /** The structured «بر اساس» provenance the draft was grounded on (AES-1903 extends AES-410). */
   draftProvenance?: QaDraftProvenance | null;
-  /** The question tripped the red-flag lexicon at ingest (AES-1801). */
+  /** The question tripped the red-flag lexicon at ingest (AES-1901). */
   urgent?: boolean;
   /** Stable red-flag category keys (localized as `qa.redflag.<key>`). */
   urgentFlags?: string[];
@@ -65,7 +65,7 @@ export interface QaInboxItem {
   routingSource: string;
   treatingDoctorCount: number;
   needsApproval: boolean;
-  /** The thread's pending question tripped a red flag (AES-1801) — the row renders in the warning style. */
+  /** The thread's pending question tripped a red flag (AES-1901) — the row renders in the warning style. */
   urgent?: boolean;
   urgentFlags?: string[];
   pendingQuestion: QaPendingQuestion | null;
@@ -80,7 +80,7 @@ export interface QaInboxResponse {
   total: number;
 }
 
-/** Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801). */
+/** Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1901). */
 export interface QaInboxSummary {
   scope: "mine" | "all";
   pending: number;
@@ -283,7 +283,7 @@ export interface QaLibraryResponse {
   templates: LibraryItem[];
   sentReplies: LibraryItem[];
   counts: QaLibraryCounts;
-  /** False => hybrid semantic (embedding) matching is off; the Library shows one quiet notice (AES-1802). */
+  /** False => hybrid semantic (embedding) matching is off; the Library shows one quiet notice (AES-1902). */
   semanticSearch: boolean;
 }
 

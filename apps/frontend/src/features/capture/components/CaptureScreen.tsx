@@ -51,6 +51,7 @@ export function CaptureScreen({
   onAssignActiveToNext,
   onStartNextVisit,
   usageNotice = null,
+  reviewMode = false,
 }: {
   activeSession: CaptureSession | null;
   mode?: "active" | "historical";
@@ -87,6 +88,10 @@ export function CaptureScreen({
   onStartNextVisit?: () => void;
   /** Calm, non-blocking fair-use AI notice (approaching / limit reached). Informational only. */
   usageNotice?: React.ReactNode;
+  /** AES-1610 — arm the guided attention-review state (opened from a grouped Close-the-day card):
+   *  a compact progress banner walks the visit's pending confirmations in place (next/prev), using the
+   *  same per-source resolvers; it dismisses when all are resolved. */
+  reviewMode?: boolean;
 }) {
   const t = useT();
   // Seam consumption (frontend-refactor plan §3, increment 6): the session-mutation callbacks +
@@ -296,6 +301,57 @@ export function CaptureScreen({
       document.querySelector(".treatment-item.needs-confirm");
     target?.scrollIntoView({ behavior: "smooth", block: target?.classList?.contains("treatment-item") ? "center" : "start" });
   };
+
+  // --- Guided attention review (AES-1610) ---------------------------------------------------------
+  // Opened from a grouped Close-the-day card: a compact banner walks THIS visit's pending confirmations
+  // in the same DOM order the verify chip / scrollToVerify use — the conflict band, then the strip's
+  // AI-created-patient verify panel, then each inline carried-forward dose row. It adds orientation
+  // (scroll-to + highlight + next/prev + progress), never a new resolver; it dismisses once all resolve.
+  const reviewTargets = [
+    ...patientConflicts.map((conflict) => `conflict:${conflict.captureId}`),
+    ...(patientVerifyNeeded ? ["verify-patient"] : []),
+    ...openDoseConfirmations.map((item) => `dose:${item.key}`),
+  ];
+  const reviewCount = reviewTargets.length;
+  const reviewTargetKey = reviewTargets.join("|");
+  const [reviewIndex, setReviewIndex] = React.useState(0);
+  const [reviewDismissed, setReviewDismissed] = React.useState(false);
+  const [stripExpandSignal, setStripExpandSignal] = React.useState(0);
+  const reviewActive = reviewMode && !isHistorical && !reviewDismissed && reviewCount > 0;
+  const reviewSafeIndex = reviewCount ? Math.min(reviewIndex, reviewCount - 1) : 0;
+  const stepReview = (delta: number) => setReviewIndex((current) => (reviewCount ? (Math.min(current, reviewCount - 1) + delta + reviewCount) % reviewCount : 0));
+  // A fresh open (new session, or re-armed review) restarts at the first item, undismissed.
+  React.useEffect(() => {
+    setReviewDismissed(false);
+    setReviewIndex(0);
+  }, [activeSession?.id, reviewMode]);
+  // Scroll to + highlight the current confirmation. Re-runs when the item set shrinks (a resolve),
+  // so it auto-advances to what's still pending. verify-patient needs the strip open first — bump the
+  // strip's expand signal and let the re-run (stripExpandSignal dep) find the now-mounted panel.
+  React.useEffect(() => {
+    const clearFocus = () => document.querySelectorAll("[data-review-focus]").forEach((node) => node.removeAttribute("data-review-focus"));
+    if (!reviewActive) {
+      clearFocus();
+      return;
+    }
+    const targetId = reviewTargets[Math.min(reviewIndex, reviewCount - 1)];
+    if (!targetId) return;
+    const raf = window.requestAnimationFrame(() => {
+      const element =
+        targetId === "verify-patient"
+          ? document.querySelector(".patient-strip-verify")
+          : Array.from(document.querySelectorAll("[data-confirm-id]")).find((node) => node.getAttribute("data-confirm-id") === targetId) || null;
+      if (!element) {
+        if (targetId === "verify-patient") setStripExpandSignal((signal) => signal + 1);
+        return;
+      }
+      clearFocus();
+      element.setAttribute("data-review-focus", "true");
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewActive, reviewIndex, reviewTargetKey, stripExpandSignal]);
   // The Sources drawer opens by default while the report has no content yet (early capture, before
   // synthesis), so a fresh session never looks empty; once the report has body the drawer collapses.
   const reportHasContent = Boolean(
@@ -521,6 +577,7 @@ export function CaptureScreen({
               ) : null
             }
             verifyRef={verifyRegionRef}
+            expandSignal={stripExpandSignal}
           />
           {/* High-risk clinic: the full safety panel stays pinned above the report (never a chip). */}
           {safetyPinned ? (
@@ -539,6 +596,7 @@ export function CaptureScreen({
           {patientConflicts.length ? (
             <section className="session-conflict-band" aria-label={t("capture.patientNeedsConfirmation")}>
               {patientConflicts.map((conflict) => (
+                <div key={conflict.captureId} data-confirm-id={`conflict:${conflict.captureId}`}>
                 <PatientConflictResolver
                   key={conflict.captureId}
                   suggestion={conflict.suggestion as Exclude<typeof conflict.suggestion, null>}
@@ -549,6 +607,7 @@ export function CaptureScreen({
                   onChooseAnother={onOpenResolver}
                   onDismiss={() => setDismissedConflicts((current) => new Set(current).add(conflict.captureId))}
                 />
+                </div>
               ))}
             </section>
           ) : null}
@@ -883,6 +942,34 @@ export function CaptureScreen({
             : undefined
         }
       />
+      {/* Guided attention-review banner — a compact, non-blocking progress dock above the capture bar.
+          It orients ("N to confirm", position, next/prev) while the same per-source resolvers do the
+          resolving; it dismisses on demand and disappears the moment every item is confirmed. */}
+      {reviewActive ? (
+        <div className="attention-review-banner" role="status" aria-live="polite">
+          <div className="attention-review-banner-copy">
+            <strong>{t("capture.review.count", { count: reviewCount })}</strong>
+            {reviewCount > 1 ? (
+              <span className="attention-review-banner-position">{t("capture.review.position", { current: reviewSafeIndex + 1, total: reviewCount })}</span>
+            ) : null}
+          </div>
+          <div className="attention-review-banner-nav">
+            {reviewCount > 1 ? (
+              <>
+                <button type="button" className="attention-review-banner-step" onClick={() => stepReview(-1)} aria-label={t("capture.review.prevAria")}>
+                  {t("capture.review.prev")}
+                </button>
+                <button type="button" className="attention-review-banner-step" onClick={() => stepReview(1)} aria-label={t("capture.review.nextAria")}>
+                  {t("capture.review.next")}
+                </button>
+              </>
+            ) : null}
+            <button type="button" className="attention-review-banner-close" onClick={() => setReviewDismissed(true)} aria-label={t("capture.review.dismissAria")}>
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

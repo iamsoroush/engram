@@ -519,22 +519,25 @@ As **any clinician**, I want the top-bar bell and the Clinical-Memory "needs you
 the **same** number, so that "how much needs me?" never disagrees with itself. *(Refines AES-1003.)*
 - **Acceptance:** the hero chip is fed the same `attentionBadgeCount` (confirm + messages) the bell
   shows (App threads it down); **surface-by-exception** — the chip is hidden when the count is 0 (no
-  "All caught up" pill). When the Today "Needs your input" preview is empty **but** the sweep still has
-  open items (earlier days / messages), that section points to the sweep («See all N in Attention»)
-  instead of claiming "all caught up", so the chip, the bell, and the section can never contradict.
-  As-built: [screens/patients.md](screens/patients.md).
+  "All caught up" pill). So the chip, the bell, and the Attention tab can never contradict.
+  **Superseded in part by [AES-1607](#aes-1607--today-tab--recent-time-bucketed-both--all--modify)**: the
+  Recent restructure removed the standalone "Needs your input" preview section (and its
+  «See all N in Attention» pointer) — needs-input now lives inline on the time-bucket cards, so only the
+  hero chip + Attention tab carry the aggregate. As-built: [screens/patients.md](screens/patients.md).
 
 ### AES-1008 — Per-visit grouping in the Close-the-day sweep 〔Both · Dr/As · modify〕
 As a **doctor**, I want a visit with several open confirmations to appear as **one** grouped row
 («{patient} — N to confirm») rather than N sibling cards, so that a heavily-uncertain visit doesn't
 flood the sweep and bury the other items. *(Refines AES-1004.)*
 - **Acceptance:** within each sweep section (and the `Earlier, still open` group), confirm-tier (S2)
-  items sharing a `sessionId` collapse into one grouped row leading with the patient name (or
-  «This visit» when unassigned) + «N to confirm»; a lone confirmation and every non-confirm item stay
-  as their normal detailed rows, in order; the group's single action opens the visit — the same
-  per-source resolvers walk its confirmations in place (a **list-shape** change, not a new flow).
-  Section counts and the `N of M cleared` progress still count individual items. As-built:
-  [screens/patients.md](screens/patients.md).
+  items sharing a `sessionId` collapse into one grouped row + «N to confirm»; a lone confirmation and
+  every non-confirm item stay as their normal detailed rows, in order; the group's single action opens
+  the visit — the same per-source resolvers walk its confirmations in place (a **list-shape** change, not
+  a new flow). Section counts and the `N of M cleared` progress still count individual items.
+  **Refined by [AES-1609](#aes-1609--grouped-attention-card-names-its-target-both--dras--modify)** (the
+  row now names its target — `Visit {patient} · {time}`, never "This visit") **and
+  [AES-1610](#aes-1610--guided-attention-review-on-the-capture-screen-both--dras--new)** (opening it arms
+  the guided review state). As-built: [screens/patients.md](screens/patients.md).
 
 ---
 
@@ -734,6 +737,13 @@ As a **doctor**, I want the finder to also search capture/report *content*, so t
 by what was said, not just by patient/lot. **Deferred candidate** — backend global content search across
 captures / extracted findings / report prose is a larger later migration; find-only in v1.
 
+### AES-1207 — Finder date-words + date chips 〔Both · All · new · ⊕〕
+As a **clinician**, I want to reach an older day quickly from the finder — a date-word («دیروز» /
+"yesterday") or a simple date chip — so that the Recent tab's older-than-a-week quiet link lands me on
+the right day without scrolling a timeline. **Deferred** (registered alongside the Recent restructure,
+AES-1607, which points here): the finder currently searches patients / today's visits / Pro lot recall;
+date-scoped visit retrieval is a fast-follow.
+
 ---
 
 ## E15 — UI expert-review refinements: screens, router & controls (2026-07)
@@ -819,6 +829,48 @@ mid-bar with leftover space.
 - **Acceptance:** the `Engram` wordmark is anchored to the inline-start (far-left; far-right under RTL)
   **before** the nav cluster, with the avatar pinned to the inline-end and the single flexible gap
   between them — no mid-bar float. Phones keep the two-row restack (brand on top).
+
+*Owner-testing refinements (2026-07-12): AES-1607–1610 — Recent tab, scoped search, guided attention
+review. Decision log: [technical-decisions](../technical-decisions.md).*
+
+### AES-1607 — "Today" tab → "Recent", time-bucketed 〔Both · All · modify〕
+As a **clinician**, I want the landing tab to show recent activity across the last few days rather than
+only today, so that a visit I touched yesterday isn't invisible until I go hunting.
+- **Acceptance:** the `today` tab becomes **`recent`** — a recent-activity list bucketed by recency into
+  **Active visit / Today / Yesterday / This week**, newest first, **empty buckets omitted**; older than a
+  week is a **quiet link into Patients** (not a bucket). A card earns its place by being meaningful
+  activity (in progress, assigned, or an unresolved needs-input decision). The separate "Needs your input"
+  preview section is removed — a needs-input visit stays actionable **inline** (amber card + focused
+  action) in its bucket; the aggregate stays on the hero chip + Attention tab. **Refines AES-1007.**
+  As-built: [screens/patients.md](screens/patients.md#recent-tab).
+
+### AES-1608 — Search scoped to the Patients tab 〔Both · All · modify〕
+As a **clinician**, I want the Clinical-Memory header to stay calm and search to live where it acts, so
+that a permanent search bar isn't taxing every visit to the screen.
+- **Acceptance:** the always-visible header search bar is **removed** (app-wide retrieval is the top-bar
+  [finder](screens/finder.md)); the **Patients** tab gains a **lighter local roster filter** that filters
+  the loaded list live and **does not search content**. Recent + Attention rely on the finder. The old
+  in-tab deterministic/Persian-aware "smart match" block is dropped (that depth is the finder's). As-built:
+  [screens/patients.md](screens/patients.md#patients-tab).
+
+### AES-1609 — Grouped attention card names its target 〔Both · Dr/As · modify〕
+As a **doctor**, I want a grouped Close-the-day card to say *which* visit it is, so that I can orient
+before opening it instead of reading a bare "This visit".
+- **Acceptance:** a grouped `Confirm`-tier row leads with `Visit {patient} · {time}` (or
+  `Unassigned visit · {time}` when there is no patient) over an `N to confirm` subtitle — **never**
+  "This visit". The name is bidi-isolated content; the time is the shared 24h clock (Persian digits under
+  fa). *(Refines AES-1008.)* As-built: [screens/patients.md](screens/patients.md#attention-tab).
+
+### AES-1610 — Guided attention review on the capture screen 〔Both · Dr/As · new〕
+As a **doctor**, I want opening a grouped card to walk me through that visit's confirmations, so that I
+resolve them without hunting the screen — while the resolving stays exactly where the data is.
+- **Acceptance:** opening a **grouped** sweep card arms a **guided review state** on the capture screen:
+  a compact non-blocking **progress banner** above the capture bar (`N to confirm`, `{i} of {N}`,
+  Previous/Next, dismiss) that **scrolls to + highlights** the current confirmation in place, walking the
+  same per-source resolvers in DOM order (conflict band → AI-created-patient panel → each dose row) and
+  expanding the strip for the verify panel. It **dismisses when all resolve** (or on ✕); opening the visit
+  any other way does not arm it. **No new resolver, no changed confirm semantics.** *(Refines AES-1008.)*
+  As-built: [screens/capture.md](screens/capture.md#guided-attention-review).
 
 ---
 

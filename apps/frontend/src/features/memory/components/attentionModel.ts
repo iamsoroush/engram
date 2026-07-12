@@ -75,7 +75,7 @@ export function groupAttentionItems(items: AttentionItem[]): AttentionGrouping {
 // unchanged; this is a list-shape change so a heavily-uncertain visit doesn't flood the sweep.
 export type AttentionRowUnit =
   | { type: "single"; item: AttentionItem }
-  | { type: "group"; key: string; sessionId: string; patientName: string | null; items: AttentionItem[] };
+  | { type: "group"; key: string; sessionId: string; patientName: string | null; sortTime: string | null; items: AttentionItem[] };
 
 /**
  * Collapse a section's items so that a single visit with **multiple open confirmations** renders as
@@ -104,7 +104,9 @@ export function groupConfirmVisits(items: AttentionItem[]): AttentionRowUnit[] {
     emitted.add(sessionId);
     const groupItems = items.filter((candidate) => TIER_SECTION[candidate.tier] === "confirm" && candidate.sessionId === sessionId);
     const named = groupItems.find((candidate) => candidate.patientName);
-    units.push({ type: "group", key: `group:${sessionId}`, sessionId, patientName: named?.patientName ?? null, items: groupItems });
+    // All confirm items in a session share the visit's sortTime — take the first for the card's time.
+    const timed = groupItems.find((candidate) => candidate.sortTime);
+    units.push({ type: "group", key: `group:${sessionId}`, sessionId, patientName: named?.patientName ?? null, sortTime: timed?.sortTime ?? null, items: groupItems });
   }
   return units;
 }

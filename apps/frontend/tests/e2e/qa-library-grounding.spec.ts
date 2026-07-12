@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authPayload, installAppMocks, useEnglish } from "./_setup";
 
-// AES-1802 — the Library makes the QUESTION the primary, required field (the retrieval signal), and
+// AES-1902 — the Library makes the QUESTION the primary, required field (the retrieval signal), and
 // shows one quiet notice when semantic (embedding) matching is off so the degradation isn't silent.
 
 test("Library shows the semantic-off notice and requires the question field", async ({ page }) => {

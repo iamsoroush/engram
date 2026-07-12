@@ -12,7 +12,8 @@ export type PatientBadgeKind = "needs-input" | "complete" | "neutral";
 export type PatientBadge = { label: string; kind: PatientBadgeKind };
 
 // The Needs-input tab evolved into the severity-tiered "Attention" sweep (Close-the-day / AES-1004).
-export type ClinicalMemoryTab = "today" | "patients" | "lists" | "attention";
+// The old "Today" tab became "recent" — a time-bucketed recent-activity list (AES-1607).
+export type ClinicalMemoryTab = "recent" | "patients" | "lists" | "attention";
 export type PatientFilter = "recent" | "active" | "all";
 export type ClinicalTone = "blue" | "green" | "amber";
 
@@ -21,22 +22,36 @@ export type ClinicalMemoryReturnContext = {
   patientId?: string;
 };
 
-export type TodayCardModel = {
+// A card on the Recent tab. Beyond the presentational fields it carries a focused `action` (an
+// in-progress "continue", a needs-input decision, or none) so the tab wires the primary action
+// without re-deriving it. Needs-input visits stay actionable inline (amber + a focused action)
+// instead of a separate "Needs your input" section — the hero chip / Attention tab own the aggregate.
+export type RecentCardAction = "continue" | "assign-patient" | "choose-patient" | "resolve-conflict" | "verify" | "review-summary";
+
+export type RecentCardModel = {
   session: CaptureSession;
   statusLabel: string;
   title: string;
   summary: string;
   tone: ClinicalTone;
+  action: RecentCardAction | null;
+  actionLabel: string | null;
 };
 
-export type TodayModel = {
-  currentVisit?: TodayCardModel;
+// The Recent tab's time buckets, newest first; empty buckets are omitted by the builder.
+export type RecentBucketKey = "active" | "today" | "yesterday" | "week";
+
+export type RecentBucket = {
+  key: RecentBucketKey;
+  cards: RecentCardModel[];
+};
+
+export type RecentModel = {
   isOffline: boolean;
-  /** Up to 3 needs-input visits previewed inline on Today; the rest overflow to the Needs input tab. */
-  needsInputPreviews: TodayCardModel[];
-  needsInputSessions: CaptureSession[];
-  recentMemory: TodayCardModel[];
-  recentMemoryBadge: string;
+  /** Non-empty time buckets, in display order (active → today → yesterday → week). */
+  buckets: RecentBucket[];
+  /** Whether any recent visit is older than a week (drives the quiet "find it in Patients" link). */
+  hasOlder: boolean;
 };
 
 export type PatientRowModel = {
@@ -242,7 +257,11 @@ export function needsInputCardFromApi(row: ApiPatientMemoryRow, item: PatientNee
   };
 }
 
-export function buildTodayModel({
+// Per-bucket cap: a "recent activity" glance, not an exhaustive log. Older/overflowing visits live
+// in Patients + the finder (surfaced by the quiet older link). Today leads, so it gets more room.
+const RECENT_BUCKET_CAP: Record<Exclude<RecentBucketKey, "active">, number> = { today: 12, yesterday: 6, week: 6 };
+
+export function buildRecentModel({
   activeSession,
   resolvedDecisionIds,
   sessions,
@@ -254,55 +273,118 @@ export function buildTodayModel({
   sessions: CaptureSession[];
   syncHealth: SyncHealth;
   t: Translator;
-}): TodayModel {
+}): RecentModel {
   const isOffline = !syncHealth.online;
-  const todaySessions = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session))).filter(
-    sessionTouchedToday,
-  );
+  const all = uniqueSessions([activeSession, ...sessions].filter((session): session is CaptureSession => Boolean(session)));
+  // The single in-progress visit heads its own "Active visit" bucket: the live activeSession if it is
+  // in progress, else the most-recent in-progress visit in the list.
   const currentSession =
-    (activeSession && sessionTouchedToday(activeSession) ? activeSession : null) ||
-    todaySessions.find((session) => session.status === "current" || session.status === "draft" || session.status === "reopened");
-  const needsInputSessions = todaySessions.filter((session) => !resolvedDecisionIds.has(decisionIdForSession(session))).filter(needsHumanInput);
-  // Preview up to 3 needs-input visits inline (preferring ones other than the current visit); any
-  // beyond that overflow to the Needs input tab via the section's "see all" pill.
-  const preferredPreviews = needsInputSessions.filter((session) => session.id !== currentSession?.id);
-  const previewSessions = (preferredPreviews.length ? preferredPreviews : needsInputSessions).slice(0, 3);
-  const previewIds = new Set(previewSessions.map((session) => session.id));
-  const recentMemory = todaySessions
-    .filter((session) => session.id !== currentSession?.id)
-    .filter((session) => !previewIds.has(session.id))
-    .filter((session) => session.patientName || session.patientId)
-    .slice(0, 3)
-    .map((session) => ({
-      session,
-      statusLabel: updatedTodayStatus(session, isOffline, t),
-      title: sessionVisitTitle(session, t),
-      summary: updatedTodaySummary(session, t),
-      tone: "blue" as const,
-    }));
+    (activeSession && isActiveVisit(activeSession) ? activeSession : null) ||
+    [...all].sort((a, b) => latestSessionTime(b) - latestSessionTime(a)).find(isActiveVisit) ||
+    null;
 
-  return {
-    currentVisit: currentSession
-      ? {
-          session: currentSession,
-          statusLabel: isOffline ? t("memmodel.status.savedOnDevice") : t("memmodel.status.inProgress"),
-          title: sessionVisitTitle(currentSession, t),
-          summary: currentVisitSummary(currentSession, isOffline, t),
-          tone: currentSession.patientName || currentSession.patientId ? "green" : "amber",
-        }
-      : undefined,
-    isOffline,
-    needsInputPreviews: previewSessions.map((session) => ({
+  const resolved = (session: CaptureSession) => resolvedDecisionIds.has(decisionIdForSession(session));
+  // A visit earns a Recent card when it is meaningful activity: in progress, assigned to a patient, or
+  // carrying an unresolved needs-input decision. A patient-less, decision-less, inactive visit (an
+  // orphaned technical state) is not "recent activity" — it stays out of Recent (as it did out of Today).
+  const worthShowing = (session: CaptureSession) =>
+    isActiveVisit(session) || Boolean(session.patientName || session.patientId) || (!resolved(session) && Boolean(decisionActionForSession(session)));
+
+  const grouped: Record<Exclude<RecentBucketKey, "active">, CaptureSession[]> = { today: [], yesterday: [], week: [] };
+  let hasOlder = false;
+  for (const session of all) {
+    if (currentSession && session.id === currentSession.id) continue;
+    if (!worthShowing(session)) continue;
+    const bucket = recentBucketOf(latestSessionTime(session));
+    if (bucket === "older") {
+      hasOlder = true;
+      continue;
+    }
+    if (bucket === "future") continue;
+    grouped[bucket].push(session);
+  }
+  const buckets: RecentBucket[] = [];
+  if (currentSession) {
+    buckets.push({ key: "active", cards: [recentCard(currentSession, { isOffline, resolved: resolved(currentSession) }, t)] });
+  }
+  (["today", "yesterday", "week"] as const).forEach((key) => {
+    const cards = grouped[key]
+      .sort((a, b) => latestSessionTime(b) - latestSessionTime(a))
+      .slice(0, RECENT_BUCKET_CAP[key])
+      .map((session) => recentCard(session, { isOffline, resolved: resolved(session) }, t));
+    if (cards.length) buckets.push({ key, cards });
+  });
+
+  return { isOffline, buckets, hasOlder };
+}
+
+/** Build one Recent card: an amber needs-input decision, an in-progress "continue", or a settled
+ * recent-memory card — reusing the same title/summary/status helpers the tab has always used. */
+export function recentCard(session: CaptureSession, { isOffline, resolved }: { isOffline: boolean; resolved: boolean }, t: Translator): RecentCardModel {
+  const decision = resolved ? null : decisionActionForSession(session);
+  if (decision) {
+    return {
       session,
       statusLabel: t("memmodel.status.needsYourInput"),
       title: needsInputTitle(session, t),
       summary: needsInputSummary(session, t),
-      tone: "amber" as const,
-    })),
-    needsInputSessions,
-    recentMemory,
-    recentMemoryBadge: isOffline ? t("memmodel.badge.savedOnDevice", { n: recentMemory.length }) : t("memmodel.badge.updatedToday", { n: recentMemory.length }),
+      tone: "amber",
+      action: decision,
+      actionLabel: labelForDecisionAction(decision, t),
+    };
+  }
+  if (isActiveVisit(session)) {
+    const assigned = Boolean(session.patientName || session.patientId);
+    return {
+      session,
+      statusLabel: isOffline ? t("memmodel.status.savedOnDevice") : t("memmodel.status.inProgress"),
+      title: sessionVisitTitle(session, t),
+      summary: currentVisitSummary(session, isOffline, t),
+      tone: assigned ? "green" : "amber",
+      action: assigned ? "continue" : "assign-patient",
+      actionLabel: assigned ? t("memmodel.action.continueVisit") : t("memmodel.action.assignPatient"),
+    };
+  }
+  return {
+    session,
+    statusLabel: recentSettledStatus(session, isOffline, t),
+    title: sessionVisitTitle(session, t),
+    summary: recentSettledSummary(session, t),
+    tone: "blue",
+    action: null,
+    actionLabel: null,
   };
+}
+
+/** Summary line for a settled recent card: today keeps its "attached today" copy; older buckets use
+ * the bucket-agnostic natural/capture summary (so a yesterday card never claims "…today"). */
+export function recentSettledSummary(session: CaptureSession, t: Translator): string {
+  if (isToday(new Date(latestSessionTime(session)).toISOString())) return updatedTodaySummary(session, t);
+  return naturalSessionSummary(session, t) || t("memmodel.summary.savedInMemory");
+}
+
+/** Status badge for a settled recent card: offline note → today's "updated" language → a calm
+ * "Saved" for older-than-today buckets (where "Updated today" would be wrong). */
+export function recentSettledStatus(session: CaptureSession, isOffline: boolean, t: Translator): string {
+  if (isOffline) return t("memmodel.status.savedOnDevice");
+  if (isToday(new Date(latestSessionTime(session)).toISOString())) return updatedTodayStatus(session, isOffline, t);
+  return t("memmodel.status.saved");
+}
+
+/** Which Recent-tab time bucket a recency timestamp falls into (calendar-day based). */
+export function recentBucketOf(timestamp: number): "today" | "yesterday" | "week" | "older" | "future" {
+  if (!timestamp) return "older";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "older";
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const ageDays = Math.round((startOfToday - dayStart) / 86400000);
+  if (ageDays < 0) return "future";
+  if (ageDays === 0) return "today";
+  if (ageDays === 1) return "yesterday";
+  if (ageDays < 7) return "week";
+  return "older";
 }
 
 export function buildPatientRows({

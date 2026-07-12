@@ -212,6 +212,24 @@ the patient is removed or reassigned.
   place (or is auto-satisfied by a dose edit — see the treatment overlay); coded uncertainties render
   as calm notes beneath the treatments list (actionable — fix-at-source / open-source — where coded).
 
+### Guided attention review
+
+Opening a visit from a **grouped** [Close-the-day sweep](patients.md#attention-tab) card (a visit with
+≥2 open confirmations) arms a **guided review state** on this workspace. It is **orientation, not a new
+flow** — it reuses the exact per-source resolvers above (conflict band → AI-created-patient panel → each
+inline carried-forward dose row, in that DOM order, the same order the `⚠ Review` chip walks):
+
+- A compact, non-blocking **progress banner** floats above the capture bar: an `N to confirm` count, an
+  `{i} of {N}` position, **Previous / Next**, and a dismiss (✕).
+- The **current** confirmation is scrolled to and **highlighted in place** (a calm amber ring). Next /
+  Previous move through the confirmations, expanding the patient strip when the target is the
+  AI-created-patient verify panel.
+- The banner **disappears the moment every item is resolved** (or on dismiss) — leaving with items open
+  is fine (`warnings over blocking`). Opening the same visit any other way does **not** arm review.
+
+It adds no new resolver and changes no confirm semantics; the counted-blocker/reachable-resolver
+invariant is unchanged.
+
 ### Safety panel
 
 The synthesis detects clinical **safety flags** from the captures — allergy / contraindication /

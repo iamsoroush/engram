@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { authPayload, installAppMocks, useEnglish } from "./_setup";
 
-// AES-1801 — the Q&A badge (a deliberate partial-revert of the E16 merge), the urgent toast on a
+// AES-1901 — the Q&A badge (a deliberate partial-revert of the E16 merge), the urgent toast on a
 // newly-arrived red-flag question, and the urgent warning styling on the inbox row.
 
 // The catch-all in installAppMocks is registered LAST and Playwright checks routes newest-first, so

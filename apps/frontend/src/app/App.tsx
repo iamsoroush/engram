@@ -167,6 +167,9 @@ function AppInner() {
   const seenUrgentThreadsRef = React.useRef<Set<string> | null>(null);
   // The unified finder overlay (AES-1201..1205): app-wide, floats over the current screen.
   const [finderOpen, setFinderOpen] = React.useState(false);
+  // AES-1610 — the session whose capture screen should arm the guided attention-review state (opened
+  // from a grouped Close-the-day card). Cleared once the active session moves off it (effect below).
+  const [reviewSessionId, setReviewSessionId] = React.useState<string | null>(null);
   const [textOpen, setTextOpen] = React.useState(false);
   const [textSeed, setTextSeed] = React.useState("");
   const [photoOpen, setPhotoOpen] = React.useState(false);
@@ -715,6 +718,12 @@ function AppInner() {
   const { syncHealth, offline } = sync;
   const activeSessionOrdinal = computeSessionOrdinal(activeSession, sessions);
 
+  // Disarm the guided review once the active session moves off the one it was armed for (navigating
+  // away, starting a new visit, or opening another session) — so it never re-arms on a later plain open.
+  React.useEffect(() => {
+    if (reviewSessionId && activeSession?.id !== reviewSessionId) setReviewSessionId(null);
+  }, [activeSession?.id, reviewSessionId]);
+
   // A historical visit review (opened over Clinical Memory) gets its own history entry so Back
   // returns to the memory list instead of exiting the area (item: in-screen history levels).
   useBackLevel(screen !== "active-session" && Boolean(selectedSession), () => setSelectedSessionId(""));
@@ -767,8 +776,10 @@ function AppInner() {
   // sees the latest navigation callback (a fresh object here is correct — freshness is the point).
   useRegisterSyncBridge(syncBridge);
 
-  const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext) => {
+  const openMemorySession = (sessionId: string, returnContext?: ClinicalMemoryReturnContext, opts?: { review?: boolean }) => {
     setClinicalMemoryReturnContext(returnContext || null);
+    // Arm (or clear) the guided attention-review state for this open (a grouped sweep card sets it).
+    setReviewSessionId(opts?.review ? sessionId : null);
     const session = sessions.find((candidate) => candidate.id === sessionId);
     navigateScreen("active-session");
     if (session) {
@@ -843,14 +854,14 @@ function AppInner() {
   };
 
   const clinicalMemoryBackLabel = clinicalMemoryReturnContext?.patientId
-    ? "Patient history"
-    : clinicalMemoryReturnContext?.tab === "today"
-      ? "Today"
+    ? appT("capture.backToPatientHistory")
+    : clinicalMemoryReturnContext?.tab === "recent"
+      ? appT("patients.tab.recent")
       : clinicalMemoryReturnContext?.tab === "attention"
-        ? "Attention"
+        ? appT("patients.tab.attention")
         : clinicalMemoryReturnContext?.tab === "patients"
-          ? "Patients"
-          : "Clinical Memory";
+          ? appT("patients.tab.patients")
+          : appT("capture.backToMemory");
 
   // The top-bar Attention indicator opens the Close-the-day sweep — the Attention tab of Clinical
   // Memory. Setting the return context to that tab makes PatientsHome land on (and switch to) it.
@@ -996,6 +1007,7 @@ function AppInner() {
           onAssignActiveToNext={assignActiveVisitToNext}
           onStartNextVisit={startNextLinedUpVisit}
           usageNotice={<AiUsageNotice state={aiUsage} />}
+          reviewMode={Boolean(activeSession && reviewSessionId === activeSession.id)}
         />
       );
     }

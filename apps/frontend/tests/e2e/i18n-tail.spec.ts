@@ -48,13 +48,13 @@ test.describe("S6 FINAL — no English chrome under fa across the authed aesthet
     expect(await englishChromeOnScreen(page)).toEqual([]);
   });
 
-  test("fa: Clinical Memory (today/patients/needs-input) has no English chrome", async ({ page }) => {
+  test("fa: Clinical Memory (recent/patients/attention) has no English chrome", async ({ page }) => {
     await faLogin(page);
     await page.locator(".app-navigator button").nth(1).click();
     await page.getByRole("heading", { name: /حافظهٔ بالینی/ }).first().waitFor();
     expect(await englishChromeOnScreen(page)).toEqual([]);
     // walk the tabs
-    for (const tab of ["بیماران", "توجه لازم", "امروز"]) {
+    for (const tab of ["بیماران", "توجه لازم", "اخیر"]) {
       await page.getByText(tab, { exact: true }).first().click().catch(() => {});
       expect(await englishChromeOnScreen(page)).toEqual([]);
     }
