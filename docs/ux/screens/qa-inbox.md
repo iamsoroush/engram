@@ -25,6 +25,10 @@ only drafts.
 - **One control language**: `Inbox|Library` and `Mine|Clinic` are the shared **segmented control**
   (`Tabs`); the Routing control is the shared **select trigger** (`SelectMenu`) — the same two
   primitives, matched in height, that [Insights](insights.md) uses.
+- **Header grammar** (AES-1804): one arrangement, everything inline-start — a **title row** carrying the
+  `Inbox|Library` view switch (grouped after the title, never pinned to the opposite edge), and a
+  **single filter row** below grouping `Mine|Clinic` + the Routing select with shared spacing (it wraps
+  gracefully at the narrowest phone width, mirroring the Insights control row).
 - Each card: patient name; a routing badge (`Treating` / `Rerouted` / `Unrouted` + doctor name);
   the pending question (or a one-line preview when resolved); and an expandable full conversation
   with **visit markers interleaved** chronologically (chat-style bubbles).

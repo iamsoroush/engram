@@ -1,10 +1,10 @@
 // Capture badge/attribution cluster for the capture flow.
 // Extracted verbatim from CaptureScreen.tsx (no behavior change).
 import React from "react";
+import { createPortal } from "react-dom";
 import type { PatientAssignmentDraft } from "../../../domain/appTypes";
 import type { CaptureItem, CaptureSession } from "../../../domain/types";
 import { metadataDisplay, metadataRecord } from "../metadata";
-import { Card } from "../../../shared/ui/primitives";
 import { PatientForm } from "../../patient/PatientForm";
 import { suggestionNameFromInformation, suggestionNationalId, captureNotSynced, aiCreatedPatientNeedsVerification, AssignmentCandidate } from "../captureModel";
 import { SyncIcon } from "./CaptureIcons";
@@ -311,6 +311,11 @@ export function CaptureAssignmentBadge({ info }: { info: CaptureAssignmentInfo |
   );
 }
 
+/**
+ * AI-created-patient verification (AES-1802): a compact "Verify details" trigger in the strip's verify
+ * region that opens a proper bottom-sheet form (portaled to <body>), instead of the old inline form that
+ * overflowed the sticky strip and trapped scroll on a phone.
+ */
 export function AiCreatedPatientPanel({
   action,
   session,
@@ -329,6 +334,23 @@ export function AiCreatedPatientPanel({
   const patientInfo = metadataRecord(action.patientInformation);
   const patientId = metadataDisplay(action.patientId || session.patientId);
   const [saving, setSaving] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+  // The verify form is a real bottom-sheet modal — it used to render inline inside the sticky patient
+  // strip, where on a phone the full form overflowed the viewport and trapped scroll. While the sheet
+  // is open, lock the page scroll underneath and wire Esc-to-close.
+  React.useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
   // Same predicate the verify-bar count uses (aiCreatedPatientNeedsVerification), so a counted blocker
   // always has this reachable resolver and an un-counted action never renders an empty panel.
   if (!aiCreatedPatientNeedsVerification(action, session)) return null;
@@ -341,27 +363,57 @@ export function AiCreatedPatientPanel({
     sex: metadataDisplay(patientInfo.sex),
     notes: "",
   };
+  const submit = (values: { displayName: string; nationalId?: string; phone?: string; dateOfBirth?: string; sex?: string; notes?: string }) => {
+    setSaving(true);
+    void onComplete(
+      session.id,
+      patientId,
+      { displayName: values.displayName, nationalId: values.nationalId, phone: values.phone, dateOfBirth: values.dateOfBirth, sex: values.sex, notes: values.notes },
+      action,
+    )
+      .then(() => setOpen(false))
+      .finally(() => setSaving(false));
+  };
+
+  const sheet = open ? (
+    <div className="ai-patient-sheet-scrim" role="presentation" onClick={() => setOpen(false)}>
+      <section
+        aria-labelledby="ai-patient-sheet-title"
+        aria-modal="true"
+        className="ai-patient-sheet"
+        role="dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="ai-patient-sheet-handle" aria-hidden="true" />
+        <div className="ai-patient-sheet-header">
+          <h2 id="ai-patient-sheet-title">{t("badge.aiCreatedPatient")}</h2>
+          <button type="button" className="ai-patient-sheet-close" aria-label={t("assign.closeAssignment")} onClick={() => setOpen(false)}>
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <p className="ai-patient-sheet-body">{t("badge.aiCreatedPatientBody")}</p>
+        <PatientForm busy={saving} initial={initial} onSubmit={submit} submitLabel={t("badge.saveAndVerifyPatient")} />
+      </section>
+    </div>
+  ) : null;
+
   return (
-    <Card className="ai-patient-review-card">
-      <div className="ai-patient-review-copy">
-        <strong>{t("badge.aiCreatedPatient")}</strong>
-        <p>{t("badge.aiCreatedPatientBody")}</p>
-      </div>
-      <PatientForm
-        busy={saving}
-        initial={initial}
-        onSubmit={(values) => {
-          setSaving(true);
-          void onComplete(
-            session.id,
-            patientId,
-            { displayName: values.displayName, nationalId: values.nationalId, phone: values.phone, dateOfBirth: values.dateOfBirth, sex: values.sex, notes: values.notes },
-            action,
-          ).finally(() => setSaving(false));
-        }}
-        submitLabel={t("badge.saveAndVerifyPatient")}
-      />
-    </Card>
+    <>
+      {/* Compact inline trigger in the strip's verify region — never the full form inline (it overflowed
+          the sticky strip on a phone). Tapping it opens the verification bottom sheet. */}
+      <button type="button" className="ai-patient-review-trigger" onClick={() => setOpen(true)}>
+        <span className="ai-patient-review-copy">
+          <strong>{t("badge.aiCreatedPatient")}</strong>
+          <span>{t("badge.aiCreatedPatientBody")}</span>
+        </span>
+        <span className="ai-patient-review-cta" aria-hidden="true">
+          {t("badge.verifyDetails")}
+        </span>
+      </button>
+      {/* Portal the sheet to <body> so it escapes the sticky patient strip's stacking context (z-index)
+          — otherwise the fixed scrim renders BELOW the capture bar, the exact trap this fix removes. */}
+      {sheet ? (typeof document === "undefined" ? sheet : createPortal(sheet, document.body)) : null}
+    </>
   );
 }
 

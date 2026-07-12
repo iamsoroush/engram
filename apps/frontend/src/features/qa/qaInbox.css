@@ -20,11 +20,13 @@
   gap: 12px;
 }
 
+/* One header grammar (AES-1804): the title + the Inbox | Library view switch group at the inline-start
+   (no control pinned to the opposite edge), and the filter row below aligns to the same start with the
+   same spacing. */
 .qa-inbox-head-top {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -33,12 +35,12 @@
   font-size: var(--text-xl);
 }
 
-/* Inbox | Library and Mine | Clinic both use the shared segmented control (.tabs) — one control
-   language (#4). The routing dropdown uses the shared SelectMenu (.select-menu-trigger). */
+/* The single filter row: Mine | Clinic (shared segmented control, #4) + the Routing SelectMenu,
+   inline-start aligned with the same spacing as the title row — never split to opposite edges. */
 .qa-inbox-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex-wrap: wrap;
 }
 

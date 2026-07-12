@@ -554,6 +554,27 @@ export function CaptureScreen({
           ) : null}
         </>
       ) : null}
+      {/* Fresh visit (no local session yet, zero captures): the same patient strip so identity + Assign
+          are reachable from visit creation (AES-1801) — assignment stays optional and capture-first is untouched.
+          Tapping Assign lazily creates the local session and opens the assignment sheet; once the session
+          exists the full strip above takes over. All AI/context/safety panels are absent (nothing to show). */}
+      {!isHistorical && !activeSession ? (
+        <PatientStrip
+          patientName={patientName}
+          assigned={false}
+          assignmentStateLabel={assignmentStateLabel}
+          visitOrdinalLabel={null}
+          onAssignOrChange={onCloseAssignment}
+          verifyCount={0}
+          onReview={scrollToVerify}
+          safetyChipCount={0}
+          hasCaptures={false}
+          reportHasContent={false}
+          hasHistory={false}
+          assignmentSignal={assignmentSignal}
+          isHistorical={false}
+        />
+      ) : null}
       {/* Historical review keeps the flat patient card (no strip diet — it's read-only visit review). */}
       {isHistorical ? (
         <Card className={`patient-context-card${activeSession?.patientId || activeSession?.patientName ? " assigned" : " unassigned"}`}>
