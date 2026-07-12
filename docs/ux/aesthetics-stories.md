@@ -867,6 +867,54 @@ the common case stays instant while the timeline is its richer, multi-step face.
   GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
   fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
 
+---
+
+## E18 — Owner-testing capture & Q&A refinements (2026-07)
+*Four small fixes from owner device-testing on the capture screen and Q&A inbox — refinements to the
+built patient strip (E13), the one-control-language pass (AES-1502), and the source-preview sheet.
+Surfaces: [screens/capture.md](screens/capture.md), [screens/qa-inbox.md](screens/qa-inbox.md).*
+
+### AES-1801 — Assign a patient on a brand-new visit 〔Both · Dr/As · modify〕
+As a **doctor**, on a fresh visit with **no captures yet**, I want the patient strip's **Assign** available
+from the moment the visit is created, so that I can file a walk-in to a patient up front — without being
+forced to capture first.
+- **Acceptance:** the E13 patient strip now renders on a **zero-capture** active visit (previously it
+  appeared only once a local session existed, so a brand-new visit offered no manual Assign). Pre-capture
+  it is the expanded glance state showing `Unassigned` + a prominent **Assign**; tapping it **lazily
+  creates the local session** and opens the assignment sheet (the same assignment choke point). Assignment
+  stays **optional** — capture-first is untouched (the capture bar still starts the visit without a
+  patient). As-built: [screens/capture.md](screens/capture.md) "Patient assignment". *Refines AES-1301/AES-1302.*
+
+### AES-1802 — AI-created-patient verification is a bottom sheet 〔Pro · Dr · modify〕
+As a **doctor** on a phone, I want the **"AI created this patient from audio"** verify form to open as a
+**bottom sheet** instead of expanding inline inside the sticky strip, so that it doesn't overlay the whole
+viewport and trap scrolling.
+- **Acceptance:** the AI-created-patient verify panel is a **compact trigger** in the strip's verify region
+  (`AI created this patient from audio · Verify details`) that opens a proper **bottom sheet** — max-height
+  ~85vh, internal scroll, dismissible (scrim tap / × / Esc), page scroll locked underneath — **portaled to
+  `<body>`** so the fixed sheet escapes the sticky strip's stacking context (otherwise it renders below the
+  capture bar). The blocker is still counted by the `⚠ N to confirm` chip and reachable from it. As-built:
+  [screens/capture.md](screens/capture.md). *Refines AES-1303.*
+
+### AES-1803 — Source preview hides the raw file name 〔Pro · Dr/As · modify〕
+As a **doctor**, when I open a capture's source preview, I don't want to see the raw storage **file name**,
+so that the sheet shows only meaningful facts, not plumbing.
+- **Acceptance:** the source-preview detail sheet drops the **File name** metadata row (keeps type, the
+  `Captured` time, `Status`, and audio `Duration`); the note preview drops its `File: …` line (keeps the
+  time). File names are never surfaced as content. As-built: [screens/capture.md](screens/capture.md)
+  "Capture cards".
+
+### AES-1804 — Q&A inbox header grammar 〔Pro · Dr/As · modify〕
+As a **doctor**, I want the Q&A inbox header to read as one coherent arrangement, so that its controls
+don't sit on opposite edges or in inconsistent rows.
+- **Acceptance:** one grammar — a **title row** carrying the `Inbox | Library` view switch grouped at the
+  inline-start (no control pinned to the opposite edge), and a **single filter row** below grouping
+  `Mine | Clinic` + the Routing select, inline-start aligned with shared spacing (it wraps gracefully at
+  the narrowest phone width, mirroring the Insights control row). Bilingual (fa/en) + RTL verified.
+  As-built: [screens/qa-inbox.md](screens/qa-inbox.md). *Refines AES-1502.*
+
+---
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

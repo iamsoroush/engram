@@ -80,13 +80,18 @@ up — an honest upsell signal, not a relearned interaction model.
   attention state (never an error) that keeps `Assign` prominent even collapsed. Actions live in the
   strip's expansion: `Assign`/`Change` (opens the assignment bottom sheet with suggested matches,
   search, and inline patient creation) and `History` (patient timeline). (Historical review keeps a
-  flat patient card instead of the strip — no pending actions to diet away.)
+  flat patient card instead of the strip — no pending actions to diet away.) The strip renders **from
+  visit creation** — a brand-new visit with **zero captures** still shows it (expanded, `Unassigned ·
+  Assign`), so a walk-in can be filed up front; tapping Assign **lazily creates the local session** and
+  opens the sheet. Assignment stays optional — capture-first is untouched (AES-1801).
 - If audio transcription extracts a patient identity, a **deterministic** existing match assigns
   the visit with AI provenance; if nothing matches and the identity is usable, the backend creates
   and assigns an AI-origin patient. Assignment is stored as a timeline: the latest valid action
   wins, deleted-capture actions are skipped, and later manual assignment blocks older AI actions.
-- An **AI-created patient** shows an inline completion/verification panel (name, national ID,
-  phone, date of birth) in the verify region — staff never leave the session to verify it.
+- An **AI-created patient** surfaces a compact **Verify details** prompt in the verify region that opens
+  a **bottom-sheet** completion/verification form (name, national ID, phone, date of birth) — staff never
+  leave the session to verify it, and on a phone the form never overlays the workspace or traps scroll
+  (max-height ~85vh, internal scroll, dismissible, body scroll locked; AES-1802).
 - A "next lined-up patient" hint offers `Assign this visit` / `Start their visit` when the session
   is unassigned and a patient is waiting.
 
@@ -154,7 +159,7 @@ diet** (nine stacked zones → strip → report). Two states:
   strip; the chevron toggles it. It stays **sticky** while scrolling a long report, so identity +
   safety + count are always visible.
 - **Expanded:** patient actions (`Assign`/`Change`, `History`) · the full safety panel · the session
-  context digest · the AI-created-patient verify panel.
+  context digest · the AI-created-patient **verify trigger** (opens the verification bottom sheet).
 
 **Auto-collapse state machine:** pre-capture the strip is **expanded** (a glance aid before you
 capture); once the **report has content** it **collapses** to one line; **undoing every capture**
@@ -197,11 +202,12 @@ the patient is removed or reassigned.
   (that have a rendered row), AI-created-patient identity, and patient conflicts. Soft warnings never
   feed it ("warnings over blocking"); it hides once the report settles clean. **Every counted blocker
   has a reachable resolver** (a tested invariant): tapping the chip expands the strip and scrolls to
-  the topmost — the conflict band, the AI-created-patient panel in the strip, or the inline dose row.
+  the topmost — the conflict band, the AI-created-patient verify trigger in the strip, or the inline dose row.
 - **Patient conflicts** render in a **thin, always-visible band** above the report (the
   `PatientConflictResolver`), resolvable in place — a name-correction / unassign applies in one tap,
   or Keep-match / Create-new / Choose-another / Assign-manually. The **AI-created-patient** verify
-  panel lives in the strip expansion. Everything else confirms **inline where the data is**: a
+  trigger lives in the strip expansion and opens the verification **bottom sheet**. Everything else
+  confirms **inline where the data is**: a
   carried-forward dose shows `Confirm dose` on its treatment row and flips to `✓ Dose confirmed` in
   place (or is auto-satisfied by a dose edit — see the treatment overlay); coded uncertainties render
   as calm notes beneath the treatments list (actionable — fix-at-source / open-source — where coded).
@@ -317,8 +323,9 @@ Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 - The active assignment-source capture shows `Patient assigned` / `Patient created` badges; older
   AI source captures lose the badge when a later action supersedes them.
 - Per-capture overflow: rename, delete (the de-effecting removal above).
-- Tapping a capture opens a source preview sheet: media preview, metadata, editable
-  transcript/caption with edit attribution, and a copy control.
+- Tapping a capture opens a source preview sheet: media preview, metadata (type, captured time,
+  status, and audio duration — **no raw file name**, which is storage plumbing, not content; AES-1803),
+  editable transcript/caption with edit attribution, and a copy control.
 
 ## States
 
@@ -337,7 +344,7 @@ Shared rules: [states](../states.md).
 
 - `Shell`, `CaptureActions`, `CaptureScreen` (composes region components from `CaptureRegions`)
 - `PatientStrip` (absorbs identity + context + verify chip + safety chip; the auto-collapse machine)
-- `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (in the strip)
+- `PatientConflictResolver` (thin conflict band + Sources-drawer chip), `AiCreatedPatientPanel` (compact verify trigger in the strip → verification bottom sheet)
 - `SessionContextCard` (+ `LineupCard`), `SessionSafetyPanel`, `NextLinedUpBar`
 - `LiveReportView` + `TreatmentsList` (+ `TreatmentRow` / per-field overlay editor), the `sources-drawer`, `ReportFeedbackBar` (Pro primary)
 - `LiveDraftReport` (the captures feed — Basic primary / Pro `sources-drawer` body), `BasicLiveReport` (the Basic `View as document` panel)

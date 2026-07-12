@@ -118,7 +118,6 @@ export function SourcePreviewDialog({
 }) {
   const t = useT();
   const [cachedUrl, setCachedUrl] = React.useState("");
-  const [cacheSourceName, setCacheSourceName] = React.useState("");
   const [noteText, setNoteText] = React.useState("");
   const [resolvedUrl, setResolvedUrl] = React.useState("");
   const [previewError, setPreviewError] = React.useState("");
@@ -128,7 +127,6 @@ export function SourcePreviewDialog({
   React.useEffect(() => {
     let revoked = false;
     setCachedUrl("");
-    setCacheSourceName("");
     setNoteText("");
     setResolvedUrl("");
     setPreviewError("");
@@ -139,7 +137,6 @@ export function SourcePreviewDialog({
         if (!cached || revoked) return;
         const url = URL.createObjectURL(cached.blob);
         setCachedUrl(url);
-        setCacheSourceName(cached.sourceName);
         if (item.type === "note") void cached.blob.text().then((text) => !revoked && setNoteText(text));
       })
       .catch(() => undefined);
@@ -200,7 +197,6 @@ export function SourcePreviewDialog({
   const isAudio = item.type === "audio" || item.type === "voice";
   const directSourceUrl = item.sourceUrl?.startsWith("/api/v1/") ? "" : item.sourceUrl;
   const sourceUrl = cachedUrl || resolvedUrl || directSourceUrl || item.url;
-  const sourceName = cacheSourceName || item.sourceName;
   const metadata = metadataRecord(item.metadata);
   const generated = generatedMetadataFor(item);
   const generatedText = metadataText(generated.text);
@@ -216,7 +212,6 @@ export function SourcePreviewDialog({
         item={item}
         noteText={noteText}
         onClose={onClose}
-        sourceName={sourceName}
         sourceUrl={sourceUrl || ""}
         thumbnail={thumbnail}
         onUpdateCaption={onUpdateCaption}
@@ -239,7 +234,7 @@ export function SourcePreviewDialog({
         {isPro ? (
           <div className="source-info-panel">
             <div className="source-info-header">
-              <small>{item.time} · {t("source.fileLabel")} {sourceName}</small>
+              <small>{item.time}</small>
               <StatusBadge status={item.status} />
             </div>
             <CaptureMetadataSummary item={item} />
@@ -264,7 +259,6 @@ function CaptureDetailSheet({
   item,
   noteText,
   onClose,
-  sourceName,
   sourceUrl,
   thumbnail,
   onUpdateCaption,
@@ -277,7 +271,6 @@ function CaptureDetailSheet({
   item: CaptureItem;
   noteText: string;
   onClose: () => void;
-  sourceName: string;
   sourceUrl: string;
   thumbnail: string;
   onUpdateCaption?: (captureId: string, caption: string) => Promise<CaptureItem | null>;
@@ -295,7 +288,6 @@ function CaptureDetailSheet({
   const [savingText, setSavingText] = React.useState(false);
   const [textError, setTextError] = React.useState("");
   const [copyState, setCopyState] = React.useState<"idle" | "copied" | "failed">("idle");
-  const fileName = item.fileName || sourceName || "capture-file";
   const status = captureStatusLabel(item.status, t);
   const duration = captureDuration(item, generated);
   const captured = captureDateTime(item, t);
@@ -370,7 +362,6 @@ function CaptureDetailSheet({
 
         <dl className="capture-detail-metadata">
           <DetailRow icon={<CalendarIcon />} label={t("source.captured")} value={captured} />
-          {isPro ? <DetailRow icon={<FileIcon />} label={t("source.fileName")} value={fileName} /> : null}
           {isPro ? <DetailRow icon={isAudio ? <BadgeCheckIcon /> : <CheckCircleIcon />} label={t("source.status")} value={<span className="detail-status-pill">{status}</span>} /> : null}
           {isAudio ? <DetailRow icon={<ClockIcon />} label={t("source.duration")} value={duration} /> : null}
         </dl>
@@ -558,16 +549,6 @@ function CalendarIcon() {
   return (
     <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
       <path d="M7 3.8v3.4M17 3.8v3.4M4.5 9.2h15M6.5 5.5h11A2.5 2.5 0 0 1 20 8v10.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18.5V8a2.5 2.5 0 0 1 2.5-2.5Z" />
-    </svg>
-  );
-}
-
-function FileIcon() {
-  return (
-    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
-      <path d="M6.5 3.8h8l3 3V20H6.5V3.8Z" />
-      <path d="M14.5 3.8v4h4" />
-      <path d="M8.8 12h6.4M8.8 15.8h5" />
     </svg>
   );
 }

@@ -305,6 +305,7 @@ const en: Dict = {
   "badge.closeMatchYouSaid": "· close match · you said {name}",
   "badge.aiCreatedPatient": "AI created this patient from audio",
   "badge.aiCreatedPatientBody": "Complete the details now and verify the patient record while staying in this visit.",
+  "badge.verifyDetails": "Verify details",
   "badge.saveAndVerifyPatient": "Save & verify patient",
 
   // Patient assignment sheet — S3
@@ -1920,6 +1921,7 @@ const fa: Dict = {
   "badge.closeMatchYouSaid": "· تطبیق نزدیک · شما گفتید {name}",
   "badge.aiCreatedPatient": "هوش مصنوعی این بیمار را از صدا ساخت",
   "badge.aiCreatedPatientBody": "اکنون مشخصات را تکمیل کنید و پروندهٔ بیمار را بدون خروج از این ویزیت تأیید کنید.",
+  "badge.verifyDetails": "بررسی مشخصات",
   "badge.saveAndVerifyPatient": "ذخیره و تأیید بیمار",
 
   // Patient assignment sheet — S3
