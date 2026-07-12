@@ -45,12 +45,16 @@ only drafts.
   (`Tabs`); the Routing control is the shared **select trigger** (`SelectMenu`) — the same two
   primitives, matched in height, that [Insights](insights.md) uses.
 - **Header grammar** (AES-1804): one arrangement, everything inline-start — a **title row** carrying the
-  `Inbox|Library` view switch (grouped after the title, never pinned to the opposite edge), and a
-  **single filter row** below grouping `Mine|Clinic` + the Routing select with shared spacing (it wraps
-  gracefully at the narrowest phone width, mirroring the Insights control row).
-- Each card: patient name; a routing badge (`Treating` / `Rerouted` / `Unrouted` + doctor name);
-  the pending question (or a one-line preview when resolved); and an expandable full conversation
-  with **visit markers interleaved** chronologically (chat-style bubbles).
+  `Inbox|Library` view switch in the **fixed bottom bar** (the capture bar is hidden here, so it
+  reads as the screen's own navigation), and a **single filter row** under the title grouping
+  `Mine|Clinic` + the Routing select with shared spacing (wraps gracefully at phone widths).
+- Each card: an **identity header** — initials avatar + patient name + the question's time (24h,
+  localized) — then a badges row (`needs reply`; `Treating` / `Rerouted` / `Unrouted` + doctor name);
+  the pending question as a single-framed quote block (the card is the only border); then an
+  expandable full conversation with **visit markers interleaved** chronologically (chat-style
+  bubbles). The suggested-reply draft is an auto-growing surface (never clipped behind an inner
+  scrollbar) under an overline label + AI-draft badge, with a tiered action row: primary **Send**,
+  secondary **Voice edit**, quiet **Dismiss**.
 
 ## Reply flow
 
