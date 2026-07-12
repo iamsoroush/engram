@@ -13,7 +13,7 @@ import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import type { QaThreadSummary } from "../../qa/qaClient";
-import { ClinicalMemoryTab, PatientFilter, RecentCardModel, RecentBucketKey, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, buildRecentModel, buildPatientRows, patientRowFromApi, patientRowStub, decisionActionForSession, decisionIdForSession } from "./memoryModel";
+import { ClinicalMemoryTab, PatientFilter, RecentCardModel, RecentBucketKey, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, buildRecentModel, buildPatientRows, patientRowFromApi, patientRowStub, patientRowFromSmartMatch, decisionActionForSession, decisionIdForSession } from "./memoryModel";
 import { SearchIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, SparkleIcon, ChevronIcon, OfflineIcon, InfoIcon } from "./MemoryIcons";
 import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading } from "./MemoryCards";
 import { AttentionSweep } from "./AttentionSweep";
@@ -87,6 +87,7 @@ export function PatientsHome({
   } = useSessionActions();
   const onGetPatientMemory = memoryApi.getPatientMemoryDetail;
   const onListPatientMemory = memoryApi.listPatientMemory;
+  const onSmartSearch = memoryApi.smartSearchPatients;
   const onDuplicateCheck = memoryApi.duplicateCheckPatient;
   const onLoadSessionCaptures = memoryApi.loadSessionCaptures;
   const onLoadSession = memoryApi.loadSession;
@@ -132,6 +133,11 @@ export function PatientsHome({
   const [patientLoadingMore, setPatientLoadingMore] = React.useState(false);
   const [patientListVersion, setPatientListVersion] = React.useState(0);
   const [creatingPatient, setCreatingPatient] = React.useState(false);
+  // AES-204 — the deterministic, Persian-orthography-aware patient search backs the Patients-tab
+  // roster filter too, so a cross-script query («sara» → «سارا») still finds the patient even when the
+  // plain roster substring can't. Results the roster already returns are de-duped; it stays a roster
+  // filter (name/phone/national-id), never content search.
+  const [smartResults, setSmartResults] = React.useState<SmartPatientMatch[] | null>(null);
   // AES-303 — the patient whose curated share sheet is open (carrying their recent visits so the
   // sheet can build a real before/after photo pool to curate from).
   const [sharePatient, setSharePatient] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
@@ -212,6 +218,29 @@ export function PatientsHome({
     };
   }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
 
+  // AES-204 — debounced Persian-aware patient search, run alongside the roster query so a cross-script
+  // match the plain roster substring misses («sara» → «سارا») still surfaces in the filtered list.
+  React.useEffect(() => {
+    if (activeTab !== "patients" || !onSmartSearch || !query.trim()) {
+      setSmartResults(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void onSmartSearch(query.trim())
+        .then((response) => {
+          if (!cancelled) setSmartResults(response.items);
+        })
+        .catch(() => {
+          if (!cancelled) setSmartResults(null);
+        });
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeTab, onSmartSearch, query]);
+
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
     setPatientLoadingMore(true);
@@ -264,6 +293,9 @@ export function PatientsHome({
     : patientRows.filter((patient) =>
         normalizedQuery ? [patient.name, patient.summary, patient.badges.map((badge) => badge.label).join(" ")].join(" ").toLowerCase().includes(normalizedQuery) : true,
       );
+  // Persian-aware matches the plain roster substring missed (e.g. «sara» → «سارا»), appended below the
+  // roster rows and de-duped against them so the filter still finds a cross-script patient.
+  const smartOnlyMatches = (smartResults || []).filter((match) => !filteredPatients.some((patient) => patient.id === match.id));
   const assignmentSession = assignmentSessionId
     ? sessions.find((session) => session.id === assignmentSessionId) || (activeSession?.id === assignmentSessionId ? activeSession : null)
     : null;
@@ -742,9 +774,9 @@ export function PatientsHome({
             {patientRowsError ? (
               <p className="clinical-offline-note"><InfoIcon /> {t("patients.savedFromDevice")}</p>
             ) : null}
-            {patientRowsLoading && !filteredPatients.length ? (
+            {patientRowsLoading && !filteredPatients.length && !smartOnlyMatches.length ? (
               <PatientListLoading />
-            ) : filteredPatients.length ? (
+            ) : filteredPatients.length || smartOnlyMatches.length ? (
               filteredPatients.map((patient) => (
                 <PatientRow
                   actionLabel={patient.action === "open-memory" ? undefined : patient.actionLabel}
@@ -760,7 +792,26 @@ export function PatientsHome({
                   onAction={() => handlePatientAction(patient)}
                   onSelect={() => setSelectedPatientId(patient.id)}
                 />
-              ))
+              )).concat(
+                // Persian-aware matches the roster substring missed (e.g. «sara» → «سارا»), appended below.
+                smartOnlyMatches.map((match) => {
+                  const row = patientRowFromSmartMatch(match, t);
+                  return (
+                    <PatientRow
+                      actionLabel={undefined}
+                      badges={row.badges}
+                      latestVisitLabel={row.latestVisitLabel}
+                      key={row.id}
+                      patientName={row.name}
+                      summary={row.summary}
+                      isPro={isPro}
+                      tone="green"
+                      onAction={() => setSelectedPatientId(row.id)}
+                      onSelect={() => setSelectedPatientId(row.id)}
+                    />
+                  );
+                }),
+              )
             ) : (
               <EmptyClinicalState
                 title={patientRows.length ? t("patients.empty.noMatches.title") : t("patients.empty.noPatients.title")}

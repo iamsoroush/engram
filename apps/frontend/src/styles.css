@@ -1903,9 +1903,16 @@ small {
 }
 
 .user-menu summary::after {
-  content: "v";
-  color: #475467;
-  font-size: 0.68rem;
+  /* A crisp drawn down-caret (was a literal letter "v"). */
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: 1px;
+  border-right: 1.6px solid #667085;
+  border-bottom: 1.6px solid #667085;
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .user-menu-avatar {
@@ -5732,27 +5739,43 @@ small {
     justify-self: end;
   }
 
+  /* Phones: the account control collapses to an avatar-only button (identity lives in the opened
+     panel) — this frees the display-name width so the full Pro action row (Visit/Memory + search +
+     Q&A + bell + avatar) fits one line at 390px instead of overflowing into a horizontal scroll. */
   .user-menu summary {
-    max-width: 190px;
+    max-width: none;
+    padding-inline: 4px;
+  }
+  .user-menu-label,
+  .user-menu summary::after {
+    display: none;
   }
 
   /* Keep the Visit/Memory labels on phones too (#9), so compact the rest of the action cluster to
      make room: content-width nav pills, slightly smaller round buttons, and a tighter row gap. */
   .topbar-left {
-    gap: 8px;
+    gap: 7px;
   }
 
   .app-navigator {
     grid-template-columns: repeat(2, auto);
+    gap: 4px;
   }
 
   .app-navigator button {
-    padding-inline: 10px;
+    padding-inline: 9px;
   }
 
   .app-search-button {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
+  }
+
+  /* Belt-and-suspenders: the top bar never widens the page (no horizontal scroll on any phone). */
+  .topbar,
+  .topbar-inner {
+    max-width: 100%;
+    min-width: 0;
   }
 
   .report-heading {

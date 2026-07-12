@@ -95,6 +95,24 @@ const NEXT_ACTION = { fa: "بعدی", en: "Next" } as const;
 // The shared 24h clock renders Persian digits under fa (fa-IR locale), Latin under en.
 const VISIT_TIME = { fa: "۱۶:۲۳", en: "16:23" } as const;
 
+// The Patients-tab filter stays Persian-orthography-aware (AES-204): a cross-script query the plain
+// roster substring can't match still surfaces the patient via the smart search, appended to the list.
+test("Patients filter: Persian-aware — «sara» finds «سارا»", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await installMocks(page, "en");
+  // Roster substring returns nothing for the Latin query; smart search transliterates and finds her.
+  const json = (data: unknown) => async (route: import("@playwright/test").Route) => route.fulfill({ contentType: "application/json", json: data as object });
+  await page.route("**/api/v1/patient-memory**", json({ items: [], limit: 50, offset: 0, total: 0 }));
+  await page.route("**/api/v1/patients/search**", json({
+    items: [{ id: "p-sara", displayName: "سارا", matchedOn: ["name_fuzzy"], reason: "Matched سارا · you typed sara", lastVisit: VISIT_TS }],
+  }));
+  await login(page);
+  await page.getByRole("tab", { name: "Patients" }).click();
+  await page.locator(".patients-filter input").fill("sara");
+  await expect(page.getByRole("heading", { name: "سارا" })).toBeVisible({ timeout: 8000 });
+  await page.screenshot({ path: "test-results/memref-patients-persian-search.png", fullPage: true });
+});
+
 for (const lang of ["en", "fa"] as Lang[]) {
   for (const width of [390, 768]) {
     test(`memory refinements — ${lang} @ ${width}`, async ({ page }) => {
@@ -102,6 +120,11 @@ for (const lang of ["en", "fa"] as Lang[]) {
       await installMocks(page, lang);
       await login(page);
       const tag = `${lang}-${width}`;
+
+      // The page never scrolls horizontally (the top bar fits at every phone width — the account
+      // control collapses to an avatar-only button on phones so the Pro action row stays one line).
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
 
       // 1. Recent tab (default) — time buckets, no header search bar.
       await expect(page.getByRole("tab", { name: RECENT_TAB[lang] })).toHaveAttribute("aria-selected", "true");
