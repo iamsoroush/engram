@@ -138,6 +138,7 @@ export function Shell({
                     : t("nav.qaInbox")
                 }
                 className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
+                data-testid="qa-nav-button"
                 onClick={() => onNavigate("qa-inbox")}
                 title={t("nav.qaInbox")}
                 type="button"

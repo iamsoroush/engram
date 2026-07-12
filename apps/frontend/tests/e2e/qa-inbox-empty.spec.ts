@@ -12,7 +12,8 @@ test("Q&A inbox empty state teaches how a thread arrives + offers a Share Q&A li
   await page.goto("/");
   await page.getByRole("button", { name: "Log in" }).click();
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#qa-inbox");
+  // Click-nav (not goto): the icon renders only once capabilities resolve, so this can't race the route guard.
+  await page.getByTestId("qa-nav-button").click();
   await page.getByTestId("qa-inbox").waitFor();
 
   // The teaching sentence (how a thread arrives) and the shortcut are both present.
