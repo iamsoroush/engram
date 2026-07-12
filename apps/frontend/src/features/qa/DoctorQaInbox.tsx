@@ -8,13 +8,17 @@ import { useT } from "../../shared/i18n";
 import {
   dismissQaQuestion,
   fetchQaInbox,
+  fetchQaLibraryItem,
   fetchQaSettings,
   fetchTreatingDoctors,
   routeQaThread,
   saveReplyAsTemplate,
   sendQaReply,
   setQaRoutingMode,
+  type LibraryItem,
+  type QaDraftProvenance,
   type QaInboxItem,
+  type QaProvenanceSource,
   type QaSettings,
   type QaThreadMessage,
   type QaTreatingDoctor,
@@ -353,13 +357,21 @@ function QaThreadCard({
   // a one-line preview), so the disclosure can name how many there are.
   const hiddenCount = item.needsApproval ? item.messages.length - 1 : item.messages.length;
 
+  // Escalation (AES-1801): a red-flagged pending question turns the whole row to the warning style and
+  // names the flags, so a possible emergency (e.g. filler occlusion) can't read as a routine question.
+  const urgentFlags = item.urgent ? item.pendingQuestion?.urgentFlags ?? item.urgentFlags ?? [] : [];
+  const urgentLabel = urgentFlags.length
+    ? urgentFlags.map((flag) => t(`qa.redflag.${flag}`)).join("، ")
+    : t("qa.redflag.generic");
+
   return (
-    <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""}`}>
+    <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""} ${item.urgent ? "qa-urgent" : ""}`}>
       <div className="qa-card-head">
         <span className="qa-patient" dir="auto" data-content>
           {item.patientName}
         </span>
         <span className="qa-head-right">
+          {item.urgent ? <Badge tone="red" data-testid="qa-urgent-badge">{t("qa.urgentBadge")}</Badge> : null}
           {item.needsApproval ? <Badge tone="amber">{t("qa.badgeNeedsReply")}</Badge> : null}
           {item.assignedDoctor ? (
             <Badge tone="blue">
@@ -371,6 +383,11 @@ function QaThreadCard({
           )}
         </span>
       </div>
+      {item.urgent ? (
+        <div className="qa-urgent-banner" data-testid="qa-urgent-banner" role="status">
+          <span aria-hidden="true">⚠</span> {t("qa.urgentBanner", { flags: urgentLabel })}
+        </div>
+      ) : null}
 
       {expanded ? (
         <div className="qa-convo" ref={convoRef}>
@@ -448,20 +465,12 @@ function QaThreadCard({
               draftPending={draftPending}
               isStarterDraft={isStarterDraft}
             />
-            {draftReady && pending?.draftProvenance ? (
-              <button
-                type="button"
-                className="qa-draft-provenance"
-                data-testid="qa-draft-provenance"
-                onClick={onOpenLibrary}
-                title={t("qa.basedOnOpenLibrary")}
-              >
-                {pending.draftProvenance.kind === "template"
-                  ? t("qa.basedOnTemplate", { name: pending.draftProvenance.label ?? "" })
-                  : t("qa.basedOnReply")}
-              </button>
-            ) : null}
           </div>
+          {/* The «بر اساس» source row (AES-1803): every grounding source the draft actually used, or the
+              honest general-knowledge caution when none did. Independent of the starter marker above. */}
+          {draftReady ? (
+            <DraftProvenancePanel provenance={pending?.draftProvenance} apiFetch={apiFetch} onOpenLibrary={onOpenLibrary} />
+          ) : null}
           {voiceMode ? (
             <div className="qa-voice-note">
               ✨ {voiceMode === "replace" ? t("qa.voiceRewrote") : t("qa.voiceRevised")} ·{" "}
@@ -532,6 +541,134 @@ function DraftStatusBadge({
   if (draftFailed) return <span className="qa-draft-hint">{t("qa.draftFailedHint")}</span>;
   if (draftPending) return <span className="qa-draft-hint">{t("qa.draftingHint")}</span>;
   return <span className="qa-draft-hint">{t("qa.noDraftHint")}</span>;
+}
+
+/**
+ * The «بر اساس» provenance panel (AES-1803): a compact source row under a ready draft, built
+ * deterministically by the backend from what the payload carried. A grounded draft shows the strong
+ * template / previous-reply attribution plus a chip per patient-record / conversation block it used;
+ * an ungrounded draft shows the honest caution chip «دانش عمومی — بدون منبع کلینیکی» so the doctor
+ * knows this one deserves the hardest review. Chrome is bilingual; the revealed Q/A text is CONTENT.
+ */
+function DraftProvenancePanel({
+  provenance,
+  apiFetch,
+  onOpenLibrary,
+}: {
+  provenance?: QaDraftProvenance | null;
+  apiFetch: ApiFetch;
+  onOpenLibrary: () => void;
+}) {
+  const t = useT();
+  // New structured shape wins; fall back to the legacy top-level attribution ({kind,exemplarId,label}).
+  const sources: QaProvenanceSource[] = Array.isArray(provenance?.sources)
+    ? provenance!.sources!
+    : provenance?.kind
+      ? [{ type: provenance.kind, exemplarId: provenance.exemplarId, label: provenance.label ?? null }]
+      : [];
+  const grounded = provenance?.grounded ?? sources.length > 0;
+  if (!provenance) return null; // no backend signal at all (transient legacy draft) → no row
+
+  return (
+    <div className="qa-provenance" data-testid="qa-draft-provenance">
+      <span className="qa-provenance-label">{t("qa.basedOnLabel")}</span>
+      {grounded && sources.length ? (
+        sources.map((source, index) => (
+          <ProvenanceChip key={`${source.type}-${index}`} source={source} apiFetch={apiFetch} onOpenLibrary={onOpenLibrary} />
+        ))
+      ) : (
+        <span className="qa-provenance-chip qa-provenance-general" data-testid="qa-provenance-general">
+          {t("qa.basedOnGeneral")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ProvenanceChip({
+  source,
+  apiFetch,
+  onOpenLibrary,
+}: {
+  source: QaProvenanceSource;
+  apiFetch: ApiFetch;
+  onOpenLibrary: () => void;
+}) {
+  const t = useT();
+  switch (source.type) {
+    case "template":
+      return (
+        <button
+          type="button"
+          className="qa-provenance-chip qa-provenance-strong"
+          data-testid="qa-provenance-template"
+          onClick={onOpenLibrary}
+          title={t("qa.basedOnOpenLibrary")}
+        >
+          {t("qa.basedOnTemplate", { name: source.label ?? "" })}
+        </button>
+      );
+    case "sent_reply":
+      return <SentReplyChip exemplarId={source.exemplarId} apiFetch={apiFetch} />;
+    case "patient_aftercare":
+      return <span className="qa-provenance-chip">{t("qa.basedOnAftercare")}</span>;
+    case "patient_summary":
+      return <span className="qa-provenance-chip">{t("qa.basedOnSummary")}</span>;
+    case "conversation":
+      return <span className="qa-provenance-chip">{t("qa.basedOnConversation")}</span>;
+    default:
+      return null;
+  }
+}
+
+/** The "پاسخ قبلی کلینیک" chip: reveals the exemplar's OWN Q/A (never the other patient's thread). */
+function SentReplyChip({ exemplarId, apiFetch }: { exemplarId?: string; apiFetch: ApiFetch }) {
+  const t = useT();
+  const [open, setOpen] = React.useState(false);
+  const [item, setItem] = React.useState<LibraryItem | null>(null);
+  const [error, setError] = React.useState("");
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && item === null && exemplarId) {
+      fetchQaLibraryItem(apiFetch, exemplarId)
+        .then(setItem)
+        .catch(() => setError(t("qa.basedOnReplyError")));
+    }
+  };
+  // Build the reveal body with if/else (not a nested JSX ternary) so the content is unambiguous.
+  let revealBody: React.ReactNode = <span>{t("qa.loading")}</span>;
+  if (error) {
+    revealBody = <span className="qa-provenance-error">{error}</span>;
+  } else if (item) {
+    revealBody = (
+      <>
+        {item.question ? (
+          <p dir="auto">
+            <strong>{t("qa.basedOnReplyQ")}</strong> <span data-content>{item.question}</span>
+          </p>
+        ) : null}
+        <p dir="auto">
+          <strong>{t("qa.basedOnReplyA")}</strong> <span data-content>{item.answer}</span>
+        </p>
+      </>
+    );
+  }
+  return (
+    <span className="qa-provenance-reply">
+      <button
+        type="button"
+        className="qa-provenance-chip qa-provenance-strong"
+        data-testid="qa-provenance-sentreply"
+        aria-expanded={open}
+        onClick={toggle}
+        title={t("qa.basedOnReplyOpen")}
+      >
+        {t("qa.basedOnReply")}
+      </button>
+      {open ? <div className="qa-provenance-reveal">{revealBody}</div> : null}
+    </span>
+  );
 }
 
 function VoiceControl({ voice, onStart }: { voice: ReturnType<typeof useVoiceEdit>; onStart: () => void }) {

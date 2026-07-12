@@ -11,14 +11,24 @@ export interface QaAssignedDoctor {
   name: string;
 }
 
+/** One grounding source in the «بر اساس» provenance panel (AES-1803). */
+export interface QaProvenanceSource {
+  type: "template" | "sent_reply" | "patient_aftercare" | "patient_summary" | "conversation";
+  exemplarId?: string;
+  label?: string | null;
+}
+
 /**
- * Retrieval provenance for a suggested reply (AES-410): the library exemplar (a saved template or a
- * previously-sent reply) the draft was grounded on. `label` is the exemplar's short title, if any.
+ * Retrieval provenance for a suggested reply. The top exemplar keeps the strong "based on" attribution
+ * (AES-410: `kind`/`exemplarId`/`label`); `sources` + `grounded` add the structured «بر اساس» panel
+ * (AES-1803). `grounded: false` (empty `sources`) is the honest general-knowledge state.
  */
 export interface QaDraftProvenance {
-  kind: "template" | "sent_reply";
-  exemplarId: string;
-  label: string | null;
+  kind?: "template" | "sent_reply";
+  exemplarId?: string;
+  label?: string | null;
+  grounded?: boolean;
+  sources?: QaProvenanceSource[];
 }
 
 export interface QaPendingQuestion {
@@ -29,8 +39,12 @@ export interface QaPendingQuestion {
   draftStatus: "none" | "pending" | "ready" | "failed" | "failed_revise" | string;
   /** Draft origin: `ai:<model>` | `ai-voice:<mode>` | `mock-deterministic` (the starter fallback). */
   draftSource?: string | null;
-  /** Which library exemplar grounded this draft, if retrieval found one (AES-410). */
+  /** The structured «بر اساس» provenance the draft was grounded on (AES-1803 extends AES-410). */
   draftProvenance?: QaDraftProvenance | null;
+  /** The question tripped the red-flag lexicon at ingest (AES-1801). */
+  urgent?: boolean;
+  /** Stable red-flag category keys (localized as `qa.redflag.<key>`). */
+  urgentFlags?: string[];
 }
 
 export interface QaVisitMarker {
@@ -48,6 +62,9 @@ export interface QaInboxItem {
   routingSource: string;
   treatingDoctorCount: number;
   needsApproval: boolean;
+  /** The thread's pending question tripped a red flag (AES-1801) — the row renders in the warning style. */
+  urgent?: boolean;
+  urgentFlags?: string[];
   pendingQuestion: QaPendingQuestion | null;
   messages: QaThreadMessage[];
   visits: QaVisitMarker[];
@@ -58,6 +75,26 @@ export interface QaInboxResponse {
   scope: "mine" | "all";
   items: QaInboxItem[];
   total: number;
+}
+
+/** Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801). */
+export interface QaInboxSummary {
+  scope: "mine" | "all";
+  pending: number;
+  urgent: number;
+  urgentThreads: Array<{ threadId: string; patientName: string | null; flags: string[] }>;
+}
+
+export async function fetchQaInboxSummary(apiFetch: ApiFetch, scope: "mine" | "all" = "mine"): Promise<QaInboxSummary> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/inbox/summary?scope=${encodeURIComponent(scope)}`);
+  if (!response.ok) throw new Error("Could not load the Q&A summary");
+  const payload = (await response.json()) as Partial<QaInboxSummary>;
+  return {
+    scope: payload.scope ?? scope,
+    pending: payload.pending ?? 0,
+    urgent: payload.urgent ?? 0,
+    urgentThreads: Array.isArray(payload.urgentThreads) ? payload.urgentThreads : [],
+  };
 }
 
 export interface QaTreatingDoctor {
@@ -243,6 +280,15 @@ export interface QaLibraryResponse {
   templates: LibraryItem[];
   sentReplies: LibraryItem[];
   counts: QaLibraryCounts;
+  /** False => hybrid semantic (embedding) matching is off; the Library shows one quiet notice (AES-1802). */
+  semanticSearch: boolean;
+}
+
+/** Fetch one exemplar's Q/A — the sent-reply provenance chip reveals its text, never the patient thread. */
+export async function fetchQaLibraryItem(apiFetch: ApiFetch, id: string): Promise<LibraryItem> {
+  const response = await apiFetch(`${API_BASE}/patient-qa/library/${id}`);
+  if (!response.ok) throw new Error("Could not load the library item");
+  return (await response.json()) as LibraryItem;
 }
 
 /** Create/update body for a curated template. `answer` is required; the rest are optional. */
@@ -268,6 +314,8 @@ export async function fetchQaLibrary(
     templates: Array.isArray(payload.templates) ? payload.templates : [],
     sentReplies: Array.isArray(payload.sentReplies) ? payload.sentReplies : [],
     counts: payload.counts ?? { templates: 0, sentRepliesActive: 0, sentRepliesExcluded: 0 },
+    // Absent (older payloads) reads as configured — never flash the "semantic off" notice on a stale shape.
+    semanticSearch: payload.semanticSearch !== false,
   };
 }
 

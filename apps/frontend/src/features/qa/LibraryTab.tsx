@@ -95,6 +95,13 @@ export function LibraryTab({ apiFetch, onToast }: { apiFetch: ApiFetch; onToast?
 
   return (
     <div className="qa-library" data-testid="qa-library" role="tabpanel">
+      {/* One quiet notice when hybrid semantic matching is off (AES-1802): retrieval is lexical-only,
+          so a paraphrase may miss. Silent degradation is how this went unnoticed — so it's visible now. */}
+      {data && !data.semanticSearch ? (
+        <p className="qa-lib-notice" data-testid="qa-semantic-off">
+          {t("qa.library.semanticOff")}
+        </p>
+      ) : null}
       {/* Templates ------------------------------------------------------------------------------ */}
       <section className="qa-lib-section">
         <div className="qa-lib-section-head">
@@ -175,14 +182,15 @@ export function TemplateRow({ item, onEdit, onDelete }: { item: LibraryItem; onE
   return (
     <div className="qa-lib-row" data-testid="qa-template-row">
       <div className="qa-lib-row-body">
-        {item.title ? (
-          <span className="qa-lib-row-title" dir="auto" data-content>
-            {item.title}
-          </span>
-        ) : null}
+        {/* Question is the primary line now (AES-1802); the optional title reads as a small label. */}
         {item.question ? (
           <span className="qa-lib-row-question" dir="auto" data-content>
             {item.question}
+          </span>
+        ) : null}
+        {item.title ? (
+          <span className="qa-lib-row-title" dir="auto" data-content>
+            {item.title}
           </span>
         ) : null}
         <span className="qa-lib-row-answer" dir="auto" data-content>
@@ -257,20 +265,24 @@ function TemplateForm({
   onCancel: () => void;
 }) {
   const t = useT();
-  const [title, setTitle] = React.useState(initial?.title ?? "");
   const [question, setQuestion] = React.useState(initial?.question ?? "");
+  const [title, setTitle] = React.useState(initial?.title ?? "");
   const [answer, setAnswer] = React.useState(initial?.answer ?? "");
   const [tags, setTags] = React.useState((initial?.tags ?? []).join(", "));
+  const [questionError, setQuestionError] = React.useState(false);
   const [answerError, setAnswerError] = React.useState(false);
 
   const submit = () => {
-    if (!answer.trim()) {
-      setAnswerError(true);
-      return;
-    }
+    // Question is now the PRIMARY, required field (AES-1802): it's the retrieval signal, so steering it
+    // here is the guard against the owner's trap (a question typed into the optional title, question empty).
+    const missingQuestion = !question.trim();
+    const missingAnswer = !answer.trim();
+    setQuestionError(missingQuestion);
+    setAnswerError(missingAnswer);
+    if (missingQuestion || missingAnswer) return;
     onSubmit({
       title: title.trim() || null,
-      question: question.trim() || null,
+      question: question.trim(),
       answer: answer.trim(),
       tags: tags
         .split(",")
@@ -284,20 +296,24 @@ function TemplateForm({
       <Input
         className="qa-lib-input"
         dir="auto"
-        data-testid="qa-template-title"
-        placeholder={t("qa.library.title")}
-        aria-label={t("qa.library.title")}
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
+        data-testid="qa-template-question"
+        placeholder={t("qa.library.questionPrimary")}
+        aria-label={t("qa.library.questionPrimary")}
+        value={question}
+        onChange={(event) => {
+          setQuestion(event.target.value);
+          if (questionError) setQuestionError(false);
+        }}
       />
+      {questionError ? <div className="qa-lib-error">{t("qa.library.questionRequired")}</div> : null}
       <Input
         className="qa-lib-input"
         dir="auto"
-        data-testid="qa-template-question"
-        placeholder={t("qa.library.question")}
-        aria-label={t("qa.library.question")}
-        value={question}
-        onChange={(event) => setQuestion(event.target.value)}
+        data-testid="qa-template-title"
+        placeholder={t("qa.library.titleOptional")}
+        aria-label={t("qa.library.titleOptional")}
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
       />
       <Textarea
         className="qa-lib-answer"

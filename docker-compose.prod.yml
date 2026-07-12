@@ -95,6 +95,11 @@ services:
       BACKEND_AI_ENGINE_INTERNAL_TOKEN: ${AI_ENGINE_INTERNAL_TOKEN:?AI_ENGINE_INTERNAL_TOKEN is required}
       # Pro single-pass report synthesis dispatch (OFF by default; ON where the gateway is reachable).
       BACKEND_REPORT_SYNTHESIS_ENABLED: ${BACKEND_REPORT_SYNTHESIS_ENABLED:-false}
+      # Q&A hybrid retrieval embeddings (AES-1802) — blank base_url => lexical-only. Point at the
+      # gateway's /embeddings and reuse the same gateway key to turn semantic matching on.
+      BACKEND_EMBEDDINGS_BASE_URL: ${BACKEND_EMBEDDINGS_BASE_URL:-}
+      BACKEND_EMBEDDINGS_API_KEY: ${BACKEND_EMBEDDINGS_API_KEY:-${AI_ENGINE_TRANSCRIPTION_API_KEY:-unused}}
+      BACKEND_EMBEDDINGS_MODEL: ${BACKEND_EMBEDDINGS_MODEL:-text-embedding-3-small}
     volumes:
       - capture_data:/data/captures
     expose:

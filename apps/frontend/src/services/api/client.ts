@@ -630,10 +630,13 @@ export async function fetchAttention(
       suggested: numberValue(rawCounts.suggested, 0),
       messages: numberValue(rawCounts.messages, 0),
       safety: numberValue(rawCounts.safety, 0),
+      urgent: numberValue(rawCounts.urgent, 0),
       total: numberValue(rawCounts.total, 0),
     },
     highestTier:
-      highest === "safety" || highest === "confirm" || highest === "messages" || highest === "suggested" ? highest : null,
+      highest === "urgent" || highest === "safety" || highest === "confirm" || highest === "messages" || highest === "suggested"
+        ? highest
+        : null,
     items: rawItems
       .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
       .map(normalizeAttentionItem),

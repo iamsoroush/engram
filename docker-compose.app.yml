@@ -63,6 +63,12 @@ services:
       # dispatch zero synthesis and the deterministic baseline stands. Turn on where a synthesis
       # gateway is reachable (the worker's AI_ENGINE_REPORT_SYNTHESIS_* must be set too).
       BACKEND_REPORT_SYNTHESIS_ENABLED: ${BACKEND_REPORT_SYNTHESIS_ENABLED:-false}
+      # Q&A hybrid retrieval embeddings (AES-1802) — blank base_url => lexical-only (semantic matching
+      # off; the Library shows a quiet notice). Point at the gateway's /embeddings + reuse the key to
+      # turn semantic matching on; a startup pass then backfills any lexical-only rows.
+      BACKEND_EMBEDDINGS_BASE_URL: ${BACKEND_EMBEDDINGS_BASE_URL:-}
+      BACKEND_EMBEDDINGS_API_KEY: ${BACKEND_EMBEDDINGS_API_KEY:-${AI_ENGINE_TRANSCRIPTION_API_KEY:-unused}}
+      BACKEND_EMBEDDINGS_MODEL: ${BACKEND_EMBEDDINGS_MODEL:-text-embedding-3-small}
     ports:
       - "${BACKEND_PORT:-8010}:8000"
     volumes:
@@ -86,7 +92,7 @@ services:
       AI_ENGINE_JOB_MAX_RETRIES: ${BACKEND_AI_JOB_MAX_RETRIES:-3}
       AI_ENGINE_JOB_RETRY_DELAY_SECONDS: ${BACKEND_AI_JOB_RETRY_DELAY_SECONDS:-30}
       AI_ENGINE_RECOVERY_INTERVAL_SECONDS: ${AI_ENGINE_RECOVERY_INTERVAL_SECONDS:-60}
-      AI_ENGINE_TRANSCRIPTION_BASE_URL: ${AI_ENGINE_TRANSCRIPTION_BASE_URL:-http://194.5.193.5:8081/v1}
+      AI_ENGINE_TRANSCRIPTION_BASE_URL: ${AI_ENGINE_TRANSCRIPTION_BASE_URL:-http://130.185.122.56:8080/v1}
       AI_ENGINE_TRANSCRIPTION_API_KEY: ${AI_ENGINE_TRANSCRIPTION_API_KEY:-unused}
       AI_ENGINE_TRANSCRIPTION_MODEL: ${AI_ENGINE_TRANSCRIPTION_MODEL:-gemini-3.1-flash-lite}
       # Per-task model overrides on the same OpenAI-compatible gateway (blank => fall back to the

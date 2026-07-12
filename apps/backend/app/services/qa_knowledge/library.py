@@ -20,7 +20,7 @@ from app.auth.service import audit
 from app.models import QaKnowledgeExemplar, QaMessage
 from app.services.capabilities import POST_SESSION_QA, tenant_has_capability
 from app.services.qa_knowledge import normalize
-from app.services.qa_knowledge.embeddings import embed_text
+from app.services.qa_knowledge.embeddings import embed_text, embeddings_configured
 
 KIND_TEMPLATE = "template"
 KIND_SENT_REPLY = "sent_reply"
@@ -70,9 +70,13 @@ def _maybe_embed(search_text: str) -> list[float] | None:
 
 
 def _refresh_lexical_and_embedding(exemplar: QaKnowledgeExemplar) -> None:
-    """Recompute ``search_text`` (+ language) from the current question/answer and (re)embed it."""
-    exemplar.search_text = normalize.build_search_text(question=exemplar.question, answer=exemplar.answer)
-    exemplar.language = normalize.detect_language(f"{exemplar.question or ''} {exemplar.answer or ''}")
+    """Recompute ``search_text`` (+ language) from the current title/question/answer and (re)embed it."""
+    exemplar.search_text = normalize.build_search_text(
+        title=exemplar.title, question=exemplar.question, answer=exemplar.answer
+    )
+    exemplar.language = normalize.detect_language(
+        f"{exemplar.title or ''} {exemplar.question or ''} {exemplar.answer or ''}"
+    )
     exemplar.embedding = _maybe_embed(exemplar.search_text)
 
 
@@ -122,7 +126,20 @@ def list_library(
             "sentRepliesActive": sum(1 for row in rows if row.kind == KIND_SENT_REPLY and row.status == STATUS_ACTIVE),
             "sentRepliesExcluded": sum(1 for row in rows if row.kind == KIND_SENT_REPLY and row.status == STATUS_EXCLUDED),
         },
+        # Whether hybrid semantic (embedding) matching is on. When False the library ranks lexical-only;
+        # the UI shows one quiet notice so silent degradation (AES-1802) can't hide unconfigured embeddings.
+        "semanticSearch": embeddings_configured(),
     }
+
+
+def get_library_item(db: DbSession, principal: CurrentPrincipal, exemplar_id: str) -> dict[str, Any]:
+    """One exemplar's Q/A (per-tenant) — the sent-reply provenance chip reveals its text, never a thread.
+
+    The privacy boundary (AES-1803): a "پاسخ قبلی کلینیک" chip opens the exemplar's own question/answer,
+    NOT the other patient's conversation. Serves the same ``library_payload`` shape as the list.
+    """
+    require_qa_capability(db, principal.tenant_id)
+    return library_payload(_get_exemplar(db, principal.tenant_id, exemplar_id))
 
 
 # --- Template CRUD (curated) ----------------------------------------------------------------------
@@ -360,3 +377,52 @@ def provenance_from_exemplars(exemplars: list[dict[str, Any]]) -> dict[str, Any]
         "exemplarId": top.get("exemplarId"),
         "label": top.get("title") if top.get("kind") == KIND_TEMPLATE else None,
     }
+
+
+def build_draft_provenance(
+    *,
+    exemplars: list[dict[str, Any]],
+    patient_context: dict[str, Any] | None,
+    thread_history: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """The structured «بر اساس» provenance panel (AES-1803): every source the payload actually carried.
+
+    Deterministic — built by the backend from what it put in the qa_draft payload (no prompt/eval
+    change). Shaped::
+
+        {
+          "grounded": bool,               # False => the honest "general knowledge, no clinical source"
+          "sources": [ {"type": "template"|"sent_reply"|"patient_aftercare"|"patient_summary"|"conversation",
+                        "exemplarId"?: str, "label"?: str}, ... ],
+          # backward-compatible top-level attribution (the strong "based on" chip + exemplar invalidation):
+          "kind"?, "exemplarId"?, "label"?
+        }
+
+    The top exemplar keeps the strong "grounded on" attribution (template title / a previous reply);
+    patient-record + conversation add context chips; an empty ``sources`` is the general-knowledge
+    caution state. Similarity scores stay internal — the chips are attribution, not numbers.
+    """
+    ctx = patient_context or {}
+    sources: list[dict[str, Any]] = []
+    top = exemplars[0] if exemplars else None
+    if top is not None:
+        if top.get("kind") == KIND_TEMPLATE:
+            sources.append({"type": "template", "exemplarId": top.get("exemplarId"), "label": top.get("title")})
+        else:
+            sources.append({"type": "sent_reply", "exemplarId": top.get("exemplarId")})
+    if isinstance(ctx.get("recentAftercare"), str) and ctx["recentAftercare"].strip():
+        sources.append({"type": "patient_aftercare"})
+    recent_summaries = ctx.get("recentVisitSummaries") or []
+    memory_summary = ctx.get("memorySummary")
+    if recent_summaries or (isinstance(memory_summary, str) and memory_summary.strip()):
+        sources.append({"type": "patient_summary"})
+    if thread_history:
+        sources.append({"type": "conversation"})
+
+    provenance: dict[str, Any] = {"grounded": bool(sources), "sources": sources}
+    if top is not None:
+        # Keep the legacy top-level attribution so the strong chip + Q-5 exemplar invalidation keep working.
+        provenance["kind"] = top.get("kind")
+        provenance["exemplarId"] = top.get("exemplarId")
+        provenance["label"] = top.get("title") if top.get("kind") == KIND_TEMPLATE else None
+    return provenance

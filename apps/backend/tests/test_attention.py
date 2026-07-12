@@ -234,6 +234,23 @@ class AggregateTests(unittest.TestCase):
         self.assertIsNone(aggregate["highestTier"])
         self.assertEqual(aggregate["counts"]["total"], 0)
 
+    def test_urgent_qa_escalates_above_safety(self) -> None:
+        # A red-flagged patient question (AES-1801) tops even a safety flag — the bell escalates.
+        items = [
+            {"tier": TIER_SAFETY, "sortTime": "2026-06-02T00:00:00+00:00"},
+            {"tier": TIER_MESSAGES, "urgent": True, "sortTime": "2026-06-03T00:00:00+00:00"},
+            {"tier": TIER_MESSAGES, "sortTime": "2026-06-01T00:00:00+00:00"},
+        ]
+        aggregate = aggregate_attention_items(items)
+        self.assertEqual(aggregate["counts"]["urgent"], 1)
+        self.assertEqual(aggregate["counts"]["messages"], 2)  # urgent is a subset of messages
+        self.assertEqual(aggregate["highestTier"], "urgent")
+
+    def test_non_urgent_messages_do_not_escalate(self) -> None:
+        aggregate = aggregate_attention_items([{"tier": TIER_MESSAGES, "sortTime": "2026-06-01T00:00:00+00:00"}])
+        self.assertEqual(aggregate["counts"]["urgent"], 0)
+        self.assertEqual(aggregate["highestTier"], "messages")
+
 
 class DayGroupTests(unittest.TestCase):
     def test_today_vs_earlier_respects_tz_offset(self) -> None:

@@ -20,6 +20,8 @@ export function Shell({
   attentionCounts = null,
   attentionHighestTier = null,
   onOpenAttention,
+  qaPendingCount = 0,
+  qaUrgent = false,
 }: {
   screen: Screen;
   children: React.ReactNode;
@@ -38,6 +40,10 @@ export function Shell({
   attentionHighestTier?: AttentionResponse["highestTier"];
   /** Opens the Close-the-day sweep (the Attention tab of Clinical Memory). */
   onOpenAttention?: () => void;
+  /** Pending Q&A threads (scoped like the inbox) for the glanceable Q&A badge (AES-1801); 0 hides it. */
+  qaPendingCount?: number;
+  /** Any pending question tripped a red flag — the badge turns to the danger tone. */
+  qaUrgent?: boolean;
 }) {
   const t = useT();
   const menuRef = React.useRef<HTMLDetailsElement>(null);
@@ -123,15 +129,29 @@ export function Shell({
             {isPro ? (
               <button
                 aria-current={screen === "qa-inbox" ? "page" : undefined}
-                aria-label={t("nav.qaInbox")}
+                aria-label={
+                  qaPendingCount
+                    ? t(qaUrgent ? "nav.qaInbox.urgent" : "nav.qaInbox.count", { n: qaPendingCount })
+                    : t("nav.qaInbox")
+                }
                 className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
                 onClick={() => onNavigate("qa-inbox")}
                 title={t("nav.qaInbox")}
                 type="button"
               >
-                {/* Pending Q&A now rolls into the Attention indicator's "messages" — this stays as a
-                    plain workspace shortcut to the inbox (Library, routing, reply live only there). */}
+                {/* Messages earn their own glanceable badge again (AES-1801 — a deliberate partial-revert
+                    of the E16 merge; the unified bell keeps its merged count). A red-flagged question
+                    turns the badge to the danger tone. */}
                 <QaInboxNavIcon />
+                {qaPendingCount ? (
+                  <span
+                    className={`app-qa-badge ${qaUrgent ? "tone-urgent" : ""}`}
+                    data-testid="qa-pending-badge"
+                    aria-hidden="true"
+                  >
+                    {qaPendingCount > 9 ? "9+" : qaPendingCount}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             {showAttention ? (

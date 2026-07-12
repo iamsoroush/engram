@@ -299,6 +299,9 @@ def build_attention_feed(
                     "id": f"qa:{thread.get('threadId')}",
                     "kind": "qa-pending",
                     "tier": TIER_MESSAGES,
+                    # Escalation (AES-1801): a red-flagged patient question escalates the bell above the
+                    # normal messages tier — it's the most time-critical signal in the app.
+                    "urgent": bool(thread.get("urgent")),
                     "sessionId": None,
                     "patientId": thread.get("patientId"),
                     "patientName": thread.get("patientName"),
@@ -326,14 +329,20 @@ def aggregate_attention_items(items: list[dict[str, Any]]) -> dict[str, Any]:
         "suggested": sum(1 for item in items if item["tier"] == TIER_SUGGESTED),
         "messages": sum(1 for item in items if item["tier"] == TIER_MESSAGES),
         "safety": sum(1 for item in items if item["tier"] == TIER_SAFETY),
+        # Urgent red-flagged patient questions (AES-1801) — a subset of `messages`, surfaced separately
+        # so the indicator can escalate above the normal violet messages tone.
+        "urgent": sum(1 for item in items if item["tier"] == TIER_MESSAGES and item.get("urgent")),
     }
     # The aggregate "to-do" total excludes safety (opt-out awareness, never a to-do).
     counts["total"] = counts["confirm"] + counts["suggested"] + counts["messages"]
 
-    # Indicator colour: safety is highest-priority (never loses salience), then confirm, messages,
-    # suggested. None when everything is clear (an empty feed means the checks ran and passed).
+    # Indicator colour: an urgent patient red flag tops everything (the most time-critical signal),
+    # then safety (never loses salience), then confirm, messages, suggested. None when everything is
+    # clear (an empty feed means the checks ran and passed).
     highest = None
-    if counts["safety"]:
+    if counts["urgent"]:
+        highest = "urgent"
+    elif counts["safety"]:
         highest = "safety"
     elif counts["confirm"]:
         highest = "confirm"

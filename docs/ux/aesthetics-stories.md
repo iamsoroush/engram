@@ -258,6 +258,49 @@ with a chip telling me what it's based on, so that drafts match our voice and I 
   **provenance chip** (`based on: {template}` / `a previous reply`) opens the source. Eval-gated
   (`qa_draft_eval` — exemplar-followed / exemplar-overridden). *Extends AES-402.*
 
+### AES-1801 — Q&A arrival visibility + urgent escalation 〔Pro · Dr · new〕
+As a **doctor**, I want patient questions to be **glanceable and to shout when they're urgent**, so
+that an emergency (a filler occlusion) can't sit in the inbox looking routine.
+- **Acceptance:** the top-bar Q&A icon regains a **pending-thread badge** (scoped like the inbox's
+  Mine/Clinic — a deliberate **partial-revert of the E16 merge**; the unified bell keeps its merged
+  count). Attention + Q&A counts **poll while the app is visible** (~60s + refetch on focus, paused
+  when hidden). A deterministic **red-flag lexicon** (fa+en: vision/necrosis/breathing/severe-pain/
+  fever) classifies each question **at ingest**; a hit marks the thread **urgent** → the row + badge
+  render in the warning style, the attention **bell escalates** to the urgent tier, and an **in-app
+  toast** fires («سؤال فوری بیمار — تاری دید»). Sensitivity-biased. As-built:
+  [screens/qa-inbox.md](screens/qa-inbox.md), [../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md).
+  *Extends AES-402.*
+
+### AES-1802 — Retrieval grounding fix (title + question-primary + embeddings) 〔Pro · Dr/As · new〕
+As a **clinic**, I want a template I save to **actually ground** a paraphrased patient question, so
+that the Library pays off instead of silently missing.
+- **Acceptance:** the exemplar `search_text` folds the **title** (a topic-label title like «ورزش بعد
+  از بوتاکس» now matches «کی میتونم ورزش کنم؟»); the Library makes **question** the primary, required
+  field and **title** an optional label (migrating a question-shaped title into the empty question);
+  the **embeddings gateway** is wired in the env defaults with a startup/maintenance backfill, and the
+  Library shows **one quiet notice** when semantic matching is off (no more silent degradation).
+  Backend-tested against the owner's repro; `qa_draft` evals untouched (no prompt change). As-built:
+  [../backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md),
+  [../ai_engine/processing.md](../ai_engine/processing.md). *Extends AES-410/411.*
+
+### AES-1803 — «بر اساس» draft provenance panel 〔Pro · Dr · new〕
+As a **doctor**, I want to see **exactly what each draft was grounded on**, so that I review the
+weakly-grounded ones hardest.
+- **Acceptance:** a compact **source row** beneath a ready draft, built deterministically by the
+  backend from what the payload contained: a **template** chip (opens the Library entry), a **previous
+  clinic reply** chip (opens only that exemplar's Q/A — never the other patient's thread), one chip per
+  non-empty **patient-record** block («مراقبت پس از درمان بیمار», «خلاصه ویزیت اخیر»), a **conversation**
+  chip, and — when none grounded it — the honest caution chip «**دانش عمومی — بدون منبع کلینیکی**». No
+  prompt/eval change. As-built: [screens/qa-inbox.md](screens/qa-inbox.md). *Extends AES-411.*
+
+### AES-1804 — LLM escalation flag from `qa_draft` 〔Pro · Dr · registered — not built〕
+As a **doctor**, I want the model to also flag an urgent question the deterministic lexicon might miss,
+so that escalation catches novel phrasings.
+- **Scope (fast-follow of AES-1801):** surface an `escalate` flag from the `qa_draft` worker output as
+  a second, softer escalation signal layered over the deterministic lexicon (which stays the always-on
+  floor). **Eval-gated** (a new escalation expectation over the QD red-flag fixtures) — consult the
+  owner on the golden set before building. **Registered, not built.**
+
 ---
 
 ## E5 — Smart lists, filters & lot recall (Pro)

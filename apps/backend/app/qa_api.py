@@ -170,6 +170,16 @@ def qa_inbox(
     return qa.qa_inbox(db, principal, scope=scope)
 
 
+@qa_api.get("/patient-qa/inbox/summary")
+def qa_inbox_summary(
+    scope: str = Query(default="mine", pattern="^(mine|all)$"),
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801)."""
+    return qa.qa_inbox_summary(db, principal, scope=scope)
+
+
 @qa_api.post("/patient-qa/messages/{message_id}/send")
 def qa_send_reply(
     message_id: str,
@@ -235,6 +245,16 @@ def qa_library_list(
 ) -> dict[str, Any]:
     """The Q&A knowledge library: curated templates + auto-indexed sent replies (with the exclude list)."""
     return qa_library.list_library(db, principal, kind=kind, status_filter=status_filter)
+
+
+@qa_api.get("/patient-qa/library/{exemplar_id}")
+def qa_library_item(
+    exemplar_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """One exemplar's Q/A — the sent-reply provenance chip reveals its text (never the patient thread)."""
+    return qa_library.get_library_item(db, principal, exemplar_id)
 
 
 @qa_api.post("/patient-qa/library/templates")

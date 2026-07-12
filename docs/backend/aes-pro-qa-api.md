@@ -40,7 +40,17 @@
   only reads the exemplars). The top exemplar becomes the draft's **provenance** (`draftProvenance`),
   surfaced as a doctor-only "based on: …" chip. Retrieval math + storage:
   [ai_engine/processing.md](../ai_engine/processing.md) "Q&A draft"; the library table is
-  `qa_knowledge_exemplars` ([data-model.md](data-model.md)).
+  `qa_knowledge_exemplars` ([data-model.md](data-model.md)). **The lexical `search_text` folds the
+  exemplar title** (AES-1802) so a topic-label title still grounds a paraphrase; embeddings are
+  optional (a startup/maintenance backfill re-embeds NULL rows once a gateway is configured, and the
+  Library flags when semantic matching is off). Provenance is the structured **«بر اساس»** object
+  (AES-1803): the top exemplar keeps the strong attribution while patient-record + conversation blocks
+  add context chips, or an empty `sources` is the honest general-knowledge state.
+- **Escalation at ingest (AES-1801):** the public `/ask` path classifies a question against a
+  deterministic fa+en red-flag lexicon (`services/qa_knowledge/escalation.py`) and stamps
+  `qa_messages.urgent` (+ `urgent_flags`). Urgent threads surface in the warning style, escalate the
+  attention bell, and drive the badge/toast. Runs even gateway-less; sensitivity-biased. An LLM
+  escalation flag from `qa_draft` is a registered fast-follow (AES-1804).
 - **Withholding (AES-403):** the public read projects **only** the patient's own questions + sent,
   doctor-verified replies. Drafts, routing, provenance, internal status, and other patients are never projected.
 
@@ -103,7 +113,8 @@ Staff thread payload:
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/patient-qa/inbox` | staff_or_admin | **Thread-centric**: one entry per patient conversation; threads awaiting approval sort first, then by recent activity. Query `scope` = `mine` (default; routed to me **+** unrouted) \| `all` (whole clinic). `total` counts threads awaiting approval (the badge). Self-heals a missing/failed draft on read. |
+| `GET` | `/patient-qa/inbox` | staff_or_admin | **Thread-centric**: one entry per patient conversation; threads awaiting approval sort first, then by recent activity. Query `scope` = `mine` (default; routed to me **+** unrouted) \| `all` (whole clinic). `total` counts threads awaiting approval (the badge). Self-heals a missing/failed draft on read. Each item + pending question carries `urgent` + `urgentFlags` (AES-1801). |
+| `GET` | `/patient-qa/inbox/summary` | staff_or_admin | Lightweight counts for the top-bar Q&A badge + urgent toast (AES-1801) — one join, no full-payload build, no draft self-heal. Query `scope` = `mine` \| `all`. Returns `{ scope, pending, urgent, urgentThreads:[{ threadId, patientName, flags:[…] }] }`. `pending` matches the inbox's `total`. |
 | `POST` | `/patient-qa/messages/{id}/send` | staff | Body `{ "reply"? }` — the approved text (the draft as-is, or an edit; omit to send the current draft). Creates the doctor reply, marks the question answered, and **captures the exchange into patient memory**. `409` if the question is no longer pending. Returns the staff thread payload. |
 | `POST` | `/patient-qa/messages/{id}/dismiss` | staff | Dismiss without replying. |
 | `POST` | `/patient-qa/messages/{id}/voice-edit` | staff | **Voice edit** of the reply: multipart `file` (the spoken note) + `draft` (the current editable text). Stores the audio transiently and enqueues an `AiJobType.qa_revise` job — the AI decides whether the note *revises* the draft or *replaces* it. `409` if the question is no longer pending. Returns `{ messageId, draftStatus: "revising", jobId }`. |
@@ -122,12 +133,18 @@ Inbox payload (thread-centric):
       "assignedDoctor": { "userId": "uuid", "name": "Dr. Demo" } | null,
       "routingSource": "ai_default|manual|unrouted",
       "needsApproval": true,
+      "urgent": false, "urgentFlags": [],          // thread urgent = its pending question tripped a red flag (AES-1801)
       "pendingQuestion": {                         // the question to approve a reply to (or null)
         "messageId": "uuid", "question": "…", "askedAt": "iso",
         "suggestedReply": "…" | null,              // the AI draft, doctor-only
         "draftStatus": "ready|pending|failed|failed_revise|none",
         "draftSource": "ai:…|ai-voice:…|mock-deterministic|null",   // "mock-deterministic" → starter reply (review)
-        "draftProvenance": { "kind": "template|sent_reply", "exemplarId": "uuid", "label": "…|null" } | null
+        "draftProvenance": {                       // the structured «بر اساس» panel (AES-1803); null on a failed draft
+          "grounded": true,                        // false + empty sources ⇒ general-knowledge caution chip
+          "sources": [ { "type": "template|sent_reply|patient_aftercare|patient_summary|conversation", "exemplarId": "uuid?", "label": "…?" } ],
+          "kind": "template|sent_reply", "exemplarId": "uuid", "label": "…|null"   // legacy top-exemplar attribution (the strong chip + Q-5 invalidation)
+        } | null,
+        "urgent": false, "urgentFlags": ["vision"]   // red-flag category keys (localized qa.redflag.<key>)
       },
       "messages": [ { "id": "uuid", "role": "patient|doctor", "body": "…", "status": "…", "createdAt": "iso" } ],
       "visits": [ { "sessionId": "uuid", "title": "Botox follow-up", "date": "iso" } ],  // interleaved as markers
@@ -158,7 +175,8 @@ call. Rows: `qa_knowledge_exemplars` ([data-model.md](data-model.md)).
 
 | Method | Path | Role | Notes |
 | --- | --- | --- | --- |
-| `GET` | `/patient-qa/library` | staff_or_admin | The library. Query `kind` = `template` \| `sent_reply`; `status` = `active` \| `excluded`. Returns `{ templates:[…], sentReplies:[…], counts:{ templates, sentRepliesActive, sentRepliesExcluded } }`. |
+| `GET` | `/patient-qa/library` | staff_or_admin | The library. Query `kind` = `template` \| `sent_reply`; `status` = `active` \| `excluded`. Returns `{ templates:[…], sentReplies:[…], counts:{ templates, sentRepliesActive, sentRepliesExcluded }, semanticSearch }`. `semanticSearch:false` ⇒ embeddings unconfigured (lexical-only) → the Library shows one quiet notice (AES-1802). |
+| `GET` | `/patient-qa/library/{id}` | staff_or_admin | One exemplar's Q/A (per-tenant) — the sent-reply provenance chip's reveal (AES-1803); never exposes the source patient's thread. |
 | `POST` | `/patient-qa/library/templates` | staff | Create a curated template. Body `{ "title"?, "question"?, "answer", "tags"? }`. |
 | `PATCH` | `/patient-qa/library/templates/{id}` | staff | Edit a template (templates only — `400` on a sent-reply row). Body as create. |
 | `DELETE` | `/patient-qa/library/templates/{id}` | staff | Delete a template (`204`). Auto-indexed replies are excluded, not deleted. |

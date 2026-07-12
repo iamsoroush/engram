@@ -428,11 +428,15 @@ and approves before anything reaches the patient.
     other-thread answers were noise + a cross-patient leak surface; tone comes from the current draft.
   - **Retrieval is backend-owned; the worker stays stateless.** The backend runs the hybrid
     lexical+embedding retrieval over `qa_knowledge_exemplars` (per-tenant, SQL-scoped) and hands the
-    top-k as `retrievedExemplars: [{question, answer, source: template|sent_reply, score}]`. Embeddings
-    are computed backend-side via an OpenAI-compatible `/embeddings` gateway when
-    `BACKEND_EMBEDDINGS_BASE_URL` is set, else retrieval is **lexical-only** (deterministic, gateway-
-    less) — so dev/CI/e2e stay reproducible. The top exemplar drives the draft's provenance chip. See
-    `app/services/qa_knowledge/` and [backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md).
+    top-k as `retrievedExemplars: [{question, answer, source: template|sent_reply, score}]` (worker
+    contract unchanged). The lexical `search_text` folds the exemplar **title** too (AES-1802), so a
+    topic-label title still grounds a paraphrase. Embeddings are computed backend-side via an
+    OpenAI-compatible `/embeddings` gateway when `BACKEND_EMBEDDINGS_BASE_URL` is set, else retrieval is
+    **lexical-only** (deterministic, gateway-less) — so dev/CI/e2e stay reproducible; a startup /
+    `python -m app.maintenance.embed_backfill` pass re-embeds NULL rows once a gateway is configured.
+    The backend also builds the draft's structured **«بر اساس»** provenance (AES-1803) from the payload
+    it assembled — not the worker. See `app/services/qa_knowledge/` and
+    [backend/aes-pro-qa-api.md](../backend/aes-pro-qa-api.md).
 - **`qa_revise`** takes the doctor's spoken voice note (downloaded and sent as `input_audio`
   alongside the current draft), classifies it as a **revision** of the draft or an **entirely new
   reply** (strict JSON `{mode: revise|replace, reply}`), and produces the final text.
