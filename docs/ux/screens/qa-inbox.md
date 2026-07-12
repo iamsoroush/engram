@@ -45,16 +45,19 @@ only drafts.
   (`Tabs`); the Routing control is the shared **select trigger** (`SelectMenu`) — the same two
   primitives, matched in height, that [Insights](insights.md) uses.
 - **Header grammar** (AES-1804): one arrangement, everything inline-start — a **title row** carrying the
-  `Inbox|Library` view switch in the **fixed bottom bar** (the capture bar is hidden here, so it
-  reads as the screen's own navigation), and a **single filter row** under the title grouping
-  `Mine|Clinic` + the Routing select with shared spacing (wraps gracefully at phone widths).
+  `Inbox|Library` view switch as a **floating centered pill** fixed at the bottom (the capture bar
+  is hidden here), a **?** help affordance beside the title (a dialog explaining Inbox/Library,
+  Mine/Clinic, and Routing), and a **single filter row** under the title grouping `Mine|Clinic` +
+  the Routing select (the outside "Routing" label hides at phone widths — the trigger text names
+  the mode).
 - Each card: an **identity header** — initials avatar + patient name + the question's time (24h,
   localized) — then a badges row (`needs reply`; `Treating` / `Rerouted` / `Unrouted` + doctor name);
-  the pending question as a single-framed quote block (the card is the only border); then an
-  expandable full conversation with **visit markers interleaved** chronologically (chat-style
-  bubbles). The suggested-reply draft is an auto-growing surface (never clipped behind an inner
-  scrollbar) under an overline label + AI-draft badge, with a tiered action row: primary **Send**,
-  secondary **Voice edit**, quiet **Dismiss**.
+  then the thread **as a conversation**: the pending question is a patient bubble (start side) and
+  the suggested-reply draft answers it from the clinic side (end side) — an auto-growing editable
+  surface (never clipped behind an inner scrollbar) inside a tinted bubble under an overline label +
+  AI-draft badge. Earlier history expands via a compact **Show more · n** pill at the conversation's
+  top corner (visit markers interleaved chronologically). Actions: primary **Send** + **Voice edit**
+  on one row, **Dismiss** as a bordered secondary beneath.
 
 ## Reply flow
 

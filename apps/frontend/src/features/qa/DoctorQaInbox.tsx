@@ -1,7 +1,7 @@
 import React from "react";
 import "./qaInbox.css";
 import type { ApiFetch } from "../../domain/appTypes";
-import { Alert, Badge, Button, Card, DisclosureRow, Skeleton, Tabs, Textarea } from "../../shared/ui/primitives";
+import { Alert, Badge, Button, Card, Dialog, DisclosureRow, Skeleton, Tabs, Textarea } from "../../shared/ui/primitives";
 import { SelectMenu } from "../../shared/ui/SelectMenu";
 import { formatDate } from "../../shared/lib/datetime";
 import { useT } from "../../shared/i18n";
@@ -52,6 +52,7 @@ export function DoctorQaInbox({
   const t = useT();
   const [tab, setTab] = React.useState<"inbox" | "library">("inbox");
   const [scope, setScope] = React.useState<"mine" | "all">("mine");
+  const [helpOpen, setHelpOpen] = React.useState(false);
   const [items, setItems] = React.useState<QaInboxItem[]>([]);
   const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -158,6 +159,9 @@ export function DoctorQaInbox({
       <div className="qa-inbox-head">
         <div className="qa-inbox-head-top">
           <h1>{tab === "library" ? t("qa.tabLibrary") : t("qa.inboxTitle")}</h1>
+          <button type="button" className="qa-help-button" aria-label={t("qa.helpAria")} onClick={() => setHelpOpen(true)}>
+            ?
+          </button>
         </div>
         {tab === "inbox" ? (
           <div className="qa-inbox-controls">
@@ -227,6 +231,14 @@ export function DoctorQaInbox({
           )}
         </>
       )}
+
+      <Dialog open={helpOpen} title={t("qa.help.title")} onClose={() => setHelpOpen(false)}>
+        <div className="qa-help-body">
+          <p>{t("qa.help.inboxLibrary")}</p>
+          <p>{t("qa.help.mineClinic")}</p>
+          <p>{t("qa.help.routing")}</p>
+        </div>
+      </Dialog>
 
       {/* Inbox | Library lives in a fixed bottom bar (AES-1901): the capture bar is hidden on this
           screen, so this reads as the screen's own navigation and never competes with the per-reply
@@ -411,6 +423,14 @@ function QaThreadCard({
         </div>
       ) : null}
 
+      {hiddenCount > 0 ? (
+        <div className="qa-convo-toolbar">
+          <DisclosureRow className="qa-expand-toggle" open={expanded} onToggle={() => setExpanded((value) => !value)}>
+            {expanded ? t("qa.hideConversation") : t("qa.viewConversation", { n: item.messages.length })}
+          </DisclosureRow>
+        </div>
+      ) : null}
+
       {expanded ? (
         <div className="qa-convo" ref={convoRef}>
           {timeline.map((entry, index) =>
@@ -450,8 +470,10 @@ function QaThreadCard({
         </div>
       ) : item.needsApproval && pending ? (
         // Collapsed open conversation: just the question awaiting a reply.
-        <div className="qa-question" dir="auto" data-content>
-          {pending.question}
+        <div className="qa-convo qa-convo-collapsed">
+          <div className="qa-msg patient" dir="auto" data-content>
+            {pending.question}
+          </div>
         </div>
       ) : (
         // Collapsed resolved conversation: one-line preview of the latest message.
@@ -466,15 +488,9 @@ function QaThreadCard({
         </div>
       )}
 
-      {/* Explicit, labelled disclosure for the full thread (replaces the easy-to-miss chevron). */}
-      {hiddenCount > 0 ? (
-        <DisclosureRow className="qa-expand-toggle" open={expanded} onToggle={() => setExpanded((value) => !value)}>
-          {expanded ? t("qa.hideConversation") : t("qa.viewConversation", { n: item.messages.length })}
-        </DisclosureRow>
-      ) : null}
-
       {item.needsApproval ? (
         <div className="qa-approve">
+          <div className="qa-draft-bubble">
           <div className="qa-draft-label">
             {t("qa.suggestedReply")}
             <DraftStatusBadge
@@ -514,6 +530,7 @@ function QaThreadCard({
             ) : null}
           </div>
           {voiceError ? <div className="qa-voice-error">{voiceError}</div> : null}
+          </div>
           <div className="qa-card-actions">
             <Button className="qa-send" variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim() || voice.state !== "idle"}>
               {t("qa.send")}
@@ -521,7 +538,7 @@ function QaThreadCard({
             <VoiceControl voice={voice} onStart={startVoice} />
           </div>
           <div className="qa-card-actions qa-card-actions-quiet">
-            <Button variant="ghost" onClick={() => onDismiss(item)} disabled={voice.state === "applying"}>
+            <Button variant="secondary" size="sm" onClick={() => onDismiss(item)} disabled={voice.state === "applying"}>
               {t("qa.dismiss")}
             </Button>
             <span className="qa-spacer" />
