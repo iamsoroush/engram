@@ -299,6 +299,15 @@ function QaThreadCard({
   // a resolved one shows a one-line preview. Clicking the header reveals the full history either way.
   const [expanded, setExpanded] = React.useState(false);
   const convoRef = React.useRef<HTMLDivElement>(null);
+  // The draft surface grows with its content (up to a cap) — a clipped reply behind a scrollbar reads
+  // as broken and hides what the doctor is about to send.
+  const replyWrapRef = React.useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    const el = replyWrapRef.current?.querySelector("textarea");
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight + 2, Math.round(window.innerHeight * 0.5))}px`;
+  });
 
   // Voice edit: the doctor speaks a change; the AI revises or replaces the draft (it decides which).
   const [voiceMode, setVoiceMode] = React.useState<"revise" | "replace" | null>(null);
@@ -372,21 +381,29 @@ function QaThreadCard({
   return (
     <Card className={`qa-card ${item.needsApproval ? "qa-needs" : ""} ${item.urgent ? "qa-urgent" : ""}`}>
       <div className="qa-card-head">
-        <span className="qa-patient" dir="auto" data-content>
-          {item.patientName}
+        <span className="qa-avatar" aria-hidden="true" data-content>
+          {(item.patientName || "?").trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}
         </span>
-        <span className="qa-head-right">
+        <span className="qa-head-id">
+          <span className="qa-patient" dir="auto" data-content>
+            {item.patientName}
+          </span>
+          <span className="qa-head-time" data-content>
+            {formatDateTime(item.needsApproval && pending ? pending.askedAt : item.lastActivityAt)}
+          </span>
+        </span>
+      </div>
+      <div className="qa-head-badges">
           {item.urgent ? <Badge tone="red" data-testid="qa-urgent-badge">{t("qa.urgentBadge")}</Badge> : null}
           {item.needsApproval ? <Badge tone="amber">{t("qa.badgeNeedsReply")}</Badge> : null}
           {item.assignedDoctor ? (
             <Badge tone="blue">
-              {item.routingSource === "manual" ? t("qa.badgeRerouted") : t("qa.badgeTreating")} ·{" "}
+              {item.routingSource === "manual" ? t("qa.badgeRerouted") : t("qa.badgeTreating")}{"\u00A0·\u00A0"}
               <span data-content>{item.assignedDoctor.name}</span>
             </Badge>
           ) : (
             <Badge tone="amber">{t("qa.badgeUnrouted")}</Badge>
           )}
-        </span>
       </div>
       {item.urgent ? (
         <div className="qa-urgent-banner" data-testid="qa-urgent-banner" role="status">
@@ -433,12 +450,8 @@ function QaThreadCard({
         </div>
       ) : item.needsApproval && pending ? (
         // Collapsed open conversation: just the question awaiting a reply.
-        <div className="qa-msg patient awaiting qa-msg-flush">
-          <div className="qa-msg-meta">
-            <span data-content>{item.patientName}</span>
-            <span className="qa-msg-time" data-content> · {formatDateTime(pending.askedAt)}</span>
-          </div>
-          <div dir="auto" data-content>{pending.question}</div>
+        <div className="qa-question" dir="auto" data-content>
+          {pending.question}
         </div>
       ) : (
         // Collapsed resolved conversation: one-line preview of the latest message.
@@ -484,7 +497,7 @@ function QaThreadCard({
               </button>
             </div>
           ) : null}
-          <div className="qa-reply-wrap">
+          <div className="qa-reply-wrap" ref={replyWrapRef}>
             <Textarea
               className={`qa-reply-input ${voice.state === "applying" ? "is-applying" : ""}`}
               dir="auto"
@@ -502,19 +515,17 @@ function QaThreadCard({
           </div>
           {voiceError ? <div className="qa-voice-error">{voiceError}</div> : null}
           <div className="qa-card-actions">
-            <Button variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim() || voice.state !== "idle"}>
+            <Button className="qa-send" variant="default" onClick={() => onSend(item, reply)} disabled={!reply.trim() || voice.state !== "idle"}>
               {t("qa.send")}
             </Button>
+            <VoiceControl voice={voice} onStart={startVoice} />
+          </div>
+          <div className="qa-card-actions qa-card-actions-quiet">
             <Button variant="ghost" onClick={() => onDismiss(item)} disabled={voice.state === "applying"}>
               {t("qa.dismiss")}
             </Button>
-            <VoiceControl voice={voice} onStart={startVoice} />
-            {canReroute ? (
-              <>
-                <span className="qa-spacer" />
-                <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} />
-              </>
-            ) : null}
+            <span className="qa-spacer" />
+            {canReroute ? <Rerouter item={item} doctors={doctors} onOpen={loadDoctors} onReroute={onReroute} /> : null}
           </div>
         </div>
       ) : expanded && canReroute ? (
@@ -777,5 +788,5 @@ function Rerouter({
 }
 
 function formatDateTime(iso: string | null): string {
-  return formatDate(iso, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return formatDate(iso, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 }
