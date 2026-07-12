@@ -618,7 +618,12 @@ def _patient_visits(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUI
 def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dict[str, Any]:
     """Build one thread-centric inbox entry: the whole conversation + the pending question (if any)."""
     messages = _staff_messages(db, thread)
-    pending = next((m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING), None)
+    pendings = [m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING]
+    # A thread can hold several unanswered questions. Surface an URGENT one first so a red-flag question
+    # asked after a routine one isn't hidden behind it (AES-1801) — the doctor works the urgent one now;
+    # the rest follow. Absent an urgent one, keep the oldest-first order.
+    pending = next((m for m in pendings if m.get("urgent")), pendings[0] if pendings else None)
+    thread_urgent = any(m.get("urgent") for m in pendings)
     assigned_name = _doctor_name(db, thread.assigned_doctor_user_id)
     last_activity = messages[-1]["createdAt"] if messages else _iso(thread.updated_at)
     # Re-route is only meaningful for a multi-provider patient (≥2 treating doctors to choose between);
@@ -636,9 +641,9 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
         "routingSource": thread.routing_source,
         "treatingDoctorCount": treating_doctor_count,
         "needsApproval": pending is not None,
-        # Escalation (AES-1801): the thread is urgent while its pending question tripped a red flag —
+        # Escalation (AES-1801): the thread is urgent while ANY pending question tripped a red flag —
         # the row + badge render in the warning style and the bell escalates.
-        "urgent": bool(pending and pending.get("urgent")),
+        "urgent": thread_urgent,
         "urgentFlags": (pending.get("urgentFlags") if pending else None) or [],
         "pendingQuestion": (
             {

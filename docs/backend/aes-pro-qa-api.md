@@ -141,7 +141,8 @@ Inbox payload (thread-centric):
         "draftSource": "ai:…|ai-voice:…|mock-deterministic|null",   // "mock-deterministic" → starter reply (review)
         "draftProvenance": {                       // the structured «بر اساس» panel (AES-1803); null on a failed draft
           "grounded": true,                        // false + empty sources ⇒ general-knowledge caution chip
-          "sources": [ { "type": "template|sent_reply|patient_aftercare|patient_summary|conversation", "exemplarId": "uuid?", "label": "…?" } ],
+          // patient_record/conversation sources carry a bounded `text` snippet (the chip reveals it); exemplar sources carry `exemplarId` (fetched on tap):
+          "sources": [ { "type": "template|sent_reply|patient_aftercare|patient_summary|conversation", "exemplarId": "uuid?", "label": "…?", "text": "…?" } ],
           "kind": "template|sent_reply", "exemplarId": "uuid", "label": "…|null"   // legacy top-exemplar attribution (the strong chip + Q-5 invalidation)
         } | null,
         "urgent": false, "urgentFlags": ["vision"]   // red-flag category keys (localized qa.redflag.<key>)

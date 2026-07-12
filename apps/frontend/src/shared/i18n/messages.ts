@@ -1459,6 +1459,7 @@ const en: Dict = {
   "qa.library.question": "Question pattern (optional)",
   // Question is the primary, required field now (AES-1802); title is an optional label.
   "qa.library.questionPrimary": "What is the patient asking?",
+  "qa.library.questionExample": "e.g. When can I exercise after botox?",
   "qa.library.questionRequired": "Add the patient’s question — it’s what matching uses.",
   "qa.library.titleOptional": "Label (optional)",
   "qa.library.semanticOff": "Semantic matching is off — retrieval is keyword-only, so a paraphrased question may miss. Fill the question field so the words match.",
@@ -3099,6 +3100,7 @@ const fa: Dict = {
   "qa.library.question": "الگوی پرسش (اختیاری)",
   // اکنون «سؤال» فیلد اصلی و الزامی است (AES-1802)؛ «برچسب» اختیاری است.
   "qa.library.questionPrimary": "سؤال بیمار چیست؟",
+  "qa.library.questionExample": "مثلاً: کی می‌توانم بعد از بوتاکس ورزش کنم؟",
   "qa.library.questionRequired": "سؤال بیمار را بنویسید — مبنای تطبیق همین است.",
   "qa.library.titleOptional": "برچسب (اختیاری)",
   "qa.library.semanticOff": "تطبیق معنایی خاموش است — جست‌وجو فقط بر پایهٔ کلیدواژه است، پس پرسشی با عبارت متفاوت ممکن است پیدا نشود. برای هم‌خوانی واژه‌ها فیلد سؤال را پر کنید.",

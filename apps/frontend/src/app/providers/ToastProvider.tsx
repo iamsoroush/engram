@@ -5,27 +5,41 @@ import { Toast } from "../../shared/ui/primitives";
 // threads through props or lives as App state — both the app body and the session store raise toasts
 // via `useToast().setToast`. The provider renders the toast + owns its auto-dismiss timer.
 
+export type ToastTone = "default" | "danger";
+export type ToastOptions = { tone?: ToastTone; durationMs?: number };
+
+type ToastState = { message: string; tone: ToastTone; durationMs: number };
 type ToastContextValue = {
   toast: string;
-  setToast: (message: string) => void;
+  toastTone: ToastTone;
+  /** Raise a toast; `options.tone: "danger"` renders the warning style, `durationMs` overrides the
+   *  auto-dismiss (default 2200ms). Callers passing only a message keep the neutral, short toast. */
+  setToast: (message: string, options?: ToastOptions) => void;
 };
 
 const ToastContext = React.createContext<ToastContextValue | null>(null);
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toast, setToast] = React.useState("");
+  const [state, setState] = React.useState<ToastState>({ message: "", tone: "default", durationMs: 2200 });
+
+  const setToast = React.useCallback((message: string, options?: ToastOptions) => {
+    setState({ message, tone: options?.tone ?? "default", durationMs: options?.durationMs ?? 2200 });
+  }, []);
 
   React.useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2200);
+    if (!state.message) return;
+    const timer = window.setTimeout(() => setState((prev) => ({ ...prev, message: "" })), state.durationMs);
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [state.message, state.durationMs]);
 
-  const value = React.useMemo<ToastContextValue>(() => ({ toast, setToast }), [toast]);
+  const value = React.useMemo<ToastContextValue>(
+    () => ({ toast: state.message, toastTone: state.tone, setToast }),
+    [state.message, state.tone, setToast],
+  );
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <Toast message={toast} />
+      <Toast message={state.message} tone={state.tone} />
     </ToastContext.Provider>
   );
 }

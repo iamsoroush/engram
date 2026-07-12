@@ -157,17 +157,7 @@ export function DoctorQaInbox({
     <div className="qa-inbox" data-testid="qa-inbox">
       <div className="qa-inbox-head">
         <div className="qa-inbox-head-top">
-          <h1>{t("qa.inboxTitle")}</h1>
-          {/* One control language (#4): the shared segmented control for Inbox | Library. */}
-          <Tabs
-            ariaLabel={t("qa.tabsAria")}
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: "inbox", label: t("qa.tabInbox"), testId: "qa-tab-inbox" },
-              { value: "library", label: t("qa.tabLibrary"), testId: "qa-tab-library" },
-            ]}
-          />
+          <h1>{tab === "library" ? t("qa.tabLibrary") : t("qa.inboxTitle")}</h1>
         </div>
         {tab === "inbox" ? (
           <div className="qa-inbox-controls">
@@ -237,6 +227,21 @@ export function DoctorQaInbox({
           )}
         </>
       )}
+
+      {/* Inbox | Library lives in a fixed bottom bar (AES-1801): the capture bar is hidden on this
+          screen, so this reads as the screen's own navigation and never competes with the per-reply
+          voice-edit mic. */}
+      <nav className="qa-bottom-nav" aria-label={t("qa.tabsAria")}>
+        <Tabs
+          ariaLabel={t("qa.tabsAria")}
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "inbox", label: t("qa.tabInbox"), testId: "qa-tab-inbox" },
+            { value: "library", label: t("qa.tabLibrary"), testId: "qa-tab-library" },
+          ]}
+        />
+      </nav>
     </div>
   );
 }
@@ -611,14 +616,39 @@ function ProvenanceChip({
     case "sent_reply":
       return <SentReplyChip exemplarId={source.exemplarId} apiFetch={apiFetch} />;
     case "patient_aftercare":
-      return <span className="qa-provenance-chip">{t("qa.basedOnAftercare")}</span>;
+      return <RevealChip label={t("qa.basedOnAftercare")} text={source.text} testId="qa-provenance-aftercare" />;
     case "patient_summary":
-      return <span className="qa-provenance-chip">{t("qa.basedOnSummary")}</span>;
+      return <RevealChip label={t("qa.basedOnSummary")} text={source.text} testId="qa-provenance-summary" />;
     case "conversation":
-      return <span className="qa-provenance-chip">{t("qa.basedOnConversation")}</span>;
+      return <RevealChip label={t("qa.basedOnConversation")} text={source.text} testId="qa-provenance-conversation" />;
     default:
       return null;
   }
+}
+
+/** A provenance chip that reveals its own grounding snippet inline on tap (patient-record / conversation
+ * sources carry the text with them). Static when there's no snippet. */
+function RevealChip({ label, text, testId }: { label: string; text?: string; testId?: string }) {
+  const [open, setOpen] = React.useState(false);
+  if (!text) return <span className="qa-provenance-chip" data-testid={testId}>{label}</span>;
+  return (
+    <span className="qa-provenance-reply">
+      <button
+        type="button"
+        className="qa-provenance-chip qa-provenance-revealable"
+        data-testid={testId}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {label}
+      </button>
+      {open ? (
+        <div className="qa-provenance-reveal" dir="auto" data-content>
+          {text}
+        </div>
+      ) : null}
+    </span>
+  );
 }
 
 /** The "پاسخ قبلی کلینیک" chip: reveals the exemplar's OWN Q/A (never the other patient's thread). */

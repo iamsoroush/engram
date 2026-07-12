@@ -16,6 +16,9 @@ export interface QaProvenanceSource {
   type: "template" | "sent_reply" | "patient_aftercare" | "patient_summary" | "conversation";
   exemplarId?: string;
   label?: string | null;
+  /** A bounded snippet of the actual grounding text (patient-record / conversation sources) — the
+   *  doctor can tap the chip to reveal it. Exemplar chips carry an id and fetch their Q/A instead. */
+  text?: string;
 }
 
 /**

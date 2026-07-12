@@ -242,7 +242,8 @@ function AppInner() {
           if (!seen.has(thread.threadId)) {
             const flag = thread.flags[0];
             const label = flag ? appT(`qa.redflag.${flag}`) : appT("qa.redflag.generic");
-            setToast(appT("qa.urgentToast", { flag: label }));
+            // Loud + held longer than a routine toast — an urgent patient question must not slip by.
+            setToast(appT("qa.urgentToast", { flag: label }), { tone: "danger", durationMs: 7000 });
           }
         }
         seenUrgentThreadsRef.current = nowUrgent;

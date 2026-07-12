@@ -16,6 +16,8 @@ services:
       # Gateway-less determinism: synthesis is never dispatched, so the deterministic baseline
       # report stands (spec determinism seam #4).
       BACKEND_REPORT_SYNTHESIS_ENABLED: "false"
+      # Q&A retrieval stays LEXICAL-ONLY in e2e so P0-12 grounding is deterministic + network-free.
+      BACKEND_EMBEDDINGS_BASE_URL: ""
     healthcheck:
       test:
         - "CMD-SHELL"

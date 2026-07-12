@@ -271,7 +271,12 @@ export function DropdownMenu({
   );
 }
 
-export function Toast({ message }: { message?: string }) {
+export function Toast({ message, tone = "default" }: { message?: string; tone?: "default" | "danger" }) {
   if (!message) return null;
-  return <div className="toast">{message}</div>;
+  // A danger toast is an alert (assertive) so a screen reader announces an urgent patient question.
+  return (
+    <div className={cx("toast", tone === "danger" && "toast-danger")} role={tone === "danger" ? "alert" : "status"}>
+      {message}
+    </div>
+  );
 }

@@ -1689,6 +1689,31 @@ small {
   font-weight: 700;
 }
 
+/* Urgent patient question (AES-1801): a loud red toast, wider and centered at the top so it can't be
+   missed, with a ⚠ marker. Held longer than the neutral toast (duration set by the caller). */
+.toast-danger {
+  right: 50%;
+  transform: translateX(50%);
+  top: 16px;
+  bottom: auto;
+  max-width: min(92vw, 440px);
+  border-color: var(--color-danger, #d33);
+  background: var(--color-danger, #d33);
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 14px 18px 14px 16px;
+  box-shadow: 0 18px 44px rgb(211 51 51 / 38%);
+  animation: toast-danger-pulse 1.1s ease-in-out 2;
+}
+.toast-danger::before {
+  content: "⚠";
+  margin-inline-end: 8px;
+}
+@keyframes toast-danger-pulse {
+  0%, 100% { box-shadow: 0 18px 44px rgb(211 51 51 / 38%); }
+  50% { box-shadow: 0 0 0 4px rgb(211 51 51 / 30%), 0 18px 44px rgb(211 51 51 / 45%); }
+}
+
 /* Offline return receipt — a calm, transient "your queued captures landed" confirmation, centered
    at the top so it reads as an arrival (distinct from the bottom-corner action toast). Auto-dismisses. */
 .offline-return-receipt {

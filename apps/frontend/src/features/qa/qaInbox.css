@@ -20,6 +20,25 @@
   gap: 12px;
 }
 
+/* Fixed bottom Inbox | Library bar (AES-1801) — replaces the capture bar on this screen. */
+.qa-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -6px 24px rgb(15 23 42 / 6%);
+}
+.qa-bottom-nav .tabs {
+  width: 100%;
+  max-width: 420px;
+}
+
 .qa-inbox-head-top {
   display: flex;
   flex-wrap: wrap;
@@ -561,6 +580,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A revealable context chip (patient record / conversation) — neutral-toned but clearly tappable. */
+button.qa-provenance-chip.qa-provenance-revealable {
+  cursor: pointer;
+  border-style: dashed;
+}
+button.qa-provenance-chip.qa-provenance-revealable:hover {
+  color: var(--color-text);
+  border-color: var(--color-muted);
+}
 /* The strong "grounded on" attribution (template / a previous reply) is tappable and primary-toned. */
 button.qa-provenance-chip.qa-provenance-strong {
   border-color: var(--color-border);
@@ -765,13 +793,28 @@ button.qa-provenance-chip.qa-provenance-strong:hover {
 }
 
 .qa-lib-input,
-.qa-lib-answer {
+.qa-lib-answer,
+.qa-lib-question {
   width: 100%;
   box-sizing: border-box;
 }
 
 .qa-lib-answer {
   min-height: 88px;
+}
+
+/* Question is the primary field — a labelled, roomier textarea so it never reads as a mere label. */
+.qa-lib-field-label {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text);
+}
+.qa-lib-req {
+  color: var(--color-danger, #d33);
+}
+.qa-lib-question {
+  min-height: 60px;
+  font-size: var(--text-base, 1rem);
 }
 
 .qa-lib-hint {

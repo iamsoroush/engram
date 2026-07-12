@@ -34,6 +34,9 @@ MAX_QUESTION_CHARS = 4000
 MAX_ANSWER_CHARS = 8000
 MAX_TAGS = 12
 MAX_TAG_CHARS = 40
+# Bound the patient-record / conversation snippet stored on a draft's provenance (AES-1803): enough to
+# show the doctor what grounded the reply, not the whole report.
+PROVENANCE_SNIPPET_CHARS = 500
 
 
 def _utc_now() -> datetime:
@@ -410,14 +413,20 @@ def build_draft_provenance(
             sources.append({"type": "template", "exemplarId": top.get("exemplarId"), "label": top.get("title")})
         else:
             sources.append({"type": "sent_reply", "exemplarId": top.get("exemplarId")})
+    # Patient-record + conversation chips carry a bounded snippet of the ACTUAL grounding text so the
+    # doctor can tap to see what informed the draft (AES-1803). It is THIS patient's own data (no
+    # cross-patient leak); the exemplar chips carry only an id and fetch their Q/A on demand.
     if isinstance(ctx.get("recentAftercare"), str) and ctx["recentAftercare"].strip():
-        sources.append({"type": "patient_aftercare"})
+        sources.append({"type": "patient_aftercare", "text": ctx["recentAftercare"].strip()[:PROVENANCE_SNIPPET_CHARS]})
     recent_summaries = ctx.get("recentVisitSummaries") or []
     memory_summary = ctx.get("memorySummary")
-    if recent_summaries or (isinstance(memory_summary, str) and memory_summary.strip()):
-        sources.append({"type": "patient_summary"})
+    summary_text = str(recent_summaries[0] if recent_summaries else (memory_summary or "")).strip()
+    if summary_text:
+        sources.append({"type": "patient_summary", "text": summary_text[:PROVENANCE_SNIPPET_CHARS]})
     if thread_history:
-        sources.append({"type": "conversation"})
+        turn = thread_history[-1] if isinstance(thread_history[-1], dict) else {}
+        convo = f"Q: {turn.get('question', '')}\nA: {turn.get('answer', '')}".strip()
+        sources.append({"type": "conversation", "text": convo[:PROVENANCE_SNIPPET_CHARS]})
 
     provenance: dict[str, Any] = {"grounded": bool(sources), "sources": sources}
     if top is not None:

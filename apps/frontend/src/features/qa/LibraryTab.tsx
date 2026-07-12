@@ -293,11 +293,19 @@ function TemplateForm({
 
   return (
     <div className="qa-lib-form">
-      <Input
-        className="qa-lib-input"
+      {/* Question is the primary field (AES-1802): a labelled textarea, not a small input, so it never
+          reads as just a label. Title sits below as an optional small input. */}
+      <label className="qa-lib-field-label" htmlFor="qa-tpl-question">
+        {t("qa.library.questionPrimary")}
+        <span className="qa-lib-req" aria-hidden="true"> *</span>
+      </label>
+      <Textarea
+        id="qa-tpl-question"
+        className="qa-lib-question"
+        rows={2}
         dir="auto"
         data-testid="qa-template-question"
-        placeholder={t("qa.library.questionPrimary")}
+        placeholder={t("qa.library.questionExample")}
         aria-label={t("qa.library.questionPrimary")}
         value={question}
         onChange={(event) => {

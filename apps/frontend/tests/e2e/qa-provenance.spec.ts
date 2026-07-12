@@ -60,7 +60,7 @@ test("a grounded draft names its sources: template + patient-record + conversati
     sources: [
       { type: "template", exemplarId: "ex1", label: "ورزش بعد از بوتاکس" },
       { type: "patient_aftercare" },
-      { type: "conversation" },
+      { type: "conversation", text: "Q: قبلاً چی پرسیدم\nA: پاسخ قبلی دکتر" },
     ],
   });
 
@@ -71,6 +71,10 @@ test("a grounded draft names its sources: template + patient-record + conversati
   await expect(panel).toContainText("گفتگوی قبلی همین بیمار");
   // Not the general-knowledge state.
   await expect(page.getByTestId("qa-provenance-general")).toHaveCount(0);
+
+  // The conversation chip carries its snippet — tapping it reveals the actual grounding text (AES-1803).
+  await page.getByTestId("qa-provenance-conversation").click();
+  await expect(panel).toContainText("پاسخ قبلی دکتر");
 });
 
 test("an ungrounded draft shows the general-knowledge caution chip (fa)", async ({ page }) => {

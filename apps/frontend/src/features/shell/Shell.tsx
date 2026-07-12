@@ -60,8 +60,11 @@ export function Shell({
   // Offer a clinic switcher only to users who belong to more than one clinic.
   const multiClinic = new Set(auth.memberships.map((membership) => membership.tenantId)).size > 1;
   // Account / utility pages have no capture context — the capture bar would overlap their content.
+  // The Q&A inbox likewise hides it: capturing has no meaning there, and it would clash with the
+  // per-reply voice-edit mic (AES-1801). Q&A gets its own bottom Inbox|Library bar instead.
   const isAccountScreen =
     screen === "settings" || screen === "profile" || screen === "team" || screen === "insights" || screen === "plan" || screen === "switch-clinic";
+  const hideCaptureBar = isAccountScreen || screen === "qa-inbox";
   const isOffline = !syncHealth.online;
   const closeMenu = () => menuRef.current?.removeAttribute("open");
   const goTo = (target: Screen) => {
@@ -254,7 +257,7 @@ export function Shell({
       </header>
       {isOffline ? <p className="global-offline-status">{t("shell.offline")}</p> : null}
       {children}
-      {isAccountScreen ? null : (
+      {hideCaptureBar ? null : (
         <CaptureActions compact contextLabel={isOffline ? t("shell.savingOnDevice") : captureContextLabel} onAction={onCapture} tier={auth.tenant.tier} />
       )}
       <footer className="app-version">{t("shell.version")}</footer>

@@ -17,8 +17,10 @@ Incoming patient questions are classified **at ingest** against a deterministic 
 the aesthetics red-flag set; sensitivity-biased, so a false-positive urgent is cheap and a miss is
 not). A hit marks the thread **urgent**: the thread row + top-bar badge render in the warning style,
 the row shows a **«فوری» badge + a red-flag banner** naming the flag, the attention **bell escalates**
-to the urgent tier (above safety), and an **in-app toast** fires when the app is open («سؤال فوری
-بیمار — تاری دید»). An LLM escalation flag from the draft is a registered fast-follow (AES-1804).
+to the urgent tier (above safety), and a **held red in-app toast** fires when the app is open («سؤال
+فوری بیمار — تاری دید»). A thread can hold several unanswered questions; an urgent one is **surfaced
+first** so a red-flag question asked after a routine one is never hidden behind it. An LLM escalation
+flag from the draft is a registered fast-follow (AES-1804).
 
 ## Purpose
 
@@ -29,6 +31,10 @@ only drafts.
 ## Structure
 
 - **Two tabs**: `Inbox` (default — the triage queue) and `Library` (the knowledge library — see below).
+  The `Inbox|Library` segmented control lives in a **fixed bottom bar** (AES-1801): this screen **hides
+  the capture bar** (capture has no meaning here and would clash with the per-reply voice-edit mic), so
+  the bottom bar reads as the screen's own navigation. The `Mine|Clinic` scope + routing controls stay
+  at the top with the title.
 - **Thread-centric**: one card per patient conversation — a triaged message list, not a flat chat.
   Threads awaiting approval sort first (amber `Needs reply` badge); the rest follow by recent
   activity.
@@ -56,8 +62,11 @@ Pending question → **suggested reply** → doctor edits → **Send** or **Dism
   (opens only that exemplar's Q/A — never the other patient's thread), one chip per non-empty
   **patient-record** block («مراقبت پس از درمان بیمار», «خلاصه ویزیت اخیر»), a **conversation** chip,
   and — when none grounded it — the honest caution chip «**دانش عمومی — بدون منبع کلینیکی**» (the state
-  that deserves the hardest review). Distinct from the gateway-less starter marker. Similarity scores
-  stay internal — the chips are attribution, not numbers.
+  that deserves the hardest review). The **template** chip opens the Library entry; the **previous-reply**
+  chip and the **patient-record / conversation** chips are **tappable to reveal the actual grounding
+  text** inline (the exemplar's Q/A, or a bounded snippet of this patient's aftercare / recent-visit
+  summary / prior exchange). Distinct from the gateway-less starter marker. Similarity scores stay
+  internal — the chips are attribution, not numbers.
 - Editing is typed or **voice edit**: the doctor dictates a change and the AI revises or rewrites
   the draft (it decides which), with a one-tap **Undo** back to the pre-voice text. A `replace` clears
   the provenance chip (fresh dictation); a `revise` keeps it.
