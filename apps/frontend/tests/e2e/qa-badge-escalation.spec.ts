@@ -84,7 +84,8 @@ test("an urgent thread renders the warning row + red-flag banner (fa)", async ({
   await page.route("**/api/v1/patient-qa/settings", (route) => route.fulfill({ contentType: "application/json", json: { routingMode: "ai_default" } }));
 
   await login(page);
-  await page.goto("/#qa-inbox");
+  // Click-nav (not goto): the icon renders only once capabilities resolve, so this can't race the route guard.
+  await page.getByTestId("qa-nav-button").click();
   await page.getByTestId("qa-inbox").waitFor();
 
   // The urgent badge + red-flag banner both render, in Persian, naming the flag «تاری دید».

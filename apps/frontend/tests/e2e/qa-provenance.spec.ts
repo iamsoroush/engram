@@ -47,7 +47,8 @@ async function openInbox(page: Page, provenance: unknown) {
   await page.goto("/");
   await page.getByRole("button", { name: "Log in" }).click();
   await page.getByRole("button", { name: "Doctor", exact: true }).click();
-  await page.goto("/#qa-inbox");
+  // Click-nav (not goto): the icon renders only once capabilities resolve, so this can't race the route guard.
+  await page.getByTestId("qa-nav-button").click();
   await page.getByTestId("qa-inbox").waitFor();
 }
 

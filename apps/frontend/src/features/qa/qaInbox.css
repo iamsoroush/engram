@@ -35,8 +35,21 @@
   box-shadow: 0 -6px 24px rgb(15 23 42 / 6%);
 }
 .qa-bottom-nav .tabs {
-  width: 100%;
-  max-width: 420px;
+  width: auto;
+}
+.qa-bottom-nav {
+  background: transparent;
+  border-top: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.qa-bottom-nav > * {
+  pointer-events: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 4px;
+  box-shadow: 0 8px 28px rgb(15 23 42 / 14%);
 }
 
 .qa-inbox-head-top {
@@ -59,6 +72,36 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+.qa-inbox-controls > * { flex: none; }
+/* One filter row on phones: the trigger text already names the mode — the outside label is
+   redundant chrome there (kept for wider screens + always in the aria-label). */
+@media (max-width: 560px) {
+  .qa-routing-label { display: none; }
+  .qa-inbox-controls { flex-wrap: nowrap; }
+  .qa-inbox-controls .qa-routing { min-width: 0; flex: 1 1 auto; }
+  .qa-inbox-controls .qa-routing > * { max-width: 100%; }
+}
+.qa-inbox-head-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.qa-help-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.qa-help-button:hover { color: var(--color-primary, #2f6fed); border-color: var(--color-primary, #2f6fed); }
+.qa-help-body { display: flex; flex-direction: column; gap: 10px; font-size: var(--text-md); line-height: 1.55; }
 
 .qa-routing {
   font-size: var(--text-sm);
@@ -211,16 +254,27 @@
   box-shadow: 0 0 0 2px #f4d9a8;
 }
 
-/* The collapsed pending question — the card is the only frame; this is a quiet quote surface. */
-.qa-question {
-  background: var(--color-surface-soft, #f5f8fd);
-  border-inline-start: 3px solid #e6a817;
-  border-radius: var(--radius-md, 10px);
-  padding: 10px 14px;
-  font-size: 1.05rem;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  word-break: break-word;
+/* Chat-shaped collapsed state: the pending question sits as a patient bubble (start side), the
+   draft answers it from the clinic side — the card reads as the conversation it is. */
+.qa-convo-collapsed {
+  display: flex;
+  flex-direction: column;
+}
+.qa-convo-toolbar {
+  display: flex;
+  justify-content: flex-end;
+}
+.qa-convo-toolbar .qa-expand-toggle {
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--color-surface);
 }
 
 .qa-msg-meta {
@@ -465,13 +519,31 @@
   font-style: italic;
 }
 
+.qa-draft-bubble {
+  align-self: flex-end;
+  width: 92%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--color-primary-soft, #e8f0fe);
+  border: 1px solid var(--color-border);
+  border-bottom-right-radius: 5px;
+  border-radius: var(--radius-lg);
+  border-end-end-radius: 5px;
+  padding: 10px 12px;
+}
+.qa-approve {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .qa-reply-input {
   min-height: 72px;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
   resize: none;
-  background: var(--color-surface-soft, #f5f8fd);
+  background: var(--color-surface, #fff);
   border-color: transparent;
   border-radius: var(--radius-md, 10px);
   line-height: 1.55;
@@ -489,6 +561,9 @@
   flex-wrap: wrap;
 }
 .qa-card-actions .qa-send { flex: 1 1 auto; }
+.qa-card-actions:not(.qa-card-actions-quiet) { flex-wrap: nowrap; }
+.qa-card-actions:not(.qa-card-actions-quiet) > * { flex-shrink: 0; }
+.qa-card-actions:not(.qa-card-actions-quiet) .qa-send { flex-shrink: 1; }
 .qa-card-actions-quiet {
   margin-top: -2px;
   font-size: var(--text-sm);
