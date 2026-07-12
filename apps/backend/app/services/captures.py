@@ -20,13 +20,18 @@ from app.services.capture_storage import (
 )
 from app.services.feedback import record_capture_text_correction, record_feedback_event
 from app.services.patient_assignment_timeline import apply_active_patient_assignment
-from app.services.patient_safety import apply_safety_reconciliation, sync_patient_safety_flags
+from app.services.patient_safety import (
+    apply_safety_reconciliation,
+    safety_loss_diff,
+    session_kept_safety_flags,
+    sync_patient_safety_flags,
+)
 from app.services.patients import AI_CREATED_PATIENT_NOTE
 from app.services.report_versions import (
     find_report_version_for_current_set,
     get_session_report_version,
     restore_report_version,
-    version_removal_target,
+    session_version_transition,
 )
 from app.services.sessions import parse_uuid
 from app.services.synthesis_escalation import mark_synthesis_escalation
@@ -315,6 +320,67 @@ def _archive_orphaned_ai_patient(db: DbSession, principal: CurrentPrincipal, pat
     return True
 
 
+# --- The de-effecting removal primitive (undo / delete / restore all share it) ----------------------
+# INVARIANT (E17 finding 3): a removal is a SOFT delete — it sets CaptureStatus.deleted and nothing else
+# on the media. The Artifact row and its stored MinIO object are NEVER touched, so every removal is fully
+# reversible (the E17 redo path re-effects it) and no clinical media is ever destroyed. The regression
+# tests in test_capture_undo.py pin both halves (status-only mutation + media still fetchable internally).
+
+
+def _soft_delete_capture(capture: Capture, principal: CurrentPrincipal, now: datetime) -> None:
+    """De-effect a capture by SOFT-deleting it: ``status → deleted`` plus delete-provenance markers.
+
+    The pre-delete status is remembered (``status_before_delete``) so a later re-effect restores it
+    exactly. The Artifact row + its object are deliberately left untouched (data-safety invariant).
+    """
+    prior_status = capture.status.value if capture.status != CaptureStatus.deleted else None
+    capture.status = CaptureStatus.deleted
+    capture.capture_metadata = {
+        **(capture.capture_metadata or {}),
+        **({"status_before_delete": prior_status} if prior_status else {}),
+        "deleted_at": now.isoformat(),
+        "deleted_by_user_id": str(principal.user_id),
+    }
+
+
+def _re_effect_capture(capture: Capture, now: datetime) -> None:
+    """Reverse a soft-delete (E17 redo): restore the capture's pre-delete live status and clear the
+    delete markers, so its assignment event becomes valid again and its content re-enters synthesis.
+    Never touches the Artifact/object — the media was never removed, so it is simply live again.
+    """
+    metadata = dict(capture.capture_metadata or {})
+    prior = metadata.pop("status_before_delete", None)
+    metadata.pop("deleted_at", None)
+    metadata.pop("deleted_by_user_id", None)
+    metadata["reeffected_at"] = now.isoformat()
+    try:
+        capture.status = CaptureStatus(prior) if isinstance(prior, str) else CaptureStatus.processed
+    except ValueError:
+        capture.status = CaptureStatus.processed
+    capture.capture_metadata = metadata
+
+
+def _reactivate_reeffected_ai_patient(
+    db: DbSession, principal: CurrentPrincipal, session: Session, capture: Capture
+) -> None:
+    """If re-effecting ``capture`` brings back the AI-created patient it originally created — and an earlier
+    de-effect archived it as orphaned — un-archive it, so the re-effected assignment points at a live
+    patient, not a ghost. Only the unverified AI-creation breadcrumb patient is eligible (mirrors the
+    orphan-archive guard); a real/verified patient is never touched.
+    """
+    created = _patient_created_by_capture(session, capture.id)
+    if created is None:
+        return
+    patient = db.get(Patient, created)
+    if (
+        patient is not None
+        and patient.tenant_id == principal.tenant_id
+        and patient.status == PatientStatus.archived
+        and (patient.notes or "").strip() == AI_CREATED_PATIENT_NOTE
+    ):
+        patient.status = PatientStatus.active
+
+
 def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
     """Remove a capture and **de-effect** it: revert the patient assignment it drove, soft-delete a
     patient it spuriously created (when orphaned), and keep the patient's safety flags consistent.
@@ -338,12 +404,7 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     created_patient_id = _patient_created_by_capture(session, capture.id)
 
     now = datetime.now(timezone.utc)
-    capture.status = CaptureStatus.deleted
-    capture.capture_metadata = {
-        **(capture.capture_metadata or {}),
-        "deleted_at": now.isoformat(),
-        "deleted_by_user_id": str(principal.user_id),
-    }
+    _soft_delete_capture(capture, principal, now)  # status→deleted only; media untouched (reversible)
     mark_session_draft_after_capture_delete(session, str(capture.id), now)
     # Flush the soft-delete before recomputing: the session uses autoflush=False, and
     # `apply_active_patient_assignment` queries for non-deleted captures to drop the deleted
@@ -404,19 +465,43 @@ def delete_capture(db: DbSession, principal: CurrentPrincipal, capture_id: str) 
     return {"session": session_payload(session, db)}
 
 
+def capture_removal_safety_impact(db: DbSession, principal: CurrentPrincipal, capture_id: str) -> dict[str, Any]:
+    """Deterministic safety-loss preview for removing ONE capture (undo / delete) — computed BEFORE the
+    removal so the client can warn when it would drop a safety flag (E17 finding 1, no LLM).
+
+    A currently-kept flag disappears iff ALL its source captures are in the removed set (here just this
+    capture) — the same source-attribution rule the report synthesis uses. Each disappearing flag is
+    annotated with whether it also leaves the PATIENT file (no other visit records it).
+    """
+    capture = get_capture_for_tenant(db, principal.tenant_id, parse_uuid(capture_id, "capture_id"))
+    session = db.get(Session, capture.session_id)
+    if session is None or session.tenant_id != principal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    removed_ids = {str(capture.id)}
+    current_kept = session_kept_safety_flags(session)
+    surviving_keys = {
+        flag["key"]
+        for flag in current_kept
+        if not (flag["sourceCaptureIds"] and set(flag["sourceCaptureIds"]).issubset(removed_ids))
+    }
+    patient = db.get(Patient, session.patient_id) if session.patient_id else None
+    return {"safetyLoss": safety_loss_diff(patient, session.id, current_kept, surviving_keys)}
+
+
 def restore_session_report_version(
     db: DbSession, principal: CurrentPrincipal, session_id: str, version_id: str
 ) -> dict[str, Any]:
-    """Restore a session's report to a stored version (E14 revert semantics; owner-only).
+    """Restore a session's report to a stored version (E17 revert/redo semantics; owner-only).
 
-    Returns the session to the target version's capture set by soft-deleting the captures added after it,
-    reusing the **exact** capture-removal de-effect machinery so restore semantics are shared with
+    Returns the session to the target version's **exact** capture set: soft-delete the captures added after
+    it (**undo**) AND re-effect any of its captures that a prior restore had soft-deleted (**redo** —
+    E17 finding 2, so a forward version is never stranded). Reuses the same de-effect machinery as
     :func:`delete_capture` / undo (P0-8): ``apply_active_patient_assignment`` → orphan-AI-patient archive →
-    cache-hit ``restore_report_version`` (or recompute) → patient safety re-sync. This is undo generalized
-    from one step to N; per-capture ``delete_capture`` is unchanged (byte-for-byte).
+    cache-hit ``restore_report_version`` (or recompute) → patient safety re-sync. Per-capture
+    ``delete_capture`` is unchanged.
 
-    Raises 403 for a non-owner, 409 when the version isn't reachable by removal alone (a version that
-    included a now-deleted capture, or that needs an out-of-context toggle — preview-only in v1).
+    Raises 403 for a non-owner, 409 when the version isn't reachable (it knew a capture that no longer
+    exists at all, or needs an out-of-context toggle — preview-only in v1).
     """
     session = get_session_for_tenant(
         db, principal.tenant_id, parse_uuid(session_id, "session_id"), for_update=True
@@ -427,38 +512,39 @@ def restore_session_report_version(
             detail="Only the clinician who owns this session can restore its report versions.",
         )
     version = get_session_report_version(db, session, version_id)
-    removal = version_removal_target(db, session, version)
-    if removal is None:
+    transition = session_version_transition(db, session, version)
+    if transition is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This version can't be restored — it includes captures no longer present.",
         )
-    if not removal:
+    if transition.is_noop:
         # The version already equals the current capture set: nothing to de-effect.
         return {"session": session_payload(session, db)}
 
-    # De-effect every capture added after the target version, in one pass — mirrors delete_capture over a
-    # set. Patients CREATED by the removed captures are collected before delete so orphans are archived.
     now = datetime.now(timezone.utc)
+    # (redo) Re-effect the target version's captures that are currently soft-deleted — un-delete them so
+    # their assignment events + content re-enter the pipeline. Reactivate an AI patient a prior de-effect
+    # archived, so the re-effected assignment lands on a live patient rather than a ghost.
+    for capture in transition.to_restore:
+        _reactivate_reeffected_ai_patient(db, principal, session, capture)
+        _re_effect_capture(capture, now)
+    # (undo) Soft-delete every capture added after the target version — mirrors delete_capture over a set.
+    # Patients CREATED by the removed captures are collected first so orphans are archived after recompute.
     created_patient_ids: list[uuid.UUID] = []
-    for capture in removal:
+    for capture in transition.to_delete:
         created = _patient_created_by_capture(session, capture.id)
         if created is not None:
             created_patient_ids.append(created)
-        capture.status = CaptureStatus.deleted
-        capture.capture_metadata = {
-            **(capture.capture_metadata or {}),
-            "deleted_at": now.isoformat(),
-            "deleted_by_user_id": str(principal.user_id),
-        }
+        _soft_delete_capture(capture, principal, now)
         mark_session_draft_after_capture_delete(session, str(capture.id), now)
-    # Flush the soft-deletes before recomputing (autoflush=False) so the timeline/version lookups below
-    # see the reduced capture set — same ordering constraint delete_capture documents.
+    # Flush the status changes before recomputing (autoflush=False) so the timeline/version lookups below
+    # see the transitioned capture set — same ordering constraint delete_capture documents.
     db.flush()
     apply_active_patient_assignment(db, session)
     for patient_id in created_patient_ids:
         _archive_orphaned_ai_patient(db, principal, patient_id)
-    # The reduced set now equals the target version's set → cache-hit restore that exact report_version
+    # The transitioned set now equals the target version's set → cache-hit restore that exact report_version
     # deterministically (no LLM). If a surviving capture was edited after the version, the set hash differs
     # → fall through to a recompute over the current captures (honest: the captures changed).
     cached_version = find_report_version_for_current_set(db, session)
@@ -478,7 +564,11 @@ def restore_session_report_version(
         action="session.restore_report_version",
         target_type="session",
         target_id=session.id,
-        details={"version_id": str(version.id), "removed_capture_ids": [str(c.id) for c in removal]},
+        details={
+            "version_id": str(version.id),
+            "removed_capture_ids": [str(c.id) for c in transition.to_delete],
+            "restored_capture_ids": [str(c.id) for c in transition.to_restore],
+        },
     )
     db.commit()
     db.refresh(session)

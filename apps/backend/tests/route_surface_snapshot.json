@@ -144,6 +144,12 @@
         "tags": []
       }
     },
+    "/api/v1/captures/{capture_id}/removal-impact": {
+      "get": {
+        "operationId": "capture_removal_impact_route_api_v1_captures__capture_id__removal_impact_get",
+        "tags": []
+      }
+    },
     "/api/v1/captures/{capture_id}/retry-processing": {
       "post": {
         "operationId": "retry_capture_processing_route_api_v1_captures__capture_id__retry_processing_post",
@@ -1004,6 +1010,17 @@
         "GET"
       ],
       "path": "/api/v1/captures/{capture_id}/metadata"
+    },
+    {
+      "dependencies": [
+        "dependency(allowed_roles=['admin', 'assistant', 'doctor', 'owner'])",
+        "get_db"
+      ],
+      "in_schema": true,
+      "methods": [
+        "GET"
+      ],
+      "path": "/api/v1/captures/{capture_id}/removal-impact"
     },
     {
       "dependencies": [

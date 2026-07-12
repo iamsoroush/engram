@@ -26,14 +26,34 @@
 - Undo/delete **cache-hit restore**: returning to a previously-seen capture set restores the
   stored version deterministically (no LLM) and re-syncs the patient's safety flags **and re-applies the
   reconcile decisions** (parity with the synthesis-completion path — `services/captures.py`).
-- **E14 report version history** — the store's first HTTP surface: `GET …/report-versions` (timeline;
-  trigger label derived from the capture-set delta, `restorable`/`isCurrent` flags),
-  `GET …/report-versions/{id}` (a version's artifacts for read-only preview), and
-  `POST …/report-versions/{id}/restore` (owner-only **revert** to a version's capture set — de-effects the
-  captures added after it via the **same** removal machinery as undo, so P0-8 semantics are shared;
-  `409` for a non-linear/unreachable version). Reads live in `services/report_history.py`, the
-  restore alongside `delete_capture` in `services/captures.py`, and the pure trigger/reachability helpers
-  in `services/report_versions.py`. Surface: [ux/screens/capture.md](../ux/screens/capture.md) "Report history".
+- **E14/E17 report version history** — the store's HTTP surface: `GET …/report-versions` (timeline;
+  trigger label derived from the capture-set delta, `restorable`/`isCurrent` flags; **pruned versions
+  excluded**), `GET …/report-versions/{id}` (a version's artifacts for read-only preview **+ a
+  `restoreImpact`**: removed/restored capture counts + the deterministic safety-loss diff), and
+  `POST …/report-versions/{id}/restore` (owner-only, reusing the **same** de-effect machinery as undo, so
+  P0-8 semantics are shared; `409` for a genuinely unreachable version). Reads live in
+  `services/report_history.py`, the restore alongside `delete_capture` in `services/captures.py`, and the
+  pure trigger/**transition** helpers in `services/report_versions.py`. **E17 hardening** (owner-testing):
+  - **Redo — restore is a full `VersionTransition`, not just removal.** Reachability is computed over the
+    session's captures *including soft-deleted rows*, so restoring **forward** **re-effects** (un-deletes)
+    the captures a target version knew — a restore is no longer a one-way door. To-restore captures resume
+    their pre-delete status (`status_before_delete`) and re-enter the assignment timeline + synthesis; an
+    AI-created patient a prior de-effect archived is reactivated so the re-effected assignment lands on a
+    live patient.
+  - **Forward-branch prune.** Adding a new capture while behind head abandons the forward (redo) versions:
+    they are marked `pruned_at` (a nullable column — leaves the timeline UI, stays a DB row; the store is
+    append-only) via `prune_forward_versions_on_branch`, behind a client confirm gated on
+    `session.forwardVersionCount`. Never prunes the current version (it references only live captures).
+  - **Safety-loss guard.** Before a restore *or* a Sources-drawer undo/delete drops a **safety flag** the
+    current report carries, the deterministic (no-LLM) `safety_loss_diff` names exactly which flags
+    disappear — from the visit, and (patient-layer) whether it also leaves `Patient.safety_flags` (a flag
+    whose only source is the de-effected visit) or stays (another visit sources it). Exposed on
+    `restoreImpact.safetyLoss` and `GET /captures/{id}/removal-impact`.
+  - **Data-safety invariant.** A removal is a SOFT delete — status-only; it never deletes an `Artifact`
+    row or its MinIO object, so it is fully reversible and a de-effected capture's media stays fetchable
+    internally (asserted + regression-tested).
+
+  Surface: [ux/screens/capture.md](../ux/screens/capture.md) "Report history".
 - **D7 safety-reconcile** end-to-end (reconcile pass in synthesis → `apply_safety_reconciliation`
   on the patient projection), with its eval suite wired into `run_all.py`.
 - **D3 staleness read-trigger** for patient memory (`maybe_refresh_stale_patient_memory` on

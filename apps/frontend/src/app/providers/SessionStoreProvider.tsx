@@ -3,7 +3,7 @@ import type {
   PatientAssignmentDraft,
   PatientSummary,
 } from "../../domain/appTypes";
-import type { CaptureItem, CaptureSession, CaptureStatus, StructuredPatientInformation } from "../../domain/types";
+import type { CaptureItem, CaptureRemovalImpact, CaptureSession, CaptureStatus, StructuredPatientInformation } from "../../domain/types";
 import {
   createClientId,
   isLocalAssignmentPatient,
@@ -18,6 +18,7 @@ import {
   confirmCarriedForward,
   createPatient,
   deleteCapture,
+  fetchCaptureRemovalImpact,
   restoreReportVersion as restoreReportVersionRequest,
   dismissAiPatientAction,
   editTreatmentOverlay,
@@ -121,6 +122,9 @@ export type SessionActions = {
   ) => Promise<CaptureItem | null>;
   editCaptureNote: (sessionId: string, captureId: string, text: string) => Promise<void>;
   removeCaptureFromSession: (sessionId: string, captureId: string) => Promise<void>;
+  /** E17: deterministic safety-loss preview for removing a capture (undo/delete) — read-only, so the
+   * UI can warn before dropping a safety flag. A local (unsynced) capture has no backend impact. */
+  checkCaptureRemovalImpact: (captureId: string) => Promise<CaptureRemovalImpact>;
   /** E14: restore the report to a stored version (revert semantics; owner-only, shares the undo path). */
   restoreReportVersion: (sessionId: string, versionId: string) => Promise<void>;
   markCaptureRelevantInSession: (sessionId: string, captureId: string) => Promise<void>;
@@ -568,6 +572,15 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       setToast(appT("capture.toastCaptureDeletedUpdating"));
     },
     [apiFetch, appT, scheduleCaptureProcessingRefresh, setToast],
+  );
+
+  const checkCaptureRemovalImpact = React.useCallback(
+    async (captureId: string): Promise<CaptureRemovalImpact> => {
+      // A local (unsynced) capture isn't on the backend yet, so removing it can't drop a stored flag.
+      if (captureId.startsWith("local-capture-")) return { safetyLoss: [] };
+      return fetchCaptureRemovalImpact(apiFetch, captureId);
+    },
+    [apiFetch],
   );
 
   const restoreReportVersion = React.useCallback(
@@ -1072,6 +1085,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       editCaptureSourceText,
       editCaptureNote,
       removeCaptureFromSession,
+      checkCaptureRemovalImpact,
       restoreReportVersion,
       markCaptureRelevantInSession,
       confirmCarriedForwardDose,
@@ -1106,6 +1120,7 @@ export function SessionStoreProvider({ children }: { children: React.ReactNode }
       editCaptureSourceText,
       editCaptureNote,
       removeCaptureFromSession,
+      checkCaptureRemovalImpact,
       restoreReportVersion,
       markCaptureRelevantInSession,
       confirmCarriedForwardDose,

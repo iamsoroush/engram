@@ -851,4 +851,8 @@ class SessionReportVersion(Base):
     generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Pinned versions (e.g. referenced by a verified report) are never GC'd.
     pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # A version pruned from the timeline UI when a new capture branched away from a restored-to state
+    # (E17 redo semantics): the row is KEPT (append-only store; debugging) but hidden from the history
+    # list + not restorable. Never GC-related. See docs/architecture/pipeline-versioning.md.
+    pruned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

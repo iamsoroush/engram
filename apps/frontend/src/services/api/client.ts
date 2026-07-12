@@ -41,7 +41,7 @@ import type {
   WorklistEntry,
   WorklistResponse,
 } from "../../domain/appTypes";
-import type { Attribution, CaptureItem, CaptureSession, ReportVersionDetail, ReportVersionSummary, StructuredPatientInformation } from "../../domain/types";
+import type { Attribution, CaptureItem, CaptureRemovalImpact, CaptureSession, ReportVersionDetail, ReportVersionSummary, SafetyLossFlag, StructuredPatientInformation } from "../../domain/types";
 import { API_BASE } from "../../shared/lib/config";
 import { normalizeApiCaptureItem, normalizeApiSession, normalizeUploadResult } from "./normalizers";
 import { saveIdMapping } from "../storage/captureStorage";
@@ -1360,6 +1360,15 @@ export async function deleteCapture(apiFetch: ApiFetch, captureId: string) {
   if (!response.ok) throw new Error("Could not delete capture");
   const payload = (await response.json()) as { session?: Record<string, unknown> };
   return normalizeApiSession(payload.session || {});
+}
+
+/** Deterministic safety-loss preview for removing ONE capture (undo / delete) — read-only, no mutation.
+ * Lets the Sources-drawer Undo / per-capture Delete warn before dropping a safety flag (E17 finding 1). */
+export async function fetchCaptureRemovalImpact(apiFetch: ApiFetch, captureId: string): Promise<CaptureRemovalImpact> {
+  const response = await apiFetch(`${API_BASE}/captures/${captureId}/removal-impact`);
+  if (!response.ok) throw new Error("Could not check removal impact");
+  const payload = (await response.json()) as { safetyLoss?: SafetyLossFlag[] };
+  return { safetyLoss: Array.isArray(payload.safetyLoss) ? payload.safetyLoss : [] };
 }
 
 // --- Report version history (E14 / AES-14xx) ---------------------------------------------------------

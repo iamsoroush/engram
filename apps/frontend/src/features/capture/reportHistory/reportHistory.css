@@ -158,12 +158,14 @@
   color: var(--color-danger);
 }
 .report-history-confirm-body,
-.report-history-confirm-removal {
+.report-history-confirm-removal,
+.report-history-confirm-restored {
   margin: 0;
   font-size: 0.84rem;
   color: var(--color-text-soft);
 }
-.report-history-confirm-removal {
+.report-history-confirm-removal,
+.report-history-confirm-restored {
   font-weight: 600;
 }
 .report-history-confirm-actions {
@@ -171,6 +173,53 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 4px;
+}
+
+/* E17 finding 1 — the safety-loss guard: name exactly which flags a de-effect drops. Shared by the
+   restore confirm and the Sources-drawer removal guard. Clinical text is verbatim + bidi-isolated. */
+.report-history-safety-loss {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md, 12px);
+  background: var(--color-danger-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.report-history-safety-loss-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-danger);
+}
+.report-history-safety-loss-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.report-history-safety-loss-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 0.84rem;
+}
+.report-history-safety-loss-kind {
+  font-weight: 700;
+  color: var(--color-danger);
+}
+.report-history-safety-loss-text {
+  color: var(--color-text);
+  font-weight: 600;
+}
+.report-history-safety-loss-scope {
+  flex-basis: 100%;
+  font-size: 0.76rem;
+  color: var(--color-text-soft);
 }
 
 /* Shared states */

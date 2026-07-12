@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
@@ -157,6 +158,9 @@ def record_report_version(
         existing.artifacts = artifacts
         existing.generated_by = generated_by
         existing.generated_at = generated_at
+        # A capture set that recurs is live again: un-prune a row a prior forward-branch prune retired,
+        # so re-synthesizing to that exact set brings it back into the timeline (append-only invariant).
+        existing.pruned_at = None
         return existing
     version = SessionReportVersion(
         tenant_id=session.tenant_id,
@@ -318,32 +322,143 @@ def current_capture_index(db: DbSession, session: Session) -> tuple[dict[str, Ca
     return by_id, ooc
 
 
-def removal_target_for_version(
-    current_by_id: dict[str, Capture],
-    current_ooc: dict[str, bool],
-    version: SessionReportVersion,
-) -> list[Capture] | None:
-    """Current captures to soft-delete to return the session to ``version``'s capture set — or ``None`` if
-    the version is NOT reachable by removal alone (→ preview-only). An **empty** list means the version
-    already equals the current set.
+def full_capture_index(db: DbSession, session: Session) -> tuple[dict[str, Capture], dict[str, bool], set[str]]:
+    """(id → Capture, id → out-of-context, live_ids) over ALL of the session's captures — INCLUDING
+    soft-deleted rows. Restoring **forward** (E17 redo) re-effects a de-effected capture, so reachability
+    must see the deleted rows, not just the live set. ``live_ids`` = the currently non-deleted captures.
+    """
+    captures = list(
+        db.execute(
+            select(Capture).where(
+                Capture.tenant_id == session.tenant_id,
+                Capture.session_id == session.id,
+            )
+        ).scalars()
+    )
+    by_id = {str(c.id): c for c in captures}
+    ooc = {cid: capture_is_out_of_context(capture) for cid, capture in by_id.items()}
+    live_ids = {str(c.id) for c in captures if c.status != CaptureStatus.deleted}
+    return by_id, ooc, live_ids
 
-    Reachable ⟺ every capture the version knew still exists AND its out-of-context membership is unchanged:
-    a pure removal can neither un-delete a capture nor toggle context back, so anything else can't be
-    reproduced by removal (those non-linear cases are honestly preview-only in v1).
+
+@dataclass(frozen=True)
+class VersionTransition:
+    """The captures to move to return a session to a stored version's exact capture set.
+
+    ``to_delete`` = currently-live captures the version never knew → soft-delete (de-effect / undo).
+    ``to_restore`` = currently-soft-deleted captures the version DID know → re-effect (redo). An empty
+    transition (neither list) means the version already equals the current set.
+    """
+
+    to_delete: tuple[Capture, ...]
+    to_restore: tuple[Capture, ...]
+
+    @property
+    def is_noop(self) -> bool:
+        return not self.to_delete and not self.to_restore
+
+
+def version_transition(
+    all_by_id: dict[str, Capture],
+    all_ooc: dict[str, bool],
+    live_ids: set[str],
+    version: SessionReportVersion,
+) -> VersionTransition | None:
+    """The (soft-delete, re-effect) transition that returns the session to ``version``'s set — or ``None``
+    if the version is NOT reachable (→ preview-only).
+
+    Reachable ⟺ every capture the version knew still EXISTS as a row (deleted or not) AND its
+    out-of-context membership is unchanged. A capture that no longer exists at all (never happens — the
+    store is soft-delete-only) or a staff out-of-context toggle is non-linear and honestly preview-only.
+    Content edits are allowed here: a surviving-but-edited capture still transitions, but the resulting
+    set hash differs from the version → the caller falls through to a recompute (honest — captures changed).
     """
     v_by_id = _items_by_id(version.captured_capture_version_ids)
-    if not set(v_by_id).issubset(current_by_id):
+    if not set(v_by_id).issubset(all_by_id):
         return None
     for cid, item in v_by_id.items():
-        if current_ooc.get(cid) != bool(item.get("outOfContext")):
+        if all_ooc.get(cid) != bool(item.get("outOfContext")):
             return None
-    return [capture for cid, capture in current_by_id.items() if cid not in v_by_id]
+    to_delete = tuple(all_by_id[cid] for cid in sorted(live_ids) if cid not in v_by_id)
+    to_restore = tuple(all_by_id[cid] for cid in sorted(v_by_id) if cid not in live_ids)
+    return VersionTransition(to_delete=to_delete, to_restore=to_restore)
 
 
-def version_removal_target(db: DbSession, session: Session, version: SessionReportVersion) -> list[Capture] | None:
-    """DB-backed :func:`removal_target_for_version` for the single-target restore action."""
-    by_id, ooc = current_capture_index(db, session)
-    return removal_target_for_version(by_id, ooc, version)
+def session_version_transition(db: DbSession, session: Session, version: SessionReportVersion) -> VersionTransition | None:
+    """DB-backed :func:`version_transition` for the single-target restore action."""
+    all_by_id, all_ooc, live_ids = full_capture_index(db, session)
+    return version_transition(all_by_id, all_ooc, live_ids, version)
+
+
+# --- Forward-branch pruning (E17 redo semantics) -----------------------------------------------------
+# After a restore/undo, the captures added later are soft-deleted (not gone), so the LATER report versions
+# stay navigable-forward (redo re-effects them). Adding a NEW capture while behind head branches away and
+# abandons that forward line: those versions leave the UI (pruned_at set) but stay as DB rows.
+
+
+def _deleted_capture_ids(db: DbSession, session: Session) -> set[str]:
+    rows = db.execute(
+        select(Capture.id).where(
+            Capture.tenant_id == session.tenant_id,
+            Capture.session_id == session.id,
+            Capture.status == CaptureStatus.deleted,
+        )
+    ).scalars()
+    return {str(cid) for cid in rows}
+
+
+def _live_versions(db: DbSession, session: Session) -> list[SessionReportVersion]:
+    """The session's non-pruned versions, oldest-first."""
+    return list(
+        db.execute(
+            select(SessionReportVersion)
+            .where(
+                SessionReportVersion.tenant_id == session.tenant_id,
+                SessionReportVersion.session_id == session.id,
+                SessionReportVersion.pruned_at.is_(None),
+            )
+            .order_by(SessionReportVersion.created_at.asc())
+        ).scalars()
+    )
+
+
+def _version_references_any(version: SessionReportVersion, capture_ids: set[str]) -> bool:
+    return any(
+        str(item.get("captureId")) in capture_ids
+        for item in (version.captured_capture_version_ids or [])
+        if isinstance(item, dict) and item.get("captureId")
+    )
+
+
+def forward_version_count(db: DbSession, session: Session) -> int:
+    """Non-pruned versions that reference a currently-soft-deleted capture — the reachable FORWARD (redo)
+    branch left behind by a restore/undo. Zero unless the session is behind head; the version query is
+    skipped entirely when the session has no soft-deleted captures (the overwhelming common case).
+    """
+    deleted_ids = _deleted_capture_ids(db, session)
+    if not deleted_ids:
+        return 0
+    return sum(1 for version in _live_versions(db, session) if _version_references_any(version, deleted_ids))
+
+
+def prune_forward_versions_on_branch(db: DbSession, session: Session) -> int:
+    """Prune the forward (redo) branch when a new capture branches away from a restored-to state.
+
+    A non-pruned version that references a currently-soft-deleted capture belonged to an abandoned forward
+    line — it is marked ``pruned_at`` (leaves the timeline UI, stays a DB row) so the history doesn't keep
+    offering a redo that a fresh branch has superseded. The CURRENT version references only live captures,
+    so it is never pruned. Returns how many were pruned. Staged on the ORM; the caller commits.
+    """
+    deleted_ids = _deleted_capture_ids(db, session)
+    if not deleted_ids:
+        return 0
+    now = datetime.now(timezone.utc)
+    pruned = 0
+    for version in _live_versions(db, session):
+        if _version_references_any(version, deleted_ids):
+            version.pruned_at = now
+            pruned += 1
+    return pruned
 
 
 def get_session_report_version(db: DbSession, session: Session, version_id: str) -> SessionReportVersion:

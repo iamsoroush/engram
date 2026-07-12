@@ -249,6 +249,26 @@ export type ReportVersionSummary = {
   trigger: ReportVersionTrigger;
 };
 
+/** One safety flag a restore/undo would drop, computed deterministically server-side (E17 finding 1).
+ * `text` is clinical CONTENT (verbatim, never translated); the chrome around it is bilingual. */
+export type SafetyLossFlag = {
+  key: string;
+  kind: "allergy" | "contraindication" | "consent" | string;
+  text: string;
+  /** True when this visit is the flag's only source, so it also leaves the patient file. */
+  alsoRemovedFromPatient: boolean;
+};
+
+/** What restoring to a version would do — captures moved + safety flags dropped (E17). */
+export type ReportRestoreImpact = {
+  reachable: boolean;
+  restorable: boolean;
+  removedCaptureCount: number;
+  /** Captures re-effected (redo) — a forward version un-deletes the captures it knew. */
+  restoredCaptureCount: number;
+  safetyLoss: SafetyLossFlag[];
+};
+
 /** A version's report artifacts, session-shaped for a read-only preview (overlay applied client-side). */
 export type ReportVersionDetail = {
   version: Omit<ReportVersionSummary, "trigger">;
@@ -260,6 +280,13 @@ export type ReportVersionDetail = {
     reportTemplateKey: string | null;
     extractedMetadata: Record<string, unknown>;
   };
+  /** Present on the detail read; drives the restore confirm's capture + safety-loss guard. */
+  restoreImpact?: ReportRestoreImpact;
+};
+
+/** Deterministic safety-loss preview for removing ONE capture (undo / delete) — E17 finding 1. */
+export type CaptureRemovalImpact = {
+  safetyLoss: SafetyLossFlag[];
 };
 
 export type CaptureSession = {
@@ -293,4 +320,7 @@ export type CaptureSession = {
   processingStatus?: SessionProcessingStatus;
   extractedMetadata?: Record<string, unknown>;
   reportTemplateKey?: string | null;
+  /** E17 redo: stored versions FORWARD of the current one (reachable by re-effecting a de-effected
+   * capture). >0 = "behind head" — adding a capture prunes that forward branch, so the bar warns first. */
+  forwardVersionCount?: number;
 };

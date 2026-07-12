@@ -341,6 +341,7 @@ export function normalizeApiSession(raw: Partial<CaptureSession> & Record<string
     extractedMetadata:
       raw.extractedMetadata && typeof raw.extractedMetadata === "object" ? (raw.extractedMetadata as Record<string, unknown>) : {},
     reportTemplateKey: typeof raw.reportTemplateKey === "string" ? raw.reportTemplateKey : null,
+    forwardVersionCount: typeof raw.forwardVersionCount === "number" ? raw.forwardVersionCount : 0,
     reviewReason:
       raw.reviewReason ||
       (status === "draft"
