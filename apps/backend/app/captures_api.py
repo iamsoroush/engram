@@ -18,7 +18,14 @@ from app.schemas.captures import CaptureUpdate
 from app.schemas.patients import AssignPatientRequest
 from app.services.ai_jobs import enqueue_capture_processing_job
 from app.services.capture_storage import source_file_content, source_file_url, upload_source_capture
-from app.services.captures import assign_capture_patient, capture_metadata, delete_capture, get_capture, update_capture
+from app.services.captures import (
+    assign_capture_patient,
+    capture_metadata,
+    capture_removal_safety_impact,
+    delete_capture,
+    get_capture,
+    update_capture,
+)
 from app.storage import ObjectStore, get_object_store
 
 captures_api = APIRouter(prefix="/api/v1")
@@ -102,6 +109,19 @@ def update_capture_route(
 ) -> dict[str, Any]:
     """Update editable capture state or metadata."""
     return update_capture(db, principal, capture_id, request)
+
+
+@captures_api.get("/captures/{capture_id}/removal-impact")
+def capture_removal_impact_route(
+    capture_id: str,
+    principal: CurrentPrincipal = Depends(staff_or_admin_required),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Deterministic safety-loss preview for removing this capture (E17 undo guard) — no mutation.
+
+    Lets the Sources-drawer Undo / per-capture Delete warn BEFORE de-effecting when a safety flag would
+    disappear from the visit (and whether it also leaves the patient file)."""
+    return capture_removal_safety_impact(db, principal, capture_id)
 
 
 @captures_api.delete("/captures/{capture_id}")

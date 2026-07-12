@@ -56,7 +56,7 @@ import { UnauthShell } from "../features/auth/UnauthShell";
 import { OnboardingOverlay } from "../features/onboarding/OnboardingOverlay";
 import { clearOnboardingPending, isOnboardingPending, markOnboardingPending } from "../features/onboarding/onboardingState";
 import { TherapyApp } from "../features/therapy/TherapyApp";
-import { AddPhotoSheet, AudioDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
+import { AddPhotoSheet, AudioDialog, ForwardBranchPruneDialog, TextCaptureSheet } from "../features/capture/components/CaptureDialogs";
 import { CaptureScreen } from "../features/capture/components/CaptureScreen";
 import { useAiUsage } from "../features/aiUsage/useAiUsage";
 import { AiUsageNotice } from "../features/aiUsage/AiUsageNotice";
@@ -176,6 +176,9 @@ function AppInner() {
   const [sessionShare, setSessionShare] = React.useState<{ id: string; name: string; visits: GalleryVisit[]; preferredAftercareId?: string } | null>(null);
   const [ghostPhotoUrl, setGhostPhotoUrl] = React.useState("");
   const [pendingCaptureKind, setPendingCaptureKind] = React.useState<CaptureDraft["kind"] | null>(null);
+  // E17 redo: capturing into a session that sits behind head (forward/redo versions on record) branches
+  // away and abandons them — hold the kind here to confirm before opening the composer.
+  const [pruneConfirmKind, setPruneConfirmKind] = React.useState<CaptureDraft["kind"] | null>(null);
   // E9 — the patient whose file is open in Clinical Memory. While set (and on the patients screen),
   // the footer captures *for that patient* (a new visit). Cleared when the detail closes or the
   // screen changes, so the target naturally reverts to the active session.
@@ -377,6 +380,11 @@ function AppInner() {
     }
     if (screen !== "active-session") {
       setPendingCaptureKind(kind);
+      return;
+    }
+    // E17: adding a capture while behind head abandons the forward (redo) branch — confirm first.
+    if ((activeSession?.forwardVersionCount ?? 0) > 0) {
+      setPruneConfirmKind(kind);
       return;
     }
     openCaptureDialog(kind);
@@ -1071,6 +1079,16 @@ function AppInner() {
             onUseSession={(sessionId) => chooseCaptureDestination(pendingCaptureKind, sessionId)}
           />
         ) : null}
+        <ForwardBranchPruneDialog
+          open={pruneConfirmKind !== null}
+          count={activeSession?.forwardVersionCount ?? 0}
+          onCancel={() => setPruneConfirmKind(null)}
+          onConfirm={() => {
+            const kind = pruneConfirmKind;
+            setPruneConfirmKind(null);
+            if (kind) openCaptureDialog(kind);
+          }}
+        />
         {renderCurrentScreen()}
       </Shell>
       {finderOpen ? (

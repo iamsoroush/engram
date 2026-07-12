@@ -1,7 +1,7 @@
 import React from "react";
 import type { CaptureDraft } from "../../../domain/appTypes";
 import { audioExtensionForMimeType, isSafariBrowser, preferredAudioRecorderOptions } from "../audio";
-import { Button, Sheet, Textarea } from "../../../shared/ui/primitives";
+import { Button, Dialog, Sheet, Textarea } from "../../../shared/ui/primitives";
 import { useT } from "../../../shared/i18n";
 
 export function TextCaptureSheet({
@@ -724,4 +724,40 @@ function stopLevelMonitor(audioContextRef: React.MutableRefObject<AudioContext |
   frameRef.current = 0;
   void audioContextRef.current?.close();
   audioContextRef.current = null;
+}
+
+/** E17 finding 2: adding a capture while behind head (after a restore/undo) branches away and abandons
+ * the forward (redo) versions. This confirm warns first — the abandoned versions leave the timeline UI
+ * (their DB rows are kept). Chrome bilingual via t(); shown only when forwardVersionCount > 0. */
+export function ForwardBranchPruneDialog({
+  open,
+  count,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  count: number;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useT();
+  return (
+    <Dialog
+      open={open}
+      title={t("capture.pruneForward.title")}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button size="sm" variant="ghost" onClick={onCancel}>
+            {t("capture.history.cancel")}
+          </Button>
+          <Button size="sm" variant="default" onClick={onConfirm}>
+            {t("capture.pruneForward.confirm")}
+          </Button>
+        </>
+      }
+    >
+      <p>{t(count === 1 ? "capture.pruneForward.bodyOne" : "capture.pruneForward.bodyOther", { count })}</p>
+    </Dialog>
+  );
 }

@@ -120,6 +120,7 @@ def _report_model_with_media_pairing(
 
 def session_payload(session: Session, db: DbSession | None = None) -> dict[str, Any]:
     from app.services.attribution import attribution_payload
+    from app.services.report_versions import forward_version_count
     from app.services.treatment_overlay import effective_treatments_from_metadata
 
     contracts = build_session_contracts(session, db)
@@ -179,6 +180,10 @@ def session_payload(session: Session, db: DbSession | None = None) -> dict[str, 
         "reportModel": structured_report,
         "extractedMetadata": extracted_metadata,
         "reportTemplateKey": session.report_template_key,
+        # E17 redo: how many stored versions sit FORWARD of the current one (reachable by re-effecting a
+        # de-effected capture). >0 means "behind head" — adding a new capture prunes that forward branch,
+        # so the capture bar warns first. 0 for the common case (no soft-deleted captures → no query).
+        "forwardVersionCount": forward_version_count(db, session) if db is not None else 0,
         "organizationSource": session.organization_source.value,
         "createdAt": session.created_at.isoformat() if session.created_at else None,
         "updatedAt": session.updated_at.isoformat() if session.updated_at else None,
@@ -407,6 +412,12 @@ async def upload_source_capture(
             session.patient_id = patient_uuid
         evolve_session_after_capture(session, capture_type=capture_type, captured_at=captured_at, capture_id=capture.id)
         session.updated_at = utc_now()
+        # E17 redo: adding a capture while behind head (soft-deleted captures + forward versions still on
+        # record) branches away — retire that forward line from the timeline (rows are kept, just hidden).
+        # No-op with zero soft-deleted captures (the common case); the client confirms via forwardVersionCount.
+        from app.services.report_versions import prune_forward_versions_on_branch
+
+        prune_forward_versions_on_branch(db, session)
         if runs_capture_ai:
             # A new capture changes the patient's memory — flag it refreshing (AI-job latency).
             mark_patient_memory_updating(db, session.patient_id)

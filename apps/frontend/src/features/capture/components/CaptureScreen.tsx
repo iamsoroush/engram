@@ -3,9 +3,9 @@
 import React from "react";
 import "../sessionSurface.css";
 import type { AftercareTemplate, LineupCard, PatientAssignmentDraft, PatientSummary, SessionContext } from "../../../domain/appTypes";
-import type { CaptureItem, CaptureSession, StructuredPatientInformation } from "../../../domain/types";
+import type { CaptureItem, CaptureSession, SafetyLossFlag, StructuredPatientInformation } from "../../../domain/types";
 import { assignmentSourceLabel } from "../metadata";
-import { Button, Card } from "../../../shared/ui/primitives";
+import { Button, Card, Dialog } from "../../../shared/ui/primitives";
 import { SessionContextCard } from "../../aesthetics/SessionContextCard";
 import { SourcePreviewDialog } from "./SourcePreview";
 import { PatientAssignmentSheet } from "./PatientAssignmentSheet";
@@ -15,7 +15,7 @@ import { ReportFeedbackBar } from "./ReportFeedbackBar";
 import { CaptureTimelineIcon, AiSpark, captureConflictSuggestion, AiCreatedPatientPanel, PatientConflictResolver } from "./CaptureBadges";
 import { NextLinedUpBar, SessionSafetyPanel } from "./CaptureRegions";
 import { PatientStrip } from "./PatientStrip";
-import { ReportHistoryButton } from "../reportHistory";
+import { ReportHistoryButton, SafetyLossList } from "../reportHistory";
 import { reportUpdatingLabel, workspaceReportState, textDirection, sessionSummaryStatusChip, sessionSummaryTitle, isPlaceholderSessionTitle, lightSessionTitle, captureNotSynced, sessionPatientName, aiPatientActionForSession, aiCreatedPatientNeedsVerification, sessionSummaryCreatedLabel, sessionSummaryUpdatedLabel, workspaceTreatments, suggestedAftercareTemplateIds, sessionTreatmentReview, sessionConfirmedCarriedForward, sessionDismissedAftercare, sessionAftercareSelections, sessionKeptSafetyFlags, workspaceStructuredReportCopy, activePatientAssignmentActionForSession, sessionAssignmentCandidates, alternateCandidateForCapture, ordinalWord } from "../captureModel";
 import type { AftercareSelection } from "../captureModel";
 import { PatientIcon, BackIcon, ClipboardIcon, EditIcon, AddPatientIcon, SyncIcon, ClockHistoryIcon, ShareIcon } from "./CaptureIcons";
@@ -111,6 +111,7 @@ export function CaptureScreen({
     renameCapture: onRenameCapture,
     editCaptureNote: onUpdateNote,
     removeCaptureFromSession: onDeleteCapture,
+    checkCaptureRemovalImpact,
     assignPatientToSession: onAssignPatient,
     searchPatientsForAssignment: onSearchPatients,
     completeAiCreatedPatient: onCompleteAiCreatedPatient,
@@ -131,6 +132,30 @@ export function CaptureScreen({
     editCaptureSourceText(sessionId, captureId, caption, "caption");
   const onUpdateCaptureTranscript = (sessionId: string, captureId: string, transcript: string) =>
     editCaptureSourceText(sessionId, captureId, transcript, "transcript");
+  // E17 finding 1: before a de-effecting removal (Undo last / per-capture Delete) drops a safety flag,
+  // name what disappears and confirm. A removal with no safety loss stays one-tap (undo stays instant).
+  const [removalGuard, setRemovalGuard] = React.useState<{ sessionId: string; captureId: string; flags: SafetyLossFlag[] } | null>(null);
+  const guardedDeleteCapture = React.useCallback(
+    async (sessionId: string, captureId: string) => {
+      try {
+        const impact = await checkCaptureRemovalImpact(captureId);
+        if (impact.safetyLoss.length > 0) {
+          setRemovalGuard({ sessionId, captureId, flags: impact.safetyLoss });
+          return;
+        }
+      } catch {
+        // Never block a removal on the pre-flight check — fall through to the normal delete.
+      }
+      void onDeleteCapture(sessionId, captureId);
+    },
+    [checkCaptureRemovalImpact, onDeleteCapture],
+  );
+  const confirmGuardedRemoval = React.useCallback(() => {
+    if (!removalGuard) return;
+    const { sessionId, captureId } = removalGuard;
+    setRemovalGuard(null);
+    void onDeleteCapture(sessionId, captureId);
+  }, [removalGuard, onDeleteCapture]);
   const isPro = tier !== "basic";
   // Pro smart aftercare: promote the clinic's templates that match the procedures performed this
   // visit (deterministic match against the extracted treatments). Basic shows the flat list.
@@ -391,7 +416,7 @@ export function CaptureScreen({
       currentUserId={currentUserId}
       onApplyRelevant={onMarkRelevant}
       onAssignPatient={onAssignPatient}
-      onDeleteCapture={onDeleteCapture}
+      onDeleteCapture={guardedDeleteCapture}
       onOpenCapture={setSelectedCapture}
       onOpenResolver={onOpenResolver}
       onRenameCapture={onRenameCapture}
@@ -797,7 +822,7 @@ export function CaptureScreen({
               <button
                 className="sources-drawer-undo"
                 type="button"
-                onClick={() => onDeleteCapture(activeSession.id, lastCapture.id)}
+                onClick={() => void guardedDeleteCapture(activeSession.id, lastCapture.id)}
                 title={t("capture.undoLastHint")}
                 aria-label={t("capture.undoLast")}
               >
@@ -862,6 +887,26 @@ export function CaptureScreen({
             : undefined
         }
       />
+      {/* E17 finding 1: a de-effecting removal that would drop safety content confirms first, naming
+          exactly which flags disappear (from the visit, and whether from the patient file too). */}
+      <Dialog
+        open={Boolean(removalGuard)}
+        title={t("capture.removalGuard.title")}
+        onClose={() => setRemovalGuard(null)}
+        footer={
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setRemovalGuard(null)}>
+              {t("capture.history.cancel")}
+            </Button>
+            <Button size="sm" variant="danger" onClick={confirmGuardedRemoval}>
+              {t("capture.removalGuard.confirm")}
+            </Button>
+          </>
+        }
+      >
+        <p className="report-history-confirm-body">{t("capture.removalGuard.body")}</p>
+        <SafetyLossList flags={removalGuard?.flags ?? []} />
+      </Dialog>
     </section>
   );
 }

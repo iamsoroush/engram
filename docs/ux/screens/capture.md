@@ -280,7 +280,14 @@ bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
   entries); removing a middle capture triggers a recompute shown as a calm re-organizing state.
   Removal is **owner-only** (the staff member who started the session). **Undo last capture** is also
   the one-tap shortcut for *restore the previous version* (N=1) surfaced richer in *Report history*
-  below. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
+  below.
+- **Safety-loss guard (E17).** If a removal would drop a **safety flag** the current report carries,
+  a confirm dialog first names exactly which allergy / contraindication / consent flags disappear
+  (computed deterministically, no LLM) — and, per flag, whether it also leaves the **patient file**
+  («از پرونده بیمار نیز حذف می‌شود») or stays because another visit records it. Flag texts are clinical
+  content (verbatim); the chrome is bilingual. A removal with **no** safety loss is never interrupted
+  (undo stays one-tap). The de-effect is always a **soft** delete — media is never destroyed, so undo
+  is fully reversible. Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 
 ### Report history (E14 · Pro)
 
@@ -296,13 +303,19 @@ server-authored string).
   same report presentation — with a `Viewing the version from HH:MM · Back to current` banner. The live
   **user-state overlay** (rejected safety flags, dismissed aftercare, confirmed doses, treatment edits)
   applies on top of whichever version renders, so a user decision is **never time-traveled away**.
-- **Restore (owner-only).** A past version reachable by removal offers **Restore this version**, which
-  returns the visit to that version's capture set by de-effecting the captures added after it — the
-  **same de-effecting removal** as undo (shared machinery). Owner-only, gated behind a confirmation that
-  names how many captures are removed. A **non-linear** version (one that included a now-deleted capture,
-  or needs an out-of-context toggle) is **preview-only** with a calm note; `409` on the API.
-- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut. Pin (the unused `pinned`
-  column), in-place time-travel, and field-level diffs are documented fast-follows.
+- **Restore (owner-only).** A **reachable** version offers **Restore this version**, which returns the
+  visit to that version's exact capture set — the **same de-effecting removal** as undo (shared machinery).
+  Owner-only, gated behind a confirmation that names how many captures are **removed** and/or **restored**,
+  and — when applicable — the **safety-loss guard** (above: the flags that would disappear). A version that
+  needs an out-of-context toggle is **preview-only** with a calm note; `409` on the API.
+- **Redo — history is forward-navigable (E17).** After a restore, the **later** versions stay in the
+  timeline and are navigable **forward**: restoring one **re-effects** (un-deletes) the captures it knew,
+  so a restore is not a one-way door. The forward branch is pruned from the timeline **only** when a new
+  capture is added while not at head — behind a small confirm («این کار N نسخهٔ جدیدتر را کنار می‌گذارد»);
+  pruned versions leave the UI but stay as DB rows.
+- **Quick undo unchanged.** The Sources-drawer Undo stays the one-tap shortcut (now with the safety-loss
+  guard). Pin (the unused `pinned` column), in-place time-travel, and field-level diffs are documented
+  fast-follows.
 
 Architecture: [pipeline-versioning](../../architecture/pipeline-versioning.md).
 

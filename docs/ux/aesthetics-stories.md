@@ -859,13 +859,46 @@ made the report worse can be rolled back — the richer face of undo.
 As a **doctor**, I want "Undo last capture" to remain the one-tap shortcut in the Sources drawer, so that
 the common case stays instant while the timeline is its richer, multi-step face.
 - **Acceptance:** the Sources-drawer Undo is unchanged (it is "restore the previous version", N=1, on the
-  same `DELETE /captures/{id}` de-effect path).
+  same `DELETE /captures/{id}` de-effect path). Now guarded by AES-1709 when a safety flag would be lost —
+  the no-safety-loss case (the vast majority) stays one-tap.
+
+### AES-1709 — Safety-loss guard on restore / undo 〔Pro · Dr · built〕
+As a **doctor**, I want to be warned — before a restore or a Sources-drawer undo — when the target state
+lacks a **safety flag** the current report carries, so that a rollback never *silently* drops allergy /
+contraindication / consent content (owner-testing finding 1).
+- **Acceptance:** a confirm dialog lists **exactly** the flags that will disappear from the visit, computed
+  **deterministically from the two versions' artifacts — no LLM** (backend `restoreImpact.safetyLoss` on
+  the version detail; `GET /captures/{id}/removal-impact` for undo/delete). The **patient layer** is
+  coherent: a flag whose only source is a de-effected capture is invalidated with the same visibility
+  (listed under «از پرونده بیمار نیز حذف می‌شود»); one with other sources stays and the dialog says so.
+  Flag **texts are clinical content** (verbatim, bidi-isolated); the chrome is bilingual via `t()`. A
+  removal with no safety loss is **not** interrupted (AES-1704 stays one-tap). Surface:
+  [screens/capture.md](screens/capture.md) "Report history" / "Sources drawer and undo".
+
+### AES-1710 — Redo (forward-navigable history) + branch prune 〔Pro · Dr · built〕
+As a **doctor**, after restoring to an older version I want the **later** versions to remain navigable
+**forward** (a redo), so that a restore isn't a one-way door (owner-testing finding 2).
+- **Acceptance:** reachability is a full **transition** (soft-delete *and* re-effect): restoring **forward**
+  re-effects the soft-deleted captures the target version knew (deterministic, no LLM), reusing the P0-8
+  de-effect machinery; the confirm names captures **removed** and/or **restored**. The forward branch is
+  pruned from the timeline **only** when a new capture is added while not at head, behind a small confirm
+  («این کار N نسخهٔ جدیدتر را کنار می‌گذارد» — `session.forwardVersionCount` gates it). **Pruned versions
+  stay as DB rows** (`pruned_at`; append-only store — debugging) — they just leave the UI. `409` only for a
+  genuinely unreachable (non-linear / out-of-context-toggle) version.
+
+### AES-1711 — De-effect never destroys data 〔Pro · Dr · built〕
+As a **doctor**, I want undo / restore to be fully reversible, so that a rollback can never destroy clinical
+media (owner-testing finding 3).
+- **Acceptance:** a removal is asserted (and tested) to only set `CaptureStatus.deleted` (+ remember the
+  pre-delete status for re-effect) — it **never** deletes an `Artifact` row or its MinIO object; a
+  regression test proves a de-effected audio capture's media stays fetchable internally
+  ([pipeline-versioning](../architecture/pipeline-versioning.md)).
 
 - **Deferred (⊕, fast-follows):**
   AES-1705 **pin** (make a version authoritative without touching captures — the unused `pinned` column);
   AES-1706 **time-travel-in-place** preview; AES-1707 **field-level version diffs**; AES-1708 **D5
   GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
-  fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
+  fast-follow); restore to a **non-linear** (out-of-context-toggle) version.
 
 ## Coverage check — every agreed feature is detailed
 

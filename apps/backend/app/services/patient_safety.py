@@ -45,9 +45,10 @@ def _session_metadata(session: Session) -> dict[str, Any]:
     return session.extracted_metadata if isinstance(session.extracted_metadata, dict) else {}
 
 
-def session_detected_safety_flags(session: Session) -> list[dict[str, Any]]:
-    """The synthesis's raw safety flags for this visit (validated), each with its stable ``key``."""
-    raw = _session_metadata(session).get("safety_flags")
+def validate_safety_flags(raw: Any) -> list[dict[str, Any]]:
+    """Validate an arbitrary ``safety_flags`` list — a session's OR a stored version's artifacts — into
+    keyed flags ``[{key, kind, text, sourceCaptureIds}]``. Invalid items (bad kind / empty text) drop.
+    """
     flags: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
@@ -68,6 +69,11 @@ def session_detected_safety_flags(session: Session) -> list[dict[str, Any]]:
             }
         )
     return flags
+
+
+def session_detected_safety_flags(session: Session) -> list[dict[str, Any]]:
+    """The synthesis's raw safety flags for this visit (validated), each with its stable ``key``."""
+    return validate_safety_flags(_session_metadata(session).get("safety_flags"))
 
 
 def session_rejected_safety_flag_keys(session: Session) -> list[str]:
@@ -280,3 +286,55 @@ def apply_safety_reconciliation(patient: Patient, decisions: Any) -> None:
             flag.pop("reconcileOfKey", None)
         updated.append(flag)
     patient.safety_flags = updated
+
+
+# --- Safety-loss guard (E17) -------------------------------------------------------------------------
+# A restore / undo whose target lacks a safety flag the current version carries would SILENTLY drop it.
+# These deterministic (no-LLM) helpers diff the two states so the UI can name exactly what disappears —
+# at the visit AND on the patient file — before the clinician confirms.
+
+
+def patient_flag_sourced_only_by_session(patient: Patient, session_id: Any, key: str) -> bool:
+    """True when the patient's flag ``key`` is contributed ONLY by this session — so de-effecting this
+    visit removes it from the patient file too. False when another visit also records it (it stays).
+    """
+    sid = str(session_id)
+    seen_here = False
+    for flag in patient_safety_flags(patient):
+        if flag.get("key") != key:
+            continue
+        if str(flag.get("sourceSessionId")) == sid:
+            seen_here = True
+        else:
+            return False  # another visit sources the same flag → it stays on the patient
+    return seen_here
+
+
+def safety_loss_diff(
+    patient: Patient | None,
+    session_id: Any,
+    current_kept: list[dict[str, Any]],
+    surviving_keys: set[str],
+) -> list[dict[str, Any]]:
+    """Deterministically diff the visit's kept safety flags against what SURVIVES a de-effect — no LLM.
+
+    Returns the currently-kept flags that would disappear from the visit, each annotated with whether it
+    also leaves the patient store (``alsoRemovedFromPatient`` — no other visit sources it). ``current_kept``
+    = this visit's kept flags (detected − rejected); ``surviving_keys`` = the keys that remain after the
+    operation (the target version's kept keys for a restore; the flags whose source captures aren't all
+    removed for a capture-removal). Clinical ``text`` is returned verbatim (content, never translated).
+    """
+    loss: list[dict[str, Any]] = []
+    for flag in current_kept:
+        if flag["key"] in surviving_keys:
+            continue
+        loss.append(
+            {
+                "key": flag["key"],
+                "kind": flag["kind"],
+                "text": flag["text"],
+                "alsoRemovedFromPatient": patient is not None
+                and patient_flag_sourced_only_by_session(patient, session_id, flag["key"]),
+            }
+        )
+    return loss
