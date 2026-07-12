@@ -320,6 +320,10 @@ export function CaptureScreen({
   const assignmentSignal = `${activeSession?.patientId ?? ""}:${activeSession?.assignmentSource ?? ""}`;
   // High-risk clinics keep the full safety panel pinned above the report (never a collapsed chip).
   const safetyPinned = highRiskClinic && keptSafetyFlags.length > 0;
+  // Stable signature of the current kept-flag set — the strip auto-expands whenever this changes to a
+  // new, unacknowledged non-empty value (a flag landing from synthesis/reconcile, a restore/undo), and
+  // stays put once the clinician has acknowledged this exact set (AES-1802 event-driven expansion).
+  const safetySignature = keptSafetyFlags.map((flag) => flag.key).sort().join("|");
   const [sourcesOpen, setSourcesOpen] = React.useState(false);
   const sourcesShown = sourcesOpen || !reportHasContent;
   const sourcesDrawerRef = React.useRef<HTMLElement>(null);
@@ -505,6 +509,7 @@ export function CaptureScreen({
                 />
               ) : null
             }
+            safetySignature={safetySignature}
             safetyPanel={
               !safetyPinned ? (
                 <SessionSafetyPanel
@@ -512,6 +517,7 @@ export function CaptureScreen({
                   sessionId={activeSession.id}
                   canEdit={!readOnly}
                   onReject={onRejectSafetyFlag}
+                  onOpenSource={openSourceCapture}
                 />
               ) : null
             }
@@ -524,7 +530,7 @@ export function CaptureScreen({
           />
           {/* High-risk clinic: the full safety panel stays pinned above the report (never a chip). */}
           {safetyPinned ? (
-            <SessionSafetyPanel flags={keptSafetyFlags} sessionId={activeSession.id} canEdit={!readOnly} onReject={onRejectSafetyFlag} />
+            <SessionSafetyPanel flags={keptSafetyFlags} sessionId={activeSession.id} canEdit={!readOnly} onReject={onRejectSafetyFlag} onOpenSource={openSourceCapture} />
           ) : null}
           {nextLinedUpPatient && !activeSession.patientId && !activeSession.patientName ? (
             <NextLinedUpBar

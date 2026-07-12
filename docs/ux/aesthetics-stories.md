@@ -867,6 +867,34 @@ the common case stays instant while the timeline is its richer, multi-step face.
   GC/bounded-ring** (pipeline-versioning); restore under the 3-mode **edit-policy presets** (shared undo
   fast-follow); restore to **non-linear** (out-of-context / re-add) versions.
 
+## E18 — Legible safety flags (owner testing, 2026-07)
+
+Extends [AES-701](#aes-701--safety-flags-surfaced-each-visit-pro). Owner testing found the safety
+panel legible only after reading a full dictated sentence; the flags must be glanceable and
+impossible to miss. Screen: [capture.md — Safety panel + Patient strip](screens/capture.md). Eval-gated
+(synthesis PROMPT_VERSION bump + `safety_flags_eval` label assertions).
+
+### AES-1801 — Two-layer safety flag: legible label + evidence 〔Pro · Dr/As · built〕
+As a **doctor**, I want each safety flag shown as a short normalized **label** (kind + substance) with the
+clinician's verbatim sentence as expandable **evidence** and a tap-through to its source capture, so that
+I read the fact at a glance yet can still verify the quote.
+- **Acceptance:** synthesis emits a per-flag `label` (report language, native script, not a verbatim
+  echo) alongside the unchanged verbatim `text`; the panel shows the label as primary, the verbatim
+  sentence under `Show evidence`, and `sourceCaptureIds` as the report's `↗ source` citation; a
+  pre-label flag falls back to the verbatim text as primary. The stable rejection/reconcile **key stays
+  text-based** (a reworded label never shifts it). The label rides onto the patient store and the
+  cross-visit surfaces (context card + timeline) as the glanceable primary.
+
+### AES-1802 — Event-driven strip expansion + flag-count chip 〔Pro · Dr/As · built〕
+As a **doctor**, I want the patient strip to open itself when a safety flag arrives or changes, and the
+collapsed strip to carry a red **count** chip, so that a new flag is never missed and I always see how
+many are on record.
+- **Acceptance:** the strip auto-expands when the kept-flag set changes to a new, unacknowledged set (a
+  patient with existing flags first assigned, a flag landing from synthesis/reconcile, a restore/undo);
+  the clinician can collapse it and the same set is not re-expanded (**acknowledged-signature** in
+  session UI state); the collapsed strip always shows a `🩹 N` chip when any flag exists. Reuses the
+  high-risk-clinic pin-open machinery.
+
 ## Coverage check — every agreed feature is detailed
 
 | [Foundation §3](foundation.md) item | Stories |

@@ -95,7 +95,7 @@
   cursor: pointer;
 }
 .patient-strip-chip.verify { background: #fdf3e2; color: #a15c15; }
-.patient-strip-chip.safety { background: #fdecec; color: #c0392b; padding: 3px 7px; }
+.patient-strip-chip.safety { background: #fdecec; color: #c0392b; padding: 3px 8px; font-weight: 700; }
 .patient-strip-assign {
   border: 0;
   border-radius: 999px;

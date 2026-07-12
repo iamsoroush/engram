@@ -629,6 +629,7 @@
       "safetyFlags": [
         {
           "kind": "allergy",
+          "label": "حساسیت به لیدوکائین",
           "text": "لیدوکائین",
           "sourceCaptureIds": [
             "cap-a"
@@ -637,6 +638,7 @@
         },
         {
           "kind": "contraindication",
+          "label": null,
           "text": "pregnant",
           "sourceCaptureIds": [],
           "lang": "fa"

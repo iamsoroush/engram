@@ -153,6 +153,37 @@ class PatientSyncTests(unittest.TestCase):
         self.assertEqual([f["kind"] for f in scoped], ["allergy"])  # only the PRIOR visit's flag
 
 
+class SafetyFlagLabelTests(unittest.TestCase):
+    """AES-1801: the normalized short `label` rides through every serializer as passthrough; the stable
+    text-based `key` (which reconcile + rejection use) never depends on it."""
+
+    def test_detected_carries_label_and_defaults_none(self):
+        session = _session(
+            {
+                "safety_flags": [
+                    {"kind": "allergy", "label": " حساسیت به لیدوکائین ", "text": "بیمار به لیدوکائین حساسیت داره", "sourceCaptureIds": ["c1"]},
+                    _flag("consent", "رضایت‌نامه گرفته شد"),  # no label → None
+                ]
+            }
+        )
+        detected = session_detected_safety_flags(session)
+        self.assertEqual(detected[0]["label"], "حساسیت به لیدوکائین")  # trimmed passthrough
+        self.assertIsNone(detected[1]["label"])
+
+    def test_label_does_not_shift_the_stable_key(self):
+        # Reconcile/rejection key stability: two visits reword the label but state the same allergy.
+        a = _session({"safety_flags": [{"kind": "allergy", "label": "حساسیت به لیدوکائین", "text": "به لیدوکائین حساسیت داره"}]})
+        b = _session({"safety_flags": [{"kind": "allergy", "label": "آلرژی لیدوکائینی", "text": "به لیدوکائین حساسیت داره"}]})
+        self.assertEqual(session_detected_safety_flags(a)[0]["key"], session_detected_safety_flags(b)[0]["key"])
+
+    def test_label_persists_to_patient_and_payload(self):
+        patient = _patient(None)
+        session = _session({"safety_flags": [{"kind": "allergy", "label": "حساسیت به لیدوکائین", "text": "بیمار به لیدوکائین حساسیت داره"}]})
+        sync_patient_safety_flags(patient, session)
+        self.assertEqual(patient_safety_flags(patient)[0]["label"], "حساسیت به لیدوکائین")
+        self.assertEqual(patient_safety_flags_payload(patient)[0]["label"], "حساسیت به لیدوکائین")
+
+
 class ReconcileApplyTests(unittest.TestCase):
     def _patient_with(self, flags):
         p = _patient(flags)

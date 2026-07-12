@@ -135,6 +135,18 @@ describe("safety flag selectors", () => {
     expect(flags.map((f) => f.kind)).toEqual(["allergy", "contraindication"]);
   });
 
+  it("carries the normalized label through, defaulting to null (AES-1801)", () => {
+    const meta = {
+      safety_flags: [
+        { kind: "allergy", label: " حساسیت به لیدوکائین ", text: "بیمار به لیدوکائین حساسیت داره" },
+        { kind: "consent", text: "رضایت‌نامه گرفته شد" }, // no label → null
+      ],
+    };
+    const flags = sessionSafetyFlags(session({ extractedMetadata: meta }));
+    expect(flags[0].label).toBe("حساسیت به لیدوکائین"); // trimmed passthrough
+    expect(flags[1].label).toBeNull();
+  });
+
   it("excludes rejected flags from the kept set", () => {
     const meta = { ...flagsMeta, rejected_safety_flags: [safetyFlagKey("allergy", "Lidocaine")] };
     const kept = sessionKeptSafetyFlags(session({ extractedMetadata: meta }));

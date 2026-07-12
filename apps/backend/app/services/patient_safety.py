@@ -46,7 +46,12 @@ def _session_metadata(session: Session) -> dict[str, Any]:
 
 
 def session_detected_safety_flags(session: Session) -> list[dict[str, Any]]:
-    """The synthesis's raw safety flags for this visit (validated), each with its stable ``key``."""
+    """The synthesis's raw safety flags for this visit (validated), each with its stable ``key``.
+
+    Carries the normalized short ``label`` (kind + substance, report language) the UI shows as the
+    legible primary — passthrough only; the stable ``key`` stays text-based so a reworded label never
+    shifts a rejection or a reconcile decision (AES-1801).
+    """
     raw = _session_metadata(session).get("safety_flags")
     flags: list[dict[str, Any]] = []
     for item in raw if isinstance(raw, list) else []:
@@ -56,11 +61,13 @@ def session_detected_safety_flags(session: Session) -> list[dict[str, Any]]:
         text = item.get("text")
         if kind not in SAFETY_FLAG_KINDS or not (isinstance(text, str) and text.strip()):
             continue
+        label = item.get("label")
         source_ids = item.get("sourceCaptureIds")
         flags.append(
             {
                 "key": safety_flag_key(kind, text),
                 "kind": kind,
+                "label": label.strip() if isinstance(label, str) and label.strip() else None,
                 "text": text.strip(),
                 "sourceCaptureIds": [str(value) for value in source_ids if isinstance(value, str)]
                 if isinstance(source_ids, list)
@@ -147,6 +154,7 @@ def sync_patient_safety_flags(patient: Patient, session: Session) -> None:
         {
             "key": flag["key"],
             "kind": flag["kind"],
+            "label": flag.get("label"),
             "text": flag["text"],
             "sourceSessionId": session_id,
             "sourceCaptureIds": flag["sourceCaptureIds"],
@@ -170,7 +178,9 @@ def patient_safety_flags_payload(patient: Patient, *, exclude_session_id: Any = 
     """Deduped, glanceable patient safety flags for the session-context card + timeline.
 
     Deduped by stable key (the first occurrence wins, keeping its provenance); clinical ``text`` is
-    returned verbatim in the report language. Shape: ``[{key, kind, text}]``.
+    returned verbatim in the report language, alongside the normalized short ``label`` the UI shows as
+    primary (AES-1801; None on a pre-label stored flag → the client falls back to ``text``). Shape:
+    ``[{key, kind, label, text}]``.
 
     ``exclude_session_id`` drops flags contributed by that session — passed for the active session's
     context card so a flag detected THIS visit (already shown in the opt-out "this visit" panel) is not
@@ -190,7 +200,7 @@ def patient_safety_flags_payload(patient: Patient, *, exclude_session_id: Any = 
         if key in seen:
             continue
         seen.add(key)
-        entry = {"key": key, "kind": flag["kind"], "text": flag["text"]}
+        entry = {"key": key, "kind": flag["kind"], "label": flag.get("label"), "text": flag["text"]}
         if flag.get("reconcileStatus") == "superseded":
             entry["superseded"] = True
         payload.append(entry)

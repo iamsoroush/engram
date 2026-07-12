@@ -6478,15 +6478,43 @@ small {
   letter-spacing: 0.01em;
   text-transform: uppercase;
 }
-.session-safety-text {
+/* Flag body column (AES-1801): the normalized label leads (primary), with the verbatim clinician
+   sentence as expandable evidence beneath it and a source citation that jumps to the capture. */
+.session-safety-body {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.session-safety-primary {
   margin: 0;
   color: #2a1d1a;
-  font-size: 0.84rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.session-safety-evidence-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #9a5a4c;
+  font-size: 0.72rem;
   font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.session-safety-evidence {
+  margin: 0;
+  color: #6b4a44;
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-style: italic;
   line-height: 1.5;
 }
+.session-safety-body .source-citation { margin-inline-start: 0; }
 .session-safety-remove {
   flex: 0 0 auto;
   display: grid;
