@@ -54,6 +54,22 @@ def _assert_audio_tooling() -> None:
     assert_audio_tooling()
 
 
+@app.on_event("startup")
+def _backfill_qa_embeddings() -> None:
+    # (Re)embed Q&A knowledge exemplars with a NULL embedding once a gateway is configured (AES-1802).
+    # Best-effort + bounded + a no-op when unconfigured — never blocks boot, never touches CI/e2e.
+    from app.db.session import SessionLocal
+    from app.services.qa_knowledge.backfill import backfill_missing_embeddings
+
+    db = SessionLocal()
+    try:
+        backfill_missing_embeddings(db)
+    except Exception:  # noqa: BLE001 — a maintenance sweep must never crash startup.
+        db.rollback()
+    finally:
+        db.close()
+
+
 app.include_router(api_v1)
 
 # Per-domain routers extracted from this file. Each is a thin, self-contained APIRouter mounted at

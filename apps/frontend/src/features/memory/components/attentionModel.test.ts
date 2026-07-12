@@ -117,6 +117,7 @@ describe("attentionBadgeCount / hasAttention", () => {
     suggested: 0,
     messages: 0,
     safety: 0,
+    urgent: 0,
     total: 0,
     ...over,
   });

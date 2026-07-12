@@ -20,6 +20,8 @@ export function Shell({
   attentionCounts = null,
   attentionHighestTier = null,
   onOpenAttention,
+  qaPendingCount = 0,
+  qaUrgent = false,
 }: {
   screen: Screen;
   children: React.ReactNode;
@@ -38,6 +40,10 @@ export function Shell({
   attentionHighestTier?: AttentionResponse["highestTier"];
   /** Opens the Close-the-day sweep (the Attention tab of Clinical Memory). */
   onOpenAttention?: () => void;
+  /** Pending Q&A threads (scoped like the inbox) for the glanceable Q&A badge (AES-1801); 0 hides it. */
+  qaPendingCount?: number;
+  /** Any pending question tripped a red flag — the badge turns to the danger tone. */
+  qaUrgent?: boolean;
 }) {
   const t = useT();
   const menuRef = React.useRef<HTMLDetailsElement>(null);
@@ -54,8 +60,11 @@ export function Shell({
   // Offer a clinic switcher only to users who belong to more than one clinic.
   const multiClinic = new Set(auth.memberships.map((membership) => membership.tenantId)).size > 1;
   // Account / utility pages have no capture context — the capture bar would overlap their content.
+  // The Q&A inbox likewise hides it: capturing has no meaning there, and it would clash with the
+  // per-reply voice-edit mic (AES-1801). Q&A gets its own bottom Inbox|Library bar instead.
   const isAccountScreen =
     screen === "settings" || screen === "profile" || screen === "team" || screen === "insights" || screen === "plan" || screen === "switch-clinic";
+  const hideCaptureBar = isAccountScreen || screen === "qa-inbox";
   const isOffline = !syncHealth.online;
   const closeMenu = () => menuRef.current?.removeAttribute("open");
   const goTo = (target: Screen) => {
@@ -123,15 +132,29 @@ export function Shell({
             {isPro ? (
               <button
                 aria-current={screen === "qa-inbox" ? "page" : undefined}
-                aria-label={t("nav.qaInbox")}
+                aria-label={
+                  qaPendingCount
+                    ? t(qaUrgent ? "nav.qaInbox.urgent" : "nav.qaInbox.count", { n: qaPendingCount })
+                    : t("nav.qaInbox")
+                }
                 className={`app-search-button app-qa-button ${screen === "qa-inbox" ? "active" : ""}`}
                 onClick={() => onNavigate("qa-inbox")}
                 title={t("nav.qaInbox")}
                 type="button"
               >
-                {/* Pending Q&A now rolls into the Attention indicator's "messages" — this stays as a
-                    plain workspace shortcut to the inbox (Library, routing, reply live only there). */}
+                {/* Messages earn their own glanceable badge again (AES-1801 — a deliberate partial-revert
+                    of the E16 merge; the unified bell keeps its merged count). A red-flagged question
+                    turns the badge to the danger tone. */}
                 <QaInboxNavIcon />
+                {qaPendingCount ? (
+                  <span
+                    className={`app-qa-badge ${qaUrgent ? "tone-urgent" : ""}`}
+                    data-testid="qa-pending-badge"
+                    aria-hidden="true"
+                  >
+                    {qaPendingCount > 9 ? "9+" : qaPendingCount}
+                  </span>
+                ) : null}
               </button>
             ) : null}
             {showAttention ? (
@@ -234,7 +257,7 @@ export function Shell({
       </header>
       {isOffline ? <p className="global-offline-status">{t("shell.offline")}</p> : null}
       {children}
-      {isAccountScreen ? null : (
+      {hideCaptureBar ? null : (
         <CaptureActions compact contextLabel={isOffline ? t("shell.savingOnDevice") : captureContextLabel} onAction={onCapture} tier={auth.tenant.tier} />
       )}
       <footer className="app-version">{t("shell.version")}</footer>

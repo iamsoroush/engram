@@ -55,9 +55,43 @@ def token_set(text: object) -> set[str]:
     return set(tokens(text))
 
 
-def build_search_text(*, question: str | None, answer: str | None) -> str:
-    """The stored lexical target for an exemplar: canonicalized question + answer."""
-    return canonicalize(f"{question or ''} {answer or ''}")
+def build_search_text(*, title: str | None = None, question: str | None, answer: str | None) -> str:
+    """The stored lexical target for an exemplar: canonicalized title + question + answer.
+
+    Title matters: a clinic often labels a template by its topic («ورزش بعد از بوتاکس») and leaves
+    the question pattern blank, so a query «کی میتونم ورزش کنم؟» must still match on the topic word in
+    the title. Omitting the title (the pre-AES-1802 behaviour) silently dropped that grounding signal.
+    """
+    return canonicalize(f"{title or ''} {question or ''} {answer or ''}")
+
+
+# Question-word markers (fa + en) that make a bare title read as a question pattern. Used to migrate
+# the owner's trap (AES-1802): question-shaped text typed into the optional `title` while `question`
+# stayed empty, so retrieval never learned it was the question. Kept small + recall-safe.
+_QUESTION_WORDS = frozenset(
+    {
+        # Persian
+        "کی", "کِی", "چی", "چه", "چرا", "کجا", "چطور", "چگونه", "چند", "چقدر", "آیا", "کدام", "چند وقت",
+        # English
+        "what", "when", "why", "where", "how", "which", "who", "whom", "can", "could", "should",
+        "will", "would", "do", "does", "is", "are", "am",
+    }
+)
+
+
+def looks_like_question(text: object) -> bool:
+    """Whether a title reads as a question — ends with ?/؟ or opens on a question word.
+
+    Deliberately lenient (recall-safe): the cost of a false positive here is copying a topic label into
+    ``question`` (harmless — search_text folds both), while a miss leaves the owner's mis-entry
+    ungrounded. Pure + unit-tested so the migration and any UI guard stay in step.
+    """
+    folded = canonicalize(text)
+    if not folded:
+        return False
+    if folded.endswith("?") or folded.endswith("؟"):
+        return True
+    return any(token in _QUESTION_WORDS for token in tokens(text, drop_stopwords=False))
 
 
 def detect_language(text: object) -> str:

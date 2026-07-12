@@ -52,6 +52,7 @@ from app.services.ai_jobs import ai_job_payload, schedule_retry
 from app.services.capabilities import POST_SESSION_QA, tenant_has_capability
 from app.services.patient_memory_intelligence import persisted_summary
 from app.services.patients import get_patient
+from app.services.qa_knowledge import escalation as qa_escalation
 from app.services.qa_knowledge import library as qa_library
 from app.services.qa_knowledge import retrieval as qa_retrieval
 from app.services.sessions import parse_uuid
@@ -334,6 +335,8 @@ def _staff_messages(db: DbSession, thread: QaThread) -> list[dict[str, Any]]:
             "draftStatus": message.draft_status if message.role == ROLE_PATIENT else DRAFT_NONE,
             "draftSource": message.draft_source if message.role == ROLE_PATIENT else None,
             "draftProvenance": message.draft_provenance if message.role == ROLE_PATIENT else None,
+            "urgent": bool(message.urgent) if message.role == ROLE_PATIENT else False,
+            "urgentFlags": (message.urgent_flags or []) if message.role == ROLE_PATIENT else [],
             "createdByUserId": str(message.created_by_user_id) if message.created_by_user_id else None,
             "createdAt": _iso(message.created_at),
         }
@@ -523,10 +526,21 @@ def invalidate_drafts_for_exemplar(db: DbSession, *, tenant_id: uuid.UUID, exemp
         )
     ).scalars():
         provenance = question.draft_provenance if isinstance(question.draft_provenance, dict) else None
-        if provenance and str(provenance.get("exemplarId") or "") == str(exemplar_id):
+        if provenance and _provenance_cites_exemplar(provenance, exemplar_id):
             _reset_pending_draft(question)
             count += 1
     return count
+
+
+def _provenance_cites_exemplar(provenance: dict[str, Any], exemplar_id: str) -> bool:
+    """Whether a draft's provenance was grounded on ``exemplar_id`` (top-level or any structured source)."""
+    target = str(exemplar_id)
+    if str(provenance.get("exemplarId") or "") == target:
+        return True
+    return any(
+        isinstance(source, dict) and str(source.get("exemplarId") or "") == target
+        for source in (provenance.get("sources") or [])
+    )
 
 
 def revoke_thread(db: DbSession, principal: CurrentPrincipal, thread_id: str) -> dict[str, Any]:
@@ -604,7 +618,12 @@ def _patient_visits(db: DbSession, *, tenant_id: uuid.UUID, patient_id: uuid.UUI
 def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dict[str, Any]:
     """Build one thread-centric inbox entry: the whole conversation + the pending question (if any)."""
     messages = _staff_messages(db, thread)
-    pending = next((m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING), None)
+    pendings = [m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING]
+    # A thread can hold several unanswered questions. Surface an URGENT one first so a red-flag question
+    # asked after a routine one isn't hidden behind it (AES-1801) — the doctor works the urgent one now;
+    # the rest follow. Absent an urgent one, keep the oldest-first order.
+    pending = next((m for m in pendings if m.get("urgent")), pendings[0] if pendings else None)
+    thread_urgent = any(m.get("urgent") for m in pendings)
     assigned_name = _doctor_name(db, thread.assigned_doctor_user_id)
     last_activity = messages[-1]["createdAt"] if messages else _iso(thread.updated_at)
     # Re-route is only meaningful for a multi-provider patient (≥2 treating doctors to choose between);
@@ -622,6 +641,10 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
         "routingSource": thread.routing_source,
         "treatingDoctorCount": treating_doctor_count,
         "needsApproval": pending is not None,
+        # Escalation (AES-1801): the thread is urgent while ANY pending question tripped a red flag —
+        # the row + badge render in the warning style and the bell escalates.
+        "urgent": thread_urgent,
+        "urgentFlags": (pending.get("urgentFlags") if pending else None) or [],
         "pendingQuestion": (
             {
                 "messageId": pending["id"],
@@ -631,6 +654,8 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
                 "draftStatus": pending["draftStatus"],
                 "draftSource": pending["draftSource"],
                 "draftProvenance": pending["draftProvenance"],
+                "urgent": bool(pending.get("urgent")),
+                "urgentFlags": pending.get("urgentFlags") or [],
             }
             if pending
             else None
@@ -683,6 +708,54 @@ def qa_inbox(db: DbSession, principal: CurrentPrincipal, *, scope: str = "mine")
         "scope": normalized_scope,
         "items": items,
         "total": sum(1 for item in items if item["needsApproval"]),
+    }
+
+
+def qa_inbox_summary(db: DbSession, principal: CurrentPrincipal, *, scope: str = "mine") -> dict[str, Any]:
+    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801).
+
+    The badge polls this frequently, so it must be cheap — one join, no full-payload build and (unlike
+    ``qa_inbox``) no draft self-heal. ``pending`` matches the inbox's ``total`` (threads awaiting the
+    doctor's approval) for the same scope; ``urgent`` counts those whose pending question tripped a red
+    flag, and ``urgentThreads`` carries the flag keys so the client can localize the toast label.
+    """
+    require_qa_capability(db, principal.tenant_id)
+    normalized_scope = scope if scope in {"mine", "all"} else "mine"
+    rows = db.execute(
+        select(QaThread, QaMessage, Patient)
+        .join(QaMessage, QaMessage.thread_id == QaThread.id)
+        .join(Patient, Patient.id == QaThread.patient_id)
+        .where(
+            QaThread.tenant_id == principal.tenant_id,
+            QaThread.status == THREAD_ACTIVE,
+            QaMessage.role == ROLE_PATIENT,
+            QaMessage.status == Q_PENDING,
+        )
+    ).all()
+    pending_threads: dict[uuid.UUID, dict[str, Any]] = {}
+    for thread, question, patient in rows:
+        if (
+            normalized_scope == "mine"
+            and thread.assigned_doctor_user_id is not None
+            and thread.assigned_doctor_user_id != principal.user_id
+        ):
+            continue
+        entry = pending_threads.setdefault(thread.id, {"patientName": patient.display_name, "flags": []})
+        if question.urgent:
+            for flag in question.urgent_flags or []:
+                if flag not in entry["flags"]:
+                    entry["flags"].append(flag)
+    urgent_threads = [
+        {"threadId": str(tid), "patientName": entry["patientName"], "flags": entry["flags"]}
+        for tid, entry in pending_threads.items()
+        if entry["flags"]
+    ]
+    return {
+        "schemaVersion": QA_SCHEMA_VERSION,
+        "scope": normalized_scope,
+        "pending": len(pending_threads),
+        "urgent": len(urgent_threads),
+        "urgentThreads": urgent_threads,
     }
 
 
@@ -1009,6 +1082,10 @@ def ask_question(db: DbSession, token: str, question_text: str) -> dict[str, Any
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A question is required")
     text = text[:MAX_QUESTION_CHARS]
     _enforce_ask_limits(db, thread)
+    # Escalation (AES-1801): classify at ingest against the deterministic red-flag lexicon. A hit marks
+    # the thread urgent so the inbox row / top-bar badge / attention bell escalate + a toast fires. This
+    # runs even gateway-less (it must never be the thing that's "down") and errs toward sensitivity.
+    urgent_flags = qa_escalation.classify_urgency(text)
     question = QaMessage(
         tenant_id=thread.tenant_id,
         thread_id=thread.id,
@@ -1016,6 +1093,8 @@ def ask_question(db: DbSession, token: str, question_text: str) -> dict[str, Any
         body=text,
         status=Q_PENDING,
         draft_status=DRAFT_NONE,
+        urgent=bool(urgent_flags),
+        urgent_flags=urgent_flags or None,
     )
     db.add(question)
     thread.updated_at = _utc_now()
@@ -1318,7 +1397,15 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
         {"question": item.get("question"), "answer": item.get("answer"), "source": item.get("kind"), "score": item.get("score")}
         for item in exemplars
     ]
-    provenance = qa_library.provenance_from_exemplars(exemplars)
+    # (G4) THIS thread's own earlier Q→A exchanges (bounded), so a follow-up question is drafted with
+    # the conversation's context — no cross-patient risk (thread == this patient).
+    thread_history = _thread_prior_turns(db, thread=thread, exclude_message_id=question.id) if thread else []
+    # The structured «بر اساس» provenance (AES-1803): every grounding source the payload actually
+    # carried (top exemplar + patient-record blocks + conversation), or the honest general-knowledge
+    # fallback when none did. Deterministic — the worker never sees or returns provenance.
+    provenance = qa_library.build_draft_provenance(
+        exemplars=exemplars, patient_context=patient_context, thread_history=thread_history
+    )
     fallback_draft = _qa_draft_fallback(
         question=question.body,
         doctor_name=doctor_name,
@@ -1326,8 +1413,7 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
         patient_context=patient_context,
         top_exemplar=exemplars[0] if exemplars else None,
     )
-    # Stash the provenance on the job so completion can persist it onto the question (the worker never
-    # sees or returns provenance — it is the backend's deterministic attribution of the top exemplar).
+    # Stash the provenance on the job so completion can persist it onto the question.
     job.result_metadata = {**(job.result_metadata or {}), "qa_provenance": provenance}
     db.commit()
     return {
@@ -1338,9 +1424,7 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
             "patientContext": patient_context,
             "priorAnswers": prior_answers,
             "retrievedExemplars": retrieved,
-            # (G4) THIS thread's own earlier Q→A exchanges (bounded), so a follow-up question is drafted
-            # with the conversation's context — no cross-patient risk (thread == this patient).
-            "threadHistory": _thread_prior_turns(db, thread=thread, exclude_message_id=question.id) if thread else [],
+            "threadHistory": thread_history,
             "doctorName": doctor_name,
         },
         "deterministicFallback": {"draft": fallback_draft, "source": "mock-deterministic"},

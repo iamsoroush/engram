@@ -66,7 +66,7 @@ import { attentionBadgeCount } from "../features/memory/components/attentionMode
 import { useMemoryApi } from "../features/memory/useMemoryApi";
 import { FinderOverlay } from "../features/finder";
 import { DoctorQaInbox } from "../features/qa/DoctorQaInbox";
-import { openQaChannel } from "../features/qa/qaClient";
+import { openQaChannel, fetchQaInboxSummary, type QaInboxSummary } from "../features/qa/qaClient";
 import { Shell } from "../features/shell/Shell";
 import { clearLocalCaptureData } from "../services/storage/captureStorage";
 import { clearWorkspaceState, loadWorkspaceState, persistWorkspaceState } from "../services/storage/workspaceStorage";
@@ -160,6 +160,11 @@ function AppInner() {
   // Unified attention roll-up for the top-bar indicator (AES-1003): one count that merges the S2
   // "to confirm" items with pending Q&A messages (safety keeps top salience but is never a to-do).
   const [attention, setAttention] = React.useState<{ counts: AttentionCounts; highestTier: AttentionResponse["highestTier"] } | null>(null);
+  // Pending Q&A count for the glanceable top-bar badge (AES-1801) — messages earn their own badge again
+  // (a deliberate partial-revert of the E16 merge; the bell keeps its merged count). Polled with the
+  // attention roll-up; a newly-arrived URGENT thread also fires a toast (see below).
+  const [qaSummary, setQaSummary] = React.useState<QaInboxSummary | null>(null);
+  const seenUrgentThreadsRef = React.useRef<Set<string> | null>(null);
   // The unified finder overlay (AES-1201..1205): app-wide, floats over the current screen.
   const [finderOpen, setFinderOpen] = React.useState(false);
   const [textOpen, setTextOpen] = React.useState(false);
@@ -214,12 +219,63 @@ function AppInner() {
       .catch(() => undefined);
   }, [apiFetch, auth, attentionScope]);
 
-  React.useEffect(() => {
+  // The Q&A badge follows the same scope the bell uses (a doctor sees their routed threads; reception
+  // the clinic) — "scoped like the inbox's Mine/Clinic". A newly-arrived urgent thread fires an in-app
+  // toast «سؤال فوری بیمار — تاری دید»; the first fetch seeds the seen-set so we alert on ARRIVAL, not
+  // on every pre-existing urgent thread each time the app opens.
+  const inboxScope = attentionScope === "clinic" ? "all" : "mine";
+  const refreshQaSummary = React.useCallback(() => {
+    if (!auth || auth.user.persona === "patient-preview" || !canUseQa) {
+      setQaSummary(null);
+      return;
+    }
+    fetchQaInboxSummary(apiFetch, inboxScope)
+      .then((summary) => {
+        setQaSummary(summary);
+        const nowUrgent = new Set(summary.urgentThreads.map((thread) => thread.threadId));
+        const seen = seenUrgentThreadsRef.current;
+        if (seen === null) {
+          seenUrgentThreadsRef.current = nowUrgent; // first load — seed without alerting.
+          return;
+        }
+        for (const thread of summary.urgentThreads) {
+          if (!seen.has(thread.threadId)) {
+            const flag = thread.flags[0];
+            const label = flag ? appT(`qa.redflag.${flag}`) : appT("qa.redflag.generic");
+            // Loud + held longer than a routine toast — an urgent patient question must not slip by.
+            setToast(appT("qa.urgentToast", { flag: label }), { tone: "danger", durationMs: 7000 });
+          }
+        }
+        seenUrgentThreadsRef.current = nowUrgent;
+      })
+      .catch(() => undefined);
+  }, [apiFetch, auth, canUseQa, inboxScope, appT, setToast]);
+
+  // Freshness (AES-1801): both counts poll while the app is VISIBLE (~60s) and refetch on window focus
+  // / on becoming visible; the interval pauses when hidden (a backgrounded tab shouldn't poll). A new
+  // patient question arrives out-of-band, so the badge/bell can't wait for a screen open.
+  const refreshFreshness = React.useCallback(() => {
     refreshAttention();
+    refreshQaSummary();
+  }, [refreshAttention, refreshQaSummary]);
+
+  React.useEffect(() => {
+    refreshFreshness();
     if (!auth || auth.user.persona === "patient-preview") return;
-    const handle = window.setInterval(refreshAttention, 60_000);
-    return () => window.clearInterval(handle);
-  }, [refreshAttention, memoryRefreshSignal, auth]);
+    const handle = window.setInterval(() => {
+      if (!document.hidden) refreshFreshness();
+    }, 60_000);
+    const onVisible = () => {
+      if (!document.hidden) refreshFreshness();
+    };
+    window.addEventListener("focus", refreshFreshness);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(handle);
+      window.removeEventListener("focus", refreshFreshness);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshFreshness, memoryRefreshSignal, auth]);
 
   React.useEffect(() => {
     if (!auth || auth.user.persona === "patient-preview") return;
@@ -949,7 +1005,7 @@ function AppInner() {
         <DoctorQaInbox
           apiFetch={apiFetch}
           onToast={setToast}
-          onChanged={refreshAttention}
+          onChanged={refreshFreshness}
           onShareQaLink={() => setFinderOpen(true)}
         />
       );
@@ -1058,6 +1114,8 @@ function AppInner() {
         attentionCounts={attention?.counts ?? null}
         attentionHighestTier={attention?.highestTier ?? null}
         onOpenAttention={openAttention}
+        qaPendingCount={qaSummary?.pending ?? 0}
+        qaUrgent={(qaSummary?.urgent ?? 0) > 0}
         onOpenFinder={() => setFinderOpen(true)}
       >
         {pendingCaptureKind ? (

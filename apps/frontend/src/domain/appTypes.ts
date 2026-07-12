@@ -224,15 +224,18 @@ export type AttentionCounts = {
   suggested: number;
   messages: number;
   safety: number;
+  // Urgent red-flagged patient questions (AES-1801) — a subset of `messages`, surfaced separately so
+  // the indicator can escalate above the normal messages tone.
+  urgent: number;
   total: number;
 };
 
 export type AttentionResponse = {
   scope: AttentionScope;
   counts: AttentionCounts;
-  // Highest open tier, for the indicator colour: safety > confirm > messages > suggested (null when
-  // everything is clear — an empty feed means the checks ran and passed).
-  highestTier: "safety" | "confirm" | "messages" | "suggested" | null;
+  // Highest open tier, for the indicator colour: urgent > safety > confirm > messages > suggested
+  // (null when everything is clear — an empty feed means the checks ran and passed).
+  highestTier: "urgent" | "safety" | "confirm" | "messages" | "suggested" | null;
   items: AttentionItem[];
 };
 
