@@ -1,0 +1,12 @@
+{
+  "model": "gpt-5.6-luna",
+  "measured": true,
+  "per_capture_cost_usd": 0.122054,
+  "per_capture_runs_ok": 10,
+  "per_capture_in_tok": 62804,
+  "per_capture_out_tok": 9875,
+  "coalesced_cost_usd": 0.014929999999999999,
+  "coalesced_in_tok": 5999,
+  "coalesced_out_tok": 1488,
+  "coalesced_mean_latency_s": 10.8
+}

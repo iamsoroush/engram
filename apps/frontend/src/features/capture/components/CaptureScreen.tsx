@@ -654,6 +654,8 @@ export function CaptureScreen({
           assigned={false}
           assignmentStateLabel={assignmentStateLabel}
           visitOrdinalLabel={null}
+          safetySignature=""
+
           onAssignOrChange={onCloseAssignment}
           verifyCount={0}
           onReview={scrollToVerify}
