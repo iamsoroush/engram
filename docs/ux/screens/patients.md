@@ -20,35 +20,49 @@ It must not show every session nested under every patient. Sessions belong in pa
 ## Structure
 
 - Top app bar.
-- Page title: `Clinical Memory` (no marketing subtitle — the heading + chip + search already orient).
+- Page title: `Clinical Memory` (no marketing subtitle — the heading + chip already orient).
 - A `needs your input` **chip** beside the heading: it shows the **unified attention count** — the same
   `confirm + messages` number the top-bar [Attention indicator](../navigation.md) shows — and opens the
   [Attention sweep](#attention-tab). Surface-by-exception: it is **hidden when the count is zero** (there
   is no "All caught up" pill), so it can never contradict the sections below it.
-- Search.
-- Tabs: `Today`, `Patients`, `Lists` (Pro only), `Needs input`. Basic shows three tabs — the Lists
+- Tabs: `Recent`, `Patients`, `Lists` (Pro only), `Attention`. Basic shows three tabs — the Lists
   tab is simply absent (a legible upgrade, no teaser).
 - Persistent bottom capture bar.
 
-## Today Tab
+There is **no always-visible header search bar**. App-wide retrieval is the top-bar
+[finder](finder.md) overlay (patients / today's visits / Pro lot recall); the Patients tab additionally
+carries a **lighter, local roster filter** (below). Recent and Attention rely on the finder.
 
-Today is the default landing tab.
+## Recent Tab
 
-It shows:
+Recent is the default landing tab: a calm, time-bucketed view of recent clinical activity (it replaced
+the old day-scoped "Today" tab, which only ever showed the current calendar day).
 
-- the `Today / up next` worklist (below), when relevant
-- session/visit cards for active or recent work
-- a compact `Needs your input` preview — **up to three** cards (preferring visits other than the
-  current one); when more need input, a `See N more in Attention` overflow pill opens the
-  [Attention tab](#attention-tab). When today has nothing to preview **but** the sweep still holds open
-  items (earlier days / messages), this section shows a `See all N in Attention` pointer instead of an
-  "all caught up" empty state — so it never contradicts the heading chip / top-bar count. It only reads
-  `All caught up` when the unified attention count is genuinely zero.
-- calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`
+It shows the `Today / up next` worklist (below) when relevant, then visit cards grouped into **time
+buckets**, newest first, **empty buckets omitted**:
+
+- **Active visit** — the one in-progress visit (`Continue visit`, or `Assign patient` when unassigned).
+- **Today** — visits touched on the current calendar day.
+- **Yesterday** — visits from the day before.
+- **This week** — visits within the last seven days.
+
+Older than a week never renders as a bucket; instead a **quiet link** points into Patients (the finder
+is the deep-search surface). A card earns its place by being meaningful activity — in progress, assigned
+to a patient, or carrying an unresolved needs-input decision; a patient-less, decision-less, inactive
+visit stays out.
+
+**Needs-input stays actionable inline.** A visit needing a decision keeps its amber treatment and its
+focused action (`Assign patient` / `Choose patient` / `Verify patient`) **on its card, in its time
+bucket** — there is no separate "Needs your input" preview section. The aggregate "how much needs me?"
+lives in the hero chip and the [Attention tab](#attention-tab), so the surfaces can never disagree.
+
+Cards use calm saved-state language and capture chips such as `3 photos`, `1 audio`, `1 note`. A
+future finder story will let a clinician jump to a specific older day by date-word («دیروز») or a
+simple date chip (AES-1207, not built).
 
 ### Today / up next (worklist)
 
-A soft worklist card at the top of Today (AES-903; both tiers, deterministic). Reception
+A soft worklist card at the top of Recent (AES-903; both tiers, deterministic). Reception
 (assistant/admin) **creates** line-ups *for a doctor* — patient search, a doctor picker (doctors
 only, never self), an optional note; a doctor **consumes** a read-only queue with a `Mine`/`Clinic`
 scope toggle. Tapping a queued patient opens a recap popup — the tier-aware patient history plus the
@@ -62,17 +76,19 @@ still-waiting entries — so the worklist agrees with the memory list / smart li
 filter to active patients. Backend: `worklist_entries` + `GET /api/v1/clinic/members`
 ([aes-basic-api §E9](../../backend/aes-basic-api.md)).
 
-Today is session-first. A card may include patient context, but the primary object is the session or visit, not the patient. Do not show generic patient cards that hide the session identity.
+Recent is session-first. A card may include patient context, but the primary object is the session or visit, not the patient. Do not show generic patient cards that hide the session identity.
 
-Today includes only sessions created, captured, or updated on the user's current calendar day. Older unassigned or historical sessions belong in Patients, Search, or the full Needs input surface, not in the Today preview.
+A visit's **time bucket** is derived from its recency (its most recent touch). A card names its state with
+badge language such as `In progress`, `Needs your input`, `Updated today · Patient assigned`, or `Saved`;
+visit time and update/attention time are labeled separately. Selecting a card opens that visit in Active
+Session, where `Back` returns to Recent. Use a visible action only for the focused next task, such as
+`Continue visit`, `Assign patient`, or `Choose patient`; do not show a separate `Open visit` action.
 
-The current visit card uses natural assistant copy. If the visit has a patient, show the patient name as context; otherwise show `Unassigned visit`. Selecting a Today card opens that visit in Active Session, where `Back` returns to Today. Use a visible action only for the focused next task, such as `Continue visit`, `Assign patient`, or `Review summary`; do not show a separate `Open visit` action.
+Choosing `Assign patient` from Recent opens the same patient assignment form in Clinical Memory without
+navigating away from the tab. Suggested matches come from patient search data; do not use mock patient
+suggestions in production UI.
 
-Every Today card must clarify why it appears in Today with section or badge language such as `Active visit`, `Needs your input`, `Updated today`, `Recently captured`, or `Saved on this device`. Visit time and update/attention time must be labeled separately.
-
-Choosing `Assign patient` from Today opens the same patient assignment form in Clinical Memory without navigating away from the tab. Suggested matches come from patient search data; do not use mock patient suggestions in production UI.
-
-Example active session card:
+Example active-visit card (Active visit bucket):
 
 - Title: `Follow-up visit`
 - Patient: `Soroush`
@@ -83,36 +99,39 @@ Example active session card:
 - Badge: `In progress`
 - Primary action: `Continue visit`
 
-Example needs-input preview card:
+Example needs-input card (amber, in its time bucket):
 
 - Title: `Unassigned visit`
 - Visit: `Today · 14:15`
-- Needs input since: `14:20`
-- Summary: `3 captures saved. I could not confidently attach this visit to a patient.`
+- Summary: `2 captures saved. I could not confidently attach this visit to a patient.`
+- Badge: `Needs your input`
 - Primary action: `Assign patient`
 - Card selection: opens the visit in Active Session
 
-Example updated-today card:
+Example settled card (Today bucket):
 
 - Title: `Initial consultation`
 - Patient: `Sara`
-- Visit: `Apr 18 · 11:30`
+- Visit: `Today · 11:30`
 - Status: `Updated today · Patient assigned`
-- Summary: `2 photos and 1 note were attached to this visit today.`
 - Card selection: opens the visit in Active Session
 
 Example copy:
 
 - `Memory updated for Sara M.`
 - `Saved. Organizing the visit notes.`
-- `1 visit needs your input.`
 - `No active visit. Start with audio, photo, or note.`
-- `All caught up.`
-- `Recent patients will appear here.`
+- `No recent visits.`
+- `Looking for an older visit? Find it in Patients.`
 
 ## Patients Tab
 
 Patients is a searchable, scalable list of patient memory. It is patient-memory-first, not a session inbox.
+
+A **local roster filter** sits at the top of the tab — a deliberately lighter field than the retired
+header search or the app-wide [finder](finder.md): it filters the loaded roster live (by name/identifier,
+re-querying `patient-memory`), it does **not** search content. Deep, Persian-orthography-aware retrieval
+(and content search) is the finder's job; this filter never becomes a second finder.
 
 The backend source for this list is `GET /api/v1/patient-memory`. The endpoint
 returns flat patient-memory rows with summary fallbacks, latest-session metadata,
@@ -129,7 +148,7 @@ Each patient row/card includes:
 - one focused action only when there is a current task, such as `Continue`, `Verify patient`, or `Assign patient`
 
 Patient cards do **not** show an "active session" badge. Live/in-progress work belongs to the
-[Today tab](#today-tab); the Patients list stays a calm long-term memory surface.
+[Recent tab](#recent-tab); the Patients list stays a calm long-term memory surface.
 
 The needs-input label and its focused action are driven by the same backend-computed decision set
 that powers the [Attention tab](#attention-tab), so a patient's card badge and the tab always
@@ -233,11 +252,15 @@ Low-confidence / missing-lot **notes (S4) never roll up** here — they stay as 
 footnotes on the visit.
 
 **Per-visit grouping.** When one visit has **two or more** open confirmations, its `Confirm`-tier
-siblings collapse into a **single grouped row** — `{patient} — N to confirm` (or `This visit — N to
-confirm` when unassigned) — instead of N cards that would flood the sweep and bury other items. A lone
-confirmation and every non-confirm item stay as their normal detailed rows. The grouped row's one
-action **opens the visit**, where the same per-source resolvers walk its confirmations in place — a
-list-shape change, not a new flow. Section counts and `N of M cleared` still count individual items.
+siblings collapse into a **single grouped row** instead of N cards that would flood the sweep and bury
+other items. The grouped row **names its target** so the sweep orients before you open it: a title
+`Visit {patient} · {time}` (or `Unassigned visit · {time}` when there is no patient) — **never a bare
+"This visit"** — over an `N to confirm` subtitle. The name is bidi-isolated content; the time is the
+shared 24-hour clock. A lone confirmation and every non-confirm item stay as their normal detailed rows.
+The grouped row's one action **opens the visit in the [guided attention-review state](capture.md#guided-attention-review)**,
+where the same per-source resolvers walk its confirmations in place with orientation (a progress banner
+with next/prev) — a list-shape change plus orientation, not a new flow. Section counts and `N of M
+cleared` still count individual items.
 
 **Carry-over.** The day lens is the user's calendar day, but nothing decays at midnight: items left
 undecided from prior days appear in a flat **`Earlier, still open`** group below today's sections
@@ -395,8 +418,8 @@ Clinical Memory follows the shared [offline and AI-unavailable behavior](../stat
 
 Screen-specific behavior:
 
-- Today and Patients continue to show locally saved memory.
-- Today may show `Offline · Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
-- Search may show `You're offline. Patient search may be limited.`
+- Recent and Patients continue to show locally saved memory.
+- Recent may show `Offline · Captures are saved on this device` and current-visit copy such as `3 captures saved on this device. I'll organize them when connection returns.`
+- The [finder](finder.md) may show `You're offline. Patient search may be limited.`
 - The Attention tab still only shows human-decision, clinical-review, or data-safety items.
-- Do not show sync queues, retry buttons, backend job language, or AI failure language on Today.
+- Do not show sync queues, retry buttons, backend job language, or AI failure language on Recent.

@@ -255,3 +255,68 @@ ul.treatment-orphans {
 .treatment-orphan-icon { flex: 0 0 auto; color: #b08a3a; }
 .treatment-orphan-text { flex: 1 1 auto; }
 
+
+/* --- Guided attention review (AES-1610) --------------------------------------------------------- */
+/* A compact, non-blocking progress dock floating just above the capture bar while a visit opened from
+   a grouped Close-the-day card is being reviewed. It orients (N to confirm, position, next/prev) —
+   the resolving still happens in place via the same per-source resolvers. */
+.attention-review-banner {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 108px;
+  z-index: 25;
+  width: min(100%, var(--content-max));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid #f4c56d;
+  border-radius: 10px;
+  background: #fffaf0;
+  box-shadow: 0 10px 26px rgb(8 13 45 / 12%);
+  color: #7a4a00;
+}
+.attention-review-banner-copy { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.attention-review-banner-copy strong { font-size: 0.88rem; font-weight: 900; }
+.attention-review-banner-position { font-size: 0.74rem; font-weight: 700; color: #a9772a; white-space: nowrap; }
+.attention-review-banner-nav { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.attention-review-banner-step {
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid #e6b85c;
+  border-radius: 999px;
+  background: #fff;
+  color: #7a4a00;
+  font-size: 0.76rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.attention-review-banner-step:hover { background: #fff3dc; }
+.attention-review-banner-close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #a9772a;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.attention-review-banner-close:hover { background: #fdeccd; }
+
+/* The current confirmation being walked — a calm amber ring + a one-shot pulse. Set imperatively as a
+   data-attribute (never a React-managed className, which would be reconciled away on the next render). */
+[data-review-focus] {
+  outline: 2px solid #e6a817;
+  outline-offset: 3px;
+  border-radius: 8px;
+  animation: review-focus-pulse 1.3s ease-out;
+}
+@keyframes review-focus-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(230 168 23 / 42%); }
+  100% { box-shadow: 0 0 0 12px rgb(230 168 23 / 0%); }
+}

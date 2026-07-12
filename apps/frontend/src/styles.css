@@ -7406,6 +7406,61 @@ ul.treatment-review-notes {
   place-items: center;
 }
 
+/* The Patients-tab local roster filter — deliberately lighter than the retired header search / the
+   global finder: it filters the loaded roster live, it does not search content. */
+.patients-filter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f7f9fc;
+  padding: 0 12px;
+  margin-bottom: 10px;
+}
+.patients-filter svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: #8593ad;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+.patients-filter .input {
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  color: var(--color-text);
+  font-size: 0.86rem;
+}
+.patients-filter .input::placeholder { color: #8593ad; opacity: 0.9; }
+
+/* The quiet "older than a week? find it in Patients" link under the Recent buckets — a calm neutral
+   pointer, never an amber attention affordance. */
+.recent-older-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 8px 4px;
+  border: 0;
+  background: transparent;
+  color: #667399;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.recent-older-link:hover { color: #16265d; text-decoration: underline; }
+.recent-older-link svg { width: var(--icon-xs); height: var(--icon-xs); flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+[dir="rtl"] .recent-older-link svg:last-child { transform: scaleX(-1); }
+
 .clinical-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

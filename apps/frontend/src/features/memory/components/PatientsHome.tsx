@@ -13,8 +13,8 @@ import { RegisterPatientForm } from "../../aesthetics/RegisterPatientForm";
 import { type GalleryVisit } from "../../aesthetics/PatientPhotoGallery";
 import { SharePatientSheet } from "../../aesthetics/SharePatientSheet";
 import type { QaThreadSummary } from "../../qa/qaClient";
-import { ClinicalMemoryTab, PatientFilter, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, buildTodayModel, buildPatientRows, patientRowFromApi, patientRowStub, patientRowFromSmartMatch, smartMatchBadges, todayNeedsInputActionLabel, activeSectionBadge, decisionActionForSession, decisionIdForSession, formatPatientLastVisit, visitCountLabel } from "./memoryModel";
-import { SearchIcon, FilterIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, SparkleIcon, ChevronIcon, OfflineIcon, InfoIcon } from "./MemoryIcons";
+import { ClinicalMemoryTab, PatientFilter, RecentCardModel, RecentBucketKey, ClinicalMemoryReturnContext, PatientRowModel, PatientNeedsInputItem, StorageWarningDecision, buildRecentModel, buildPatientRows, patientRowFromApi, patientRowStub, decisionActionForSession, decisionIdForSession } from "./memoryModel";
+import { SearchIcon, CalendarIcon, PatientsIcon, NeedsInputIcon, SparkleIcon, ChevronIcon, OfflineIcon, InfoIcon } from "./MemoryIcons";
 import { AssistantStatusPill, ClinicalSection, VisitCard, EmptyClinicalState, PatientRow, PatientListLoading } from "./MemoryCards";
 import { AttentionSweep } from "./AttentionSweep";
 import { PatientDecisionListSheet, SummaryReviewSheet, StorageReviewSheet, PatientRecapSheet, ChoosePatientResolver, AssignPatientResolver } from "./MemorySheets";
@@ -46,7 +46,9 @@ export function PatientsHome({
   initialTab?: ClinicalMemoryTab;
   /** When set, the clinician arrived from an in-progress visit; the timeline's back returns there. */
   onBackToVisit?: () => void;
-  onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext) => void;
+  /** Open a visit in Active Session. `opts.review` arms the guided attention-review state (used when
+   *  a grouped sweep card is opened, so its pending confirmations are walked in place). */
+  onOpenSession: (sessionId: string, context?: ClinicalMemoryReturnContext, opts?: { review?: boolean }) => void;
   onContinueSession: (sessionId: string) => void;
   /** Reports which patient's file is open (or null), so the footer can capture for them. */
   onViewingPatientChange?: (patient: { id: string; name: string } | null) => void;
@@ -85,7 +87,6 @@ export function PatientsHome({
   } = useSessionActions();
   const onGetPatientMemory = memoryApi.getPatientMemoryDetail;
   const onListPatientMemory = memoryApi.listPatientMemory;
-  const onSmartSearch = memoryApi.smartSearchPatients;
   const onDuplicateCheck = memoryApi.duplicateCheckPatient;
   const onLoadSessionCaptures = memoryApi.loadSessionCaptures;
   const onLoadSession = memoryApi.loadSession;
@@ -107,7 +108,7 @@ export function PatientsHome({
   const onFetchLotRecall = memoryApi.fetchLotRecall;
   const shareIncludeBrands = Boolean(auth?.tenant.shareIncludeBrands);
   const shareLanguage = auth?.tenant.reportLanguage || null;
-  const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "today");
+  const [activeTab, setActiveTab] = React.useState<ClinicalMemoryTab>(initialTab || "recent");
   // Follow an externally-driven tab change (e.g. the top-bar Attention indicator opening the sweep
   // while already on this screen, where the mount initializer above wouldn't re-run).
   React.useEffect(() => {
@@ -131,9 +132,6 @@ export function PatientsHome({
   const [patientLoadingMore, setPatientLoadingMore] = React.useState(false);
   const [patientListVersion, setPatientListVersion] = React.useState(0);
   const [creatingPatient, setCreatingPatient] = React.useState(false);
-  // AES-204 — deterministic, Persian-aware smart search (shown while there is a query).
-  const [smartResults, setSmartResults] = React.useState<SmartPatientMatch[] | null>(null);
-  const [smartSearching, setSmartSearching] = React.useState(false);
   // AES-303 — the patient whose curated share sheet is open (carrying their recent visits so the
   // sheet can build a real before/after photo pool to curate from).
   const [sharePatient, setSharePatient] = React.useState<{ id: string; name: string; visits: GalleryVisit[] } | null>(null);
@@ -156,8 +154,8 @@ export function PatientsHome({
   const isPro = tier !== "basic";
   // The Lists tab is Pro-only; the count drives the tab-bar grid (3 → 1 row, 4 → a tidy 2×2).
   const visibleTabs = React.useMemo(() => (isPro ? clinicalTabs : clinicalTabs.filter((tab) => tab.value !== "lists")), [isPro]);
-  const today = React.useMemo(
-    () => buildTodayModel({ activeSession, sessions, syncHealth, resolvedDecisionIds, t }),
+  const recent = React.useMemo(
+    () => buildRecentModel({ activeSession, sessions, syncHealth, resolvedDecisionIds, t }),
     [activeSession, resolvedDecisionIds, sessions, syncHealth, t],
   );
   const localPatientRows = React.useMemo(
@@ -214,33 +212,6 @@ export function PatientsHome({
     };
   }, [activeTab, onListPatientMemory, patientFilter, query, patientListVersion, patientClinicianId]);
 
-  // AES-204 — run the deterministic smart search whenever the Patients tab has a query.
-  React.useEffect(() => {
-    if (activeTab !== "patients" || !onSmartSearch || !query.trim()) {
-      setSmartResults(null);
-      setSmartSearching(false);
-      return;
-    }
-    let cancelled = false;
-    setSmartSearching(true);
-    const timer = window.setTimeout(() => {
-      void onSmartSearch(query.trim())
-        .then((response) => {
-          if (!cancelled) setSmartResults(response.items);
-        })
-        .catch(() => {
-          if (!cancelled) setSmartResults(null);
-        })
-        .finally(() => {
-          if (!cancelled) setSmartSearching(false);
-        });
-    }, 280);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [activeTab, onSmartSearch, query]);
-
   const loadMorePatients = () => {
     if (!onListPatientMemory || patientLoadingMore) return;
     setPatientLoadingMore(true);
@@ -286,9 +257,6 @@ export function PatientsHome({
           }),
     [backendPatientRows, localPatientRows, patientFilter, patientRowsError, t],
   );
-  const needsInputSessions = today.needsInputSessions;
-  // How many needs-input visits are beyond the (max 3) previewed on Today — surfaced as the overflow pill.
-  const needsInputOverflowCount = needsInputSessions.length - today.needsInputPreviews.length;
   const normalizedQuery = query.trim().toLowerCase();
   const backendRowsActive = backendPatientRows.length > 0 && !patientRowsError;
   const filteredPatients = backendRowsActive
@@ -303,17 +271,11 @@ export function PatientsHome({
     ? sessions.find((session) => session.id === summaryReviewSessionId) || (activeSession?.id === summaryReviewSessionId ? activeSession : null)
     : null;
   const decisionListPatient = decisionListPatientId ? patientRows.find((patient) => patient.id === decisionListPatientId) : null;
-  // Resolve a selected patient from the loaded rows, or synthesize one from a smart-search match
-  // (so opening a result that is not on the current page still loads the detail by id).
+  // Resolve a selected patient from the loaded rows, the fetched detail, or a lightweight stub — so
+  // opening a patient by id (worklist, finder) still loads the detail without a tab flash.
   const selectedPatientDetail = selectedPatientId ? patientDetailCache[selectedPatientId] : undefined;
   const selectedPatient = selectedPatientId
     ? patientRows.find((patient) => patient.id === selectedPatientId) ||
-      (() => {
-        const match = smartResults?.find((result) => result.id === selectedPatientId);
-        return match ? patientRowFromSmartMatch(match, t) : undefined;
-      })() ||
-      // Opened by id from a surface that isn't the loaded list (e.g. the worklist): resolve from the
-      // fetched detail, or a lightweight stub (its name) so the detail renders without a tab flash.
       (selectedPatientDetail ? patientRowFromApi(selectedPatientDetail.patient, t) : undefined) ||
       (pendingPatientStub && pendingPatientStub.id === selectedPatientId
         ? patientRowStub(pendingPatientStub.id, pendingPatientStub.name, t)
@@ -442,6 +404,18 @@ export function PatientsHome({
     openNeedsInputDecision(item.action, item.sessionId || patient?.latestSessionId);
   };
 
+  // A Recent card's focused action: continue an in-progress visit, else open its needs-input decision
+  // in the same in-place resolver the Attention tab / patient cards use.
+  const handleRecentCardAction = (card: RecentCardModel) => {
+    if (!card.action) return;
+    if (card.action === "continue") {
+      onContinueSession(card.session.id);
+      return;
+    }
+    openNeedsInputDecision(card.action, card.session.id, "recent");
+  };
+  const recentBucketTitle = (key: RecentBucketKey) => (key === "active" ? t("patients.section.activeSession") : t(`patients.recent.bucket.${key}`));
+
   // Route a sweep item to the SAME resolver it uses at its source. Assignment decisions open the
   // in-place assign/choose resolver; a dose/verify/safety/suggestion opens the visit in Active
   // Session (where its inline resolver lives); a message deep-links to the Q&A inbox thread.
@@ -468,6 +442,11 @@ export function PatientsHome({
       return;
     }
     if (item.sessionId) onOpenSession(item.sessionId, { tab: "attention" });
+  };
+  // A grouped sweep card (a visit with ≥2 open confirmations) opens the visit in the guided
+  // attention-review state — the same per-source resolvers, with orientation (banner + next/prev).
+  const handleAttentionReview = (item: AttentionItem) => {
+    if (item.sessionId) onOpenSession(item.sessionId, { tab: "attention" }, { review: true });
   };
 
   return (
@@ -615,30 +594,15 @@ export function PatientsHome({
         ) : null}
       </div>
 
-      {today.isOffline ? (
+      {recent.isOffline ? (
         <AssistantStatusPill icon={<OfflineIcon />}>
           {t("patients.offlineCapturesSaved")}
         </AssistantStatusPill>
       ) : null}
 
-      <label className="clinical-search">
-        <SearchIcon />
-        <Input
-          aria-label={t("patients.searchAriaLabel")}
-          onChange={(event) => {
-            // The search drives patient results, so typing jumps to the Patients tab where it acts
-            // (rather than sitting inert on Today / Needs input).
-            setQuery(event.target.value);
-            if (event.target.value.trim() && activeTab !== "patients") setActiveTab("patients");
-          }}
-          placeholder={t("patients.searchPlaceholder")}
-          value={query}
-        />
-        <span aria-hidden="true" className="clinical-search-filter">
-          <FilterIcon />
-        </span>
-      </label>
-
+      {/* The always-visible header search bar was retired: deep search is the top-bar finder overlay;
+          the Patients tab keeps a lighter, local roster filter (below). Recent/Attention rely on the
+          finder for retrieval. */}
       <div className={`clinical-tabs tabs-count-${visibleTabs.length}`} role="tablist" aria-label={t("patients.sectionsAriaLabel")}>
         {visibleTabs.map((tab) => (
           <button
@@ -655,7 +619,7 @@ export function PatientsHome({
         ))}
       </div>
 
-      {activeTab === "today" ? (
+      {activeTab === "recent" ? (
         <div className="clinical-tab-panel" role="tabpanel">
           <WorklistSection
             auth={auth ?? null}
@@ -671,101 +635,58 @@ export function PatientsHome({
             }
             refreshSignal={memoryRefreshSignal}
           />
-          <ClinicalSection
-            title={t("patients.section.activeSession")}
-            badge={today.currentVisit ? activeSectionBadge(today.currentVisit.session, t) : undefined}
-            badgeTone={today.currentVisit?.tone === "amber" ? "amber" : "green"}
-          >
-            {today.currentVisit ? (
-              <VisitCard
-                primaryActionLabel={today.currentVisit.session.patientName || today.currentVisit.session.patientId ? t("patients.action.continueVisit") : t("patients.action.assignPatient")}
-                summary={today.currentVisit.summary}
-                session={today.currentVisit.session}
-                statusLabel={today.currentVisit.statusLabel}
-                tone={today.currentVisit.tone}
-                title={today.currentVisit.title}
-                onSelect={() => onOpenSession(today.currentVisit!.session.id, { tab: "today" })}
-                onPrimaryAction={() => {
-                  const currentVisit = today.currentVisit;
-                  if (!currentVisit) return;
-                  if (currentVisit.session.patientName || currentVisit.session.patientId) {
-                    onContinueSession(currentVisit.session.id);
-                    return;
-                  }
-                  setAssignmentSessionId(currentVisit.session.id);
-                }}
-              />
-            ) : (
-              <EmptyClinicalState title={t("patients.empty.noActiveVisit.title")} copy={t("patients.empty.noActiveVisit.copy")} />
-            )}
-          </ClinicalSection>
-          {!today.isOffline ? (
-            <ClinicalSection title={t("patients.section.needsYourInput")} badge={needsInputSessions.length ? visitCountLabel(needsInputSessions.length, t) : undefined} badgeTone="amber">
-              {today.needsInputPreviews.length ? (
-                <div className="clinical-list">
-                  {today.needsInputPreviews.map((preview) => (
-                    <VisitCard
-                      key={preview.session.id}
-                      primaryActionLabel={todayNeedsInputActionLabel(preview.session, t)}
-                      summary={preview.summary}
-                      session={preview.session}
-                      statusLabel={preview.statusLabel}
-                      title={preview.title}
-                      tone="amber"
-                      onSelect={() => onOpenSession(preview.session.id, { tab: "today" })}
-                      onPrimaryAction={() => {
-                        const action = decisionActionForSession(preview.session);
-                        if (action === "assign-patient" || action === "choose-patient") {
-                          setAssignmentSessionId(preview.session.id);
-                          return;
-                        }
-                        setSummaryReviewSessionId(preview.session.id);
-                      }}
-                    />
-                  ))}
-                  {needsInputOverflowCount > 0 ? (
-                    <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("attention")}>
-                      {t("patients.needsInputSeeAll", { n: needsInputOverflowCount })}
-                      <ChevronIcon />
-                    </button>
-                  ) : null}
-                </div>
-              ) : attentionCount > 0 ? (
-                <button className="needs-input-overflow" type="button" onClick={() => setActiveTab("attention")}>
-                  {t("patients.needsInputSweepAll", { n: attentionCount })}
+          {/* Recent = a time-bucketed recent-activity list (Active visit / Today / Yesterday / This week),
+              newest first, empty buckets omitted. Needs-input visits stay actionable inline (amber card +
+              focused action); the aggregate lives in the hero chip / Attention tab. Older than a week is a
+              quiet link into Patients (the finder is the deep-search surface). */}
+          {recent.buckets.length ? (
+            <>
+              {recent.buckets.map((bucket) => (
+                <ClinicalSection key={bucket.key} title={recentBucketTitle(bucket.key)}>
+                  <div className="clinical-list">
+                    {bucket.cards.map((card) => (
+                      <VisitCard
+                        key={card.session.id}
+                        primaryActionLabel={card.actionLabel ?? undefined}
+                        summary={card.summary}
+                        session={card.session}
+                        statusLabel={card.statusLabel}
+                        title={card.title}
+                        tone={card.tone}
+                        onSelect={() => onOpenSession(card.session.id, { tab: "recent" })}
+                        onPrimaryAction={card.action ? () => handleRecentCardAction(card) : undefined}
+                      />
+                    ))}
+                  </div>
+                </ClinicalSection>
+              ))}
+              {recent.hasOlder ? (
+                <button className="recent-older-link" type="button" onClick={() => setActiveTab("patients")}>
+                  <InfoIcon />
+                  {t("patients.recent.olderLink")}
                   <ChevronIcon />
                 </button>
-              ) : (
-                <EmptyClinicalState title={t("patients.empty.allCaughtUp.title")} copy={t("patients.empty.allCaughtUp.copyToday")} />
-              )}
-            </ClinicalSection>
+              ) : null}
+            </>
           ) : (
-            <p className="clinical-offline-note"><InfoIcon /> {t("patients.offlineSearchLimited")}</p>
+            <EmptyClinicalState title={t("patients.recent.empty.title")} copy={t("patients.recent.empty.copy")} />
           )}
-          <ClinicalSection title={t("patients.section.updatedToday")} badge={today.recentMemory.length ? today.recentMemoryBadge : undefined}>
-            {today.recentMemory.length ? (
-              <div className="clinical-list">
-                {today.recentMemory.map((memory) => (
-                  <VisitCard
-                    key={memory.session.id}
-                    session={memory.session}
-                    statusLabel={memory.statusLabel}
-                    summary={memory.summary}
-                    title={memory.title}
-                    tone={memory.tone}
-                    onSelect={() => onOpenSession(memory.session.id, { tab: "today" })}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyClinicalState title={t("patients.empty.noVisitsToday.title")} copy={t("patients.empty.noVisitsToday.copy")} />
-            )}
-          </ClinicalSection>
         </div>
       ) : null}
 
       {activeTab === "patients" ? (
         <div className="clinical-tab-panel" role="tabpanel">
+          {/* A light, local roster filter (not the global finder): it filters the patient list live —
+              it does not search content. Deep / Persian-aware retrieval is the top-bar finder overlay. */}
+          <label className="patients-filter">
+            <SearchIcon />
+            <Input
+              aria-label={t("patients.patientsFilterAria")}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("patients.patientsFilterPlaceholder")}
+              value={query}
+            />
+          </label>
           <div className="patients-toolbar">
             <div className="clinical-filter-row" aria-label={t("patients.filtersAriaLabel")}>
               {patientFilters.map((filter) => (
@@ -817,34 +738,6 @@ export function PatientsHome({
               )}
             </section>
           ) : null}
-          {smartResults ? (
-            <div className="clinical-list">
-              <p className="smart-search-note">
-                <SearchIcon /> {t("patients.smartMatch")} · {smartSearching ? t("patients.searching") : t("patients.resultCount", { n: smartResults.length })}
-              </p>
-              {smartResults.length ? (
-                smartResults.map((match) => (
-                  <PatientRow
-                    actionLabel={t("patients.viewHistory")}
-                    badges={smartMatchBadges(match, t)}
-                    latestVisitLabel={match.lastVisit ? t("patients.lastVisit", { date: formatPatientLastVisit(match.lastVisit, t) }) : null}
-                    key={match.id}
-                    patientName={match.displayName}
-                    summary={match.reason || t("patients.matchedRecord")}
-                    isPro={isPro}
-                    tone="green"
-                    onAction={() => setSelectedPatientId(match.id)}
-                    onSelect={() => setSelectedPatientId(match.id)}
-                  />
-                ))
-              ) : (
-                <EmptyClinicalState
-                  title={t("patients.empty.noMatches.title")}
-                  copy={/^\d{1,3}$/.test(query.trim()) ? t("patients.empty.noMatches.copyDigits") : t("patients.empty.noMatches.copy")}
-                />
-              )}
-            </div>
-          ) : (
           <div className="clinical-list">
             {patientRowsError ? (
               <p className="clinical-offline-note"><InfoIcon /> {t("patients.savedFromDevice")}</p>
@@ -875,8 +768,7 @@ export function PatientsHome({
               />
             )}
           </div>
-          )}
-          {!smartResults && backendRowsActive && filteredPatients.length ? (
+          {backendRowsActive && filteredPatients.length ? (
             <div className="patients-pagination">
               <span className="patients-count">{t("patients.showingOf", { shown: filteredPatients.length, total: patientTotal })}</span>
               {filteredPatients.length < patientTotal ? (
@@ -915,6 +807,7 @@ export function PatientsHome({
           nudgeEnabled
           onItemPrimary={handleAttentionItem}
           onItemSelect={handleAttentionSelect}
+          onGroupReview={handleAttentionReview}
         />
       ) : null}
         </>
@@ -924,7 +817,7 @@ export function PatientsHome({
 }
 
 export const clinicalTabs: Array<{ value: ClinicalMemoryTab; label: string; icon: React.ReactNode }> = [
-  { value: "today", label: "Today", icon: <CalendarIcon /> },
+  { value: "recent", label: "Recent", icon: <CalendarIcon /> },
   { value: "patients", label: "Patients", icon: <PatientsIcon /> },
   // Lists is Pro-only (AES-501/502); PatientsHome filters it out for Basic.
   { value: "lists", label: "Lists", icon: <ListsTabIcon /> },

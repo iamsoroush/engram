@@ -155,7 +155,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Clinical Memory Today renders session-first cards on desktop and mobile", async ({ page }) => {
+test("Clinical Memory Recent renders time-bucketed cards (Active visit / Today), no header search bar", async ({ page }) => {
   await page.goto("/");
   if (!(await page.getByRole("button", { name: "Doctor", exact: true }).isVisible().catch(() => false))) {
     await page.getByRole("button", { name: /^(Log in|ورود)$/ }).first().click();
@@ -166,32 +166,37 @@ test("Clinical Memory Today renders session-first cards on desktop and mobile", 
   await page.getByRole("button", { name: "Memory" }).click();
 
   await expect(page.getByRole("heading", { name: "Clinical Memory" })).toBeVisible();
+  // The default tab is now "Recent"; the always-visible header search bar was retired (the Patients
+  // tab owns a lighter roster filter, deep search is the top-bar finder).
+  await expect(page.getByRole("tab", { name: "Recent" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Search patients by name, phone, or ID...")).toHaveCount(0);
+
+  // Bucket: Active visit (the in-progress follow-up).
   await expect(page.getByRole("heading", { name: "Active visit" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
   await expect(page.getByText("Patient:").first()).toBeVisible();
   await expect(page.getByText("Soroush").first()).toBeVisible();
   await expect(page.getByText("Visit:").first()).toBeVisible();
   await expect(page.getByText(`${todayDateLabel} · ${todaySessionTime}`).first()).toBeVisible();
-  await expect(page.getByText(/Updated:/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue visit", exact: true })).toBeVisible();
 
-  await expect(page.getByRole("heading", { name: "Needs your input" })).toBeVisible();
+  // Bucket: Today — needs-input visits stay actionable inline (amber + focused action); a settled
+  // assigned visit sits alongside them. The old "Needs your input" / "Updated today" sections are gone.
+  await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs your input" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Updated today" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Unassigned visit" })).toBeVisible();
-  await expect(page.getByText(`${todayDateLabel} · ${needsInputTime}`)).toBeVisible();
-  await expect(page.getByText(/Needs input since:/).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Assign patient", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open visit" })).toHaveCount(0);
-
-  await expect(page.getByRole("heading", { name: "Updated today" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial consultation" })).toBeVisible();
   await expect(page.getByText("Updated today · Patient assigned").first()).toBeVisible();
 
-  await page.screenshot({ path: "test-results/clinical-memory-today-desktop.png", fullPage: true });
+  await page.screenshot({ path: "test-results/clinical-memory-recent-desktop.png", fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "Follow-up visit" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue visit", exact: true })).toBeVisible();
-  await page.screenshot({ path: "test-results/clinical-memory-today-mobile.png", fullPage: true });
+  await page.screenshot({ path: "test-results/clinical-memory-recent-mobile.png", fullPage: true });
 });
 
 test("Clinical Memory Patients renders memory-first cards with focused needs-input actions", async ({ page }) => {
