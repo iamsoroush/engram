@@ -155,9 +155,9 @@ diet** (nine stacked zones → strip → report). Two states:
 
 - **Collapsed (one line):** avatar · patient name · visit ordinal · assignment state (`✓ assigned` /
   `Matched by AI` / soft-amber `Unassigned · Assign`) · an amber `⚠ N to confirm` chip (the blocker
-  count) · a red `🩹` safety chip when flags are on record · a chevron. Tapping a chip expands the
-  strip; the chevron toggles it. It stays **sticky** while scrolling a long report, so identity +
-  safety + count are always visible.
+  count) · a red `🩹 N` **flag-count** safety chip when flags are on record · a chevron. Tapping the
+  safety chip expands the strip to the panel; the chevron toggles it. It stays **sticky** while
+  scrolling a long report, so identity + safety + count are always visible.
 - **Expanded:** patient actions (`Assign`/`Change`, `History`) · the full safety panel · the session
   context digest · the AI-created-patient **verify trigger** (opens the verification bottom sheet).
 
@@ -168,9 +168,14 @@ re-expands it; historical review is collapsed. An **unassigned** visit stays col
 **History auto-surfaces:** when a patient **with history** is assigned or reassigned, the strip
 auto-expands to that history — collapse waits until the report has content **and** the history has
 been surfaced (a new assignment event re-surfaces it).
+**Safety auto-surfaces (AES-1802):** the strip auto-expands whenever the kept-flag set changes to a new,
+unacknowledged one — a patient with existing flags first assigned, a new flag landing from
+synthesis/reconcile, or a restore/undo that changes the set. The clinician can collapse it; the same
+set is not re-expanded (an **acknowledged-signature** in session UI state), and a collapsed strip still
+carries the red flag-count chip. This reuses the same pin-open machinery as high-risk clinics.
 
 - **Basic** gets a simpler strip (identity + context, no verify/safety chips — those are Pro).
-- **Never bury safety:** a red safety chip is always shown collapsed; the tenant **high-risk-clinic**
+- **Never bury safety:** a red flag-count chip is always shown collapsed; the tenant **high-risk-clinic**
   setting ([Settings](account.md)) pins the *full* safety panel open above the report — never a chip.
 - **Conflicts are never buried:** an active patient conflict keeps a **thin, always-visible band**
   above the report (resolvable in place); the strip expansion is a second entry point.
@@ -234,15 +239,26 @@ invariant is unchanged.
 
 The synthesis detects clinical **safety flags** from the captures — allergy / contraindication /
 consent statements the clinician actually made — and surfaces them in a calm red/amber panel. It
-lives in the **patient strip** — always represented by the strip's red safety chip when collapsed,
-the full flag list in the expansion — **unless** the tenant is a **high-risk clinic**
-([Settings](account.md)), where the full panel is **pinned open above the report** and never collapses
-to a chip. Flags are **opt-out**: every detected flag is shown and kept by default; the clinician acts
-only to reject (×) a wrong one. The panel is **not** a blocker and never gates the report. A rejection
-persists (survives re-synthesis) and is logged as an AI-feedback signal. Non-rejected flags project
-onto the patient and resurface cross-visit in the session context card and the patient timeline. The
-flag body is clinical content in the report language and is never translated — only the chrome is
-bilingual. Endpoint: `POST /api/v1/sessions/{id}/safety-flag-rejection`.
+lives in the **patient strip** — always represented by the strip's red **flag-count** chip when
+collapsed (`🩹 N`), the full flag list in the expansion — **unless** the tenant is a **high-risk
+clinic** ([Settings](account.md)), where the full panel is **pinned open above the report** and never
+collapses to a chip.
+
+**Two-layer flag (AES-1801) — legible primary + evidence.** Each flag is shown as a normalized short
+clinical **label** (kind + substance, e.g. «حساسیت به لیدوکائین», «منع مصرف در بارداری») — the legible
+primary the clinician reads at a glance — with the clinician's **verbatim sentence** as expandable
+**evidence** beneath it (`Show evidence`; the unchanged "quote the clinician" text), and the flag's
+`sourceCaptureIds` as a tappable **source citation** (`↗`, the report's own citation affordance) that
+jumps to the capture. The label is emitted by synthesis alongside the verbatim text; a pre-label flag
+falls back to showing the verbatim text as primary. Both label and text are clinical content in the
+report language and are **never translated** — only the chrome is bilingual.
+
+Flags are **opt-out**: every detected flag is shown and kept by default; the clinician acts only to
+reject (×) a wrong one. The panel is **not** a blocker and never gates the report. A rejection persists
+(survives re-synthesis, keyed on the verbatim text — a reworded **label** never shifts it) and is logged
+as an AI-feedback signal. Non-rejected flags project onto the patient (carrying the label) and resurface
+cross-visit — as the glanceable label — in the session context card and the patient timeline. Endpoint:
+`POST /api/v1/sessions/{id}/safety-flag-rejection`.
 
 ### Report card
 

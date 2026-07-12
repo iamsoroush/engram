@@ -392,7 +392,8 @@ function normalizeSafetyFlags(raw: unknown): SafetyFlag[] {
     const kind = String(record.kind || "");
     const text = String(record.text || "");
     if (!text || !SAFETY_FLAG_KINDS.includes(kind as SafetyFlagKind)) continue;
-    flags.push({ key: String(record.key || `${kind}|${text.trim().toLowerCase().replace(/\s+/g, " ")}`), kind: kind as SafetyFlagKind, text });
+    const label = typeof record.label === "string" && record.label.trim() ? record.label.trim() : null;
+    flags.push({ key: String(record.key || `${kind}|${text.trim().toLowerCase().replace(/\s+/g, " ")}`), kind: kind as SafetyFlagKind, label, text });
   }
   return flags;
 }

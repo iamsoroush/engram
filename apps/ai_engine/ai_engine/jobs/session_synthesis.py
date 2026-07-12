@@ -626,10 +626,12 @@ def report_synthesis_json_schema() -> dict[str, Any]:
         "type": "object",
         "properties": {
             "kind": {"type": "string", "enum": ["allergy", "contraindication", "consent"]},
+            # Normalized short clinical label (kind + substance), report language — the legible primary.
+            "label": {"type": "string"},
             "text": {"type": "string"},
             "sourceCaptureIds": {"type": "array", "items": {"type": "string"}},
         },
-        "required": ["kind", "text"],
+        "required": ["kind", "label", "text"],
     }
     return {
         "type": "object",

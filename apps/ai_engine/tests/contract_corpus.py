@@ -362,10 +362,10 @@ SYNTHESIS_CASES: list[tuple[str, str, list[str], object]] = [
                     "nope",
                 ],
                 "safetyFlags": [
-                    {"kind": "allergy", "text": " لیدوکائین ", "sourceCaptureIds": ["cap-a", 3]},
+                    {"kind": "allergy", "label": " حساسیت به لیدوکائین ", "text": " لیدوکائین ", "sourceCaptureIds": ["cap-a", 3]},
                     {"kind": "bogus", "text": "x"},
                     {"kind": "consent", "text": "   "},
-                    {"kind": "contraindication", "text": "pregnant"},
+                    {"kind": "contraindication", "label": "   ", "text": "pregnant"},
                     "nope",
                 ],
             },

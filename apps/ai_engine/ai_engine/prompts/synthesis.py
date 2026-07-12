@@ -7,7 +7,7 @@ from typing import Any
 from ai_engine.contracts.synthesis import SYNTHESIS_SECTIONS
 from ai_engine.prompts._shared import domain_framing, vocabulary_line
 
-PROMPT_VERSION = "2026-07-10.synthesis.v17"
+PROMPT_VERSION = "2026-07-12.synthesis.v18"
 
 # Stable-prefix context layout (G3). MUST stay in lockstep with the backend authority
 # `app/services/session_processing.py` (SYNTHESIS_STABLE_KEYS / SYNTHESIS_VOLATILE_KEYS /
@@ -247,7 +247,7 @@ def build(processing_context: dict[str, Any]) -> str:
             (
                 "SAFETY FLAGS (highest priority — surface, never gate): scan EVERY capture for any ALLERGY, "
                 "CONTRAINDICATION, or CONSENT statement actually made this visit, and return one entry per "
-                "distinct mention in `safetyFlags` [{kind, text, sourceCaptureIds}].\n"
+                "distinct mention in `safetyFlags` [{kind, label, text, sourceCaptureIds}].\n"
                 "- kind='allergy': a stated allergy or prior adverse reaction (e.g. «به لیدوکائین حساسیت "
                 "داره», «آلرژی به پنی‌سیلین»).\n"
                 "- kind='contraindication': a stated reason to avoid or use caution with a treatment — "
@@ -255,9 +255,18 @@ def build(processing_context: dict[str, Any]) -> str:
                 "autoimmune or keloid history, a drug interaction the clinician flags.\n"
                 "- kind='consent': a statement about informed consent for a procedure — given, declined, "
                 "withdrawn, or still pending/required (e.g. «رضایت‌نامه امضا شد», «هنوز رضایت نگرفتیم»).\n"
+                "- label: a NORMALIZED short clinical label naming the flag — its KIND + the specific "
+                "substance / condition / consent it concerns — in the REPORT LANGUAGE using its native "
+                "script. Two or three words, NOT a sentence and NOT a copy of `text`: strip the "
+                "surrounding narration and keep only kind + subject («بیمار به لیدوکائین حساسیت داره» → "
+                "label «حساسیت به لیدوکائین»; «بیمار باردار هست، فعلاً بوتاکس نمی‌زنیم» → label «منع مصرف در "
+                "بارداری»; «رضایت‌نامهٔ کتبی گرفته شد و امضا کرد» → label «رضایت‌نامه امضا شد»). It is still "
+                "native-script clinical content — never translate or romanize a substance name (keep "
+                "«لیدوکائین», «وارفارین» verbatim). ALWAYS provide a label for every flag.\n"
                 "- text: ONE short clinical sentence, in the REPORT LANGUAGE using its native script, stating "
-                "exactly what the capture says (quote the clinician's own words where possible). NEVER "
-                "translate, soften, or generalize the clinical content.\n"
+                "exactly what the capture says (quote the clinician's own words where possible). This is the "
+                "verbatim EVIDENCE behind the label. NEVER translate, soften, or generalize the clinical "
+                "content.\n"
                 "- GROUNDING: flag ONLY what a capture EXPLICITLY states. Invent nothing; never infer an "
                 "allergy or contraindication from the treatment itself, and NEVER emit a negative/absence "
                 "statement (no «no known allergies», no «مشکلی نداشت»). Set sourceCaptureIds to the "

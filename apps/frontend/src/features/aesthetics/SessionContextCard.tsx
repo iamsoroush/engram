@@ -136,9 +136,9 @@ export function SessionContextCard({
           <span className="session-context-safety-label">{t("context.safety.label")}</span>
           <ul className="session-context-safety-list">
             {safetyFlags.map((flag) => (
-              <li key={flag.key} className={`session-context-safety-flag safety-${flag.kind}`} dir={textDir(flag.text)}>
+              <li key={flag.key} className={`session-context-safety-flag safety-${flag.kind}`} dir={textDir(flag.label || flag.text)}>
                 <span className="session-context-safety-kind">{t(`safety.kind.${flag.kind}`)}</span>
-                <span className="session-context-safety-text">{flag.text}</span>
+                <span className="session-context-safety-text">{flag.label || flag.text}</span>
               </li>
             ))}
           </ul>

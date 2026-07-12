@@ -48,8 +48,9 @@ PINNED = {
     qa_revise: ("2026-07-09.qa_revise.v3", "1b0b1a270113b2fc88c731adb0e36393d9729cbb1d31a0ac04d38139ba2b210d"),
     safety_reconcile: ("2026-07-10.safety_reconcile.v2", "7e62cc375a4747e7ae890d5328a368faac59715ab5ef5671a070686ac7c77167"),
     # v4 (G3): explicit stable-prefix context layout. v5 (G7): treatment `status` classification
-    # (performed | planned | uncertain) + the planned_vs_performed uncertainty code.
-    synthesis: ("2026-07-10.synthesis.v17", "c82fdd3d7e651532541701fb1db32248bf878ed92504c2e8fbe6965888a47b93"),
+    # (performed | planned | uncertain) + the planned_vs_performed uncertainty code. v18 (AES-2001): safety
+    # flags gain a normalized short `label` (kind + substance) as the legible primary.
+    synthesis: ("2026-07-12.synthesis.v18", "a4a37ea6169423b05cc4c9f087ada89cbb4f9b77cd882087f88c2292baab35b0"),
 }
 
 

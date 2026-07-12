@@ -453,7 +453,7 @@ function TreatmentOverlayOrphans({
  * "assistive + cited" principle — every clinical claim is traceable to a capture). Renders nothing
  * when there's no citation or no handler, so it's safe to drop next to any treatment row or block.
  */
-function SourceCitation({
+export function SourceCitation({
   captureIds,
   onOpenSource,
 }: {

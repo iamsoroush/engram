@@ -44,6 +44,7 @@ export function PatientStrip({
   verifyCount,
   onReview,
   safetyChipCount,
+  safetySignature,
   hasCaptures,
   reportHasContent,
   hasHistory,
@@ -67,8 +68,10 @@ export function PatientStrip({
   verifyCount: number;
   /** Expand the strip + scroll to the verify surface. */
   onReview: () => void;
-  /** Kept safety flags on record — a red chip when >0 (unless the panel is pinned open by the parent). */
+  /** Kept safety flags on record — a red count chip when >0 (unless the panel is pinned open by the parent). */
   safetyChipCount: number;
+  /** Stable signature of the kept-flag set; a change to a new, unacknowledged non-empty set auto-expands. */
+  safetySignature: string;
   hasCaptures: boolean;
   reportHasContent: boolean;
   hasHistory: boolean;
@@ -94,6 +97,11 @@ export function PatientStrip({
   // The clinician's explicit toggle, which overrides the derived default until the next
   // (re)assignment or undo-to-glance event. `null` = follow the default.
   const [override, setOverride] = React.useState<boolean | null>(null);
+  // The safety-flag signature the clinician has already seen (acknowledged by collapsing). A new,
+  // unacknowledged non-empty signature force-expands the strip so a flag is never missed; once
+  // acknowledged, the same set stays collapsed (AES-2002 event-driven expansion). Seeded with the
+  // mount-time set so opening a session doesn't re-expand a set already on record — only CHANGES do.
+  const [ackedSafetySig, setAckedSafetySig] = React.useState(safetySignature);
   const inProgress = hasCaptures || reportHasContent;
 
   // A (re)assignment re-surfaces the (new) patient's history and clears the manual choice.
@@ -107,6 +115,17 @@ export function PatientStrip({
     if (expandSignal) setOverride(true);
   }, [expandSignal]);
 
+  // Event-driven safety expansion: when the kept-flag signature changes to a new, unacknowledged
+  // non-empty set (a flag landing from synthesis/reconcile, a restore/undo that changes the set), open
+  // the strip. Runs AFTER the assignment reset above so a (re)assignment that brings new flags still
+  // expands. Historical review is read-only reference — never force-expanded.
+  const prevSafetySig = React.useRef(safetySignature);
+  React.useEffect(() => {
+    if (safetySignature === prevSafetySig.current) return;
+    prevSafetySig.current = safetySignature;
+    if (!isHistorical && safetySignature && safetySignature !== ackedSafetySig) setOverride(true);
+  }, [safetySignature, ackedSafetySig, isHistorical]);
+
   // Undoing back to the pre-capture glance clears the manual choice (returns to the default).
   const prevInProgress = React.useRef(inProgress);
   React.useEffect(() => {
@@ -116,7 +135,11 @@ export function PatientStrip({
 
   const wantExpanded = stripDefaultExpanded({ isHistorical, hasCaptures, reportHasContent, hasHistory, surfaced });
   const expanded = override ?? wantExpanded;
-  const setExpanded = (value: boolean) => setOverride(value);
+  const setExpanded = (value: boolean) => {
+    setOverride(value);
+    // Collapsing acknowledges the current flag set: it won't re-expand until the signature changes.
+    if (!value) setAckedSafetySig(safetySignature);
+  };
 
   // Showing history while the report has content marks it surfaced → the strip may now auto-collapse
   // (the "collapse only after report-has-content AND history-surfaced" rule).
@@ -152,8 +175,8 @@ export function PatientStrip({
           </button>
         ) : null}
         {safetyChipCount > 0 ? (
-          <button type="button" className="patient-strip-chip safety" onClick={review} aria-label={t("strip.safetyAria", { count: safetyChipCount })}>
-            <span aria-hidden="true">🩹</span>
+          <button type="button" className="patient-strip-chip safety" onClick={() => setExpanded(true)} aria-label={t("strip.safetyAria", { count: safetyChipCount })}>
+            <span aria-hidden="true">🩹</span> {safetyChipCount}
           </button>
         ) : null}
         {/* Never hide the pending Assign action while unassigned (soft-amber, a decision is pending). */}

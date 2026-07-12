@@ -32,12 +32,14 @@ except NameError:
 
 from _common import (  # noqa: E402
     EVAL_VOTES,
+    canon,
     capture_prompt_version,
     contains,
     env_models,
     exit_code,
     gate_votes,
     gateway_configured,
+    latin_offenders,
     write_scorecard,
 )
 from ai_engine.processing import synthesize_session_report  # noqa: E402
@@ -167,6 +169,34 @@ def _contains_ok(needle: Any, text: str) -> bool:
     return any(isinstance(option, str) and contains(text, option) for option in options)
 
 
+def _label_problem(kind: str, matches: list[dict[str, Any]], want: Any) -> str | None:
+    """Check the AES-2001 `label` gate over a kind's flags: return a failure note, or None if any is good.
+
+    The label is the normalized short clinical label the UI shows as primary. At least ONE flag of this
+    kind must carry a label that is (a) present, (b) NORMALIZED — strictly shorter than the verbatim
+    `text` (a real label, not the whole sentence) and not a verbatim echo of it, (c) native-script (no
+    Latin words — the report language here is Persian), and (d) grounded in the flag's substance.
+    """
+    reasons: list[str] = []
+    for flag in matches:
+        label = str(flag.get("label") or "").strip()
+        text = str(flag.get("text") or "")
+        if not label:
+            reasons.append("missing")
+            continue
+        if canon(label) == canon(text) or len(label) >= len(text):
+            reasons.append("not normalized (echoes/as-long-as verbatim text)")
+            continue
+        if latin_offenders(label):
+            reasons.append(f"non-native script ({latin_offenders(label)})")
+            continue
+        if want is not None and not _contains_ok(want, label):
+            reasons.append(f"not grounded (wanted ~{want!r}, got {label!r})")
+            continue
+        return None  # a usable normalized label exists for this kind
+    return f"{kind}: label {'; '.join(reasons) or 'invalid'}"
+
+
 def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
     """Apply the deterministic safety-flag gates to a synthesis output; return failures (empty == pass)."""
     flags = [f for f in (output.get("safetyFlags") or []) if isinstance(f, dict)]
@@ -187,6 +217,11 @@ def run_gates(output: dict[str, Any], case: dict[str, Any]) -> list[str]:
         if "contains" in wanted and not any(_contains_ok(wanted["contains"], str(f.get("text") or "")) for f in matches):
             got = " / ".join(str(f.get("text") or "") for f in matches)
             notes.append(f"{kind}: text not grounded (wanted ~{wanted['contains']!r}, got {got!r})")
+        # AES-2001 label gate: the normalized short label is the legible primary — assert it exists and is
+        # normalized / native / grounded (defaults its substance to the case's `contains` expectation).
+        label_note = _label_problem(kind, matches, wanted.get("labelContains", wanted.get("contains")))
+        if label_note:
+            notes.append(label_note)
     return notes
 
 
@@ -198,9 +233,9 @@ def _output(flags: list[dict[str, Any]]) -> dict[str, Any]:
 
 GATE_SELF_TESTS: list[dict[str, Any]] = [
     {
-        "name": "grounded allergy flag PASSES (tolerant match)",
+        "name": "grounded allergy flag + normalized label PASSES (tolerant match)",
         # ZWNJ vs space in «پنی‌سیلین» must still match — the whole point of the tolerant folding.
-        "output": _output([{"kind": "allergy", "text": "حساسیت به پنی سیلین ثبت شد"}]),
+        "output": _output([{"kind": "allergy", "label": "حساسیت به پنی‌سیلین", "text": "حساسیت به پنی سیلین ثبت شد"}]),
         "case": {"expect": [{"kind": "allergy", "contains": "پنی‌سیلین"}]},
         "expectGatesPass": True,
     },
@@ -219,14 +254,14 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expectReasonContains": "not grounded",
     },
     {
-        "name": "any-of grounded text PASSES",
-        "output": _output([{"kind": "contraindication", "text": "بیمار بارداری را اعلام کرد"}]),
+        "name": "any-of grounded text + label PASSES",
+        "output": _output([{"kind": "contraindication", "label": "منع مصرف در بارداری", "text": "بیمار بارداری را اعلام کرد"}]),
         "case": {"expect": [{"kind": "contraindication", "contains": ["باردار", "بارداری"]}]},
         "expectGatesPass": True,
     },
     {
         "name": "expectNone with a flag present FAILS (invention)",
-        "output": _output([{"kind": "allergy", "text": "حساسیت به لیدوکائین"}]),
+        "output": _output([{"kind": "allergy", "label": "حساسیت به لیدوکائین", "text": "حساسیت به لیدوکائین دارد"}]),
         "case": {"expect": [], "expectNone": True},
         "expectGatesPass": False,
         "expectReasonContains": "expected NO flags",
@@ -238,10 +273,39 @@ GATE_SELF_TESTS: list[dict[str, Any]] = [
         "expectGatesPass": True,
     },
     {
-        "name": "digit-folded consent text PASSES",
-        "output": _output([{"kind": "consent", "text": "رضایت‌نامه ۲ صفحه‌ای امضا شد"}]),
+        "name": "digit-folded consent text + label PASSES",
+        "output": _output([{"kind": "consent", "label": "رضایت‌نامه امضا شد", "text": "رضایت‌نامه ۲ صفحه‌ای امضا شد"}]),
         "case": {"expect": [{"kind": "consent", "contains": "رضایت"}]},
         "expectGatesPass": True,
+    },
+    # --- AES-2001 label gate self-tests (the legible primary must be normalized/native/grounded) ---
+    {
+        "name": "missing label FAILS (grounded text alone is not enough)",
+        "output": _output([{"kind": "allergy", "text": "بیمار به لیدوکائین حساسیت دارد"}]),
+        "case": {"expect": [{"kind": "allergy", "contains": "لیدوکائین"}]},
+        "expectGatesPass": False,
+        "expectReasonContains": "label missing",
+    },
+    {
+        "name": "label that echoes the verbatim sentence FAILS",
+        "output": _output([{"kind": "allergy", "label": "بیمار به لیدوکائین حساسیت دارد", "text": "بیمار به لیدوکائین حساسیت دارد"}]),
+        "case": {"expect": [{"kind": "allergy", "contains": "لیدوکائین"}]},
+        "expectGatesPass": False,
+        "expectReasonContains": "not normalized",
+    },
+    {
+        "name": "Latin (romanized) label FAILS (native script required)",
+        "output": _output([{"kind": "allergy", "label": "Lidocaine allergy", "text": "بیمار به لیدوکائین حساسیت دارد"}]),
+        "case": {"expect": [{"kind": "allergy", "contains": "لیدوکائین"}]},
+        "expectGatesPass": False,
+        "expectReasonContains": "non-native",
+    },
+    {
+        "name": "label grounded in the wrong substance FAILS",
+        "output": _output([{"kind": "allergy", "label": "حساسیت به وارفارین", "text": "بیمار به لیدوکائین حساسیت دارد"}]),
+        "case": {"expect": [{"kind": "allergy", "contains": "لیدوکائین"}]},
+        "expectGatesPass": False,
+        "expectReasonContains": "label",
     },
 ]
 

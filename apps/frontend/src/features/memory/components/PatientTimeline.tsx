@@ -123,7 +123,7 @@ export function PatientTimelineDetail({
             {detail.safetyFlags.map((flag) => (
               <li key={flag.key} className={`patient-detail-safety-flag safety-${flag.kind}`} dir="auto">
                 <span className="patient-detail-safety-kind">{appT(`safety.kind.${flag.kind}`)}</span>
-                <span className="patient-detail-safety-text">{flag.text}</span>
+                <span className="patient-detail-safety-text">{flag.label || flag.text}</span>
               </li>
             ))}
           </ul>

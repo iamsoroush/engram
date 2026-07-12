@@ -1044,10 +1044,11 @@ export function sessionSafetyFlags(session: CaptureSession | null): SafetyFlag[]
     const kind = metadataText(record.kind);
     const text = metadataText(record.text);
     if (!text || !SAFETY_FLAG_KINDS.includes(kind as SafetyFlagKind)) continue;
+    const label = metadataText(record.label).trim() || null;
     const sourceCaptureIds = Array.isArray(record.sourceCaptureIds)
       ? record.sourceCaptureIds.map((value) => metadataText(value)).filter(Boolean)
       : [];
-    flags.push({ key: safetyFlagKey(kind, text), kind: kind as SafetyFlagKind, text, sourceCaptureIds });
+    flags.push({ key: safetyFlagKey(kind, text), kind: kind as SafetyFlagKind, label, text, sourceCaptureIds });
   }
   return flags;
 }
