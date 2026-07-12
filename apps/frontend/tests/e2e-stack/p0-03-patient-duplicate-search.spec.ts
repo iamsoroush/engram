@@ -36,8 +36,10 @@ test.describe("P0-3 patient create + duplicate guard + Persian search", () => {
 
     // Persian-aware search finds the record, with a match-reason chip on the result.
     await page.goto("/#patients");
-    await page.locator(".clinical-search input").fill("سارا");
-    await expect(page.getByText("Deterministic, Persian-aware match")).toBeVisible();
+    await page.getByRole("tab", { name: "Patients" }).click();
+    await page.locator(".patients-filter input").fill("سارا");
+    // The roster filter is a plain live filter now (AES-1606) — match-reason chips moved to the
+    // finder overlay (covered by the hermetic finder suite); assert the record is found.
     await expect(page.getByText(family).first()).toBeVisible();
     await expect(page.locator(".patient-memory-badge").first()).toBeVisible();
 

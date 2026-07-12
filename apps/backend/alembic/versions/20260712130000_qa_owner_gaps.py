@@ -26,8 +26,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 
 from app.services.qa_knowledge import normalize
 
-revision: str = "20260712120000"
-down_revision: str | None = "20260706120000"
+revision: str = "20260712130000"
+down_revision: str | None = "20260712120000"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -272,7 +272,7 @@ export async function waitForSynthesisTreatments(
   throw new Error(`synthesis did not produce treatments within ${timeoutMs}ms; last: ${last}`);
 }
 
-/** Create a patient via the API and assign a session to it (so the session shows as a Today card). */
+/** Create a patient via the API and assign a session to it (so the session shows as a Recent card). */
 export async function assignSessionToNewPatient(
   request: APIRequestContext,
   accessToken: string,
@@ -291,10 +291,10 @@ export async function assignSessionToNewPatient(
   return patient;
 }
 
-/** Open an API-seeded session from Clinical Memory → Today (the Pro report + Sources drawer render). */
+/** Open an API-seeded session from Clinical Memory → Recent (the Pro report + Sources drawer render). */
 export async function openTodaySession(page: Page): Promise<void> {
   await page.goto("/#patients");
-  await page.getByRole("tab", { name: "Today" }).click();
+  await page.getByRole("tab", { name: "Recent" }).click();
   await page.locator(".clinical-memory .visit-card, .clinical-memory .clinical-row-selectable").first().click();
   await expect(page.getByTestId("report-body")).toBeVisible({ timeout: 30_000 });
 }

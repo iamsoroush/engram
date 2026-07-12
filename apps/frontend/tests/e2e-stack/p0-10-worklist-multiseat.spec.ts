@@ -34,7 +34,7 @@ test.describe("P0-10 reception worklist multi-seat", () => {
     await applyAuth(context, docAuth, { lang: "en" });
     const page = await context.newPage();
     await page.goto("/#patients");
-    await page.getByRole("tab", { name: "Today" }).click();
+    await page.getByRole("tab", { name: "Recent" }).click();
     const worklist = page.locator(".worklist-section");
     await expect(worklist).toBeVisible({ timeout: 30_000 });
     await expect(worklist.getByText(patientName)).toBeVisible();
