@@ -2,7 +2,7 @@
 
 ## Q&A owner-testing gaps: arrival badge, deterministic escalation, retrieval grounding (2026-07-12)
 
-Three gaps from the owner's Q&A testing, shipped as AES-1801/1802/1803 (fast-follow AES-1804
+Three gaps from the owner's Q&A testing, shipped as AES-1901/1902/1903 (fast-follow AES-1904
 registered). Decisions worth recording:
 
 - **Q&A messages get their own glanceable badge again (partial-revert of E16/AES-1003).** The unified
@@ -16,7 +16,7 @@ registered). Decisions worth recording:
   gateway-less and can never be "the thing that's down". An urgent hit escalates the row, the badge,
   the attention bell (above safety), and fires a toast. A false-positive urgent costs one glance; a
   miss costs tissue. An LLM `escalate` flag from `qa_draft` is a **registered, eval-gated fast-follow**
-  (AES-1804), layered *over* — never replacing — the deterministic floor.
+  (AES-1904), layered *over* — never replacing — the deterministic floor.
 - **Retrieval grounds on the title too; question becomes the primary field.** Root cause of the owner's
   "template didn't ground" repro: `search_text` folded only question+answer, so a topic-label title
   («ورزش بعد از بوتاکس») with an empty question never matched «کی میتونم ورزش کنم؟». Fix at all three
@@ -50,7 +50,7 @@ From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), ship
   (the chip counted a backend needs-input fetch; the bell counted the `/attention` roll-up). They now
   all read the **single** `attentionBadgeCount` (confirm + messages) from `GET /attention`; the chip is
   surface-by-exception (hidden at 0), and the redundant needs-input fetch in `PatientsHome` was removed.
-  — **Partially superseded (2026-07-12, AES-1801):** the bell keeps its merged Messages count, but Q&A
+  — **Partially superseded (2026-07-12, AES-1901):** the bell keeps its merged Messages count, but Q&A
   regains its **own** glanceable pending-thread badge on the inbox icon (see the 2026-07-12 entry).
 
 ## Model comparison verdict: keep the incumbent split; mid bracket rejected (2026-07-10)

@@ -1,4 +1,4 @@
-"""(Re)embed Q&A knowledge exemplars whose ``embedding`` is NULL (AES-1802).
+"""(Re)embed Q&A knowledge exemplars whose ``embedding`` is NULL (AES-1902).
 
 Embeddings are OPTIONAL: a row indexed while the gateway was unconfigured (dev/CI, or before the
 gateway was wired) stores ``search_text`` but a NULL vector, so it ranks lexical-only. When a gateway

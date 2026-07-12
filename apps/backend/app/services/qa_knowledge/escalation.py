@@ -1,4 +1,4 @@
-"""Deterministic red-flag classification for incoming patient Q&A (AES-1801).
+"""Deterministic red-flag classification for incoming patient Q&A (AES-1901).
 
 An aesthetics patient can report an emergency between visits — the classic being a filler
 vascular occlusion (skin blanching + severe pain + vision change; see the eval's QD-05). Those
@@ -10,7 +10,7 @@ toast fires.
 Deliberately deterministic (no LLM, no gateway): it must run on the public ``/ask`` path even
 gateway-less, and never be the thing that's "down". It errs toward **sensitivity** — a false-positive
 urgent costs a doctor one extra glance; a missed vascular occlusion costs tissue. An LLM escalation
-flag from the ``qa_draft`` output is a registered, eval-gated fast-follow (AES-1804), not this.
+flag from the ``qa_draft`` output is a registered, eval-gated fast-follow (AES-1904), not this.
 
 Category keys are stable identifiers the frontend localizes (``qa.redflag.<key>``) — so the toast
 reads «سؤال فوری بیمار — تاری دید» in fa and "Urgent patient question — vision changes" in en.

@@ -34,7 +34,7 @@ MAX_QUESTION_CHARS = 4000
 MAX_ANSWER_CHARS = 8000
 MAX_TAGS = 12
 MAX_TAG_CHARS = 40
-# Bound the patient-record / conversation snippet stored on a draft's provenance (AES-1803): enough to
+# Bound the patient-record / conversation snippet stored on a draft's provenance (AES-1903): enough to
 # show the doctor what grounded the reply, not the whole report.
 PROVENANCE_SNIPPET_CHARS = 500
 
@@ -130,7 +130,7 @@ def list_library(
             "sentRepliesExcluded": sum(1 for row in rows if row.kind == KIND_SENT_REPLY and row.status == STATUS_EXCLUDED),
         },
         # Whether hybrid semantic (embedding) matching is on. When False the library ranks lexical-only;
-        # the UI shows one quiet notice so silent degradation (AES-1802) can't hide unconfigured embeddings.
+        # the UI shows one quiet notice so silent degradation (AES-1902) can't hide unconfigured embeddings.
         "semanticSearch": embeddings_configured(),
     }
 
@@ -138,7 +138,7 @@ def list_library(
 def get_library_item(db: DbSession, principal: CurrentPrincipal, exemplar_id: str) -> dict[str, Any]:
     """One exemplar's Q/A (per-tenant) — the sent-reply provenance chip reveals its text, never a thread.
 
-    The privacy boundary (AES-1803): a "پاسخ قبلی کلینیک" chip opens the exemplar's own question/answer,
+    The privacy boundary (AES-1903): a "پاسخ قبلی کلینیک" chip opens the exemplar's own question/answer,
     NOT the other patient's conversation. Serves the same ``library_payload`` shape as the list.
     """
     require_qa_capability(db, principal.tenant_id)
@@ -388,7 +388,7 @@ def build_draft_provenance(
     patient_context: dict[str, Any] | None,
     thread_history: list[dict[str, Any]] | None,
 ) -> dict[str, Any]:
-    """The structured «بر اساس» provenance panel (AES-1803): every source the payload actually carried.
+    """The structured «بر اساس» provenance panel (AES-1903): every source the payload actually carried.
 
     Deterministic — built by the backend from what it put in the qa_draft payload (no prompt/eval
     change). Shaped::
@@ -414,7 +414,7 @@ def build_draft_provenance(
         else:
             sources.append({"type": "sent_reply", "exemplarId": top.get("exemplarId")})
     # Patient-record + conversation chips carry a bounded snippet of the ACTUAL grounding text so the
-    # doctor can tap to see what informed the draft (AES-1803). It is THIS patient's own data (no
+    # doctor can tap to see what informed the draft (AES-1903). It is THIS patient's own data (no
     # cross-patient leak); the exemplar chips carry only an id and fetch their Q/A on demand.
     if isinstance(ctx.get("recentAftercare"), str) and ctx["recentAftercare"].strip():
         sources.append({"type": "patient_aftercare", "text": ctx["recentAftercare"].strip()[:PROVENANCE_SNIPPET_CHARS]})

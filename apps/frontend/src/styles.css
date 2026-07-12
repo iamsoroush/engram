@@ -1689,7 +1689,7 @@ small {
   font-weight: 700;
 }
 
-/* Urgent patient question (AES-1801): a loud red toast, wider and centered at the top so it can't be
+/* Urgent patient question (AES-1901): a loud red toast, wider and centered at the top so it can't be
    missed, with a ⚠ marker. Held longer than the neutral toast (duration set by the caller). */
 .toast-danger {
   right: 50%;

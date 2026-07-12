@@ -176,7 +176,7 @@ def qa_inbox_summary(
     principal: CurrentPrincipal = Depends(staff_or_admin_required),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801)."""
+    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1901)."""
     return qa.qa_inbox_summary(db, principal, scope=scope)
 
 

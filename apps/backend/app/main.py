@@ -56,7 +56,7 @@ def _assert_audio_tooling() -> None:
 
 @app.on_event("startup")
 def _backfill_qa_embeddings() -> None:
-    # (Re)embed Q&A knowledge exemplars with a NULL embedding once a gateway is configured (AES-1802).
+    # (Re)embed Q&A knowledge exemplars with a NULL embedding once a gateway is configured (AES-1902).
     # Best-effort + bounded + a no-op when unconfigured — never blocks boot, never touches CI/e2e.
     from app.db.session import SessionLocal
     from app.services.qa_knowledge.backfill import backfill_missing_embeddings

@@ -1,4 +1,4 @@
-"""Maintenance CLI: (re)embed Q&A knowledge exemplars with a NULL embedding (AES-1802).
+"""Maintenance CLI: (re)embed Q&A knowledge exemplars with a NULL embedding (AES-1902).
 
 Run after wiring the embeddings gateway so existing lexical-only rows gain semantic vectors:
 

@@ -40,7 +40,7 @@ export function Shell({
   attentionHighestTier?: AttentionResponse["highestTier"];
   /** Opens the Close-the-day sweep (the Attention tab of Clinical Memory). */
   onOpenAttention?: () => void;
-  /** Pending Q&A threads (scoped like the inbox) for the glanceable Q&A badge (AES-1801); 0 hides it. */
+  /** Pending Q&A threads (scoped like the inbox) for the glanceable Q&A badge (AES-1901); 0 hides it. */
   qaPendingCount?: number;
   /** Any pending question tripped a red flag — the badge turns to the danger tone. */
   qaUrgent?: boolean;
@@ -61,7 +61,7 @@ export function Shell({
   const multiClinic = new Set(auth.memberships.map((membership) => membership.tenantId)).size > 1;
   // Account / utility pages have no capture context — the capture bar would overlap their content.
   // The Q&A inbox likewise hides it: capturing has no meaning there, and it would clash with the
-  // per-reply voice-edit mic (AES-1801). Q&A gets its own bottom Inbox|Library bar instead.
+  // per-reply voice-edit mic (AES-1901). Q&A gets its own bottom Inbox|Library bar instead.
   const isAccountScreen =
     screen === "settings" || screen === "profile" || screen === "team" || screen === "insights" || screen === "plan" || screen === "switch-clinic";
   const hideCaptureBar = isAccountScreen || screen === "qa-inbox";
@@ -142,7 +142,7 @@ export function Shell({
                 title={t("nav.qaInbox")}
                 type="button"
               >
-                {/* Messages earn their own glanceable badge again (AES-1801 — a deliberate partial-revert
+                {/* Messages earn their own glanceable badge again (AES-1901 — a deliberate partial-revert
                     of the E16 merge; the unified bell keeps its merged count). A red-flagged question
                     turns the badge to the danger tone. */}
                 <QaInboxNavIcon />

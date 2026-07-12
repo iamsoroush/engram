@@ -687,7 +687,7 @@ class QaMessage(Base):
     # shaped {kind: template|sent_reply, exemplarId, label}. NULL when nothing was retrieved. Surfaced
     # as the doctor-only "based on: {template}" chip; never projected to the patient.
     draft_provenance: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    # Escalation (AES-1801): a patient question that trips the deterministic red-flag lexicon at ingest
+    # Escalation (AES-1901): a patient question that trips the deterministic red-flag lexicon at ingest
     # is marked urgent, so the inbox row / top-bar badge / attention bell escalate + a toast fires.
     # ``urgent_flags`` holds the stable red-flag category keys (the frontend localizes them). Only
     # meaningful on a ``role="patient"`` question.

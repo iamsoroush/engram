@@ -620,7 +620,7 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
     messages = _staff_messages(db, thread)
     pendings = [m for m in messages if m["role"] == ROLE_PATIENT and m["status"] == Q_PENDING]
     # A thread can hold several unanswered questions. Surface an URGENT one first so a red-flag question
-    # asked after a routine one isn't hidden behind it (AES-1801) — the doctor works the urgent one now;
+    # asked after a routine one isn't hidden behind it (AES-1901) — the doctor works the urgent one now;
     # the rest follow. Absent an urgent one, keep the oldest-first order.
     pending = next((m for m in pendings if m.get("urgent")), pendings[0] if pendings else None)
     thread_urgent = any(m.get("urgent") for m in pendings)
@@ -641,7 +641,7 @@ def _thread_inbox_item(db: DbSession, thread: QaThread, patient: Patient) -> dic
         "routingSource": thread.routing_source,
         "treatingDoctorCount": treating_doctor_count,
         "needsApproval": pending is not None,
-        # Escalation (AES-1801): the thread is urgent while ANY pending question tripped a red flag —
+        # Escalation (AES-1901): the thread is urgent while ANY pending question tripped a red flag —
         # the row + badge render in the warning style and the bell escalates.
         "urgent": thread_urgent,
         "urgentFlags": (pending.get("urgentFlags") if pending else None) or [],
@@ -712,7 +712,7 @@ def qa_inbox(db: DbSession, principal: CurrentPrincipal, *, scope: str = "mine")
 
 
 def qa_inbox_summary(db: DbSession, principal: CurrentPrincipal, *, scope: str = "mine") -> dict[str, Any]:
-    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1801).
+    """Lightweight pending/urgent counts for the top-bar Q&A badge + urgent toast (AES-1901).
 
     The badge polls this frequently, so it must be cheap — one join, no full-payload build and (unlike
     ``qa_inbox``) no draft self-heal. ``pending`` matches the inbox's ``total`` (threads awaiting the
@@ -1082,7 +1082,7 @@ def ask_question(db: DbSession, token: str, question_text: str) -> dict[str, Any
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A question is required")
     text = text[:MAX_QUESTION_CHARS]
     _enforce_ask_limits(db, thread)
-    # Escalation (AES-1801): classify at ingest against the deterministic red-flag lexicon. A hit marks
+    # Escalation (AES-1901): classify at ingest against the deterministic red-flag lexicon. A hit marks
     # the thread urgent so the inbox row / top-bar badge / attention bell escalate + a toast fires. This
     # runs even gateway-less (it must never be the thing that's "down") and errs toward sensitivity.
     urgent_flags = qa_escalation.classify_urgency(text)
@@ -1400,7 +1400,7 @@ def qa_draft_worker_payload(db: DbSession, job: AiJob, ai_models: dict[str, str]
     # (G4) THIS thread's own earlier Q→A exchanges (bounded), so a follow-up question is drafted with
     # the conversation's context — no cross-patient risk (thread == this patient).
     thread_history = _thread_prior_turns(db, thread=thread, exclude_message_id=question.id) if thread else []
-    # The structured «بر اساس» provenance (AES-1803): every grounding source the payload actually
+    # The structured «بر اساس» provenance (AES-1903): every grounding source the payload actually
     # carried (top exemplar + patient-record blocks + conversation), or the honest general-knowledge
     # fallback when none did. Deterministic — the worker never sees or returns provenance.
     provenance = qa_library.build_draft_provenance(

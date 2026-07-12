@@ -299,7 +299,7 @@ def build_attention_feed(
                     "id": f"qa:{thread.get('threadId')}",
                     "kind": "qa-pending",
                     "tier": TIER_MESSAGES,
-                    # Escalation (AES-1801): a red-flagged patient question escalates the bell above the
+                    # Escalation (AES-1901): a red-flagged patient question escalates the bell above the
                     # normal messages tier — it's the most time-critical signal in the app.
                     "urgent": bool(thread.get("urgent")),
                     "sessionId": None,
@@ -329,7 +329,7 @@ def aggregate_attention_items(items: list[dict[str, Any]]) -> dict[str, Any]:
         "suggested": sum(1 for item in items if item["tier"] == TIER_SUGGESTED),
         "messages": sum(1 for item in items if item["tier"] == TIER_MESSAGES),
         "safety": sum(1 for item in items if item["tier"] == TIER_SAFETY),
-        # Urgent red-flagged patient questions (AES-1801) — a subset of `messages`, surfaced separately
+        # Urgent red-flagged patient questions (AES-1901) — a subset of `messages`, surfaced separately
         # so the indicator can escalate above the normal violet messages tone.
         "urgent": sum(1 for item in items if item["tier"] == TIER_MESSAGES and item.get("urgent")),
     }

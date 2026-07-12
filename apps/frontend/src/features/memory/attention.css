@@ -268,7 +268,7 @@
   background: var(--color-danger, #d33);
 }
 
-/* --- Top-bar Q&A pending badge (AES-1801) -------------------------------------------------------- */
+/* --- Top-bar Q&A pending badge (AES-1901) -------------------------------------------------------- */
 /* Messages earn their own glanceable count again (a deliberate partial-revert of the E16 merge — the
    unified bell keeps its merged count; this is the at-a-glance "questions waiting"). Mirrors the
    attention badge footprint; the button is the positioning context so the badge anchors to it. */

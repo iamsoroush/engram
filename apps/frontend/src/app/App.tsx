@@ -160,7 +160,7 @@ function AppInner() {
   // Unified attention roll-up for the top-bar indicator (AES-1003): one count that merges the S2
   // "to confirm" items with pending Q&A messages (safety keeps top salience but is never a to-do).
   const [attention, setAttention] = React.useState<{ counts: AttentionCounts; highestTier: AttentionResponse["highestTier"] } | null>(null);
-  // Pending Q&A count for the glanceable top-bar badge (AES-1801) — messages earn their own badge again
+  // Pending Q&A count for the glanceable top-bar badge (AES-1901) — messages earn their own badge again
   // (a deliberate partial-revert of the E16 merge; the bell keeps its merged count). Polled with the
   // attention roll-up; a newly-arrived URGENT thread also fires a toast (see below).
   const [qaSummary, setQaSummary] = React.useState<QaInboxSummary | null>(null);
@@ -251,7 +251,7 @@ function AppInner() {
       .catch(() => undefined);
   }, [apiFetch, auth, canUseQa, inboxScope, appT, setToast]);
 
-  // Freshness (AES-1801): both counts poll while the app is VISIBLE (~60s) and refetch on window focus
+  // Freshness (AES-1901): both counts poll while the app is VISIBLE (~60s) and refetch on window focus
   // / on becoming visible; the interval pauses when hidden (a backgrounded tab shouldn't poll). A new
   // patient question arrives out-of-band, so the badge/bell can't wait for a screen open.
   const refreshFreshness = React.useCallback(() => {

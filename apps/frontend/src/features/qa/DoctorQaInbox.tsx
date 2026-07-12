@@ -228,7 +228,7 @@ export function DoctorQaInbox({
         </>
       )}
 
-      {/* Inbox | Library lives in a fixed bottom bar (AES-1801): the capture bar is hidden on this
+      {/* Inbox | Library lives in a fixed bottom bar (AES-1901): the capture bar is hidden on this
           screen, so this reads as the screen's own navigation and never competes with the per-reply
           voice-edit mic. */}
       <nav className="qa-bottom-nav" aria-label={t("qa.tabsAria")}>
@@ -362,7 +362,7 @@ function QaThreadCard({
   // a one-line preview), so the disclosure can name how many there are.
   const hiddenCount = item.needsApproval ? item.messages.length - 1 : item.messages.length;
 
-  // Escalation (AES-1801): a red-flagged pending question turns the whole row to the warning style and
+  // Escalation (AES-1901): a red-flagged pending question turns the whole row to the warning style and
   // names the flags, so a possible emergency (e.g. filler occlusion) can't read as a routine question.
   const urgentFlags = item.urgent ? item.pendingQuestion?.urgentFlags ?? item.urgentFlags ?? [] : [];
   const urgentLabel = urgentFlags.length
@@ -471,7 +471,7 @@ function QaThreadCard({
               isStarterDraft={isStarterDraft}
             />
           </div>
-          {/* The «بر اساس» source row (AES-1803): every grounding source the draft actually used, or the
+          {/* The «بر اساس» source row (AES-1903): every grounding source the draft actually used, or the
               honest general-knowledge caution when none did. Independent of the starter marker above. */}
           {draftReady ? (
             <DraftProvenancePanel provenance={pending?.draftProvenance} apiFetch={apiFetch} onOpenLibrary={onOpenLibrary} />
@@ -549,7 +549,7 @@ function DraftStatusBadge({
 }
 
 /**
- * The «بر اساس» provenance panel (AES-1803): a compact source row under a ready draft, built
+ * The «بر اساس» provenance panel (AES-1903): a compact source row under a ready draft, built
  * deterministically by the backend from what the payload carried. A grounded draft shows the strong
  * template / previous-reply attribution plus a chip per patient-record / conversation block it used;
  * an ungrounded draft shows the honest caution chip «دانش عمومی — بدون منبع کلینیکی» so the doctor

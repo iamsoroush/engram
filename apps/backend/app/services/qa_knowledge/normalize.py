@@ -60,13 +60,13 @@ def build_search_text(*, title: str | None = None, question: str | None, answer:
 
     Title matters: a clinic often labels a template by its topic («ورزش بعد از بوتاکس») and leaves
     the question pattern blank, so a query «کی میتونم ورزش کنم؟» must still match on the topic word in
-    the title. Omitting the title (the pre-AES-1802 behaviour) silently dropped that grounding signal.
+    the title. Omitting the title (the pre-AES-1902 behaviour) silently dropped that grounding signal.
     """
     return canonicalize(f"{title or ''} {question or ''} {answer or ''}")
 
 
 # Question-word markers (fa + en) that make a bare title read as a question pattern. Used to migrate
-# the owner's trap (AES-1802): question-shaped text typed into the optional `title` while `question`
+# the owner's trap (AES-1902): question-shaped text typed into the optional `title` while `question`
 # stayed empty, so retrieval never learned it was the question. Kept small + recall-safe.
 _QUESTION_WORDS = frozenset(
     {

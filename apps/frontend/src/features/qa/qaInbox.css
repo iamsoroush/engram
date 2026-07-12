@@ -20,7 +20,7 @@
   gap: 12px;
 }
 
-/* Fixed bottom Inbox | Library bar (AES-1801) — replaces the capture bar on this screen. */
+/* Fixed bottom Inbox | Library bar (AES-1901) — replaces the capture bar on this screen. */
 .qa-bottom-nav {
   position: fixed;
   left: 0;
@@ -85,7 +85,7 @@
   box-shadow: 0 0 0 1px #f7e6c4 inset;
 }
 
-/* Escalation (AES-1801): a red-flagged question turns the whole row to the danger tone + a banner. */
+/* Escalation (AES-1901): a red-flagged question turns the whole row to the danger tone + a banner. */
 .qa-card.qa-urgent {
   border-color: var(--color-danger, #d33);
   box-shadow: 0 0 0 1px var(--color-danger, #d33) inset;
@@ -549,7 +549,7 @@
   color: var(--color-muted-2);
 }
 
-/* --- «بر اساس» draft provenance panel (AES-1803, extends AES-410) ------------------------------- */
+/* --- «بر اساس» draft provenance panel (AES-1903, extends AES-410) ------------------------------- */
 .qa-provenance {
   display: flex;
   flex-wrap: wrap;
@@ -827,7 +827,7 @@ button.qa-provenance-chip.qa-provenance-strong:hover {
   color: var(--color-danger);
 }
 
-/* Quiet "semantic matching is off" notice (AES-1802) — informative, not alarming. */
+/* Quiet "semantic matching is off" notice (AES-1902) — informative, not alarming. */
 .qa-lib-notice {
   font-size: var(--text-xs);
   color: var(--color-muted-2);
