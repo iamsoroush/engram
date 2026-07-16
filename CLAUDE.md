@@ -260,6 +260,8 @@ not optional cleanup):
    inbound link. Epic/story finished → fold + delete its `docs/work/` doc.
 7. **Verify zero broken links:** run `python3 scripts/check-doc-links.py` (CI runs it too — it fails
    on dangling links and on system-state docs linking into `docs/work/`).
+8. **Reusable learning, or a skill that misled you?** Propose the skill change to the user and
+   apply it once confirmed (§9).
 
 ---
 
@@ -361,3 +363,33 @@ to also drop this worktree's database + bucket). Full details:
 In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `engram`
 stack (the clone source); the plain root `docker compose up` also still works as a
 self-contained, non-shared environment.
+
+---
+
+## 9. Skills — self-maintained reusable procedures
+
+Skills are proven, tested procedures that load automatically into every agent. They live in
+`.claude/skills/<name>/SKILL.md`; `.agents/skills` is a symlink to `.claude/skills` (Codex reads
+skills from there) — **edit only `.claude/skills/`** and both stay in sync. For format, authoring,
+and improving skills, use the bundled `skill-creator` skill.
+
+**All skill writes are user-gated.** Before creating, editing, or deleting any skill, present the
+proposed change to the user — what you want to capture or fix, why, and the draft/diff — and apply
+it only after they confirm. Never modify `.claude/skills/` silently.
+
+Maintaining skills is part of every task, not optional cleanup:
+
+- **Capture.** When you solve something through real trial-and-error that will recur — a
+  debugging recipe, a migration procedure, a verification flow, a repo-specific workflow — fold
+  it into a skill: the steps that worked AND the dead ends / common mistakes. Don't capture
+  one-off or trivial knowledge, and never capture an approach you haven't actually validated in
+  this repo.
+- **Update.** When a task reveals an existing skill is incomplete, stale, or wrong, fix the
+  skill within the same task.
+- **Self-reflect on failure.** If you went off track while following a skill, diagnose why
+  before finishing: was the skill wrong, ambiguous, or missing a precondition — or did you
+  misapply it? Update the skill so the next agent doesn't repeat the mistake. A skill that
+  misled an agent and was left unchanged is a bug.
+- **Skills hold procedure, docs hold facts.** How to do a recurring task well → skill. What the
+  system IS (architecture, contracts, data model) → `docs/` (§2–§3). Skills link to docs, never
+  restate them.
