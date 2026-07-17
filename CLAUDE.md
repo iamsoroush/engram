@@ -2,7 +2,7 @@
 
 This repository is developed with AI coding agents.
 
-**Naming:** the platform and product share a single brand — **Engram** — used everywhere: repo, services, infra, API, and all customer-facing surfaces. Engram is capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Production is live at `engram.ir`.
+**Naming:** the platform and product share a single brand — **Engram** — used everywhere: repo, services, infra, API, and all customer-facing surfaces. Engram is capture-first clinical memory, currently for aesthetics clinics (therapy and dermatology are the next verticals). Production might be live at `engram.ir`.
 
 Use this file as the starting guide. Do not read the whole repository blindly. Start from the relevant README/docs, then inspect only the files needed for the task. **§2 below is the single documentation index** — other indexes (`docs/README.md`, app READMEs) defer to it.
 

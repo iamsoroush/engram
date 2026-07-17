@@ -21,7 +21,7 @@ def normalize_bcp47_lang(value: Any) -> str | None:
     """Coerce a report/preferred-language input into a BCP-47 language tag, or None.
 
     The ``lang`` stamp records the language a payload's display strings were GENERATED in — the
-    reference field a future language-switch migration reads (docs/work/ai-engine-refactor-plan.md
+    reference field a future language-switch migration reads (the ai-engine refactor decisions, docs/technical-decisions.md
     §4.6). Our inputs are already BCP-47-ish (``fa``, ``en``, ``fa-IR``); sentinels that name no single
     language (``auto``/``unknown``/``mixed``) map to None so the stamp is never a lie.
     """

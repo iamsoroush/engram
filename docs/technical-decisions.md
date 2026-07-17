@@ -130,8 +130,8 @@ From the 2026-07-10 UI expert review (process doc folded; stories E15/E16), ship
 
 ## Model comparison verdict: keep the incumbent split; mid bracket rejected (2026-07-10)
 
-A 74-case owner-designed comparison (all text AI jobs + transcription + audio formats; readout in
-`docs/work/model-compare/` until folded) validated the current production config as the champion:
+A 74-case owner-designed comparison (all text AI jobs + transcription + audio formats; verdict + evidence recorded here; the reusable
+case files + transcription scripts remain in `docs/work/model-compare/`) validated the current production config as the champion:
 `gpt-5.4-nano` for synthesis + safety-reconcile (blind judge 30–4 on synthesis, cheaper than the
 Gemini peer), `gemini-3.1-flash-lite` for qa_draft / patient-memory / transcription (the OpenAI
 models leak a cross-patient dose on Q&A 3/3; Gemini doesn't — the split exploits opposite safety
@@ -311,7 +311,7 @@ classification incl. «درستش», in-clip self-correction, OOC carve-out for 
 
 ## Synthesis Apply / User-State / Safety Correctness Hardening — Track E2 (2026-07-06)
 
-The red-team of the synthesis apply + overlay + safety + user-state path (`docs/work/redteam/synthesis.md`)
+The red-team of the synthesis apply + overlay + safety + user-state path (red-team process docs, since folded and pruned)
 found a cluster of correctness bugs; the fixes below are load-bearing invariants future work must respect
 (evidence + golden cases in that report; deterministic units in `tests/test_e2_synthesis_apply.py`):
 
