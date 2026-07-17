@@ -30,7 +30,13 @@ def tracked_markdown_files() -> list[Path]:
     out = subprocess.run(
         ["git", "ls-files", "*.md"], cwd=REPO, capture_output=True, text=True, check=True
     ).stdout
-    return [REPO / line for line in out.splitlines() if line.strip()]
+    # Vendored third-party skills keep their upstream's internal links — their integrity is the
+    # skill author's concern, not this repo's docs contract. Our own docs stay fully checked.
+    return [
+        REPO / line
+        for line in out.splitlines()
+        if line.strip() and not line.startswith(".claude/skills/") and not line.startswith(".agents/")
+    ]
 
 
 def main() -> int:
