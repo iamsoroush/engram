@@ -9,7 +9,7 @@ was grounded in, surfaced as the doctor-only "based on: {template}" chip.
 Decision-complete: pgvector inside the existing Postgres (no new infra) — the Postgres image is
 `pgvector/pgvector:pg16`. `CREATE EXTENSION IF NOT EXISTS vector` is idempotent and per-database, so
 it is safe on the canonical DB, every dev-stack clone, e2e, and prod. See
-docs/technical-decisions.md ("Q&A Knowledge Retrieval — pgvector in the existing Postgres").
+docs/technical-decisions/2026-07-05-qa-knowledge-pgvector.md ("Q&A Knowledge Retrieval — pgvector in the existing Postgres").
 
 Revision ID: 20260705120000
 Revises: 20260702120000
@@ -29,7 +29,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # pgvector: idempotent, per-database. Requires a Postgres image that ships the extension
-    # (pgvector/pgvector:pg16) — see the module docstring / technical-decisions.md.
+    # (pgvector/pgvector:pg16) — see the module docstring / docs/technical-decisions/2026-07-05-qa-knowledge-pgvector.md.
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(

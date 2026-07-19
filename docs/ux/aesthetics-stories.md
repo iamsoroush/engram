@@ -806,7 +806,7 @@ never shows `Visit: … 17:43` directly above `Updated: 5:43 PM`.
   `Visit:` / `Updated:` lines, the patient-card "Latest visit", and the capture "updated" labels —
   **24-hour everywhere** (Persian digits under fa via the `fa-IR` locale, 24h under en). The `Visit:`
   line derives from the visit timestamp so its date localizes (`Today` → «امروز»). Decision: en clock =
-  24h ([technical-decisions](../technical-decisions.md)).
+  24h ([technical-decisions](../technical-decisions/2026-07-11-ui-review-refinements.md)).
 
 ### AES-1602 — Drop the marketing subtitle on Clinical Memory 〔Both · All · modify〕
 As **any clinician**, I want the Clinical Memory heading to orient without a marketing sentence, so that
@@ -831,7 +831,7 @@ mid-bar with leftover space.
   between them — no mid-bar float. Phones keep the two-row restack (brand on top).
 
 *Owner-testing refinements (2026-07-12): AES-1607–1610 — Recent tab, scoped search, guided attention
-review. Decision log: [technical-decisions](../technical-decisions.md).*
+review. Decision log: [technical-decisions](../technical-decisions/2026-07-12-memory-surface-refinements.md).*
 
 ### AES-1607 — "Today" tab → "Recent", time-bucketed 〔Both · All · modify〕
 As a **clinician**, I want the landing tab to show recent activity across the last few days rather than

@@ -110,7 +110,7 @@ decision, not oversight**: the matching seam rides the bulk-transcription model 
 the highest-volume call), a pro-class model only fixes it there at whole-pipeline cost, and the
 deterministic backend gate never auto-assigns a fuzzy near-miss regardless — so it is deferred until the
 seam can take a pro model independently. See
-[technical-decisions.md](../technical-decisions.md) → *Matching Seam Runs on the Transcription Model*.
+[the matching-seam decision](../technical-decisions/2026-07-04-matching-seam-transcription-model.md).
 
 ### Coverage gaps
 

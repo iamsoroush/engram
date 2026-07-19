@@ -1,6 +1,7 @@
-# Model comparison — all AI jobs, two price brackets
+# Model-comparison harness — fixtures + scoring spec
 
-Process doc + owner-designed fixtures (create → run → fold the readout → delete). Every case file
+Reusable harness for comparing candidate models across all AI jobs (the bracket table below is the
+2026-07-10 run's; a new comparison swaps the candidates). Every case file
 here is **owner-designed and frozen**: executing agents implement the scorers and run the matrix;
 they do not add, remove, or reinterpret cases.
 
@@ -136,8 +137,10 @@ GUARDRAIL, size the metric.
 
 ## Deliverable
 
-`docs/work/model-compare/readout.md` — verdict first (low-cost champion, mid-cost champion, per-job
+Write the readout to a fresh `work-docs/<comparison>/readout.md` — verdict first (champions, per-job
 exceptions if a bracket winner loses a specific job, usage-limit consequence of each adoption
 scenario), then per-job deterministic tables, the safety-event table, judge win-rates, cost/latency
 tables, and raw per-case JSON artifacts alongside. No production config, prompt, or eval-suite
-changes; scripts stay in a scratch dir.
+changes; scripts stay in a scratch dir. Fold the verdict into `docs/technical-decisions/` and
+delete the readout per the work-docs lifecycle (the 2026-07-10 run's verdict:
+`docs/technical-decisions/2026-07-10-model-comparison-verdict.md`).

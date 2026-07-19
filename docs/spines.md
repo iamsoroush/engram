@@ -141,4 +141,4 @@ three polished products.**
 
 Related: [intelligence-layer.md](intelligence-layer.md) · [product.md](product.md) ·
 [ux/overview.md](ux/overview.md) · [architecture.md](architecture.md) ·
-[technical-decisions.md](technical-decisions.md).
+[technical-decisions/](technical-decisions/).

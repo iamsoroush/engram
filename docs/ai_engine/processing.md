@@ -167,7 +167,7 @@ prior report is fed **exactly once** via `priorReportModel` (with `generatedAt`/
 the old duplicate feed of `session.extracted_metadata` (the model's own full prior output) is gone, the
 single largest token cut. `rawReportTemplate` is not in the model-visible context (the section contract
 already encodes it). New context fields append to the volatile tail, never the stable region (standing
-rule: [technical-decisions.md](../technical-decisions.md)).
+rule: [the synthesis-context decision](../technical-decisions/2026-07-09-synthesis-context-restructure.md)).
 
 ### Output — the A↔B contract
 

@@ -763,7 +763,7 @@ class QaKnowledgeExemplar(Base):
 class AiFeedbackEvent(Base):
     """A harvested AI-quality signal: a staff CORRECTION of an AI output, or a thumbs RATING.
 
-    The eval golden-set harvester (``docs/ai_engine/eval-epic.md`` §1b): every production correction
+    The eval golden-set harvester (``docs/ai_engine/evals.md`` "Feedback → golden-set harvest"): every production correction
     of an AI output (transcript / caption / treatment / patient-match) and every report/brief rating is
     logged here as a candidate eval case, so MVP user testing seeds the golden set instead of relying on
     remembered bugs. Append-only, cheap, non-blocking — a correction row is written in the *same*

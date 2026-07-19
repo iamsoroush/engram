@@ -1,4 +1,4 @@
-"""AI-quality feedback harvesting — the eval golden-set harvester (``docs/ai_engine/eval-epic.md`` §1b).
+"""AI-quality feedback harvesting — the eval golden-set harvester (``docs/ai_engine/evals.md`` "Feedback → golden-set harvest").
 
 Every staff correction of an AI output (transcript / caption / treatment / patient-match) and every
 report/brief thumbs rating is written to ``ai_feedback_events`` as a candidate eval case. Two entry

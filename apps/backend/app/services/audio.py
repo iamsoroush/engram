@@ -4,7 +4,7 @@ Browsers record divergent containers (Chrome ``webm/opus``, Safari ``mp4/AAC``);
 e2e fixtures send WAV. This module normalizes every capture-audio upload ONCE to the canonical stored
 format — **MP3 32 kbps, 16 kHz mono** — so the object store holds exactly one format at ~8× smaller
 than the old WAV-PCM-16k store (~1.92 MB/min → ~0.24 MB/min), at zero transcription-accuracy cost
-(the audio-format sweep; see ``docs/technical-decisions.md`` and ``docs/backend/storage.md``).
+(the audio-format sweep; see ``docs/technical-decisions/2026-07-10-compressed-canonical-audio.md`` and ``docs/backend/storage.md``).
 ``ffmpeg``/``ffprobe`` are shelled out to; the backend image installs them.
 
 Canonical = MP3, per decision gate **G1**: MP3 plays natively in ``<audio>`` with exact duration +

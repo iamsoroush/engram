@@ -66,7 +66,7 @@ and the tall aftercare-template editor span both columns, while the small groups
   templates the patient share uses.
 
 There is deliberately **no AI model picker** — models are chosen and optimized centrally
-(`docs/technical-decisions.md`: "AI model selection is NOT a user setting").
+(`docs/technical-decisions/2026-06-14-therapy-slice1-beyond-plan.md`: "AI model selection is NOT a user setting").
 
 ## Profile (`/#profile`)
 

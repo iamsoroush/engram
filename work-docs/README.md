@@ -1,7 +1,7 @@
-# docs/work — process workspace
+# work-docs — process workspace
 
 Temporary home for **process docs**: epics, stories, design explorations, build plans, migration
-checklists, research briefs. Everything else under `docs/` is **system-state** — it describes what
+checklists, research briefs. Everything under `docs/` is **system-state** — it describes what
 *is*, in the present tense, and must always match the code.
 
 ## Lifecycle
@@ -10,12 +10,12 @@ checklists, research briefs. Everything else under `docs/` is **system-state** �
    (e.g. `therapy-vertical.md`, not `epic-3.md`).
 2. **Build.** Track status, decisions, and open questions here freely.
 3. **Fold** the durable essence (contracts, as-built behavior, decisions worth keeping) into the
-   system-state docs (`docs/ux/screens/…`, `docs/architecture.md`, `docs/technical-decisions.md`, …).
+   system-state docs (`docs/ux/screens/…`, `docs/architecture.md`, `docs/technical-decisions/`, …).
 4. **Delete** the doc. Rewire or remove any links to it first.
 
 ## Rules
 
-- **System-state docs must never link into `docs/work/`.** If a system-state doc needs to reference
+- **System-state docs must never link into `work-docs/`.** If a system-state doc needs to reference
   something here, that content is durable — fold it out first. (This is the tripwire that forces
   step 3 before step 4.)
 - A doc here may describe future/unbuilt state; a system-state doc may not. No "Status: not built"

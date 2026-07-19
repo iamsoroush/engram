@@ -3,7 +3,7 @@
 > **Before recording anything, check the already-recorded pool:** the model-comparison scripts
 > **T01–T12** (owner's voice, 2026-07-10) are stored durably in the shared infra MinIO —
 > bucket `engram-eval-fixtures`, prefix `model-compare/transcription/` — with reference texts in
-> `docs/work/model-compare/transcription-scripts.md`. Items below marked **✔ covered by Txx** need
+> `apps/ai_engine/eval/model_compare/transcription-scripts.md`. Items below marked **✔ covered by Txx** need
 > **no new recording**: an agent copies the WAV from that bucket into the fixture dir and authors
 > the `.json`. The same bucket's **`m-pool/`** prefix holds six owner clips salvaged from the
 > July-05/08 identity-bug dev sessions (name-lead + the سارا/ثریا near-miss pair). Only the

@@ -11,8 +11,8 @@ recaps) into:
 - a live **"Session so far"** running synthesis that updates as captures land;
 - cross-session signals: recurring **themes** and an **assisted, clinician-confirmed risk** flag.
 
-See ``docs/ux/redesign-therapy.md`` (§1.2 capture model, §5.3 two planes, §7 privacy) and the design
-foundation ``docs/ux/redesign-foundation.md`` §1 (therapy = single plan, the AI *is* the value).
+See the as-built therapy record ``docs/technical-decisions/2026-06-14-therapy-slice1-beyond-plan.md``
+and the design foundation ``docs/ux/foundation.md`` §1 (therapy = single plan, the AI *is* the value).
 
 **v1 is deterministic** — it assembles the capture text (audio ``transcription`` is the per-capture
 AI; notes are a raw passthrough) into the format's sections by light sentence routing, exactly as the

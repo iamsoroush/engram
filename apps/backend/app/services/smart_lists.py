@@ -17,7 +17,7 @@ Surfaces, all Pro-gated on ``live_report_synthesis`` and tenant-scoped:
 The **AES-705 products/lots registry is postponed**; this reads raw extracted values. The single
 aggregation point (``_iter_treatments`` + the ledger/recall builders) is the seam where a registry
 later enriches (canonical lot, expiry, "unknown lot") without reshaping the responses. See
-``docs/ux/redesign-smart-lists-recall.md`` §5.
+``docs/ux/screens/patients.md`` (Lists tab).
 """
 
 import re

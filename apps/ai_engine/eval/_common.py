@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Shared two-tier eval harness — matchers, LLM judge, fixture store (used by every *_eval.py).
 
-The eval epic scores each AI job on two tiers (see ``docs/ai_engine/eval-epic.md``):
+The eval system scores each AI job on two tiers (see ``docs/ai_engine/evals.md``):
 
 * **Safety gates** — deterministic matchers. HARD pass/fail; a failure blocks ship and exits non-zero.
 * **Quality** — an LLM-as-judge rubric scored 0..1. Advisory by default (tracked to drive iteration);

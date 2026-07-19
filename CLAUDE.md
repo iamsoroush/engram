@@ -12,13 +12,15 @@ Use this file as the starting guide. Do not read the whole repository blindly. S
 
 ### Every task — read these first
 
-Regardless of task type, read these two before anything else. They are the shared mental model the
-rest of the docs assume, and both are short:
+Regardless of task type, read these before anything else. They are the shared mental model the
+rest of the docs assume, and all are short:
 
 - `docs/product.md` — what Engram is: purpose, personas, verticals × tiers × surfaces, the core
   loop, accepted behaviors.
 - `docs/design-principles.md` — the non-negotiable product/UX principles; a change that is locally
   correct but violates one of these is wrong.
+- `docs/technical-decisions/README.md` — the decision index (one-line hook per decision): scan it,
+  then open only the decisions your task touches — they are binding constraints.
 
 Then continue with the task-type lists below.
 
@@ -84,7 +86,7 @@ Read (on top of the every-task pair above):
 Read:
 
 - `docs/architecture.md`
-- `docs/technical-decisions.md`
+- `docs/technical-decisions/`
 - relevant app README/code
 
 ### Production / deployment
@@ -145,8 +147,10 @@ Architecture & backend:
 - `docs/architecture/pipeline-versioning.md`  
   Content-addressed `report_version` store + user-state overlay — the versioning foundation behind capture undo / de-effecting and safety-reconcile (with built-vs-pending status).
 
-- `docs/technical-decisions.md`  
-  Dated decision log future agents/developers must respect (with superseding notes where reversed).
+- `docs/technical-decisions/`  
+  Dated decision log future agents/developers must respect (with superseding notes where reversed) —
+  one file per decision (`YYYY-MM-DD-slug.md`). Its README is the index (one-line hook per
+  decision, completeness CI-enforced) and is on the every-task reading list above.
 
 - `docs/backend/`  
   As-built backend: `README.md` (index), `data-model.md` (Postgres data model + state semantics),
@@ -208,8 +212,8 @@ Production & operations:
 
 Process workspace:
 
-- `docs/work/`  
-  **Temporary process docs** (epics, stories, design explorations, plans) — see `docs/work/README.md` for the lifecycle. Everything else under `docs/` is system-state.
+- `work-docs/`  
+  **Temporary process docs** (epics, stories, design explorations, plans) at the repo root — see `work-docs/README.md` for the lifecycle. Everything under `docs/` is system-state.
 
 The backend OpenAPI schema is the source of truth for exact API contracts. Do not create a large duplicate API contract document.
 
@@ -217,14 +221,14 @@ The backend OpenAPI schema is the source of truth for exact API contracts. Do no
 
 ## 3. Documentation rules
 
-**Two classes of docs.** Everything under `docs/` except `docs/work/` is **system-state**: it
+**Two classes of docs.** Everything under `docs/` is **system-state**: it
 describes what IS, in the present tense, and must match the code at all times. **Process docs**
-(epics, stories, design explorations, build plans, migration checklists) live in `docs/work/` and
-follow its lifecycle: create → build → fold durable essence into system-state docs → delete.
+(epics, stories, design explorations, build plans, migration checklists) live in `work-docs/` at
+the repo root and follow its lifecycle: create → build → fold durable essence into system-state docs → delete.
 
 - A system-state doc never contains "Status: not built", phased plans, or "superseded by…" banners.
   If it goes stale, rewrite it — don't annotate it.
-- System-state docs never link into `docs/work/`. If one needs to, that content is durable — fold it
+- System-state docs never link into `work-docs/`. If one needs to, that content is durable — fold it
   out first.
 - When an epic/story finishes, delete its process doc after folding; rewire every inbound link
   (zero broken links).
@@ -251,15 +255,18 @@ not optional cleanup):
    Backend behavior that users can see counts.
 2. **Boundaries/data changed?** New module, data flow, table/enum, job type, infra assumption →
    `docs/architecture.md`, `docs/backend/data-model.md` / `processing.md`, or the app doc that owns it.
-3. **Decision made or reversed?** Add a dated entry to `docs/technical-decisions.md`; if it reverses
-   an earlier entry, add a superseding note on the old one (never silently contradict it).
+3. **Decision made or reversed?** Add a dated decision file under `docs/technical-decisions/` plus
+   its one-line entry in that directory's README index (CI fails on a missing entry); if it
+   reverses an earlier decision, add a superseding note to the old file (never silently contradict it).
 4. **AI job touched?** Run the eval suite; new job → new eval + update `docs/ai_engine/evals.md`'s
    coverage table (see §4).
 5. **New story/scope?** Register the AES-### (or vertical equivalent) in the story registry.
 6. **Doc added, moved, or deleted?** Update the §2 map above (the single index) and rewire every
-   inbound link. Epic/story finished → fold + delete its `docs/work/` doc.
+   inbound link. Epic/story finished → fold + delete its `work-docs/` doc.
 7. **Verify zero broken links:** run `python3 scripts/check-doc-links.py` (CI runs it too — it fails
-   on dangling links and on system-state docs linking into `docs/work/`).
+   on dangling links, on system-state docs linking into `work-docs/`, on stale `docs/…` path
+   mentions anywhere in the tree (code comments included), and on a decision file missing from the
+   technical-decisions index).
 8. **Reusable learning, or a skill that misled you?** Propose the skill change to the user and
    apply it once confirmed (§9).
 
@@ -274,6 +281,8 @@ not optional cleanup):
 - If code and docs conflict, mention the mismatch and make the smallest safe update.
 - Keep code readable, typed, and maintainable.
 - Validate with the relevant tests, linting, or type checks when available.
+- Never edit files containing Persian/multibyte text with BSD `sed` (the C locale corrupts
+  multibyte); use the Edit tool or Python with explicit UTF-8.
 - **AI jobs are eval-gated.** Re-implementing or changing an existing AI job (transcription, image
   caption, report synthesis = treatments+aftercare+sections+safety, patient memory, patient matching,
   Q&A draft/revise) MUST run the eval suite (`apps/ai_engine/eval/run_all.py`) and not regress it. A

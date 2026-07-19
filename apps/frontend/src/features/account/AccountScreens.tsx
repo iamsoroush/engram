@@ -247,7 +247,7 @@ export function SettingsScreen({
         />
       ) : null}
       {/* NOTE: AI model selection is intentionally NOT user-facing. Models are chosen and optimized
-          centrally (see docs/technical-decisions.md "AI model selection is not a user setting" and
+          centrally (see docs/technical-decisions/2026-06-14-therapy-slice1-beyond-plan.md ("AI model selection is not a user setting") and
           docs/business/ai-usage-limits.md). Do not add a model picker to Settings. */}
     </div>
   );

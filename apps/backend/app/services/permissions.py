@@ -4,7 +4,7 @@ Aesthetics is a *shared workspace*: any provider can work with any patient. But 
 **owned** by whoever created it (capture-first → the capturer owns), and editing/curating it is the
 owner's by default. What every *other* (non-owner) role may do is **tenant-configurable and
 permissive by default** — a few presets, not a granular matrix. See
-``docs/ux/redesign-foundation.md`` §7.
+``docs/ux/foundation.md`` §7.
 
 Three ordered presets, each a superset of the one below:
 

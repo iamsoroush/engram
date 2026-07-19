@@ -156,8 +156,7 @@ Inbox payload (thread-centric):
 ```
 
 The reply-draft/revise models are configured centrally per task (internal-only — model choice is
-not a user setting; see the AI-model decision in
-[technical-decisions.md](../technical-decisions.md)).
+not a user setting; see [the AI-model decision](../technical-decisions/2026-06-14-therapy-slice1-beyond-plan.md)).
 
 ### Internal (AI-engine worker; token-gated, not in OpenAPI)
 

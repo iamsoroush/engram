@@ -4,7 +4,7 @@ A *soft* "Today / up next" lane, never a gate. Reception (or any staff) lines a 
 clinician; that clinician sees them under "up next" and taps through to the patient (history +
 before/after) to start a session. Capture-first is untouched: the capture footer always starts a
 fresh session regardless of the worklist. This is a list, **not a scheduler** — entries carry no
-time slot, only creation order (oldest = next up). See ``docs/ux/redesign-foundation.md`` §7.
+time slot, only creation order (oldest = next up). See ``docs/ux/foundation.md`` §7.
 """
 
 import uuid

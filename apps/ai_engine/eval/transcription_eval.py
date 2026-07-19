@@ -12,7 +12,7 @@ This eval scores the real gateway on two tiers (shared harness in ``_common.py``
 
 Transcription can only be truly evaluated on REAL AUDIO, so it is fixture-driven: drop a clip at the
 fixtures dir (``EVAL_FIXTURES_DIR`` or in-repo ``eval/fixtures/transcription/``) as ``<case>.m4a`` plus
-a sibling ``<case>.json`` (format in ``docs/ai_engine/eval-epic.md`` §2a) and it is scored. Until
+a sibling ``<case>.json`` (format: ``docs/ai_engine/evals.md`` "Expectations format") and it is scored. Until
 recordings land, deterministic **gate self-tests** + gateway **judge smoke cases** keep it honest.
 
 Run::

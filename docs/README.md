@@ -13,10 +13,10 @@ maintain a second doc map here.
 - Architecture docs own system boundaries and data flow.
 - Frontend/backend/AI-engine docs own implementation mechanics.
 - Backend OpenAPI remains the source of truth for exact API contracts.
-- Everything under `docs/` is **system-state** (always current, present tense) except
-  `docs/work/` — the temporary workspace for process docs (epics, plans, design explorations),
-  which are deleted after their essence is folded into system-state docs. Its README defines the
-  lifecycle. System-state docs never link into it (CI enforces this).
+- Everything under `docs/` is **system-state** (always current, present tense). Process docs
+  (epics, plans, design explorations) live in `work-docs/` at the repo root and are deleted after
+  their essence is folded into system-state docs. Its README defines the lifecycle. System-state
+  docs never link into it (CI enforces this).
 
 ## Core Principle
 

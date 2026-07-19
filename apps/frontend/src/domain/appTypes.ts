@@ -321,7 +321,7 @@ export type PatientMemoryDetailResponse = {
 
 // --- Smart lists + lot/product recall (Pro; AES-501 / AES-502) ---
 // Deterministic lenses over the data the Pro synthesis already extracts. Shapes mirror the backend
-// (camelCase; see docs/ux/redesign-smart-lists-recall.md §4).
+// (camelCase; see docs/ux/screens/patients.md, Lists tab).
 
 export type SmartListKey = "seen-this-week" | "due-to-return" | "missing-after-photo";
 

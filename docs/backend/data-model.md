@@ -165,7 +165,7 @@ user-state overlay is *not* stored here. Full design:
   (NULL when the embeddings gateway is unconfigured → lexical-only). `status` `active`/`excluded` is the
   manage/exclude list; `source_message_id` links an indexed reply back to its `qa_messages` row
   (idempotent auto-index). Requires the `vector` extension (see
-  [technical-decisions.md](../technical-decisions.md) → *Q&A Knowledge Retrieval*).
+  [the pgvector decision](../technical-decisions/2026-07-05-qa-knowledge-pgvector.md)).
 - `worklist_entries` — the soft "line a patient up" lane (AES-903).
 - `ai_feedback_events` — harvested AI-quality signals (corrections/confirmations/ratings) feeding
   the eval golden sets; see [insights-feedback.md](insights-feedback.md).

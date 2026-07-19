@@ -42,7 +42,7 @@ TREATMENT_PERFORMED_SECTION_ID = "treatment-performed"
 # authority; the ai_engine synthesis prompt (`prompts/synthesis.py`) mirrors this SAME ordering with
 # `sort_keys=False` and MUST stay in lockstep (like SESSION_SYNTHESIS_OUTPUT_VERSION).
 #
-# STANDING RULE (docs/technical-decisions.md): a NEW synthesis-context field appends to
+# STANDING RULE (docs/technical-decisions/2026-07-09-synthesis-context-restructure.md): a NEW synthesis-context field appends to
 # SYNTHESIS_VOLATILE_KEYS (or, if genuinely tenant-stable, to the END of SYNTHESIS_STABLE_KEYS) —
 # never spliced into the middle of the stable region, which would move the cache boundary.
 SYNTHESIS_STABLE_KEYS: tuple[str, ...] = (

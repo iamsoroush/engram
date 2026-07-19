@@ -5,9 +5,9 @@ aesthetics ones) as slices ship; foundation-level decisions → `docs/ux/foundat
 
 > The therapy vertical of Engram (Spine A), designed **greenfield** — not aesthetics re-skinned.
 > Built on the shared
-> foundation [foundation.md](../ux/foundation.md) and the capture/memory surfaces
-> ([screens/capture.md](../ux/screens/capture.md), `patient-memory-states.html`).
-> Status: **P2a design — pre-PMF, a later alpha** ([../spines.md](../spines.md) §4). Encounter label =
+> foundation [foundation.md](../docs/ux/foundation.md) and the capture/memory surfaces
+> ([screens/capture.md](../docs/ux/screens/capture.md), `patient-memory-states.html`).
+> Status: **P2a design — pre-PMF, a later alpha** ([../spines.md](../docs/spines.md) §4). Encounter label =
 > **Session**. **Single plan** (no Basic/Pro). Prototypes: `../../apps/frontend/design-prototypes/therapy-*.html`.
 >
 > **Non-negotiables inherited from the foundation:** capture-first never blocks a role; the AI *is* the
@@ -465,7 +465,7 @@ mirror the HIPAA psychotherapy-note rule **by construction** (research §4.1).
 
 ## 8. States & copy
 
-Reuse [states.md](../ux/states.md) + the memory-refresh states in `patient-memory-states.html`. Therapy-specific:
+Reuse [states.md](../docs/ux/states.md) + the memory-refresh states in `patient-memory-states.html`. Therapy-specific:
 
 - **Empty patient surface** (default) → *"Your therapist hasn't shared anything yet."* — reassurance, not a gap.
 - **No active risk** → *"No active safety flags."* — present and calm, so its absence is informative.

@@ -3,7 +3,7 @@
 A self-contained router so the feature stays in mostly-new files: ``main.py`` only mounts it. All
 endpoints are read-only, Pro-gated on ``live_report_synthesis`` (in the service), and tenant-scoped.
 Logic lives in ``app/services/smart_lists.py``; these handlers stay thin. See
-``docs/ux/redesign-smart-lists-recall.md``.
+``docs/ux/screens/patients.md`` (Lists tab).
 """
 
 from typing import Any

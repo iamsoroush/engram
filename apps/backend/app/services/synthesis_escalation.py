@@ -1,4 +1,4 @@
-"""Correction-triggered synthesis escalation (escalation-tier decision — see docs/technical-decisions.md; deferred from Wave 2).
+"""Correction-triggered synthesis escalation (escalation-tier decision — see docs/technical-decisions/2026-07-05-treatment-overlay-schema-v2.md; deferred from Wave 2).
 
 A **user correction is proof the cheap model tier failed on this input**, so the next re-synthesis of
 that session should run on the strongest configured tier. The three correction signals — an explicit

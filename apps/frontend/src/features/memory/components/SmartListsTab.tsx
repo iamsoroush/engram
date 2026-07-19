@@ -1,7 +1,7 @@
 // Clinical Memory → Lists (Pro; AES-501 smart lists + AES-502 lot/product recall).
 // One coherent surface: a small rail of named, deterministic lenses (with live counts) + a lot/product
 // lookup that doubles as the safety-grade recall cohort. Sibling to the Today/Patients/Needs-input
-// tabs. Design: docs/ux/redesign-smart-lists-recall.md. All chrome via t(); clinical content (lot
+// tabs. Design: docs/ux/screens/patients.md (Lists tab). All chrome via t(); clinical content (lot
 // strings, treatment phrases) is verbatim.
 import React from "react";
 import type { LotLedger, LotRecallResult, SmartListCounts, SmartListKey, SmartListResponse } from "../../../domain/appTypes";

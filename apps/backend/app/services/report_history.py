@@ -4,7 +4,7 @@ The HTTP-facing reads over the content-addressed ``session_report_versions`` sto
 (list) and one version's artifacts (read-only preview). The pure store + reachability/trigger helpers live
 in ``services/report_versions.py``; the destructive revert-restore lives with the capture de-effect family
 in ``services/captures.py`` (``restore_session_report_version``) so it reuses the exact undo machinery. See
-docs/architecture/pipeline-versioning.md and docs/work/ux-epic-report-history.md.
+docs/architecture/pipeline-versioning.md.
 """
 from __future__ import annotations
 

@@ -4,7 +4,7 @@
 `docs/ai_engine/processing.md` (the patient-memory / Job-4 section) when built.
 
 The un-built slice of the session patient-context work. **Already shipped** (documented in
-[capture.md](../ux/screens/capture.md)): the deterministic context card in both tiers (last-visit
+[capture.md](../docs/ux/screens/capture.md)): the deterministic context card in both tiers (last-visit
 digest + cross-visit photo strip + key facts), the Pro lineup card layered on top, the
 timeline round-trip ("Back to this visit"), and deterministic cross-visit safety flags. **This doc
 covers what remains:** the assistant-grade **pre-visit brief** — a richer Job-4 synthesis surfaced
