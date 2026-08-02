@@ -12,8 +12,7 @@ Use this file as the starting guide. Do not read the whole repository blindly. S
 
 ### Every task — read these first
 
-Regardless of task type, read these before anything else. They are the shared mental model the
-rest of the docs assume, and all are short:
+Regardless of task type, read these before anything else. They are the shared mental model the rest of the docs assume, and all are short:
 
 - `docs/product.md` — what Engram is: purpose, personas, verticals × tiers × surfaces, the core
   loop, accepted behaviors.
@@ -21,84 +20,6 @@ rest of the docs assume, and all are short:
   correct but violates one of these is wrong.
 - `docs/technical-decisions/README.md` — the decision index (one-line hook per decision): scan it,
   then open only the decisions your task touches — they are binding constraints.
-
-Then continue with the task-type lists below.
-
-### Frontend
-
-Read:
-
-- `apps/frontend/README.md`
-- `docs/frontend/README.md`
-
-If the task changes visible behavior, also read:
-
-- `docs/ux/overview.md`
-- relevant files under `docs/ux/workflows/` or `docs/ux/screens/`
-
-### Backend
-
-Read:
-
-- `apps/backend/README.md`
-- `docs/backend/README.md`
-
-If backend behavior affects users, also read:
-
-- `docs/ux/overview.md`
-- relevant workflow/screen docs
-
-### AI Engine
-
-Read:
-
-- `apps/ai_engine/README.md`
-- `docs/ai_engine/README.md` (indexes `processing.md` — the as-built jobs doc — and `evals.md`)
-
-If AI engine behavior affects user-visible processing, summaries, matching, or recovery, also read:
-
-- `docs/ux/overview.md`
-- `docs/ux/states.md`
-- relevant workflow/screen docs
-
-### Full-stack
-
-Read:
-
-- `apps/frontend/README.md`
-- `apps/backend/README.md`
-- `apps/ai_engine/README.md`
-- `docker-compose.yml`
-- `docs/architecture.md`
-- relevant UX docs under `docs/ux/`
-
-### UX / user-facing behavior
-
-Read (on top of the every-task pair above):
-
-- `docs/ux/foundation.md` (tier/persona/boundary decisions — read before designing any surface)
-- `docs/ux/overview.md`
-- `docs/intelligence-layer.md` (if the work touches capture→intent/apply behavior)
-- relevant workflow/screen/state/navigation docs under `docs/ux/`
-
-### Architecture
-
-Read:
-
-- `docs/architecture.md`
-- `docs/technical-decisions/`
-- relevant app README/code
-
-### Production / deployment
-
-Read:
-
-- `docs/production.md`
-- `docs/production-alpha-tradeoffs.md`
-- `docker-compose.prod.yml`
-- `docs/architecture.md`
-
----
 
 ## 2. Documentation map
 
@@ -274,6 +195,13 @@ not optional cleanup):
 
 ## 4. Implementation rules
 
+- Before implementing, inspect the available skills for a relevant task/domain skill and follow it,
+  reusing its workflows, scripts, and templates instead of starting from scratch. Fall back to direct
+  implementation only when no relevant skill exists or it does not cover the need.
+- For symbol navigation and diagnostics (definitions, references, warnings, type/syntax errors),
+  first check for and use an available language server: Pyright for Python and
+  `typescript-language-server` for TypeScript/JavaScript. If unavailable or insufficient, fall back
+  to targeted search/file reads and the project's compiler, linter, or test tools.
 - Keep changes focused on the requested task.
 - Preserve existing behavior unless explicitly asked to change it.
 - Prefer modifying existing modules/components over creating duplicates.
@@ -372,33 +300,3 @@ to also drop this worktree's database + bucket). Full details:
 In the **primary checkout**, `scripts/dev-stack.sh up` runs the canonical `engram`
 stack (the clone source); the plain root `docker compose up` also still works as a
 self-contained, non-shared environment.
-
----
-
-## 9. Skills — self-maintained reusable procedures
-
-Skills are proven, tested procedures that load automatically into every agent. They live in
-`.claude/skills/<name>/SKILL.md`; `.agents/skills` is a symlink to `.claude/skills` (Codex reads
-skills from there) — **edit only `.claude/skills/`** and both stay in sync. For format, authoring,
-and improving skills, use the bundled `skill-creator` skill.
-
-**All skill writes are user-gated.** Before creating, editing, or deleting any skill, present the
-proposed change to the user — what you want to capture or fix, why, and the draft/diff — and apply
-it only after they confirm. Never modify `.claude/skills/` silently.
-
-Maintaining skills is part of every task, not optional cleanup:
-
-- **Capture.** When you solve something through real trial-and-error that will recur — a
-  debugging recipe, a migration procedure, a verification flow, a repo-specific workflow — fold
-  it into a skill: the steps that worked AND the dead ends / common mistakes. Don't capture
-  one-off or trivial knowledge, and never capture an approach you haven't actually validated in
-  this repo.
-- **Update.** When a task reveals an existing skill is incomplete, stale, or wrong, fix the
-  skill within the same task.
-- **Self-reflect on failure.** If you went off track while following a skill, diagnose why
-  before finishing: was the skill wrong, ambiguous, or missing a precondition — or did you
-  misapply it? Update the skill so the next agent doesn't repeat the mistake. A skill that
-  misled an agent and was left unchanged is a bug.
-- **Skills hold procedure, docs hold facts.** How to do a recurring task well → skill. What the
-  system IS (architecture, contracts, data model) → `docs/` (§2–§3). Skills link to docs, never
-  restate them.
